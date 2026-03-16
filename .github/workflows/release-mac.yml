@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (example: v1.0.2)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,9 +20,12 @@ jobs:
     runs-on: macos-latest
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -57,7 +66,7 @@ jobs:
       - name: Upload macOS artifact (backup)
         uses: actions/upload-artifact@v4
         with:
-          name: ClinicaElectron-macOS-dmg-${{ github.ref_name }}
+          name: ClinicaElectron-macOS-dmg-${{ env.RELEASE_TAG }}
           path: |
             dist-electron/*.dmg
             dist-electron/*.dmg.blockmap
@@ -66,7 +75,7 @@ jobs:
       - name: Publish assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist-electron/*.dmg
             dist-electron/*.dmg.blockmap
