@@ -40,6 +40,7 @@
   - empaquetado NSIS,
   - variacion de I/O en runners compartidos.
 - 2 a 10 minutos puede ser un rango normal segun carga.
+- En este proyecto, el workflow Windows desactiva code signing en CI para evitar bloqueos en `signtool.exe`.
 
 ## Comportamiento del `.env` en CI (importante)
 - `backend/.env` esta en `.gitignore`, por lo tanto no viaja al repositorio.
