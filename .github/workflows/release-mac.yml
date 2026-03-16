@@ -1,0 +1,74 @@
+name: Release macOS DMG
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-dmg:
+    name: Build and publish macOS DMG (x64)
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm run install:backend
+
+      - name: Build macOS DMG (x64)
+        run: npx electron-builder --mac dmg --x64 --publish never
+
+      - name: Validate DMG output exists
+        run: |
+          shopt -s nullglob
+          files=(dist-electron/*.dmg)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No DMG generated in dist-electron/"
+            exit 1
+          fi
+          ls -lh dist-electron/*.dmg
+
+      - name: Validate runtime backend included in app bundle
+        run: |
+          if ! find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/server.js" -print -quit | grep -q .; then
+            echo "runtime/backend/server.js not found inside .app bundle"
+            exit 1
+          fi
+          find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/server.js" -print
+
+      - name: Upload macOS artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClinicaElectron-macOS-dmg-${{ github.ref_name }}
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.dmg.blockmap
+          if-no-files-found: error
+
+      - name: Publish assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            dist-electron/*.dmg
+            dist-electron/*.dmg.blockmap
+          fail_on_unmatched_files: false
+          generate_release_notes: true
