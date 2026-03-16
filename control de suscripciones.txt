@@ -1,0 +1,155 @@
+CONTROL DE SUSCRIPCIONES (PLAN DE IMPLEMENTACION)
+
+Objetivo
+- Mantener la app principal local (backend + frontend en la clinica).
+- Controlar acceso de forma centralizada con una base de datos remota de suscripciones.
+- Poder bloquear/desbloquear clinicas sin tocar cada instalacion local.
+
+Arquitectura propuesta
+- App local:
+  - Backend Node/Express (actual proyecto).
+  - Frontend servido por Express (actual proyecto).
+- Base de datos local:
+  - Usuarios, pacientes, agenda, cobros, etc. (actual).
+- Base de datos remota (Railway MySQL):
+  - Solo tablas de licenciamiento/suscripcion.
+- Validacion:
+  - El backend local consulta la BD remota al iniciar sesion.
+  - Si suscripcion no activa, deniega acceso.
+
+Flujo funcional (login)
+1. Usuario envia credenciales.
+2. Backend valida usuario/clave local.
+3. Backend valida suscripcion remota por clinica_id.
+4. Si estado es invalido o vencida -> HTTP 403.
+5. Si activa -> login normal y token.
+
+Estados de suscripcion sugeridos
+- activa
+- suspendida
+- vencida
+- cancelada
+
+Modelo minimo en BD remota
+Tabla: suscripciones
+- idSuscripcion (PK, bigint autoincrement)
+- clinicaId (varchar(64), unique)
+- estado (varchar(20))
+- fechaInicio (datetime)
+- fechaVencimiento (datetime)
+- planNombre (varchar(50))
+- maxUsuarios (int null)
+- observacion (varchar(255) null)
+- updatedAt (datetime)
+
+SQL base sugerido
+CREATE TABLE suscripciones (
+  idSuscripcion BIGINT AUTO_INCREMENT PRIMARY KEY,
+  clinicaId VARCHAR(64) NOT NULL UNIQUE,
+  estado VARCHAR(20) NOT NULL,
+  fechaInicio DATETIME NULL,
+  fechaVencimiento DATETIME NULL,
+  planNombre VARCHAR(50) NULL,
+  maxUsuarios INT NULL,
+  observacion VARCHAR(255) NULL,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_suscripciones_estado ON suscripciones(estado);
+CREATE INDEX idx_suscripciones_vencimiento ON suscripciones(fechaVencimiento);
+
+Regla de decision recomendada
+- Permitido solo si:
+  - estado = 'activa'
+  - y (fechaVencimiento is null o fechaVencimiento >= NOW()).
+
+Manejo de caida de internet (grace period)
+- Guardar cache local del ultimo resultado valido:
+  - estadoUltimoCheck
+  - vencimientoUltimoCheck
+  - ultimaValidacionAt
+- Si remoto no responde:
+  - Permitir acceso solo durante ventana de gracia (ej: 72 horas)
+  - Despues de ese tiempo: bloquear login hasta revalidar.
+
+Tabla local cache sugerida
+Tabla: licencia_cache
+- id (PK tinyint = 1)
+- estado (varchar(20))
+- fechaVencimiento (datetime null)
+- ultimaValidacionAt (datetime)
+- fuente (varchar(20)) -- 'remoto' o 'cache'
+
+SQL local cache sugerido
+CREATE TABLE licencia_cache (
+  id TINYINT PRIMARY KEY,
+  estado VARCHAR(20) NOT NULL,
+  fechaVencimiento DATETIME NULL,
+  ultimaValidacionAt DATETIME NOT NULL,
+  fuente VARCHAR(20) NOT NULL
+);
+
+INSERT INTO licencia_cache (id, estado, fechaVencimiento, ultimaValidacionAt, fuente)
+VALUES (1, 'vencida', NULL, NOW(), 'cache')
+ON DUPLICATE KEY UPDATE id = id;
+
+Variables .env sugeridas (backend local)
+- LICENCIAS_DB_HOST=
+- LICENCIAS_DB_PORT=3306
+- LICENCIAS_DB_USER=
+- LICENCIAS_DB_PASS=
+- LICENCIAS_DB_NAME=
+- LICENCIAS_CLINICA_ID=
+- LICENCIAS_TIMEOUT_MS=3500
+- LICENCIAS_GRACE_HOURS=72
+- LICENCIAS_REQUIRE_SSL=true
+
+Cambios de codigo planificados (backend actual)
+1. Crear archivo: backend/services/licencia.service.js
+   - checkRemoteSubscription(clinicaId)
+   - getLocalLicenseCache()
+   - saveLocalLicenseCache()
+   - isAccessAllowed(remoteOrCache, graceHours)
+
+2. Integrar en login:
+   - backend/controllers/auth.controller.js
+   - Antes de generar token, ejecutar validacion de suscripcion.
+   - Si no permitido -> return 403 con mensaje claro.
+
+3. (Opcional) Middleware global:
+   - backend/middlewares/license.middleware.js
+   - Revalidacion periodica para rutas protegidas.
+
+4. Logs:
+   - Registrar motivo de bloqueo:
+     - 'estado_no_activo'
+     - 'vencida'
+     - 'sin_conexion_y_grace_expirada'
+
+Seguridad recomendada
+- Usuario remoto de solo lectura:
+  - Solo SELECT sobre tabla suscripciones.
+- Habilitar SSL hacia Railway MySQL.
+- Rotar credenciales cada cierto tiempo.
+- No exponer credenciales en frontend.
+- Toda validacion de licencias debe quedar en backend.
+
+Operacion diaria
+- Para bloquear clinica:
+  - UPDATE suscripciones SET estado='suspendida' WHERE clinicaId='X';
+- Para reactivar:
+  - UPDATE suscripciones SET estado='activa', fechaVencimiento='YYYY-MM-DD HH:MM:SS' WHERE clinicaId='X';
+
+Checklist de implementacion futura
+- [ ] Crear tabla remota suscripciones
+- [ ] Crear tabla local licencia_cache
+- [ ] Agregar variables .env
+- [ ] Implementar licencia.service.js
+- [ ] Conectar validacion en login
+- [ ] Probar casos: activa, vencida, suspendida, sin internet dentro/fuera grace
+- [ ] Documentar mensajes al usuario final
+
+Notas
+- Este modelo da control central real con costo bajo.
+- Si internet cae por mucho tiempo, la politica de gracia define continuidad.
+- Sin validacion remota no hay control central confiable.

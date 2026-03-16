@@ -1,0 +1,96 @@
+/* theme-dark.css - paleta base (oscuro) */
+
+body[data-theme="dark"] {
+  --bg-gray: #0b1220;
+  --sidebar-bg: #0f172a;
+  --topbar-bg: #0f172a;
+  --bg-white: #0f172a;
+  --text-color: #e2e8f0;
+  --text-muted: #9ca3af;
+  --border-color: #243042;
+  --sidebar-hover: #1e293b;
+  --blue: #3b82f6;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --success: #16a34a;
+  --success-hover: #15803d;
+  color-scheme: dark;
+}
+
+/* =====================================================
+   ODONTOGRAMA - DARK (SELECCION POR PIEZA)
+===================================================== */
+body[data-theme="dark"].dark-mode .odonto-piece-modal-card {
+  background: #0f172a;
+  border-color: #2a3a52;
+}
+
+body[data-theme="dark"].dark-mode .odonto-piece-left,
+body[data-theme="dark"].dark-mode .odonto-piece-right {
+  background: #111b2d;
+  border-color: #2a3a52;
+}
+
+body[data-theme="dark"].dark-mode .odonto-piece-touch-zone {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+body[data-theme="dark"].dark-mode .odonto-piece-modal-header h6,
+body[data-theme="dark"].dark-mode .odonto-piece-label,
+body[data-theme="dark"].dark-mode .odonto-piece-menu-title,
+body[data-theme="dark"].dark-mode .odonto-piece-tooth-wrap .tooth-label {
+  color: #e2e8f0;
+}
+
+body[data-theme="dark"].dark-mode #odonto-piece-modal .odonto-piece-treatments button {
+  background: #14233a;
+  border-color: #355074;
+  color: #e2e8f0;
+}
+
+body[data-theme="dark"].dark-mode #odonto-piece-modal .odonto-piece-treatments button:hover {
+  background: #1b2f4d;
+  border-color: #5077ab;
+}
+
+body[data-theme="dark"].dark-mode #odonto-piece-modal .odonto-piece-nav:disabled,
+body[data-theme="dark"].dark-mode #odonto-piece-modal .odonto-piece-treatments button:disabled {
+  background: #1a2434;
+  border-color: #3a4d67;
+  color: #7f91a8;
+  opacity: 1;
+}
+
+/* Menu flotante odontograma */
+body[data-theme="dark"].dark-mode #menu {
+  background: #111b2d;
+  border: 1px solid #2a3a52;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.32);
+}
+
+body[data-theme="dark"].dark-mode .menu-title {
+  color: #e2e8f0;
+}
+
+body[data-theme="dark"].dark-mode #menu-options button {
+  background: #14233a;
+  border-color: #355074;
+  color: #e2e8f0;
+}
+
+body[data-theme="dark"].dark-mode #menu-options button:hover {
+  background: #1b2f4d;
+  border-color: #5077ab;
+}
+
+body[data-theme="dark"].dark-mode #close-menu {
+  background: #1a2434;
+  border-color: #3a4d67;
+  color: #e2e8f0;
+}
+
+body[data-theme="dark"].dark-mode #close-menu:hover {
+  background: #233147;
+  border-color: #5077ab;
+}

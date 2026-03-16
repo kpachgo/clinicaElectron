@@ -1,0 +1,87 @@
+{
+  "name": "clinica",
+  "version": "1.0.7",
+  "description": "Sistema de clinica empaquetado con Electron",
+  "author": "Clinica",
+  "repository": {
+    "type": "git",
+    "url": "https://example.invalid/clinica-electron"
+  },
+  "private": true,
+  "main": "electron-app/main.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js",
+    "stop": "node backend/scripts/stop-server.js",
+    "install:backend": "npm --prefix backend install",
+    "electron": "electron electron-app/main.js",
+    "electron:dev": "electron electron-app/main.js",
+    "dist": "electron-builder --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.clinica.electron",
+    "productName": "ClinicaElectron",
+    "asar": true,
+    "files": [
+      "**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "runtime/backend",
+        "filter": [
+          "**/*",
+          "node_modules{,/**}",
+          ".env"
+        ]
+      },
+      {
+        "from": "backend/node_modules",
+        "to": "runtime/backend/node_modules",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "frontend",
+        "to": "runtime/frontend",
+        "filter": [
+          "**/*",
+          "!fotos{,/**}",
+          "!firmas{,/**}",
+          "!img/docs{,/**}"
+        ]
+      },
+      {
+        "from": "runtime.package.json",
+        "to": "runtime/package.json"
+      }
+    ],
+    "directories": {
+      "app": "electron-app",
+      "output": "dist-electron"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "disableDefaultIgnoredFiles": true
+  }
+}
+

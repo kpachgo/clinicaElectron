@@ -1,0 +1,878 @@
+/* ============================================
+   🦷 ODONTOGRAMA — CONTENEDOR PRINCIPAL
+============================================ */
+#odontograma-wrapper {
+    width: max-content;     /* 👈 clave absoluta */
+    min-width: 100%;        /* ocupa toda la pantalla si cabe */
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding: 10px 0;
+}
+
+/* ============================================
+   🦷 FILAS — SUPERIOR / INTERMEDIO / INFERIOR
+============================================ */
+.odont-row {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow: visible;   /* 👈 nunca hidden */
+}
+/* Adultos superior e inferior */
+.odont-top,
+.odont-bottom {
+    justify-content: space-between;
+}
+
+/* Niños superior e inferior */
+.odont-mid-top,
+.odont-mid-bottom {
+    justify-content: center;
+}
+
+/* ============================================
+   🦷 DIENTE
+============================================ */
+.tooth {
+    width: 66px;
+    text-align: center;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.tooth svg {
+    width: 65px;
+    height: auto;
+    display: block;
+}
+
+/* En modo oscuro, aclarar solo el trazo base del diente (stroke original #444). */
+.dark-mode .tooth svg [stroke="#444"] {
+    stroke: #f8fafc !important;
+}
+
+.tooth-label {
+    margin-top: 4px;
+    font-size: 12px;
+}
+
+.tooth-note {
+    margin-top: 4px;
+    width: 90%;
+    padding: 3px;
+    font-size: 11px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    text-align: center;
+}
+
+.tooth-note::placeholder {
+    color: #94a3b8;
+}
+
+.tooth-note.is-odontograma-locked,
+.odonto-piece-input.is-odontograma-locked {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    color: #6b7280;
+    cursor: not-allowed;
+}
+
+/* Controles del odontograma en dark mode (botones + inputs) */
+.dark-mode .paciente-container .toolbar button,
+.dark-mode .paciente-container #btn-guardarOdontograma,
+.dark-mode .paciente-container #btn-cargarOdontograma,
+.dark-mode .odonto-piece-close,
+.dark-mode .odonto-piece-nav,
+.dark-mode .odonto-piece-treatments button {
+    background: #14233a;
+    border-color: #355074;
+    color: #e2e8f0;
+}
+
+/* Blindaje puntual: botones principales del toolbar odontograma */
+.dark-mode .paciente-container #btn-clean,
+.dark-mode .paciente-container #btn-clean-one,
+.dark-mode .paciente-container #btn-piece-editor {
+    background: #14233a !important;
+    border: 1px solid #355074 !important;
+    color: #e2e8f0 !important;
+}
+
+.dark-mode .paciente-container .toolbar button:hover,
+.dark-mode .paciente-container #btn-guardarOdontograma:hover,
+.dark-mode .paciente-container #btn-cargarOdontograma:hover,
+.dark-mode .odonto-piece-close:hover,
+.dark-mode .odonto-piece-nav:hover,
+.dark-mode .odonto-piece-treatments button:hover {
+    background: #1b2f4d;
+    border-color: #5077ab;
+}
+
+.dark-mode .paciente-container #btn-clean:hover,
+.dark-mode .paciente-container #btn-clean-one:hover,
+.dark-mode .paciente-container #btn-piece-editor:hover {
+    background: #1b2f4d !important;
+    border-color: #5077ab !important;
+}
+
+.dark-mode .paciente-container .toolbar button:focus-visible,
+.dark-mode .paciente-container #btn-guardarOdontograma:focus-visible,
+.dark-mode .paciente-container #btn-cargarOdontograma:focus-visible,
+.dark-mode .odonto-piece-close:focus-visible,
+.dark-mode .odonto-piece-nav:focus-visible,
+.dark-mode .odonto-piece-treatments button:focus-visible,
+.dark-mode .paciente-container #fechaO:focus-visible,
+.dark-mode #odontograma-wrapper .tooth-note:focus-visible,
+.dark-mode .odonto-piece-input:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 1px;
+}
+
+.dark-mode .paciente-container #fechaO,
+.dark-mode .odonto-piece-input,
+.dark-mode #odonto-piece-arcada,
+.dark-mode #odonto-piece-select,
+.dark-mode #odontograma-wrapper .tooth-note {
+    background: #111c2f;
+    border-color: #33455d;
+    color: #e2e8f0;
+}
+
+.dark-mode #odontograma-wrapper .tooth-note::placeholder,
+.dark-mode .odonto-piece-input::placeholder {
+    color: #8ea0b7;
+}
+
+.dark-mode .tooth-note.is-odontograma-locked,
+.dark-mode .odonto-piece-input.is-odontograma-locked {
+    background: #1a2434;
+    border-color: #3a4d67;
+    color: #7f91a8;
+}
+
+/* ============================================
+   ODONTOGRAMA - THEME VAMPIRE (override)
+============================================ */
+body[data-theme="vampire"].dark-mode .paciente-container .toolbar button,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-guardarOdontograma,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-cargarOdontograma,
+body[data-theme="vampire"].dark-mode .odonto-piece-close,
+body[data-theme="vampire"].dark-mode .odonto-piece-nav,
+body[data-theme="vampire"].dark-mode .odonto-piece-treatments button {
+    background: #252526;
+    border-color: #3c3c3c;
+    color: #d4d4d4;
+}
+
+/* Estos tres usan !important en dark base, aqui tambien para reemplazar. */
+body[data-theme="vampire"].dark-mode .paciente-container #btn-clean,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-clean-one,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-piece-editor {
+    background: #252526 !important;
+    border: 1px solid #3c3c3c !important;
+    color: #d4d4d4 !important;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .toolbar button:hover,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-guardarOdontograma:hover,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-cargarOdontograma:hover,
+body[data-theme="vampire"].dark-mode .odonto-piece-close:hover,
+body[data-theme="vampire"].dark-mode .odonto-piece-nav:hover,
+body[data-theme="vampire"].dark-mode .odonto-piece-treatments button:hover {
+    background: #2a2d2e;
+    border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container #btn-clean:hover,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-clean-one:hover,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-piece-editor:hover {
+    background: #2a2d2e !important;
+    border-color: #007acc !important;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .toolbar button:focus-visible,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-guardarOdontograma:focus-visible,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-cargarOdontograma:focus-visible,
+body[data-theme="vampire"].dark-mode .odonto-piece-close:focus-visible,
+body[data-theme="vampire"].dark-mode .odonto-piece-nav:focus-visible,
+body[data-theme="vampire"].dark-mode .odonto-piece-treatments button:focus-visible,
+body[data-theme="vampire"].dark-mode .paciente-container #fechaO:focus-visible,
+body[data-theme="vampire"].dark-mode #odontograma-wrapper .tooth-note:focus-visible,
+body[data-theme="vampire"].dark-mode .odonto-piece-input:focus-visible {
+    outline: 2px solid #007acc;
+    outline-offset: 1px;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container #fechaO,
+body[data-theme="vampire"].dark-mode .odonto-piece-input,
+body[data-theme="vampire"].dark-mode #odonto-piece-arcada,
+body[data-theme="vampire"].dark-mode #odonto-piece-select,
+body[data-theme="vampire"].dark-mode #odontograma-wrapper .tooth-note {
+    background: #252526;
+    border-color: #3c3c3c;
+    color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #odontograma-wrapper .tooth-note::placeholder,
+body[data-theme="vampire"].dark-mode .odonto-piece-input::placeholder {
+    color: #808080;
+}
+
+body[data-theme="vampire"].dark-mode .tooth-note.is-odontograma-locked,
+body[data-theme="vampire"].dark-mode .odonto-piece-input.is-odontograma-locked {
+    background: #2a2d2e;
+    border-color: #3c3c3c;
+    color: #808080;
+}
+
+#odontograma-wrapper.odonto-locked .tooth,
+#odontograma-wrapper.odonto-locked .tooth svg,
+#odontograma-wrapper.odonto-locked .surface,
+#odontograma-wrapper.odonto-locked .ppf-bridge,
+#odontograma-wrapper.odonto-locked .ppr-bridge,
+#odontograma-wrapper.odonto-locked .realizado-overlay {
+    cursor: not-allowed !important;
+}
+
+#odonto-piece-modal .odonto-piece-tooth-wrap .tooth.is-odontograma-locked,
+#odonto-piece-modal .odonto-piece-tooth-wrap .tooth.is-odontograma-locked svg,
+#odonto-piece-modal .odonto-piece-tooth-wrap .tooth.is-odontograma-locked .surface {
+    cursor: not-allowed !important;
+}
+
+
+/* ============================================
+   🦷 MENÚ DE TRATAMIENTOS
+============================================ */
+#menu {
+    position: fixed;               /* fijo al viewport */
+    z-index: 100001;
+
+    background: #ffffff;
+    padding: 14px 18px;
+    width: 220px;
+    max-width: 600px;
+
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+    transform-origin: top left;
+    will-change: opacity, transform, filter;
+    transition:
+        opacity 0.18s ease,
+        transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+        filter 0.18s ease;
+
+    /* 🔑 Scroll interno controlado */
+    max-height: 320px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+
+    word-wrap: break-word;
+}
+
+@keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.menu-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #333;
+}
+
+#menu-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#menu-options button {
+    display: block;
+    width: 100%;
+    background: #f7f8fa;
+    border: 1px solid #e1e1e1;
+    padding: 8px 10px;
+    text-align: left;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: 0.15s ease;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+#menu-options button:hover {
+    background: #e8f0ff;
+    border-color: #b7ceff;
+}
+/* ============================================
+   🦷 ESTADOS — colores y círculos
+============================================ */
+.estado-container {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+}
+
+.estado-circle {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.15s;
+}
+.estado-circle:hover { transform: scale(1.2); }
+
+.estado-azul { background: #2693ff; }
+.estado-naranja { background: #ff9800; }
+.estado-rojo { background: #ff3b30; }
+
+/* Botón cerrar menú */
+#close-menu {
+    margin-top: 14px;
+    width: 100%;
+    background: #ffefef;
+    border: 1px solid #ffb2b2;
+    padding: 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: 0.2s;
+}
+#close-menu:hover { background: #ffdada; }
+
+/* Oculto */
+.menu-hidden {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(-6px) scale(0.97);
+    filter: blur(1px);
+}
+/* ============================================
+   🦷 MENSAJES: Clean, PPF, Bloqueo
+============================================ */
+#clean-message {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #fffbcc;
+    border: 1px solid #e6d800;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #665c00;
+    z-index: 99999;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+}
+
+#ppf-message {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #e8f0ff;
+    border: 1px solid #b7d1ff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0b4da0;
+    z-index: 99999;
+    box-shadow: 0 6px 18px rgba(11,77,160,0.08);
+}
+/* ============================================
+   🦷 EFECTOS ESPECIALES
+============================================ */
+.ppf-bridge {
+    position: absolute;
+    pointer-events: none;
+    z-index: 99998;
+    left: 0;
+    top: 0;
+}
+
+.ppf-start-highlight {
+    position: relative;
+    z-index: 99999;
+    border-radius: 10px;
+    --ppf-highlight-color: #ff3b30;
+    box-shadow: 0 0 6px rgba(0,0,0,0.06), 0 0 6px var(--ppf-highlight-color);
+    animation: ppfPulse 1.2s ease-in-out infinite;
+    transition: box-shadow 180ms ease, transform 180ms ease;
+}
+
+@keyframes ppfPulse {
+    0% { transform: scale(1); box-shadow: 0 0 6px var(--ppf-highlight-color); }
+    50% { transform: scale(1.02); box-shadow: 0 0 20px var(--ppf-highlight-color); }
+    100% { transform: scale(1); box-shadow: 0 0 6px var(--ppf-highlight-color); }
+}
+
+.tooth.ppf-start-highlight {
+    padding: 4px;
+    box-sizing: content-box;
+}
+
+.tooth.clean-highlight {
+    position: relative;
+    border-radius: 12px;
+    box-shadow: 0 0 10px #4da3ff, 0 0 20px #4da3ff;
+    animation: cleanPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes cleanPulse {
+    0% { box-shadow: 0 0 10px #4da3ff; }
+    50% { box-shadow: 0 0 20px #4da3ff; }
+    100% { box-shadow: 0 0 10px #4da3ff; }
+}
+/* ============================================
+   🦷 TOGGLE TIPO iOS
+============================================ */
+.toggle-ios {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 16px;
+}
+
+.toggle-ios input { display: none; }
+
+.toggle-ios .slider {
+    position: relative;
+    width: 48px;
+    height: 26px;
+    background: #ccc;
+    border-radius: 50px;
+    transition: 0.3s;
+}
+
+.toggle-ios .slider::before {
+    content: "";
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: white;
+    top: 2px;
+    left: 2px;
+    transition: 0.3s;
+}
+
+.toggle-ios input:checked + .slider { background: #4cd964; }
+.toggle-ios input:checked + .slider::before { transform: translateX(22px); }
+/* ============================================
+   🦷 RESPONSIVE — REDUCCIÓN REAL DEL DIENTE
+============================================ */
+@media (max-width: 1100px) {
+    .tooth { width: 60px; }
+    .tooth svg { width: 60px; height: 60px; }
+}
+
+@media (max-width: 1024px) {
+    .tooth { width: 55px; }
+    .tooth svg { width: 55px; height: 55px; }
+}
+
+@media (max-width: 900px) {
+    .tooth { width: 48px; }
+    .tooth svg { width: 48px; height: 48px; }
+}
+
+@media (max-width: 768px) {
+    .tooth { width: 42px; }
+    .tooth svg { width: 42px; height: 42px; }
+    .tooth-label { font-size: 10px; }
+}
+
+@media (max-width: 650px) {
+    .tooth { width: 36px; }
+    .tooth svg { width: 36px; height: 36px; }
+}
+
+@media (max-width: 480px) {
+    .tooth { width: 32px; }
+    .tooth svg { width: 32px; height: 32px; }
+}
+
+/* ============================================
+   🦷 TOOLBAR — BOTONES SUPERIORES
+============================================ */
+.odont-toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: nowrap;         /* en escritorio no se parte */
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+/* Botones del toolbar */
+.odont-toolbar button {
+    padding: 6px 12px;
+    background: #f5f7fa;
+    border: 1px solid #cfd6e1;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+/* Hover */
+.odont-toolbar button:hover {
+    background: #e8f0ff;
+    border-color: #b7ceff;
+}
+
+/* Responsive: toolbar se adapta */
+@media (max-width: 768px) {
+    .odont-toolbar {
+        flex-wrap: wrap;       /* ahora sí se parte en varias filas */
+        gap: 8px;
+        justify-content: flex-start;
+    }
+
+    .odont-toolbar button {
+        flex: 1 1 auto;        /* botones pueden extenderse si es necesario */
+    }
+}
+
+@media (max-width: 480px) {
+    .odont-toolbar {
+        flex-direction: column; /* totalmente vertical en pantallas muy pequeñas */
+        align-items: stretch;
+    }
+
+    .odont-toolbar button {
+        width: 100%;
+    }
+}
+/* ==========================
+   TOOLBAR SUPERIOR (ALINEADA)
+========================== */
+.toolbar {
+    display: flex;
+    align-items: center;      /* Alinea verticalmente todos los elementos */
+    gap: 12px;                /* Espacio entre botones y toggle */
+    flex-wrap: wrap;          /* Permite que en pantallas pequeñas baje de fila */
+    margin-bottom: 10px;
+}
+.toolbar .toggle-ios {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 8px;
+    margin-left: 10px;
+    font-size: 14px;
+}
+#alerta-bloqueo {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #ffe9e9;
+    border: 1px solid #ff8a8a;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #a00000;
+    z-index: 99999;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+    transition: opacity 0.25s ease;
+    opacity: 1;
+}
+
+#alerta-bloqueo.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+.odontograma-scale-container {
+    width: 100%;
+    overflow-x: auto;        /* 👈 SCROLL HORIZONTAL */
+    overflow-y: hidden;
+    padding-bottom: 8px;
+
+    /* opcional: suaviza experiencia táctil */
+    -webkit-overflow-scrolling: touch;
+}
+.odontograma-scale-container::-webkit-scrollbar {
+    height: 8px;
+}
+
+.odontograma-scale-container::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,0.2);
+    border-radius: 6px;
+}
+
+/* ==========================
+   MODAL: SELECCION POR PIEZA
+========================== */
+.odonto-piece-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 13, 23, 0.5);
+    z-index: 100050;
+    padding: 14px;
+}
+
+.odonto-piece-modal.is-open {
+    display: flex;
+}
+
+.odonto-piece-modal-card {
+    width: min(1100px, 96vw);
+    max-height: 94vh;
+    overflow: auto;
+    background: #f5f6f8;
+    border: 1px solid #d6d9df;
+    border-radius: 16px;
+    padding: 14px;
+    box-shadow: 0 20px 44px rgba(0, 0, 0, 0.28);
+}
+
+.odonto-piece-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.odonto-piece-modal-header h6 {
+    margin: 0;
+    font-size: 18px;
+    color: #0f1a36;
+}
+
+.odonto-piece-close {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid #cfd4df;
+    background: #ffffff;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.odonto-piece-top-controls {
+    display: grid;
+    grid-template-columns: 52px 1fr 1fr auto 52px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.odonto-piece-nav {
+    height: 38px;
+    border-radius: 10px;
+    border: 1px solid #c8cdd9;
+    background: #ffffff;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.odonto-piece-nav:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.odonto-piece-body {
+    display: grid;
+    grid-template-columns: 1.05fr 0.95fr;
+    gap: 14px;
+}
+
+.odonto-piece-left,
+.odonto-piece-right {
+    background: #ffffff;
+    border: 1px solid #d7dbe4;
+    border-radius: 14px;
+    padding: 12px;
+}
+
+.odonto-piece-left {
+    display: flex;
+    flex-direction: column;
+}
+
+.odonto-piece-label {
+    margin-bottom: 8px;
+    font-weight: 700;
+    color: #172449;
+    align-self: flex-start;
+}
+
+.odonto-piece-touch-zone {
+    min-height: 340px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed #c9cfdb;
+    border-radius: 12px;
+    background: #fbfcff;
+    margin-bottom: 10px;
+    touch-action: pan-y;
+}
+
+.odonto-piece-tooth-wrap .tooth {
+    width: 240px;
+}
+
+.odonto-piece-tooth-wrap .tooth svg {
+    width: 240px;
+    height: 240px;
+}
+
+.odonto-piece-tooth-wrap {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.odonto-piece-tooth-wrap .surface {
+    touch-action: manipulation;
+}
+
+.odonto-piece-tooth-wrap .tooth-label {
+    font-size: 42px;
+    margin-top: 12px;
+}
+
+.odonto-piece-tooth-wrap .tooth-note {
+    width: 94%;
+    margin-top: 12px;
+    font-size: 22px;
+    padding: 8px;
+}
+
+.odonto-piece-input {
+    font-size: 20px;
+    text-align: center;
+    width: 240px;
+    max-width: 100%;
+    margin: 0 auto;
+    align-self: center;
+}
+
+.odonto-piece-menu-title {
+    font-weight: 700;
+    color: #172449;
+    margin-bottom: 10px;
+}
+
+.odonto-piece-treatments {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 470px;
+    overflow: auto;
+}
+
+.odonto-piece-treatments button {
+    border: 1px solid #d3d7e1;
+    border-radius: 10px;
+    background: #f7f8fb;
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 15px;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.odonto-piece-treatments button:hover {
+    background: #edf2ff;
+    border-color: #b9c8f0;
+}
+
+.odonto-piece-treatments button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.odonto-piece-treatments .estado-circle {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Blindaje de especificidad:
+   evita que reglas globales de botones en paciente.css pisen el editor por pieza. */
+#odonto-piece-modal .odonto-piece-close,
+#odonto-piece-modal .odonto-piece-nav,
+#odonto-piece-modal .odonto-piece-treatments button {
+    border-radius: 10px;
+}
+
+#odonto-piece-modal .odonto-piece-treatments button {
+    border: 1px solid #d3d7e1;
+    background: #f7f8fb;
+    color: #1f2937;
+}
+
+#odonto-piece-modal .odonto-piece-treatments button:hover {
+    background: #edf2ff;
+    border-color: #b9c8f0;
+}
+
+#odonto-piece-modal .odonto-piece-treatments button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.piece-editor-selected-surface {
+    stroke: #0a6bff !important;
+    stroke-width: 4 !important;
+    filter: drop-shadow(0 0 2px rgba(10, 107, 255, 0.6));
+}
+
+body.odonto-piece-modal-open {
+    overflow: hidden;
+}
+
+@media (max-width: 980px) {
+    .odonto-piece-body {
+        grid-template-columns: 1fr;
+    }
+
+    .odonto-piece-touch-zone {
+        min-height: 290px;
+    }
+}
+
+@media (max-width: 760px) {
+    .odonto-piece-top-controls {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .odonto-piece-top-controls #odonto-piece-prev,
+    .odonto-piece-top-controls #odonto-piece-next {
+        grid-column: span 1;
+    }
+
+    .odonto-piece-tooth-wrap .tooth {
+        width: 190px;
+    }
+
+    .odonto-piece-tooth-wrap .tooth svg {
+        width: 190px;
+        height: 190px;
+    }
+
+    .odonto-piece-tooth-wrap .tooth-label {
+        font-size: 32px;
+    }
+
+    .odonto-piece-input {
+        font-size: 17px;
+        width: 190px;
+    }
+}

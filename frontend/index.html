@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Clínica</title>
+    <link rel="stylesheet" href="css/login.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/themes/theme-light.css">
+    <link rel="stylesheet" href="css/themes/theme-dark.css">
+    <link rel="stylesheet" href="css/themes/theme-vampire.css">
+    <link rel="stylesheet" href="css/themes/theme-princess.css">
+    <link rel="stylesheet" href="css/agenda.css">
+    <link rel="stylesheet" href="css/encola.css">
+    <link rel="stylesheet" href="css/doctor.css">
+    <link rel="stylesheet" href="css/servicios.css">
+    <link rel="stylesheet" href="css/cobro.css">
+    <link rel="stylesheet" href="css/paciente.css">
+    <link rel="stylesheet" href="css/odontograma.css">
+    <link rel="stylesheet" href="css/reglasVisuales.css">
+    <link rel="stylesheet" href="css/animaciones.css">
+    <link rel="stylesheet" href="css/uiAlerts.css">
+    <link rel="stylesheet" href="css/serverErrorOverlay.css">
+
+  <!-- ===== PARTE DE APP ===== -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0d6efd">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+</head>
+
+<body>
+<!-- ===== SIDEBAR ===== -->
+
+
+<!-- ===== MAIN ===== -->
+<div class="main">
+
+    <!-- ===== TOPBAR ===== -->
+    <header class="topbar">
+        <div class="brand">
+        </div>
+        <nav class="sidebar-menu">
+        <button class="accordion active">
+            <span class="icon">📅</span>
+            <span class="label">Agenda</span>
+        </button>
+        <button class="accordion">
+            <span class="icon">🧑</span>
+            <span class="label">Paciente</span>
+        </button>
+        <button class="accordion">
+            <span class="icon">🕒</span>
+            <span class="label">En Cola</span>
+        </button>
+        <button class="accordion">
+            <span class="icon">⚕️</span>
+            <span class="label">Doctores</span>
+        </button>
+        <button class="accordion">
+            <span class="icon">🧾</span>
+            <span class="label">Servicios</span>
+        </button>
+        <button class="accordion">
+            <span class="icon">💳</span>
+            <span class="label">Cobro</span>
+        </button>
+    </nav>
+
+        <div class="top-right">
+            <button id="theme-toggle" class="theme-btn" title="Cambiar tema" aria-label="Cambiar tema">
+                <span class="sun">&#x2600;&#xFE0F;</span>
+                <span class="moon">&#x1F319;</span>
+                <span class="vamp">&#x1F9DB;</span>
+                <span class="crown">&#x1F451;</span>
+            </button>
+
+            <span class="icon">🔔</span>
+
+            <div class="user-info">
+                <div class="user-text">
+                    <span class="user-name" id="top-user-name">—</span>
+                    <span class="user-email" id="top-user-email">—</span>
+                </div>
+
+                <button id="btn-logout" class="btn-logout">
+                    🚪 Cerrar sesión
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- overlay móvil -->
+    <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
+
+    <!-- ===== CONTENIDO SPA ===== -->
+    <section class="content"></section>
+
+</div>
+    <!-- Aquí luego Modales -->
+    <!-- ===== MODAL REGISTRAR CITA ===== -->
+    <div id="modal-agenda" class="modal">
+    <div class="modal-content">
+        <h2>Registrar Cita</h2>
+
+        <label>Nombre</label>
+        <div class="agenda-modal-buscador">
+            <input type="text" id="modal-nombre" placeholder="Nombre completo">
+            <div id="modal-lista-pacientes-agenda" class="autocomplete-list"></div>
+        </div>
+
+        <label>Hora</label>
+
+        <input list="horas-lista" id="modal-hora" placeholder="8 - 8:00 - 8:00 am">
+        
+        <label>Fecha</label>
+        <input type="date" id="modal-fecha">
+        <label>Contacto</label>
+        <input type="text" id="modal-contacto" placeholder="Ej: 7979 0000">
+
+        <label>Estado</label>
+        <select id="modal-estado">
+            <option value="">Pendiente</option>
+            <option value="Confirmado">Confirmado</option>
+            <option value="Cancelado">Cancelado</option>
+            <option value="Reprogramado">Reprogramado</option>
+            <option value="No contesta">No contesta</option>
+            <option value="IGS">IGS</option>
+        </select>
+
+        <label>Comentario</label>
+        <input type="text" id="modal-comentario" placeholder="Escriba un comentario">
+
+        <div class="modal-buttons">
+            <button id="modal-cancelar" class="btn-cancelar">Cancelar</button>
+            <button id="modal-guardar" class="btn-cobrar">Guardar</button>
+        </div>
+    </div>
+    </div>
+    <!-- ===== MODAL REGISTRAR DOCTOR ===== -->
+    <div id="modal-doctor" class="modal">
+    <div class="modal-content">
+        <h2>Registrar Doctor</h2>
+
+        <label>Nombre</label>
+        <input type="text" id="doctor-nombre" placeholder="Nombre completo">
+
+        <label>Teléfono</label>
+        <input type="text" id="doctor-telefono" placeholder="Teléfono">
+
+        <label>Firma (dibuje abajo)</label>
+        <canvas id="signature-canvas" class="signature-canvas"></canvas>
+
+        <div class="signature-actions">
+            <button id="btn-clear-sign" class="btn-clear-sign">Limpiar firma</button>
+        </div>
+
+        <label>Sello (subir imagen)</label>
+        <input type="file" id="doctor-sello" accept="image/*">
+
+        <div class="modal-buttons" style="margin-top:20px;">
+            <button id="modal-doctor-cancel" class="btn-cancelar">Cancelar</button>
+            <button id="modal-doctor-save" class="btn-cobrar">Guardar</button>
+        </div>
+    </div>
+    </div>
+    <!-- ===== MODAL REGISTRAR FIRMA PACIENTE ===== -->
+<div id="modal-paciente-firma" class="modal modal-firma">
+  <div class="modal-content modal-content-firma">
+    
+    <h3 class="modal-firma-title">Firma Paciente / Encargado</h3>
+
+    <canvas
+      id="canvas-firma"
+      class="canvas-firma"
+      width="500"
+      height="180"
+    ></canvas>
+
+    <div class="modal-firma-actions">
+      <button id="btn-limpiar-firma" class="btn-firma limpiar">
+        Limpiar
+      </button>
+
+      <button id="btn-guardar-firma" class="btn-firma guardar">
+        Guardar
+      </button>
+
+      <button id="btn-cerrar-firma" class="btn-firma cerrar">
+        Cerrar
+      </button>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- Modal ver firma -->
+<div id="modal-ver-firma" class="modal">
+    <div class="modal-content">
+        <h2>Firma</h2>
+        <img id="firma-img" class="firma-img" src="" alt="Firma">
+        <div class="modal-buttons" style="margin-top:14px;">
+            <button id="modal-ver-cerrar" class="btn-cancelar">Cerrar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal ver sello -->
+<div id="modal-ver-sello" class="modal">
+    <div class="modal-content">
+        <h2>Sello</h2>
+        <img id="sello-img" class="firma-img" src="" alt="Sello">
+        <div class="modal-buttons" style="margin-top:14px;">
+            <button id="modal-ver-sello-cerrar" class="btn-cancelar">Cerrar</button>
+        </div>
+    </div>
+</div>
+<!-- Modal Registrar Servicio -->
+<div id="modal-servicio" class="modal">
+  <div class="modal-content">
+    <h2>Registrar Servicio</h2>
+
+    <label>Nombre</label>
+    <input type="text" id="servicio-nombre" placeholder="Nombre del servicio">
+
+    <label>Precio (solo número)</label>
+    <input type="number" id="servicio-precio" placeholder="Ej: 25" min="0" step="0.01">
+
+    <div class="modal-buttons">
+      <button id="modal-servicio-cancel" class="btn-cancelar">Cancelar</button>
+      <button id="modal-servicio-save" class="btn-cobrar" type="button">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- Modal Registrar Cita Paciente -->
+<div id="modal-cita-paciente" class="modal">
+  <div class="modal-content">
+    <h2>Registrar Cita del Paciente</h2>
+
+    <label>Fecha</label>
+    <input type="date" id="cita-fecha">
+
+    <label>Procedimiento</label>
+    <input type="text" id="cita-procedimiento" placeholder="Ej: Limpieza, Extracción...">
+
+    <label>Valor</label>
+    <input type="number" id="cita-valor">
+
+    <label>Abono</label>
+    <input type="number" id="cita-abono">
+
+    <label>Doctor</label>
+    <select id="cita-doctor"></select>
+
+    <div class="modal-buttons">
+      <button id="modal-cita-cancel" class="btn-cancelar">Cancelar</button>
+      <button id="modal-cita-save" class="btn-cobrar">Guardar</button>
+    </div>
+  </div>
+</div>
+<!-- Modal: Información del doctor -->
+<div id="modal-doctor-info" class="modal modal-info-doctor">
+  <div class="modal-content">
+    <h2>Información del Doctor</h2>
+
+    <div id="doctor-info-body"></div>
+
+    <div class="modal-buttons">
+      <button id="modal-doctor-info-close" class="btn-cancelar">
+        Cerrar
+      </button>
+    </div>
+  </div>
+</div>
+<!-- Modal: Autorizar procedimiento -->
+<div id="modal-autorizar-cita" class="modal">
+  <div class="modal-content">
+    <h2>Autorizar Procedimiento</h2>
+    <p id="autorizar-cita-doctor" class="autorizar-cita-subtitle"></p>
+
+    <label>Contrasena</label>
+    <input type="password" id="autorizar-cita-password" placeholder="Contrasena">
+
+    <div class="modal-buttons">
+      <button id="modal-autorizar-cancel" class="btn-cancelar">Cancelar</button>
+      <button id="modal-autorizar-save" class="btn-cobrar">Autorizar</button>
+    </div>
+  </div>
+</div>
+<div id="menu" class="menu-hidden">
+          <div class="menu-title">Seleccionar tratamiento</div>
+          <div id="menu-options"></div>
+          <button id="close-menu">Cerrar</button>
+</div>
+
+    <script src="js/uiSounds.js"></script>
+    <script src="js/uiAlerts.js"></script>
+    <script src="js/serverErrorOverlay.js"></script>
+    <script src="js/animaciones.js"></script>
+    <script src="js/login.js"></script>
+    <script src="js/web.js"></script>
+    <script src="js/vendor/jspdf.umd.min.js" defer></script>
+    <script src="js/vendor/jspdf.plugin.autotable.min.js" defer></script>
+    <script src="js/agenda.js" defer></script>
+    <script src="js/encola.js" defer></script>
+    <script src="js/doctor.js" defer></script>
+    <script src="js/servicios.js" defer></script>
+    <script src="js/cobro.js" defer></script>
+    <script src="js/reglasVisuales.js"></script>
+    <script src="js/paciente.js"></script>
+    <script src="js/odontograma.js"></script>
+</body>
+</html>
+

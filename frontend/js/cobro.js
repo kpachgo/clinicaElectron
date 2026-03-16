@@ -1,0 +1,1343 @@
+﻿// js/cobro.js
+(function () {
+  let cobroItems = [];
+  let pacienteActual = null;
+  let cuentasActuales = [];
+  let totalDescuentoActual = 0;
+
+  function precioUSD(num) {
+    return `$${Number(num || 0).toFixed(2)}`;
+  }
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+  function renderProcedimientoVisual(texto) {
+    const raw = String(texto || "").trim();
+    if (!raw) return "-";
+    if (typeof window.__rvRenderProcedimiento === "function") {
+      return window.__rvRenderProcedimiento(raw);
+    }
+    return escapeHtml(raw);
+  }
+
+  function formatearFecha(fechaISO) {
+    if (!fechaISO) return "";
+    const d = new Date(fechaISO);
+    const dia = String(d.getDate()).padStart(2, "0");
+    const mes = String(d.getMonth() + 1).padStart(2, "0");
+    const anio = d.getFullYear();
+    return `${dia}/${mes}/${anio}`;
+  }
+
+  function formatearFechaCorta(valor) {
+    const raw = String(valor || "").trim();
+    if (!raw) return "";
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) {
+      return `${m[3]}/${m[2]}/${m[1]}`;
+    }
+    return formatearFecha(raw);
+  }
+
+  function calcularMetricasDia(cuentas, totalDescuento) {
+    const acumulados = {
+      efectivo: 0,
+      tarjeta: 0,
+      igs: 0,
+      transferencia: 0
+    };
+
+    (cuentas || []).forEach((c) => {
+      const total = Number(c.totalC || 0);
+      if (!Number.isFinite(total) || total < 0) return;
+
+      const formaPago = String(c.FormaPagoC || "").trim().toLowerCase();
+      if (formaPago === "efectivo") acumulados.efectivo += total;
+      if (formaPago === "tarjeta") acumulados.tarjeta += total;
+      if (formaPago === "igs") acumulados.igs += total;
+      if (formaPago === "transferencia") acumulados.transferencia += total;
+    });
+
+    const brutoDia =
+      acumulados.efectivo +
+      acumulados.tarjeta +
+      acumulados.igs +
+      acumulados.transferencia;
+    const descuentoDia = Number(totalDescuento) || 0;
+    const netoDia = brutoDia - descuentoDia;
+    const efectivoCajaDia = acumulados.efectivo - descuentoDia;
+    const pct = (val) => (brutoDia > 0 ? (val * 100) / brutoDia : 0);
+
+    return {
+      acumulados,
+      brutoDia,
+      netoDia,
+      efectivoCajaDia,
+      porcentajes: {
+        efectivo: pct(acumulados.efectivo),
+        tarjeta: pct(acumulados.tarjeta),
+        igs: pct(acumulados.igs),
+        transferencia: pct(acumulados.transferencia)
+      }
+    };
+  }
+
+  function debounce(fn, delay = 350) {
+    let timer;
+    return (...args) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn(...args), delay);
+    };
+  }
+
+  function claseFormaPago(formaPago) {
+    const f = String(formaPago || "").trim().toLowerCase();
+    if (f === "efectivo") return "fp-efectivo";
+    if (f === "tarjeta") return "fp-tarjeta";
+    if (f === "igs") return "fp-igs";
+    if (f === "transferencia") return "fp-transferencia";
+    return "";
+  }
+
+  function normalizarPrecio(raw, fallback = 0) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return fallback;
+    return Math.round(n * 100) / 100;
+  }
+
+  function kpiIcon(tipo) {
+    const base = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    if (tipo === "total") {
+      return `<svg class="kpi-icon icon-total" ${base}><path d="M3 3v18h18"/><path d="M7 14l3-3 3 2 4-5"/></svg>`;
+    }
+    if (tipo === "bruto") {
+      return `<svg class="kpi-icon icon-bruto" ${base}><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>`;
+    }
+    if (tipo === "efectivo") {
+      return `<svg class="kpi-icon icon-efectivo" ${base}><rect x="2" y="7" width="20" height="10" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>`;
+    }
+    if (tipo === "caja") {
+      return `<svg class="kpi-icon icon-caja" ${base}><rect x="2" y="7" width="20" height="12" rx="2"/><path d="M2 11h20"/><path d="M15 15h4"/></svg>`;
+    }
+    if (tipo === "tarjeta") {
+      return `<svg class="kpi-icon icon-tarjeta" ${base}><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>`;
+    }
+    if (tipo === "igs") {
+      return `<svg class="kpi-icon icon-igs" ${base}><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4z"/><path d="M12 9v6"/><path d="M9 12h6"/></svg>`;
+    }
+    if (tipo === "transferencia") {
+      return `<svg class="kpi-icon icon-transferencia" ${base}><path d="M7 7h10"/><path d="M13 3l4 4-4 4"/><path d="M17 17H7"/><path d="M11 13l-4 4 4 4"/></svg>`;
+    }
+    if (tipo === "descuento") {
+      return `<svg class="kpi-icon icon-descuento" ${base}><path d="M20.6 13.4L11 3H4v7l9.6 10.4a2 2 0 0 0 2.8 0l4.2-4.2a2 2 0 0 0 0-2.8z"/><circle cx="7.5" cy="7.5" r="1"/></svg>`;
+    }
+    if (tipo === "chart") {
+      return `<svg class="kpi-icon icon-chart" ${base}><path d="M21 12a9 9 0 1 1-9-9"/><path d="M21 3v9h-9"/><path d="M21 3l-7 7"/></svg>`;
+    }
+    return "";
+  }
+
+  function renderCobro(container) {
+    container.innerHTML = `
+  <div class="cobro-view">
+    <section class="cobro-dashboard-unified">
+      <article class="cobro-chart-card cobro-unified-card">
+        <div class="cobro-unified-layout">
+          <section class="cobro-unified-chart">
+            <div class="cobro-chart-title">${kpiIcon("chart")}Distribucion de ingresos del dia</div>
+            <div id="cobro-chart-ring" class="cobro-chart-ring">
+              <div class="cobro-chart-center">
+                <span>Bruto</span>
+                <strong id="chart-centro-total">$0.00</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="cobro-unified-totales">
+            <div class="cobro-chart-title">${kpiIcon("total")}Totales del dia</div>
+            <div class="cobro-totales-grid">
+              <article class="cobro-kpi kpi-total-dia">
+                <span class="kpi-label">${kpiIcon("total")}Total del dia</span>
+                <strong id="kpi-total-dia">$0.00</strong>
+              </article>
+
+              <article class="cobro-kpi">
+                <span class="kpi-label">${kpiIcon("bruto")}Bruto del dia</span>
+                <strong id="kpi-bruto-dia">$0.00</strong>
+              </article>
+
+              <article class="cobro-kpi">
+                <span class="kpi-label">${kpiIcon("efectivo")}Efectivo</span>
+                <strong id="kpi-efectivo">$0.00</strong>
+              </article>
+
+              <article class="cobro-kpi kpi-efectivo-caja">
+                <span class="kpi-label">${kpiIcon("caja")}Efectivo en caja</span>
+                <strong id="kpi-efectivo-caja">$0.00</strong>
+              </article>
+
+              <article class="cobro-kpi">
+                <span class="kpi-label">${kpiIcon("tarjeta")}Tarjeta</span>
+                <strong id="kpi-tarjeta">$0.00</strong>
+              </article>
+
+              <article class="cobro-kpi">
+                <span class="kpi-label">${kpiIcon("igs")}IGS</span>
+                <strong id="kpi-igs">$0.00</strong>
+              </article>
+
+              <article class="cobro-kpi">
+                <span class="kpi-label">${kpiIcon("transferencia")}Transferencia</span>
+                <strong id="kpi-transferencia">$0.00</strong>
+              </article>
+
+              <article class="cobro-kpi kpi-descuento">
+                <span class="kpi-label">${kpiIcon("descuento")}Descuentos</span>
+                <strong id="kpi-descuentos">$0.00</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="cobro-unified-cash">
+            <div class="cobro-chart-title">${kpiIcon("caja")}Conteo de billetes</div>
+            <div class="cobro-cash-counter">
+              <table class="cobro-cash-table">
+                <thead>
+                  <tr>
+                    <th>Billete</th>
+                    <th>Cantidad</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>1</td>
+                    <td><input class="cobro-cash-input" type="number" min="0" step="0.01" data-bill="1"></td>
+                    <td id="cash-total-1">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td>5</td>
+                    <td><input class="cobro-cash-input" type="number" min="0" step="0.01" data-bill="5"></td>
+                    <td id="cash-total-5">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td>10</td>
+                    <td><input class="cobro-cash-input" type="number" min="0" step="0.01" data-bill="10"></td>
+                    <td id="cash-total-10">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td>20</td>
+                    <td><input class="cobro-cash-input" type="number" min="0" step="0.01" data-bill="20"></td>
+                    <td id="cash-total-20">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td>50</td>
+                    <td><input class="cobro-cash-input" type="number" min="0" step="0.01" data-bill="50"></td>
+                    <td id="cash-total-50">$0.00</td>
+                  </tr>
+                  <tr>
+                    <td>100</td>
+                    <td><input class="cobro-cash-input" type="number" min="0" step="0.01" data-bill="100"></td>
+                    <td id="cash-total-100">$0.00</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr class="cobro-cash-total-row">
+                    <td colspan="2">TOTAL</td>
+                    <td id="cash-grand-total">$0.00</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+        </div>
+      </article>
+    </section>
+
+    <section class="cobro-container cobro-pos">
+      <div class="cobro-pos-main">
+        <div class="cuenta-title">Cobrar a paciente</div>
+
+        <div class="cobro-steps">
+          <div id="step-paciente" class="cobro-step is-active">1. Seleccionar paciente</div>
+          <div id="step-servicio" class="cobro-step">2. Agregar servicios</div>
+          <div id="step-pago" class="cobro-step">3. Confirmar pago</div>
+        </div>
+
+        <div class="cobro-section">
+          <label class="form-label">Paciente</label>
+          <div class="cobro-buscador">
+            <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
+            <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
+            <input type="search" id="buscar-paciente" name="buscar-paciente-cobro" placeholder="Escriba al menos 2 letras para buscar paciente" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <div id="lista-pacientes" class="autocomplete-list"></div>
+          </div>
+          <div class="cobro-selected-row">
+            <div id="paciente-seleccionado" class="paciente-seleccionado">Sin paciente seleccionado</div>
+            <button id="btn-limpiar-paciente-cobro" class="btn-cobro-secondary" type="button">Limpiar</button>
+          </div>
+        </div>
+
+        <div id="cobro-step-servicio-block" class="cobro-section is-disabled">
+          <label class="form-label">Servicios</label>
+          <div class="cobro-buscador">
+            <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
+            <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
+            <input type="search" id="buscar-servicio" name="buscar-servicio-cobro" placeholder="Escriba al menos 2 letras para buscar servicio" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" disabled>
+            <div id="lista-servicios" class="autocomplete-list"></div>
+          </div>
+        </div>
+
+        <div class="cobro-table-wrap">
+          <table class="cobro-table">
+            <thead>
+              <tr>
+                <th>Servicio</th>
+                <th style="width:140px;">Cantidad</th>
+                <th style="width:130px;">Precio Unit.</th>
+                <th style="width:130px;">Subtotal</th>
+                <th style="width:80px; text-align:center;">Quitar</th>
+              </tr>
+            </thead>
+            <tbody id="cobro-tbody"></tbody>
+          </table>
+          <div id="cobro-empty-state" class="cobro-empty-state">Carrito vacio. Agregue un servicio para iniciar el cobro.</div>
+        </div>
+      </div>
+
+      <aside class="cobro-pos-summary">
+        <div class="cobro-summary-title">Resumen</div>
+
+        <div class="cobro-summary-patient">
+          <span>Paciente</span>
+          <strong id="resumen-paciente">Sin seleccionar</strong>
+        </div>
+
+        <div class="cobro-summary-line">
+          <span>Servicios</span>
+          <strong id="cobro-items-count">0</strong>
+        </div>
+
+        <div class="cobro-summary-line">
+          <span>Subtotal</span>
+          <strong id="cobro-subtotal">${precioUSD(0)}</strong>
+        </div>
+
+        <div class="cobro-summary-line cobro-summary-total-line">
+          <span>Total a cobrar</span>
+          <strong id="cobro-total">${precioUSD(0)}</strong>
+        </div>
+
+        <div class="cobro-summary-actions">
+          <label class="form-label" for="forma-pago">Forma de pago</label>
+          <select id="forma-pago" class="cobro-forma-pago">
+            <option value="">Seleccione forma de pago</option>
+            <option value="Efectivo">Efectivo</option>
+            <option value="Tarjeta">Tarjeta</option>
+            <option value="IGS">IGS</option>
+            <option value="Transferencia">Transferencia</option>
+          </select>
+
+          <button id="btn-guardar-cuenta" class="btn-cobrar" disabled>Guardar cobro</button>
+        </div>
+      </aside>
+    </section>
+
+      <div class="cuenta-container">
+        <div class="cuenta-header">
+          <div class="cuenta-title">Cuentas del dia</div>
+          <div class="cuenta-controls">
+            <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
+            <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
+            <label class="cuenta-toggle-numeracion" for="toggle-numeracion-cuentas">
+              <input type="checkbox" id="toggle-numeracion-cuentas" checked>
+              Numeracion
+            </label>
+            <input type="date" id="cuenta-date">
+          <input type="search" id="cuenta-search" name="cuenta-search-cobro" placeholder="Buscar paciente o tratamiento" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button id="btn-reporte-cobro" class="btn-cobro-secondary" type="button">Reporte PDF</button>
+        </div>
+      </div>
+
+      <div class="cuenta-table-wrap">
+        <table class="cuenta-table">
+          <thead>
+            <tr>
+              <th hidden>IdCuenta</th>
+              <th hidden>IdDetalleCuenta</th>
+              <th class="cuenta-col-num">#</th>
+              <th>Nombre</th>
+              <th>Total</th>
+              <th>Forma de Pago</th>
+              <th>Cantidad</th>
+              <th>Tratamiento</th>
+              <th hidden>Fecha</th>
+              <th>Quitar</th>
+            </tr>
+          </thead>
+          <tbody id="cuenta-tbody"></tbody>
+        </table>
+
+        <div class="cuenta-totales">
+          <div id="cuenta-subtotal" class="cuenta-total-line">
+            <span>SUB TOTAL:</span>
+            <strong>$0.00</strong>
+          </div>
+          <div id="cuenta-total" class="cuenta-total-line total-final">
+            <span>TOTAL:</span>
+            <strong>$0.00</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="descuento-container">
+      <div class="descuento-header">
+        <div class="descuento-title">Compras y descuentos</div>
+      </div>
+
+      <div class="descuento-form">
+        <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
+        <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
+        <input type="text" id="descuento-nombre" name="descuento-nombre-cobro" placeholder="Concepto del egreso" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        <input type="number" id="descuento-cantidad" placeholder="Cantidad" step="0.01" min="0">
+        <button id="btn-agregar-descuento" class="btn-cancelar">Agregar</button>
+      </div>
+
+      <div class="descuento-table-wrap">
+        <table class="descuento-table" id="descuento-table">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th style="width:160px;">Fecha</th>
+              <th style="width:160px;">Cantidad</th>
+              <th style="width:80px; text-align:center;">Quitar</th>
+            </tr>
+          </thead>
+          <tbody id="descuento-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="descuento-totales">
+        <div id="descuento-total" class="descuento-total-line">
+          <span>TOTAL DESCUENTO:</span>
+          <strong>$0.00</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
+    const inputPaciente = document.getElementById("buscar-paciente");
+    const listaPacientes = document.getElementById("lista-pacientes");
+    const inputServicio = document.getElementById("buscar-servicio");
+    const listaServicios = document.getElementById("lista-servicios");
+    const pacienteTitulo = document.getElementById("paciente-seleccionado");
+    const resumenPaciente = document.getElementById("resumen-paciente");
+    const stepPaciente = document.getElementById("step-paciente");
+    const stepServicio = document.getElementById("step-servicio");
+    const stepPago = document.getElementById("step-pago");
+    const servicioBlock = document.getElementById("cobro-step-servicio-block");
+    const btnLimpiarPaciente = document.getElementById("btn-limpiar-paciente-cobro");
+    const tbody = document.getElementById("cobro-tbody");
+    const emptyState = document.getElementById("cobro-empty-state");
+    const subtotalBox = document.getElementById("cobro-subtotal");
+    const itemsCountBox = document.getElementById("cobro-items-count");
+    const totalBox = document.getElementById("cobro-total");
+    const btnGuardar = document.getElementById("btn-guardar-cuenta");
+    const formaPagoSelect = document.getElementById("forma-pago");
+    const inputFecha = document.getElementById("cuenta-date");
+    const cuentaSearch = document.getElementById("cuenta-search");
+    const btnReporteCobro = document.getElementById("btn-reporte-cobro");
+    const toggleNumeracionCuentas = document.getElementById("toggle-numeracion-cuentas");
+    const cuentaTable = document.querySelector(".cuenta-table");
+    const descuentoTbody = document.getElementById("descuento-tbody");
+    const descuentoTotalBox = document.getElementById("descuento-total");
+    const btnAgregarDescuento = document.getElementById("btn-agregar-descuento");
+    const inputDescuentoNombre = document.getElementById("descuento-nombre");
+    const kpiTotalDia = document.getElementById("kpi-total-dia");
+    const kpiBrutoDia = document.getElementById("kpi-bruto-dia");
+    const kpiEfectivo = document.getElementById("kpi-efectivo");
+    const kpiEfectivoCaja = document.getElementById("kpi-efectivo-caja");
+    const kpiTarjeta = document.getElementById("kpi-tarjeta");
+    const kpiIgs = document.getElementById("kpi-igs");
+    const kpiTransferencia = document.getElementById("kpi-transferencia");
+    const kpiDescuentos = document.getElementById("kpi-descuentos");
+    const chartRing = document.getElementById("cobro-chart-ring");
+    const chartCentroTotal = document.getElementById("chart-centro-total");
+    const cashInputs = Array.from(document.querySelectorAll(".cobro-cash-input"));
+    const cashGrandTotal = document.getElementById("cash-grand-total");
+
+    function blindarInputAutofill(inputEl, nameBase) {
+      if (!inputEl) return;
+      inputEl.setAttribute("name", `${nameBase}-${Date.now()}`);
+      inputEl.value = "";
+      // Evita autofill agresivo del navegador al recargar (F5).
+      inputEl.readOnly = true;
+      setTimeout(() => {
+        if (!inputEl.isConnected) return;
+        inputEl.readOnly = false;
+        inputEl.value = "";
+      }, 80);
+      setTimeout(() => {
+        if (!inputEl.isConnected) return;
+        inputEl.value = "";
+      }, 350);
+      setTimeout(() => {
+        if (!inputEl.isConnected) return;
+        inputEl.value = "";
+      }, 1200);
+    }
+
+    blindarInputAutofill(inputPaciente, "cobro-paciente-search");
+    blindarInputAutofill(inputServicio, "cobro-servicio-search");
+    blindarInputAutofill(cuentaSearch, "cobro-cuenta-search");
+    blindarInputAutofill(inputDescuentoNombre, "cobro-descuento-nombre");
+
+    function actualizarConteoBilletes() {
+      let totalConteo = 0;
+
+      cashInputs.forEach((input) => {
+        const denominacion = Number(input.dataset.bill || 0);
+        const cantidadRaw = Number(input.value);
+        const cantidad = Number.isFinite(cantidadRaw) && cantidadRaw >= 0 ? cantidadRaw : 0;
+        const subtotal = denominacion * cantidad;
+        totalConteo += subtotal;
+
+        const subtotalCell = document.getElementById(`cash-total-${denominacion}`);
+        if (subtotalCell) subtotalCell.textContent = precioUSD(subtotal);
+      });
+
+      if (cashGrandTotal) cashGrandTotal.textContent = precioUSD(totalConteo);
+    }
+
+    cashInputs.forEach((input) => {
+      input.addEventListener("input", actualizarConteoBilletes);
+      input.addEventListener("blur", () => {
+        const cantidadRaw = Number(input.value);
+        if (!Number.isFinite(cantidadRaw) || cantidadRaw < 0) {
+          input.value = "";
+        }
+        actualizarConteoBilletes();
+      });
+    });
+
+    if (!window.__cobroAutocompleteOutsideHandler) {
+      window.__cobroAutocompleteOutsideHandler = (e) => {
+        if (!e.target.closest(".cobro-buscador")) {
+          const lp = document.getElementById("lista-pacientes");
+          const ls = document.getElementById("lista-servicios");
+          if (lp) lp.style.display = "none";
+          if (ls) ls.style.display = "none";
+        }
+      };
+      document.addEventListener("click", window.__cobroAutocompleteOutsideHandler);
+    }
+
+    function actualizarResumenPaciente() {
+      const nombre = pacienteActual?.NombreP || "Sin seleccionar";
+      pacienteTitulo.textContent = pacienteActual ? `Paciente: ${nombre}` : "Sin paciente seleccionado";
+      resumenPaciente.textContent = nombre;
+    }
+
+    function actualizarEstadoFlujo() {
+      const hayPaciente = !!pacienteActual;
+      const hayItems = cobroItems.length > 0;
+      const hayFormaPago = !!formaPagoSelect.value;
+
+      stepPaciente.classList.toggle("is-active", !hayPaciente);
+      stepPaciente.classList.toggle("is-done", hayPaciente);
+
+      stepServicio.classList.toggle("is-active", hayPaciente && !hayItems);
+      stepServicio.classList.toggle("is-done", hayItems);
+
+      stepPago.classList.toggle("is-active", hayItems && !hayFormaPago);
+      stepPago.classList.toggle("is-done", hayItems && hayFormaPago);
+
+      servicioBlock.classList.toggle("is-disabled", !hayPaciente);
+      inputServicio.disabled = !hayPaciente;
+      btnGuardar.disabled = !(hayPaciente && hayItems && hayFormaPago);
+    }
+
+    function actualizarColorFormaPago() {
+      formaPagoSelect.classList.remove(
+        "fp-efectivo",
+        "fp-tarjeta",
+        "fp-igs",
+        "fp-transferencia"
+      );
+
+      if (formaPagoSelect.value === "Efectivo") formaPagoSelect.classList.add("fp-efectivo");
+      if (formaPagoSelect.value === "Tarjeta") formaPagoSelect.classList.add("fp-tarjeta");
+      if (formaPagoSelect.value === "IGS") formaPagoSelect.classList.add("fp-igs");
+      if (formaPagoSelect.value === "Transferencia") formaPagoSelect.classList.add("fp-transferencia");
+    }
+
+    function actualizarTotal() {
+      const total = cobroItems.reduce((acc, cur) => {
+        const cantidad = Math.max(1, Number(cur.cantidad) || 1);
+        const precio = normalizarPrecio(cur.precio, 0);
+        return acc + (cantidad * precio);
+      }, 0);
+      subtotalBox.textContent = precioUSD(total);
+      totalBox.textContent = precioUSD(total);
+      itemsCountBox.textContent = String(cobroItems.reduce((acc, cur) => acc + (Number(cur.cantidad) || 0), 0));
+      emptyState.style.display = cobroItems.length ? "none" : "block";
+      actualizarEstadoFlujo();
+    }
+
+    function refrescarTabla() {
+      tbody.innerHTML = "";
+
+      cobroItems.forEach((item) => {
+        const tr = document.createElement("tr");
+
+        const tdServ = document.createElement("td");
+        tdServ.textContent = item.nombre;
+        tr.appendChild(tdServ);
+
+        const tdCant = document.createElement("td");
+        const qtyWrap = document.createElement("div");
+        qtyWrap.className = "cobro-qty-wrap";
+
+        const btnMenos = document.createElement("button");
+        btnMenos.type = "button";
+        btnMenos.className = "cobro-qty-btn";
+        btnMenos.textContent = "-";
+        btnMenos.addEventListener("click", () => {
+          item.cantidad = Math.max(1, Number(item.cantidad) - 1);
+          refrescarTabla();
+        });
+
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "1";
+        input.value = item.cantidad;
+        input.className = "cobro-cantidad-input";
+        input.addEventListener("change", () => {
+          item.cantidad = Math.max(1, Number(input.value) || 1);
+          refrescarTabla();
+        });
+
+        const btnMas = document.createElement("button");
+        btnMas.type = "button";
+        btnMas.className = "cobro-qty-btn";
+        btnMas.textContent = "+";
+        btnMas.addEventListener("click", () => {
+          item.cantidad = Number(item.cantidad) + 1;
+          refrescarTabla();
+        });
+
+        qtyWrap.appendChild(btnMenos);
+        qtyWrap.appendChild(input);
+        qtyWrap.appendChild(btnMas);
+        tdCant.appendChild(qtyWrap);
+        tr.appendChild(tdCant);
+
+        const tdPrecio = document.createElement("td");
+        tdPrecio.style.textAlign = "right";
+        const inputPrecio = document.createElement("input");
+        inputPrecio.type = "number";
+        inputPrecio.min = "0";
+        inputPrecio.step = "0.01";
+        inputPrecio.value = normalizarPrecio(item.precio, 0).toFixed(2);
+        inputPrecio.className = "cobro-precio-input";
+        inputPrecio.title = "Precio unitario editable";
+        inputPrecio.addEventListener("change", () => {
+          item.precio = normalizarPrecio(inputPrecio.value, normalizarPrecio(item.precio, 0));
+          refrescarTabla();
+        });
+        tdPrecio.appendChild(inputPrecio);
+        tr.appendChild(tdPrecio);
+
+        const tdTotal = document.createElement("td");
+        tdTotal.style.textAlign = "right";
+        tdTotal.textContent = precioUSD((Number(item.cantidad) || 0) * normalizarPrecio(item.precio, 0));
+        tr.appendChild(tdTotal);
+
+        const tdQuit = document.createElement("td");
+        tdQuit.style.textAlign = "center";
+        const btnRemove = document.createElement("button");
+        btnRemove.className = "cobro-btn-remove";
+        btnRemove.textContent = "x";
+        btnRemove.addEventListener("click", () => {
+          cobroItems = cobroItems.filter((x) => x.id !== item.id);
+          refrescarTabla();
+        });
+        tdQuit.appendChild(btnRemove);
+        tr.appendChild(tdQuit);
+
+        tbody.appendChild(tr);
+      });
+
+      actualizarTotal();
+    }
+
+    function agregarServicio(serv) {
+      if (!pacienteActual) {
+        alert("Primero seleccione un paciente");
+        return;
+      }
+
+      const existe = cobroItems.find((x) => x.id === serv.id);
+      if (existe) {
+        existe.cantidad += 1;
+        refrescarTabla();
+        return;
+      }
+
+      cobroItems.push({
+        id: serv.id,
+        nombre: serv.nombre,
+        precio: normalizarPrecio(serv.precio, 0),
+        cantidad: 1
+      });
+      refrescarTabla();
+    }
+
+    btnLimpiarPaciente.addEventListener("click", () => {
+      pacienteActual = null;
+      cobroItems = [];
+      inputPaciente.value = "";
+      inputServicio.value = "";
+      listaPacientes.style.display = "none";
+      listaServicios.style.display = "none";
+      actualizarResumenPaciente();
+      refrescarTabla();
+    });
+
+    const buscarPaciente = debounce(async (texto) => {
+      listaPacientes.innerHTML = "";
+      listaPacientes.style.display = "none";
+      if (texto.length < 2) return;
+
+      try {
+        const res = await fetch(`/api/paciente/search?q=${encodeURIComponent(texto)}`);
+        const json = await res.json();
+        if (!json.ok) return;
+
+        json.data.forEach((p) => {
+          const div = document.createElement("div");
+          div.className = "autocomplete-item";
+          div.textContent = p.NombreP;
+          div.onclick = () => {
+            pacienteActual = p;
+            cobroItems = [];
+            inputPaciente.value = "";
+            listaPacientes.style.display = "none";
+            actualizarResumenPaciente();
+            refrescarTabla();
+          };
+          listaPacientes.appendChild(div);
+        });
+
+        if (json.data.length) listaPacientes.style.display = "block";
+      } catch (err) {
+        console.error(err);
+      }
+    }, 350);
+
+    const buscarServicio = debounce(async (texto) => {
+      listaServicios.innerHTML = "";
+      listaServicios.style.display = "none";
+      if (texto.length < 2) return;
+
+      try {
+        const res = await fetch(`/api/servicio/search?q=${encodeURIComponent(texto)}`);
+        const json = await res.json();
+        if (!json.ok) return;
+
+        json.data.forEach((s) => {
+          const div = document.createElement("div");
+          div.className = "autocomplete-item";
+          div.textContent = `${s.nombreS} - $${Number(s.precioS).toFixed(2)}`;
+          div.onclick = () => {
+            agregarServicio({ id: s.idServicio, nombre: s.nombreS, precio: Number(s.precioS) });
+            inputServicio.value = "";
+            listaServicios.style.display = "none";
+          };
+          listaServicios.appendChild(div);
+        });
+
+        if (json.data.length) listaServicios.style.display = "block";
+      } catch (err) {
+        console.error(err);
+      }
+    }, 350);
+
+    inputPaciente.addEventListener("input", (e) => buscarPaciente(e.target.value.trim()));
+    inputServicio.addEventListener("input", (e) => buscarServicio(e.target.value.trim()));
+    formaPagoSelect.addEventListener("change", () => {
+      actualizarEstadoFlujo();
+      actualizarColorFormaPago();
+    });
+
+    btnGuardar.addEventListener("click", async () => {
+      if (!pacienteActual) {
+        alert("Seleccione un paciente");
+        return;
+      }
+      if (!cobroItems.length) {
+        alert("Agregue al menos un servicio");
+        return;
+      }
+
+      const formaPago = formaPagoSelect.value;
+      if (!formaPago) {
+        alert("Seleccione forma de pago");
+        return;
+      }
+
+      const itemsPayload = cobroItems.map((i) => ({
+        idServicio: i.id,
+        cantidad: Math.max(1, Number(i.cantidad) || 1),
+        precio: normalizarPrecio(i.precio, 0)
+      }));
+
+      const hayPrecioInvalido = itemsPayload.some(i => !Number.isFinite(i.precio) || i.precio < 0);
+      if (hayPrecioInvalido) {
+        alert("Revise precios unitarios. No se permiten valores negativos.");
+        return;
+      }
+
+      const payload = {
+        idPaciente: pacienteActual.idPaciente,
+        formaPago,
+        items: itemsPayload
+      };
+
+      try {
+        const res = await fetch("/api/cuenta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.message);
+
+        alert("Cuenta guardada correctamente");
+        cobroItems = [];
+        pacienteActual = null;
+        renderCobro(container);
+      } catch (err) {
+        console.error(err);
+        alert("Error al guardar la cuenta");
+      }
+    });
+
+    async function cargarCuentasPorFecha(fecha) {
+      try {
+        const res = await fetch(`/api/cuenta?fecha=${fecha}`);
+        const json = await res.json();
+        if (!json.ok) {
+          alert(json.message || "Error al cargar cuentas");
+          return;
+        }
+        drawCuentaRows(json.data);
+      } catch (err) {
+        console.error(err);
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        } else {
+          alert("Opps ocurrio un error de conexion");
+        }
+      }
+    }
+
+    async function cargarDescuentosPorFecha(fecha) {
+      try {
+        const res = await fetch(`/api/cuenta/descuento?fecha=${fecha}`);
+        const json = await res.json();
+        if (!json.ok) return;
+        renderDescuento(json.data);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function recalcularTotalFinal() {
+      const subTotalText = document.getElementById("cuenta-subtotal").querySelector("strong").textContent.replace("$", "");
+      const subTotal = Number(subTotalText) || 0;
+      const totalFinal = subTotal - totalDescuentoActual;
+      document.getElementById("cuenta-total").querySelector("strong").textContent = `$${totalFinal.toFixed(2)}`;
+    }
+
+    function actualizarDashboardDia() {
+      const metricas = calcularMetricasDia(cuentasActuales, totalDescuentoActual);
+      const { acumulados, brutoDia, netoDia, efectivoCajaDia, porcentajes } = metricas;
+      const pctText = (val) => `${Number(val || 0).toFixed(1)}%`;
+      const degEfectivo = porcentajes.efectivo * 3.6;
+      const degTarjeta = porcentajes.tarjeta * 3.6;
+      const degIgs = porcentajes.igs * 3.6;
+      const degTransferencia = porcentajes.transferencia * 3.6;
+
+      if (chartRing) {
+        if (brutoDia <= 0) {
+          chartRing.style.setProperty("--ring-gradient", "conic-gradient(var(--cobro-ring-empty, #e2e8f0) 0deg 360deg)");
+        } else {
+          const d1 = degEfectivo;
+          const d2 = d1 + degTarjeta;
+          const d3 = d2 + degIgs;
+          const d4 = d3 + degTransferencia;
+          const gradient = `conic-gradient(
+            #22c55e 0deg ${d1}deg,
+            #ef4444 ${d1}deg ${d2}deg,
+            #f97316 ${d2}deg ${d3}deg,
+            #0ea5e9 ${d3}deg ${d4}deg
+          )`;
+          chartRing.style.setProperty("--ring-gradient", gradient);
+        }
+      }
+
+      if (kpiEfectivo) kpiEfectivo.textContent = precioUSD(acumulados.efectivo);
+      if (kpiEfectivoCaja) kpiEfectivoCaja.textContent = precioUSD(efectivoCajaDia);
+      if (kpiTarjeta) kpiTarjeta.textContent = precioUSD(acumulados.tarjeta);
+      if (kpiIgs) kpiIgs.textContent = precioUSD(acumulados.igs);
+      if (kpiTransferencia) kpiTransferencia.textContent = precioUSD(acumulados.transferencia);
+      if (kpiDescuentos) kpiDescuentos.textContent = precioUSD(totalDescuentoActual);
+      if (kpiTotalDia) kpiTotalDia.textContent = precioUSD(netoDia);
+      if (kpiBrutoDia) kpiBrutoDia.textContent = precioUSD(brutoDia);
+      if (chartCentroTotal) chartCentroTotal.textContent = precioUSD(brutoDia);
+    }
+
+    function textoSeguro(value) {
+      return String(value ?? "").replace(/\s+/g, " ").trim();
+    }
+
+    function generarReporteCobroPdf() {
+      const fecha = String(inputFecha?.value || "").trim();
+      if (!fecha) {
+        alert("Seleccione una fecha");
+        return;
+      }
+
+      if (!Array.isArray(cuentasActuales) || cuentasActuales.length === 0) {
+        alert("No hay cuentas para esta fecha");
+        return;
+      }
+
+      const jsPdfCtor = window.jspdf?.jsPDF;
+      if (typeof jsPdfCtor !== "function") {
+        alert("No se encontro el motor PDF");
+        return;
+      }
+      if (typeof jsPdfCtor.API?.autoTable !== "function") {
+        alert("No se encontro el plugin de tablas PDF");
+        return;
+      }
+
+      const labelOriginal = btnReporteCobro?.textContent || "Reporte PDF";
+      if (btnReporteCobro) {
+        btnReporteCobro.disabled = true;
+        btnReporteCobro.textContent = "Generando...";
+      }
+
+      try {
+        const metricas = calcularMetricasDia(cuentasActuales, totalDescuentoActual);
+        const { brutoDia, netoDia } = metricas;
+        const fechaTexto = formatearFechaCorta(fecha);
+        const usuario = textoSeguro(document.getElementById("top-user-name")?.textContent) || "Usuario";
+
+        const doc = new jsPdfCtor({
+          orientation: "portrait",
+          unit: "pt",
+          format: "a4"
+        });
+
+        const marginX = 32;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        let y = 38;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(15);
+        doc.text("Sistema Clinica", marginX, y);
+
+        y += 16;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text("Reporte de cobro diario", marginX, y);
+        doc.text(`Fecha: ${fechaTexto}`, marginX, y + 13);
+        doc.text(`Generado por: ${usuario}`, marginX, y + 26);
+        doc.text(
+          `Generado: ${new Date().toLocaleString("es-SV", { hour12: true })}`,
+          pageWidth - marginX,
+          y + 26,
+          { align: "right" }
+        );
+
+        y += 38;
+
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          theme: "grid",
+          head: [["Resumen del dia", "Valor"]],
+          body: [
+            ["Total del dia (neto)", precioUSD(netoDia)],
+            ["Bruto del dia", precioUSD(brutoDia)],
+            ["Descuentos", precioUSD(totalDescuentoActual)]
+          ],
+          styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, overflow: "linebreak" },
+          headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: "bold", fontSize: 8.2 }
+        });
+
+        y = (doc.lastAutoTable?.finalY || y) + 8;
+
+        const filasCuenta = cuentasActuales.map((c) => ([
+          textoSeguro(c.nombrePaciente) || "-",
+          precioUSD(Number(c.totalC || 0)),
+          textoSeguro(c.FormaPagoC) || "-",
+          Number.isFinite(Number(c.cantidadTotal)) ? String(Number(c.cantidadTotal)) : "-",
+          textoSeguro(c.procedimientos) || "-"
+        ]));
+
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          theme: "striped",
+          head: [["Cuenta del dia", "Total", "Forma de pago", "Cantidad", "Tratamiento"]],
+          body: filasCuenta,
+          styles: { fontSize: 7.6, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, overflow: "linebreak" },
+          headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", fontSize: 7.8 },
+          columnStyles: {
+            0: { cellWidth: 142 },
+            1: { cellWidth: 64, halign: "right" },
+            2: { cellWidth: 86 },
+            3: { cellWidth: 58, halign: "center" },
+            4: { cellWidth: 181 }
+          }
+        });
+
+        doc.save(`reporte-cobro-${fecha}.pdf`);
+      } catch (err) {
+        console.error(err);
+        alert("No se pudo generar el reporte PDF");
+      } finally {
+        if (btnReporteCobro) {
+          btnReporteCobro.disabled = false;
+          btnReporteCobro.textContent = labelOriginal;
+        }
+      }
+    }
+
+    function calcularTotalesCuentas(lista) {
+      const subTotal = lista.reduce((acc, c) => acc + Number(c.totalC || 0), 0);
+      document.getElementById("cuenta-subtotal").querySelector("strong").textContent = `$${subTotal.toFixed(2)}`;
+      recalcularTotalFinal();
+    }
+
+    function numeracionActiva() {
+      return !!toggleNumeracionCuentas?.checked;
+    }
+
+    function getCuentaColspan() {
+      return numeracionActiva() ? 7 : 6;
+    }
+
+    function aplicarVisibilidadNumeracionCuenta() {
+      if (!cuentaTable) return;
+      cuentaTable.classList.toggle("hide-numeracion", !numeracionActiva());
+    }
+
+    function drawCuentaRows(list, syncSource = true) {
+      if (syncSource) cuentasActuales = list;
+      actualizarDashboardDia();
+      aplicarVisibilidadNumeracionCuenta();
+      const tbodyCuenta = document.getElementById("cuenta-tbody");
+      tbodyCuenta.innerHTML = "";
+
+      if (!list.length) {
+        tbodyCuenta.innerHTML = `
+          <tr>
+            <td colspan="${getCuentaColspan()}" style="text-align:center; color:#64748b">No hay cuentas para esta fecha</td>
+          </tr>
+        `;
+        calcularTotalesCuentas([]);
+        return;
+      }
+
+      list.forEach((c, index) => {
+        const tr = document.createElement("tr");
+        tr.dataset.idCuenta = c.idCuenta;
+        const formaPago = String(c.FormaPagoC || "").trim();
+        const formaPagoClass = claseFormaPago(formaPago);
+        const formaPagoHtml = formaPago
+          ? `<span class="forma-pago-chip ${formaPagoClass}">${formaPago}</span>`
+          : "-";
+        const cantidadRaw = Number(c.cantidadTotal);
+        const cantidadText = Number.isFinite(cantidadRaw) ? String(cantidadRaw) : "-";
+        const tratamientoHtml = renderProcedimientoVisual(c.procedimientos);
+        tr.innerHTML = `
+          <td class="cuenta-col-num">${index + 1}</td>
+          <td>${c.nombrePaciente}</td>
+          <td>$${Number(c.totalC).toFixed(2)}</td>
+          <td>${formaPagoHtml}</td>
+          <td style="text-align:center">${cantidadText}</td>
+          <td>${tratamientoHtml}</td>
+          <td hidden>${formatearFecha(c.fechaC)}</td>
+          <td style="text-align:center"><button class="cobro-btn-remove" title="Eliminar cuenta">x</button></td>
+        `;
+
+        tr.querySelector("button").addEventListener("click", async () => {
+          const ok = typeof window.showSystemConfirm === "function"
+            ? await window.showSystemConfirm("Eliminar esta cuenta?")
+            : confirm("Eliminar esta cuenta?");
+          if (!ok) return;
+          try {
+            const res = await fetch(`/api/cuenta/${c.idCuenta}`, { method: "DELETE" });
+            const json = await res.json();
+            if (!json.ok) throw new Error(json.message);
+            const fecha = document.getElementById("cuenta-date").value;
+            if (fecha) cargarCuentasPorFecha(fecha);
+          } catch (err) {
+            alert("Error al eliminar la cuenta");
+            console.error(err);
+          }
+        });
+
+        tbodyCuenta.appendChild(tr);
+      });
+
+      calcularTotalesCuentas(list);
+    }
+
+    function aplicarFiltroCuenta() {
+      const q = (cuentaSearch.value || "").trim().toLowerCase();
+      if (!q) {
+        drawCuentaRows(cuentasActuales, false);
+        return;
+      }
+      const filtradas = cuentasActuales.filter((c) =>
+        String(c.nombrePaciente || "").toLowerCase().includes(q) ||
+        String(c.procedimientos || "").toLowerCase().includes(q)
+      );
+      drawCuentaRows(filtradas, false);
+    }
+
+    function actualizarTotalDescuento(lista) {
+      totalDescuentoActual = lista.reduce((acc, d) => acc + Number(d.cantidadD), 0);
+      descuentoTotalBox.querySelector("strong").textContent = `$${totalDescuentoActual.toFixed(2)}`;
+      recalcularTotalFinal();
+      actualizarDashboardDia();
+    }
+
+    function renderDescuento(lista) {
+      descuentoTbody.innerHTML = "";
+
+      if (!lista.length) {
+        descuentoTbody.innerHTML = `
+          <tr>
+            <td colspan="4" style="text-align:center;color:#64748b">No hay descuentos</td>
+          </tr>
+        `;
+        actualizarTotalDescuento([]);
+        return;
+      }
+
+      lista.forEach((d) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${d.nombreD}</td>
+          <td>${formatearFecha(d.fechaD)}</td>
+          <td>$${Number(d.cantidadD).toFixed(2)}</td>
+          <td style="text-align:center"><button class="cobro-btn-remove">x</button></td>
+        `;
+
+        tr.querySelector("button").addEventListener("click", async () => {
+          await fetch(`/api/cuenta/descuento/${d.idDescuento}`, { method: "DELETE" });
+          const fecha = document.getElementById("cuenta-date").value;
+          if (fecha) cargarDescuentosPorFecha(fecha);
+        });
+
+        descuentoTbody.appendChild(tr);
+      });
+
+      actualizarTotalDescuento(lista);
+    }
+
+    btnAgregarDescuento.addEventListener("click", async () => {
+      const nombre = document.getElementById("descuento-nombre").value.trim();
+      const cantidad = Number(document.getElementById("descuento-cantidad").value);
+      const fecha = document.getElementById("cuenta-date").value;
+
+      if (!fecha) {
+        alert("Seleccione una fecha");
+        return;
+      }
+      if (!nombre || cantidad <= 0) {
+        alert("Datos invalidos");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/cuenta/descuento", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre, cantidad, fecha })
+        });
+
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.message);
+
+        document.getElementById("descuento-nombre").value = "";
+        document.getElementById("descuento-cantidad").value = "";
+        cargarDescuentosPorFecha(fecha);
+      } catch (err) {
+        alert("Error al guardar descuento");
+      }
+    });
+
+    inputFecha.addEventListener("change", () => {
+      if (!inputFecha.value) return;
+      cargarCuentasPorFecha(inputFecha.value);
+      cargarDescuentosPorFecha(inputFecha.value);
+    });
+
+    cuentaSearch.addEventListener("input", aplicarFiltroCuenta);
+    toggleNumeracionCuentas?.addEventListener("change", () => {
+      aplicarVisibilidadNumeracionCuenta();
+      aplicarFiltroCuenta();
+    });
+    btnReporteCobro?.addEventListener("click", generarReporteCobroPdf);
+    aplicarVisibilidadNumeracionCuenta();
+
+    const hoy = new Date().toISOString().split("T")[0];
+    inputFecha.value = hoy;
+    cargarCuentasPorFecha(hoy);
+    cargarDescuentosPorFecha(hoy);
+
+    const prefillFromAgenda = window.__agendaCobroPrefillPatient;
+    window.__agendaCobroPrefillPatient = null;
+    if (prefillFromAgenda && Number(prefillFromAgenda.idPaciente || 0) > 0) {
+      pacienteActual = {
+        idPaciente: Number(prefillFromAgenda.idPaciente),
+        NombreP: String(prefillFromAgenda.NombreP || "").trim(),
+        telefonoP: String(prefillFromAgenda.telefonoP || "").trim()
+      };
+      inputPaciente.value = "";
+      listaPacientes.innerHTML = "";
+      listaPacientes.style.display = "none";
+    }
+
+    actualizarResumenPaciente();
+    refrescarTabla();
+    actualizarEstadoFlujo();
+    actualizarColorFormaPago();
+    actualizarDashboardDia();
+    actualizarConteoBilletes();
+  }
+
+  function mountCobro() {
+    const content = document.querySelector(".content");
+    if (!content) return;
+
+    cobroItems = [];
+    pacienteActual = null;
+    cuentasActuales = [];
+    totalDescuentoActual = 0;
+
+    renderCobro(content);
+
+    if (window.__setViewCleanup) {
+      window.__setViewCleanup(() => {
+        cobroItems = [];
+        pacienteActual = null;
+        cuentasActuales = [];
+        totalDescuentoActual = 0;
+
+        const inputPaciente = document.getElementById("buscar-paciente");
+        const inputServicio = document.getElementById("buscar-servicio");
+        const formaPago = document.getElementById("forma-pago");
+        const inputFecha = document.getElementById("cuenta-date");
+        const inputCuentaSearch = document.getElementById("cuenta-search");
+        const inputDescuentoNombre = document.getElementById("descuento-nombre");
+        const inputDescuentoCantidad = document.getElementById("descuento-cantidad");
+
+        const lp = document.getElementById("lista-pacientes");
+        const ls = document.getElementById("lista-servicios");
+        if (lp) {
+          lp.innerHTML = "";
+          lp.style.display = "none";
+        }
+        if (ls) {
+          ls.innerHTML = "";
+          ls.style.display = "none";
+        }
+
+        if (inputPaciente) inputPaciente.value = "";
+        if (inputServicio) inputServicio.value = "";
+        if (inputCuentaSearch) inputCuentaSearch.value = "";
+        if (inputFecha) inputFecha.value = "";
+        if (inputDescuentoNombre) inputDescuentoNombre.value = "";
+        if (inputDescuentoCantidad) inputDescuentoCantidad.value = "";
+
+        if (formaPago) {
+          formaPago.value = "";
+          formaPago.classList.remove("fp-efectivo", "fp-tarjeta", "fp-igs", "fp-transferencia");
+        }
+
+        const pacienteSeleccionado = document.getElementById("paciente-seleccionado");
+        const resumenPaciente = document.getElementById("resumen-paciente");
+        const itemsCount = document.getElementById("cobro-items-count");
+        const subtotal = document.getElementById("cobro-subtotal");
+        const total = document.getElementById("cobro-total");
+        const btnGuardar = document.getElementById("btn-guardar-cuenta");
+        const emptyState = document.getElementById("cobro-empty-state");
+        const tbodyCobro = document.getElementById("cobro-tbody");
+        const tbodyCuenta = document.getElementById("cuenta-tbody");
+        const tbodyDescuento = document.getElementById("descuento-tbody");
+        const totalDescuento = document.getElementById("descuento-total");
+        const cuentaSubtotal = document.getElementById("cuenta-subtotal");
+        const cuentaTotal = document.getElementById("cuenta-total");
+
+        if (pacienteSeleccionado) pacienteSeleccionado.textContent = "Sin paciente seleccionado";
+        if (resumenPaciente) resumenPaciente.textContent = "Sin seleccionar";
+        if (itemsCount) itemsCount.textContent = "0";
+        if (subtotal) subtotal.textContent = "$0.00";
+        if (total) total.textContent = "$0.00";
+        if (btnGuardar) btnGuardar.disabled = true;
+        if (emptyState) emptyState.style.display = "block";
+        if (tbodyCobro) tbodyCobro.innerHTML = "";
+        if (tbodyCuenta) tbodyCuenta.innerHTML = "";
+        if (tbodyDescuento) tbodyDescuento.innerHTML = "";
+        if (totalDescuento) {
+          const strong = totalDescuento.querySelector("strong");
+          if (strong) strong.textContent = "$0.00";
+        }
+        if (cuentaSubtotal) {
+          const strong = cuentaSubtotal.querySelector("strong");
+          if (strong) strong.textContent = "$0.00";
+        }
+        if (cuentaTotal) {
+          const strong = cuentaTotal.querySelector("strong");
+          if (strong) strong.textContent = "$0.00";
+        }
+
+        const stepPaciente = document.getElementById("step-paciente");
+        const stepServicio = document.getElementById("step-servicio");
+        const stepPago = document.getElementById("step-pago");
+        const servicioBlock = document.getElementById("cobro-step-servicio-block");
+        if (stepPaciente) {
+          stepPaciente.classList.add("is-active");
+          stepPaciente.classList.remove("is-done");
+        }
+        if (stepServicio) {
+          stepServicio.classList.remove("is-active", "is-done");
+        }
+        if (stepPago) {
+          stepPago.classList.remove("is-active", "is-done");
+        }
+        if (servicioBlock) servicioBlock.classList.add("is-disabled");
+        if (inputServicio) inputServicio.disabled = true;
+      });
+    }
+  }
+
+  window.__mountCobro = mountCobro;
+})();

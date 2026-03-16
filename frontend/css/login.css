@@ -1,0 +1,276 @@
+/* login.css */
+
+:root {
+    --login-overlay: rgba(15, 23, 42, 0.55);
+    --login-panel-bg: #ffffff;
+    --login-panel-border: var(--border-color);
+    --login-panel-shadow: rgba(0, 0, 0, 0.25) 0px 8px 20px;
+    --login-input-bg: #ffffff;
+    --login-input-border: #cdd3dd;
+    --login-input-text: var(--text-color);
+    --login-placeholder: #94a3b8;
+    --login-focus-ring: rgba(37, 99, 235, 0.2);
+    --login-register-separator: #e2e8f0;
+    --login-register-title: #111827;
+    --login-notice-bg: #f0fdf4;
+    --login-notice-border: #86efac;
+    --login-notice-text: #166534;
+    --login-muted-btn: #6b7280;
+    --login-muted-btn-hover: #5b6372;
+}
+
+.dark-mode {
+    --login-overlay: rgba(2, 8, 23, 0.72);
+    --login-panel-bg: #0f172a;
+    --login-panel-border: #2a3a52;
+    --login-panel-shadow: rgba(0, 0, 0, 0.45) 0px 10px 26px;
+    --login-input-bg: #111c2f;
+    --login-input-border: #344861;
+    --login-input-text: #e2e8f0;
+    --login-placeholder: #8ea0b7;
+    --login-focus-ring: rgba(96, 165, 250, 0.24);
+    --login-register-separator: #2a3a52;
+    --login-register-title: #e2e8f0;
+    --login-notice-bg: #183428;
+    --login-notice-border: #2d7a57;
+    --login-notice-text: #86efac;
+    --login-muted-btn: #334155;
+    --login-muted-btn-hover: #3f5167;
+}
+
+.login-container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 90px;
+    padding-left: 20px;
+    padding-right: 20px;
+    background-image:
+        linear-gradient(
+            var(--login-overlay),
+            var(--login-overlay)
+        ),
+        url("../img/FondoLogin.jpg");
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+}
+
+.login-box {
+    width: 100%;
+    max-width: 460px;
+    background: var(--login-panel-bg);
+    padding: 34px 32px;
+    border-radius: 14px;
+    border: 1px solid var(--login-panel-border);
+    box-shadow: var(--login-panel-shadow);
+}
+
+.login-box h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 22px;
+    color: var(--text-color);
+    text-align: center;
+}
+
+.login-field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 18px;
+}
+
+.login-field label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: var(--text-muted);
+}
+
+.login-field input {
+    height: 40px;
+    font-size: 15px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--login-input-border);
+    outline: none;
+    color: var(--login-input-text);
+    background: var(--login-input-bg);
+}
+
+.login-field input:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px var(--login-focus-ring);
+}
+
+.login-field select {
+    height: 40px;
+    font-size: 15px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--login-input-border);
+    outline: none;
+    color: var(--login-input-text);
+    background: var(--login-input-bg);
+}
+
+.login-field select:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px var(--login-focus-ring);
+}
+
+.login-field input::placeholder {
+    color: var(--login-placeholder);
+}
+
+.login-field select option {
+    background: var(--login-input-bg);
+    color: var(--login-input-text);
+}
+
+.btn-login {
+    width: 100%;
+    margin-top: 16px;
+    padding: 12px;
+    background: #2563eb;
+    color: #ffffff;
+    border: none;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.btn-login:hover {
+    background: #1e4fd8;
+}
+
+.login-error {
+    margin-top: 14px;
+    font-size: 14px;
+    color: #dc2626;
+    font-weight: 500;
+    text-align: center;
+}
+
+.login-notice {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--login-notice-border);
+    background: var(--login-notice-bg);
+    color: var(--login-notice-text);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.hidden-register-box {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--login-register-separator);
+}
+
+.hidden-register-title {
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--login-register-title);
+}
+
+.hidden-register-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+}
+
+.hidden-register-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.hidden-register-field label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: var(--text-muted);
+}
+
+.hidden-register-field input,
+.hidden-register-field select {
+    height: 40px;
+    font-size: 15px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--login-input-border);
+    outline: none;
+    color: var(--login-input-text);
+    background: var(--login-input-bg);
+}
+
+.hidden-register-field input:focus,
+.hidden-register-field select:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px var(--login-focus-ring);
+}
+
+.hidden-register-field input::placeholder {
+    color: var(--login-placeholder);
+}
+
+.hidden-register-field select option {
+    background: var(--login-input-bg);
+    color: var(--login-input-text);
+}
+
+.hidden-register-field-full {
+    grid-column: 1 / -1;
+}
+
+.hidden-register-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.hidden-register-actions .btn-login {
+    margin-top: 0;
+}
+
+.hidden-register-btn-muted {
+    background: var(--login-muted-btn);
+}
+
+.hidden-register-btn-muted:hover {
+    background: var(--login-muted-btn-hover);
+}
+
+.hidden-register-msg {
+    margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+    .login-container {
+        padding-top: 60px;
+    }
+
+    .login-box {
+        padding: 26px 22px;
+    }
+
+    .hidden-register-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .hidden-register-actions {
+        grid-template-columns: 1fr;
+    }
+}

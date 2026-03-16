@@ -1,0 +1,243 @@
+/* error404.css - overlay global para errores de conexion */
+
+.error404-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 20, 41, 0.76);
+  backdrop-filter: blur(3px);
+  z-index: 6500;
+  padding: 20px;
+}
+
+.error404-overlay.show {
+  display: flex;
+}
+
+.error404-card {
+  width: min(560px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: radial-gradient(circle at 10% 15%, #223a55, #12263d 60%, #0b1a2b);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.35);
+  color: #f8fafc;
+  padding: 20px 22px 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.error404-card.nudge {
+  animation: cardNudge 0.28s ease-in-out;
+}
+
+.error404-title {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 2px;
+  text-align: center;
+  color: #ffd166;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.error404-subtitle {
+  margin: 8px 0 6px;
+  font-size: 16px;
+  text-align: center;
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.error404-svg-wrap {
+  margin: 4px auto 8px;
+  width: min(100%, 420px);
+}
+
+.error404-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.error404-bubble {
+  fill: #f1f5f9;
+  opacity: 0.98;
+  animation: bubblePulse 2.8s ease-in-out infinite alternate;
+}
+
+.error404-bubble.orange {
+  fill: #f97316;
+}
+
+.error404-bubble.red {
+  fill: #ef4444;
+}
+
+.error404-bubble.yellow {
+  fill: #fde047;
+}
+
+.error404-digit {
+  font: 900 86px/1 "Trebuchet MS", "Segoe UI", sans-serif;
+  fill: #f97316;
+  stroke: #7c2d12;
+  stroke-width: 2.2;
+  paint-order: stroke fill;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: digitBlast 1.8s ease-in-out infinite;
+}
+
+.error404-digit.d0 {
+  animation-delay: 0.09s;
+}
+
+.error404-digit.d4r {
+  animation-delay: 0.18s;
+}
+
+.error404-spark {
+  fill: #fde047;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: sparkShot 1.4s linear infinite;
+}
+
+.error404-spark.s2 {
+  animation-delay: 0.2s;
+}
+
+.error404-spark.s3 {
+  animation-delay: 0.4s;
+}
+
+.error404-spark.s4 {
+  animation-delay: 0.6s;
+}
+
+.error404-spark.s5 {
+  animation-delay: 0.8s;
+}
+
+.error404-spark.s6 {
+  animation-delay: 1s;
+}
+
+.error404-message {
+  margin: 4px 0 10px;
+  text-align: center;
+  color: #f8fafc;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.error404-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.error404-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.error404-btn.close {
+  background: #ef4444;
+  color: #fff;
+}
+
+.error404-btn.retry {
+  background: #22c55e;
+  color: #052e16;
+}
+
+.error404-btn:hover {
+  filter: brightness(0.96);
+}
+
+@keyframes digitBlast {
+  0% {
+    transform: scale(0.84) rotate(-3deg);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(1.12) rotate(2deg);
+    opacity: 1;
+  }
+  35% {
+    transform: scale(0.98) rotate(-1deg);
+  }
+  55% {
+    transform: scale(1.05) rotate(1deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+}
+
+@keyframes bubblePulse {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    transform: translateY(-4px) scale(1.02);
+  }
+}
+
+@keyframes sparkShot {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.5);
+  }
+  12% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-22px) scale(1.28);
+  }
+}
+
+@keyframes cardNudge {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-3px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .error404-title {
+    font-size: 26px;
+  }
+
+  .error404-message {
+    font-size: 15px;
+  }
+
+  .error404-digit {
+    font-size: 74px;
+  }
+}

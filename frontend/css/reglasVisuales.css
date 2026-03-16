@@ -1,0 +1,174 @@
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) {
+  --rv-relleno-bg: #b8ccf0;
+  --rv-relleno-text: #1f3556;
+
+  --rv-limpieza-bg: #bfe6fb;
+  --rv-limpieza-text: #21415c;
+
+  --rv-control-bg: #c9eccf;
+  --rv-control-text: #1f4a2c;
+
+  --rv-reconstruccion-bg: #ffd7b5;
+  --rv-reconstruccion-text: #5a3615;
+
+  --rv-ortodoncia-bg: #dccdfa;
+  --rv-ortodoncia-text: #3c2a6d;
+
+  --rv-endodoncia-bg: #f8c8d3;
+  --rv-endodoncia-text: #5f2435;
+
+  --rv-cirugia-bg: #f9c6bb;
+  --rv-cirugia-text: #5c2a22;
+
+  --rv-protesis-bg: #f6e3be;
+  --rv-protesis-text: #5d4a25;
+
+  --rv-periodoncia-bg: #bdebe2;
+  --rv-periodoncia-text: #1c4f45;
+
+  --rv-estetica-bg: #f8f0ba;
+  --rv-estetica-text: #5c541f;
+
+  --rv-radiografia-bg: #c9d9f8;
+  --rv-radiografia-text: #2a4268;
+
+  --rv-default-bg: #d1d5db;
+  --rv-default-text: #111827;
+
+  --rv-fecha-bg: rgba(148, 163, 184, 0.18);
+  --rv-fecha-text: #1f2937;
+
+  --rv-nota-bg: #c62828;
+  --rv-nota-text: #ffffff;
+}
+
+.dark-mode :is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) {
+  --rv-default-bg: #334155;
+  --rv-default-text: #e2e8f0;
+  --rv-fecha-bg: rgba(59, 130, 246, 0.2);
+  --rv-fecha-text: #dbeafe;
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.35;
+  margin: 2px 3px;
+  vertical-align: middle;
+  font-weight: 600;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-relleno {
+  background: var(--rv-relleno-bg);
+  color: var(--rv-relleno-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-limpieza {
+  background: var(--rv-limpieza-bg);
+  color: var(--rv-limpieza-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-control {
+  background: var(--rv-control-bg);
+  color: var(--rv-control-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-reconstruccion {
+  background: var(--rv-reconstruccion-bg);
+  color: var(--rv-reconstruccion-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-ortodoncia {
+  background: var(--rv-ortodoncia-bg);
+  color: var(--rv-ortodoncia-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-endodoncia {
+  background: var(--rv-endodoncia-bg);
+  color: var(--rv-endodoncia-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-cirugia {
+  background: var(--rv-cirugia-bg);
+  color: var(--rv-cirugia-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-protesis {
+  background: var(--rv-protesis-bg);
+  color: var(--rv-protesis-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-periodoncia {
+  background: var(--rv-periodoncia-bg);
+  color: var(--rv-periodoncia-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-estetica {
+  background: var(--rv-estetica-bg);
+  color: var(--rv-estetica-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-radiografia {
+  background: var(--rv-radiografia-bg);
+  color: var(--rv-radiografia-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-default {
+  background: var(--rv-default-bg);
+  color: var(--rv-default-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-nota {
+  background: var(--rv-nota-bg);
+  color: var(--rv-nota-text);
+  font-weight: 800;
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-nota strong {
+  font-weight: 800;
+  color: var(--rv-nota-text);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-fecha {
+  display: inline-block;
+  background: var(--rv-fecha-bg);
+  color: var(--rv-fecha-text);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(100, 116, 139, 0.18);
+}
+
+.dark-mode :is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-fecha {
+  border-color: rgba(148, 163, 184, 0.42);
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-sep {
+  color: #4b5563;
+  font-weight: 700;
+}
+
+.dark-mode :is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-sep {
+  color: #94a3b8;
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-cita-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 800;
+  margin: 2px 4px 2px 3px;
+  vertical-align: middle;
+}
