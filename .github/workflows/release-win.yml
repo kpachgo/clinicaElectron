@@ -1,0 +1,84 @@
+name: Release Windows EXE
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (example: v1.0.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-exe:
+    name: Build and publish Windows EXE (x64)
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm run install:backend
+
+      - name: Build Windows installer (x64)
+        run: npx electron-builder --win nsis --x64 --publish never
+
+      - name: Validate EXE output exists
+        shell: pwsh
+        run: |
+          $exeFiles = Get-ChildItem -Path "dist-electron" -Filter "*.exe" -File -Recurse
+          if (-not $exeFiles) {
+            throw "No .exe generated in dist-electron/"
+          }
+          $exeFiles | ForEach-Object { Write-Host $_.FullName }
+
+      - name: Validate runtime backend included in win-unpacked
+        shell: pwsh
+        run: |
+          $runtimeServer = Get-ChildItem -Path "dist-electron" -Filter "server.js" -File -Recurse |
+            Where-Object { $_.FullName -match "win-unpacked[\\/]+resources[\\/]+runtime[\\/]+backend[\\/]server\.js$" } |
+            Select-Object -First 1
+          if (-not $runtimeServer) {
+            throw "runtime/backend/server.js not found inside win-unpacked bundle"
+          }
+          Write-Host $runtimeServer.FullName
+
+      - name: Upload Windows artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClinicaElectron-windows-exe-${{ env.RELEASE_TAG }}
+          path: |
+            dist-electron/*.exe
+            dist-electron/*.exe.blockmap
+          if-no-files-found: error
+
+      - name: Publish assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            dist-electron/*.exe
+            dist-electron/*.exe.blockmap
+          fail_on_unmatched_files: false
+          generate_release_notes: true
