@@ -42,6 +42,18 @@ jobs:
       - name: Install backend dependencies
         run: npm run install:backend
 
+      - name: Validate BACKEND_ENV secret exists
+        run: |
+          if [ -z "${{ secrets.BACKEND_ENV }}" ]; then
+            echo "Missing required secret: BACKEND_ENV"
+            exit 1
+          fi
+
+      - name: Create backend .env from GitHub Secret
+        run: |
+          printf '%s' "${{ secrets.BACKEND_ENV }}" > backend/.env
+          test -s backend/.env
+
       - name: Build macOS DMG (x64)
         run: npx electron-builder --mac dmg --x64 --publish never
 

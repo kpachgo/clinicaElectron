@@ -14,6 +14,7 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `09_temas.md`
 - `10_electron.md`
 - `11_build_mac.md`
+- `12_release_github_actions.md`
 
 ## Nota
 - El contexto de Paciente (`03_paciente.md`) incluye la parte de odontograma.

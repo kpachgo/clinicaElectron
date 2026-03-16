@@ -41,6 +41,24 @@ jobs:
       - name: Install backend dependencies
         run: npm run install:backend
 
+      - name: Validate BACKEND_ENV secret exists
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.BACKEND_ENV }}")) {
+            throw "Missing required secret: BACKEND_ENV"
+          }
+
+      - name: Create backend .env from GitHub Secret
+        shell: pwsh
+        run: |
+          $path = Join-Path $PWD "backend/.env"
+          $content = "${{ secrets.BACKEND_ENV }}"
+          $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+          [System.IO.File]::WriteAllText($path, $content, $utf8NoBom)
+          if (-not (Test-Path $path) -or ((Get-Item $path).Length -le 0)) {
+            throw "backend/.env was not created correctly"
+          }
+
       - name: Build Windows installer (x64)
         run: npx electron-builder --win nsis --x64 --publish never
 
