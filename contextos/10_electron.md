@@ -29,7 +29,8 @@
 - Fallback legacy habilitado para lectura en `frontend/*` para no romper archivos históricos locales.
 
 ## Archivos clave
-- Electron main: `electron/main.js`
+- Electron main (activo por scripts): `electron-app/main.js`
+- Electron main (copia espejo): `electron/main.js`
 - Resolución de almacenamiento: `backend/config/storagePaths.js`
 - Montaje estático y health: `backend/server.js`
 - Uploads/escrituras:
@@ -71,6 +72,10 @@
 - Version validada por instalacion real: `1.0.5`.
 - Resultado reportado: "funciono perfecto la version 1.0.5 y levanta perfecto servidor".
 - Estado: aprobado para uso en el entorno LAN definido.
+
+## Estado de version del repositorio
+- Version actual en `package.json` (raiz): `1.0.1`.
+- Las referencias `1.0.5`, `1.0.6` y `1.0.7` en este documento corresponden a historial operativo/instaladores validados en campo.
 
 ## Nota tecnica de arranque (Windows)
 - Incidente previo observado: `spawn EINVAL` al lanzar `npm start` desde Electron.

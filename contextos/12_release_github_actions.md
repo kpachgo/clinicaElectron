@@ -9,17 +9,21 @@
 ## Estado implementado
 - Workflow macOS: `.github/workflows/release-mac.yml`
 - Workflow Windows: `.github/workflows/release-win.yml`
-- Ambos soportan:
+- macOS soporta:
   - Trigger por tag: `v*`
   - Ejecucion manual: `workflow_dispatch` con input `tag`
   - Publicacion automatica al release del tag
+- Windows queda temporalmente en modo manual:
+  - Solo `workflow_dispatch` (sin trigger por tag)
+  - Uso recomendado: build local manual y subida manual al release
 
 ## Como usar (flujo recomendado)
 1. Crear tag y push:
    - `git tag vX.Y.Z`
    - `git push origin vX.Y.Z`
-2. GitHub ejecuta workflows y adjunta assets al release del mismo tag.
-3. Alternativa manual:
+2. GitHub ejecuta macOS y adjunta `.dmg` al release del tag.
+3. Windows (recomendado actual): compilar local y subir `.exe` al mismo release/tag.
+4. Alternativa manual por workflow:
    - Abrir workflow y usar **Run workflow** con `tag` (ej: `v1.0.2`).
 
 ## Link directo a workflows (cuando no aparecen en lista)
@@ -41,6 +45,16 @@
   - variacion de I/O en runners compartidos.
 - 2 a 10 minutos puede ser un rango normal segun carga.
 - En este proyecto, el workflow Windows desactiva code signing en CI para evitar bloqueos en `signtool.exe`.
+
+## Causa raiz detectada del fallo Windows
+- Se detecto una dependencia accidental recursiva en backend:
+  - `backend/package.json` tenia `\"clinica\": \"file:..\"`
+  - eso genero arboles `backend/node_modules/clinica/backend/node_modules/...`
+- Tambien hubo deriva de version de empaquetador:
+  - se resolvio `electron-builder 26.8.1` en lugar de una version fija.
+- Estado restaurado:
+  - se removio la dependencia recursiva.
+  - `electron-builder` quedo fijado en `26.0.12`.
 
 ## Comportamiento del `.env` en CI (importante)
 - `backend/.env` esta en `.gitignore`, por lo tanto no viaja al repositorio.
@@ -79,3 +93,15 @@
 2. Al abrir la app, `http://127.0.0.1:3000/health` responde.
 3. Login funciona (DB/JWT correctos).
 4. Verificar que los assets previos del release no se pierden al subir el nuevo.
+
+## Flujo oficial Windows (manual local)
+1. En raiz del repo:
+   - `npm ci`
+   - `npm --prefix backend ci`
+2. Generar instalador Windows local:
+   - `npm run dist:win:local`
+3. Artefactos esperados:
+   - `dist-electron/*.exe`
+   - `dist-electron/*.exe.blockmap` (opcional)
+4. Subir manual al release existente (mismo tag, por ejemplo `v1.0.2`):
+   - GitHub Releases -> Edit release -> Attach binaries -> subir `.exe`.

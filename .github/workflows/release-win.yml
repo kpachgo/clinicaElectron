@@ -1,9 +1,6 @@
 name: Release Windows EXE
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
       tag:

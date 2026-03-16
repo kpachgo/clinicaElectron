@@ -18,11 +18,12 @@
     "electron:dev": "electron electron-app/main.js",
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win --publish never",
+    "dist:win:local": "electron-builder --win --x64 --publish never --config.win.signAndEditExecutable=false --config.forceCodeSigning=false",
     "dist:mac": "electron-builder --mac --publish never"
   },
   "devDependencies": {
     "electron": "^37.2.0",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "26.0.12"
   },
   "build": {
     "appId": "com.clinica.electron",
@@ -84,4 +85,3 @@
     "disableDefaultIgnoredFiles": true
   }
 }
-
