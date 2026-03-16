@@ -59,8 +59,13 @@ jobs:
             throw "backend/.env was not created correctly"
           }
 
+      - name: Show local electron-builder version
+        shell: pwsh
+        run: |
+          node -e "console.log(require('./node_modules/electron-builder/package.json').version)"
+
       - name: Build Windows installer (x64)
-        run: npx electron-builder --win nsis --x64 --publish never --config.win.signAndEditExecutable=false --config.forceCodeSigning=false
+        run: npm run dist:win -- --x64 --config.win.signAndEditExecutable=false --config.forceCodeSigning=false
 
       - name: Validate EXE output exists
         shell: pwsh
