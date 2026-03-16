@@ -787,7 +787,8 @@
   margin-bottom: 14px;
 }
 
-.cuenta-toggle-numeracion {
+.cuenta-toggle-numeracion,
+.cuenta-toggle-doctor {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -799,7 +800,8 @@
   user-select: none;
 }
 
-.cuenta-toggle-numeracion input[type="checkbox"] {
+.cuenta-toggle-numeracion input[type="checkbox"],
+.cuenta-toggle-doctor input[type="checkbox"] {
   width: 14px;
   height: 14px;
   accent-color: #2563eb;
@@ -815,12 +817,23 @@
   width: 160px;
 }
 
+.cuenta-controls input[type="month"] {
+  width: 160px;
+}
+
 .cuenta-controls input[type="text"],
 .cuenta-controls input[type="search"] {
   width: 280px;
 }
 
-.cuenta-controls #btn-reporte-cobro {
+.cuenta-controls select {
+  width: 280px;
+}
+
+.cuenta-controls #btn-reporte-cobro,
+.cuenta-controls #btn-abrir-reporte-mensual,
+.cuenta-controls #btn-abrir-faltantes-cobro,
+.cuenta-controls #btn-reporte-mensual-pdf {
   white-space: nowrap;
 }
 
@@ -834,7 +847,7 @@
 }
 
 .cuenta-table {
-  min-width: 820px;
+  min-width: 980px;
   font-size: 12px;
 }
 
@@ -863,6 +876,46 @@
   font-size: 11px;
 }
 
+.cuenta-doctor-cell {
+  min-width: 190px;
+}
+
+.cuenta-doctor-select {
+  width: 100%;
+  min-width: 170px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cuenta-doctor-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.cuenta-doctor-select.is-doctor {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.cuenta-doctor-select.is-no-doctor {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.cuenta-doctor-select.is-mixed {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
 .cuenta-table .cobro-btn-remove,
 .descuento-table .cobro-btn-remove {
   width: 20px;
@@ -879,6 +932,10 @@
 }
 
 .cuenta-table.hide-numeracion .cuenta-col-num {
+  display: none;
+}
+
+.cuenta-table.hide-doctor .cuenta-col-doctor {
   display: none;
 }
 
@@ -906,6 +963,113 @@
 .cuenta-total-line.total-final {
   background: #eef2ff;
   color: #1e3a8a;
+}
+
+body.cobro-modal-open {
+  overflow: hidden;
+}
+
+.cobro-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cobro-modal[hidden] {
+  display: none !important;
+}
+
+.cobro-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.cobro-modal-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(1080px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.28);
+  padding: 16px;
+}
+
+.cobro-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cobro-modal-header h3 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.cobro-modal-controls {
+  margin-bottom: 10px;
+}
+
+.cobro-modal .cuenta-table {
+  min-width: 640px;
+}
+
+.faltantes-cobro-meta {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.faltantes-cobro-resumen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.faltantes-cobro-kpi {
+  border: 1px solid #dbe5f0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.faltantes-cobro-kpi span {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.faltantes-cobro-kpi strong {
+  font-size: 21px;
+  line-height: 1.1;
+  color: #0f172a;
+}
+
+.faltantes-cobro-kpi.is-danger {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.faltantes-cobro-kpi.is-danger strong {
+  color: #9a3412;
 }
 
 /* descuentos */
@@ -1190,7 +1354,8 @@
   color: #9fb0c5;
 }
 
-.dark-mode .cuenta-toggle-numeracion {
+.dark-mode .cuenta-toggle-numeracion,
+.dark-mode .cuenta-toggle-doctor {
   color: #cbd5e1;
 }
 
@@ -1198,6 +1363,30 @@
 .dark-mode .descuento-table tbody td {
   border-bottom-color: #223046;
   color: #dbe5f2;
+}
+
+.dark-mode .cuenta-doctor-select {
+  border-color: #334155;
+  background: #111c2f;
+  color: #cbd5e1;
+}
+
+.dark-mode .cuenta-doctor-select.is-doctor {
+  background: #183428;
+  border-color: #2d7a57;
+  color: #86efac;
+}
+
+.dark-mode .cuenta-doctor-select.is-no-doctor {
+  background: #111c2f;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+.dark-mode .cuenta-doctor-select.is-mixed {
+  background: #3d2c1c;
+  border-color: #9a5b20;
+  color: #fdba74;
 }
 
 .dark-mode .cuenta-total-line {
@@ -1210,6 +1399,46 @@
   color: #bfdbfe;
 }
 
+.dark-mode .cobro-modal-backdrop {
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.dark-mode .cobro-modal-dialog {
+  border-color: #2a3a52;
+  background: #0f172a;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .cobro-modal-header h3 {
+  color: #e2e8f0;
+}
+
+.dark-mode .faltantes-cobro-meta {
+  color: #cbd5e1;
+}
+
+.dark-mode .faltantes-cobro-kpi {
+  border-color: #334155;
+  background: #111b2d;
+}
+
+.dark-mode .faltantes-cobro-kpi span {
+  color: #9fb0c5;
+}
+
+.dark-mode .faltantes-cobro-kpi strong {
+  color: #e2e8f0;
+}
+
+.dark-mode .faltantes-cobro-kpi.is-danger {
+  background: #3d2c1c;
+  border-color: #9a5b20;
+}
+
+.dark-mode .faltantes-cobro-kpi.is-danger strong {
+  color: #fdba74;
+}
+
 .dark-mode .descuento-total-line {
   background: #3a1f24;
   color: #fca5a5;
@@ -1220,7 +1449,8 @@
   color: #e2e8f0;
 }
 
-.dark-mode .cuenta-controls input[type="date"] {
+.dark-mode .cuenta-controls input[type="date"],
+.dark-mode .cuenta-controls input[type="month"] {
   color-scheme: dark;
 }
 
@@ -1310,11 +1540,38 @@
   }
 
   .cuenta-controls input[type="date"],
+  .cuenta-controls input[type="month"],
+  .cuenta-controls select,
   .cuenta-controls input[type="text"],
   .cuenta-controls input[type="search"],
   .cuenta-controls #btn-reporte-cobro,
+  .cuenta-controls #btn-abrir-reporte-mensual,
+  .cuenta-controls #btn-abrir-faltantes-cobro,
+  .cuenta-controls #btn-reporte-mensual-pdf,
   .descuento-form input {
     width: 100%;
+  }
+
+  .faltantes-cobro-resumen {
+    grid-template-columns: 1fr;
+  }
+
+  .cobro-modal {
+    padding: 12px;
+  }
+
+  .cobro-modal-dialog {
+    max-height: calc(100vh - 24px);
+    padding: 12px;
+  }
+
+  .cobro-modal-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cobro-modal-header h3 {
+    font-size: 18px;
   }
 
   .descuento-form {

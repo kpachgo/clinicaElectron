@@ -80,6 +80,27 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   }
+  function getAgendaHeroIcon(iconName) {
+    const base = 'class="agenda-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"';
+    switch (iconName) {
+      case "queue-list":
+        return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path><path d="M3.75 6.75h.008v.008H3.75V6.75Zm0 5.25h.008v.008H3.75V12Zm0 5.25h.008v.008H3.75v-.008Z"></path></svg>`;
+      case "document-duplicate":
+        return `<svg ${base}><path d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125H6.375a1.125 1.125 0 0 1-1.125-1.125V8.25c0-.621.504-1.125 1.125-1.125H9.75"></path><path d="M15 3.75H9.75a1.5 1.5 0 0 0-1.5 1.5v8.25c0 .828.672 1.5 1.5 1.5H15a1.5 1.5 0 0 0 1.5-1.5V5.25A1.5 1.5 0 0 0 15 3.75Z"></path></svg>`;
+      case "currency-dollar":
+        return `<svg ${base}><path d="M12 3v18m0-18c-2.25 0-3.75 1.5-3.75 3.375S9.75 9.75 12 9.75s3.75 1.5 3.75 3.375S14.25 16.5 12 16.5m0-13.5c2.25 0 3.75 1.5 3.75 3.375M12 16.5c-2.25 0-3.75-1.5-3.75-3.375"></path></svg>`;
+      case "trash":
+        return `<svg ${base}><path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0V4.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201V5.393m7.5 0a48.667 48.667 0 0 0-7.5 0"></path></svg>`;
+      case "plus":
+        return `<svg ${base}><path d="M12 4.5v15m7.5-7.5h-15"></path></svg>`;
+      default:
+        return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path></svg>`;
+    }
+  }
+  function renderAgendaNombreCell(td, nombre) {
+    if (!td) return;
+    td.textContent = String(nombre || "").trim();
+  }
   function renderFechaVisual(fechaTexto) {
     const txt = String(fechaTexto || "-").trim() || "-";
     if (typeof window.__rvRenderFecha === "function") {
@@ -1019,13 +1040,21 @@
 
     // Si no cambió nada, solo restaurar
     if (nuevoValor === valorOriginal) {
-      td.textContent = valorOriginal;
+      if (campo === "nombre") {
+        renderAgendaNombreCell(td, valorOriginal);
+      } else {
+        td.textContent = valorOriginal;
+      }
       return;
     }
 
     // Optimistic UI (actualiza primero)
     item[campo] = nuevoValor;
-    td.textContent = nuevoValor;
+    if (campo === "nombre") {
+      renderAgendaNombreCell(td, nuevoValor);
+    } else {
+      td.textContent = nuevoValor;
+    }
 
     try {
       const res = await fetch(`/api/agenda/${item.idAgendaAP}`, {
@@ -1043,7 +1072,11 @@
       console.error(err);
 
       item[campo] = valorOriginal;
-      td.textContent = valorOriginal;
+      if (campo === "nombre") {
+        renderAgendaNombreCell(td, valorOriginal);
+      } else {
+        td.textContent = valorOriginal;
+      }
     }
   }
 
@@ -1051,7 +1084,11 @@
     if (e.key === "Enter") save();
     if (e.key === "Escape") {
       item[campo] = valorOriginal;
-      td.textContent = valorOriginal;
+      if (campo === "nombre") {
+        renderAgendaNombreCell(td, valorOriginal);
+      } else {
+        td.textContent = valorOriginal;
+      }
     }
   });
 
@@ -1115,7 +1152,7 @@
 
         // Nombre
         const tdNombre = document.createElement("td");
-        tdNombre.textContent = item.nombre;
+        renderAgendaNombreCell(tdNombre, item.nombre);
         tdNombre.classList.add("editable");
         aplicarRefuerzoVisualNombre(tdNombre, item.estado);
         tdNombre.addEventListener("dblclick", () => editarTexto(tdNombre, item, "nombre"));
@@ -1249,7 +1286,7 @@
         btnEnCola.className = "agenda-action-btn is-cola";
         btnEnCola.title = "Enviar a cola";
         btnEnCola.setAttribute("aria-label", "Enviar a cola");
-        btnEnCola.textContent = "Q";
+        btnEnCola.innerHTML = getAgendaHeroIcon("queue-list");
         btnEnCola.addEventListener("click", async () => {
           const colaApi = window.__colaPacienteAPI;
           if (!colaApi || typeof colaApi.addFromAgenda !== "function") {
@@ -1305,7 +1342,7 @@
         btnReprogramar.className = "agenda-action-btn is-reprogramar";
         btnReprogramar.title = "Copiar para reprogramar";
         btnReprogramar.setAttribute("aria-label", "Copiar para reprogramar");
-        btnReprogramar.textContent = "++";
+        btnReprogramar.innerHTML = getAgendaHeroIcon("document-duplicate");
         btnReprogramar.addEventListener("click", () => {
           const nombreAgenda = String(item.nombre || "").trim();
           if (!nombreAgenda) {
@@ -1321,7 +1358,7 @@
         btnCobrar.className = "agenda-action-btn is-cobrar";
         btnCobrar.title = "Cobrar";
         btnCobrar.setAttribute("aria-label", "Cobrar");
-        btnCobrar.textContent = "$";
+        btnCobrar.innerHTML = getAgendaHeroIcon("currency-dollar");
         btnCobrar.addEventListener("click", async () => {
           const nombreAgenda = String(item.nombre || "").trim();
           if (!nombreAgenda) {
@@ -1404,7 +1441,7 @@
         btnEliminar.className = "agenda-action-btn is-eliminar";
         btnEliminar.title = "Eliminar";
         btnEliminar.setAttribute("aria-label", "Eliminar");
-        btnEliminar.textContent = "x";
+        btnEliminar.innerHTML = getAgendaHeroIcon("trash");
         btnEliminar.addEventListener("click", async () => {
           const idAgenda = Number(item.idAgendaAP || 0);
           if (!idAgenda) {
@@ -1447,7 +1484,7 @@
         btnCrear.className = "agenda-action-btn is-crear";
         btnCrear.title = "Crear";
         btnCrear.setAttribute("aria-label", "Crear");
-        btnCrear.textContent = "+";
+        btnCrear.innerHTML = getAgendaHeroIcon("plus");
         btnCrear.addEventListener("click", async () => {
           const nombreAgenda = String(item.nombre || "").trim();
           const contactoAgenda = String(item.contacto || "").trim();

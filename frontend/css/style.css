@@ -465,6 +465,16 @@ body {
 .top-right > .icon {
     font-size: 16px;
 }
+.top-right > .icon svg,
+.theme-btn svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
 .top-right > .icon:hover,
 .theme-btn:hover {
     background: var(--sidebar-hover);
@@ -624,6 +634,24 @@ body[data-theme="princess"] .theme-btn .crown {
     white-space: nowrap;   /* no rompe línea */
     flex-shrink: 0;        /* no se aplastan */
 }
+.topbar .sidebar-menu .accordion .icon {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: currentColor;
+}
+.topbar .sidebar-menu .accordion .icon svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
 .topbar .sidebar-menu .accordion:hover {
     background: var(--sidebar-hover);
 }
@@ -663,6 +691,23 @@ body[data-theme="princess"] .theme-btn .crown {
                 color 0.2s ease,
                 border-color 0.2s ease;
 }
+.btn-logout .logout-icon {
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+.btn-logout .logout-icon svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    fill: none;
+}
 
 /* Hover */
 .btn-logout:hover {
@@ -699,6 +744,11 @@ body[data-theme="princess"] .theme-btn .crown {
         font-size: 12px;
         padding: 6px 10px;
     }
+    .topbar .sidebar-menu .accordion .icon,
+    .topbar .sidebar-menu .accordion .icon svg {
+        width: 16px;
+        height: 16px;
+    }
 
     /* Usuario */
     .user-name {
@@ -721,6 +771,11 @@ body[data-theme="princess"] .theme-btn .crown {
     /* Iconos */
     .top-right .icon {
         font-size: 13px;
+    }
+    .top-right .icon svg,
+    .theme-btn svg {
+        width: 13px;
+        height: 13px;
     }
 }
 @media (max-width: 980px) {
@@ -765,4 +820,3 @@ textarea.form-control {
   font-weight: 600;
   color: #6b7280;
 }
-

@@ -286,21 +286,125 @@ CREATE PROCEDURE `sp_cuenta_listar_por_fecha`(
     IN p_fecha DATE
 )
 BEGIN
-    SELECT
-        c.idCuenta,
-        p.NombreP AS nombrePaciente,
-        c.fechaC,
-        c.totalC,
-        c.FormaPagoC,
-        SUM(dc.cantidadDC) AS cantidadTotal,
-        GROUP_CONCAT(s.nombreS SEPARATOR ' + ') AS procedimientos
-    FROM cuenta c
-    INNER JOIN paciente p ON p.idPaciente = c.idPaciente
-    INNER JOIN detallecuenta dc ON dc.idC = c.idCuenta
-    INNER JOIN servicio s ON s.idServicio = dc.idServicio
-    WHERE c.fechaC = p_fecha
-    GROUP BY c.idCuenta
-    ORDER BY c.idCuenta DESC;
+    DECLARE v_hasDoctorCol INT DEFAULT 0;
+
+    SELECT COUNT(*)
+      INTO v_hasDoctorCol
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'detallecuenta'
+      AND COLUMN_NAME = 'idDoctor';
+
+    IF v_hasDoctorCol > 0 THEN
+      SELECT
+          c.idCuenta,
+          p.NombreP AS nombrePaciente,
+          c.fechaC,
+          c.totalC,
+          c.FormaPagoC,
+          SUM(dc.cantidadDC) AS cantidadTotal,
+          GROUP_CONCAT(s.nombreS SEPARATOR ' + ') AS procedimientos,
+          CASE
+            WHEN COUNT(DISTINCT IFNULL(dc.idDoctor, -1)) > 1 THEN NULL
+            ELSE MAX(dc.idDoctor)
+          END AS idDoctorCuenta,
+          CASE
+            WHEN COUNT(DISTINCT IFNULL(dc.idDoctor, -1)) > 1 THEN NULL
+            ELSE MAX(d.nombreD)
+          END AS nombreDoctorCuenta,
+          CASE
+            WHEN COUNT(DISTINCT IFNULL(dc.idDoctor, -1)) > 1 THEN 1
+            ELSE 0
+          END AS doctorMixto
+      FROM cuenta c
+      INNER JOIN paciente p ON p.idPaciente = c.idPaciente
+      INNER JOIN detallecuenta dc ON dc.idC = c.idCuenta
+      INNER JOIN servicio s ON s.idServicio = dc.idServicio
+      LEFT JOIN doctor d ON d.idDoctor = dc.idDoctor
+      WHERE c.fechaC = p_fecha
+      GROUP BY c.idCuenta
+      ORDER BY c.idCuenta DESC;
+    ELSE
+      SELECT
+          c.idCuenta,
+          p.NombreP AS nombrePaciente,
+          c.fechaC,
+          c.totalC,
+          c.FormaPagoC,
+          SUM(dc.cantidadDC) AS cantidadTotal,
+          GROUP_CONCAT(s.nombreS SEPARATOR ' + ') AS procedimientos,
+          NULL AS idDoctorCuenta,
+          NULL AS nombreDoctorCuenta,
+          0 AS doctorMixto
+      FROM cuenta c
+      INNER JOIN paciente p ON p.idPaciente = c.idPaciente
+      INNER JOIN detallecuenta dc ON dc.idC = c.idCuenta
+      INNER JOIN servicio s ON s.idServicio = dc.idServicio
+      WHERE c.fechaC = p_fecha
+      GROUP BY c.idCuenta
+      ORDER BY c.idCuenta DESC;
+    END IF;
+END$$
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS `sp_cuenta_asignar_doctor_por_cuenta`;
+DELIMITER $$
+CREATE PROCEDURE `sp_cuenta_asignar_doctor_por_cuenta`(
+  IN p_idCuenta INT,
+  IN p_idDoctor INT
+)
+BEGIN
+  UPDATE detallecuenta
+  SET idDoctor = p_idDoctor
+  WHERE idC = p_idCuenta;
+END$$
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS `sp_cuenta_reporte_mensual`;
+DELIMITER $$
+CREATE PROCEDURE `sp_cuenta_reporte_mensual`(
+  IN p_anio SMALLINT,
+  IN p_mes TINYINT,
+  IN p_idServicio INT
+)
+BEGIN
+  SELECT
+    s.idServicio,
+    s.nombreS AS tratamiento,
+    SUM(dc.cantidadDC) AS cantidadTotalMes,
+    ROUND(SUM(dc.subTotalDC), 2) AS montoTotalMes
+  FROM cuenta c
+  INNER JOIN detallecuenta dc ON dc.idC = c.idCuenta
+  INNER JOIN servicio s ON s.idServicio = dc.idServicio
+  WHERE YEAR(c.fechaC) = p_anio
+    AND MONTH(c.fechaC) = p_mes
+    AND (p_idServicio IS NULL OR p_idServicio = 0 OR dc.idServicio = p_idServicio)
+  GROUP BY s.idServicio, s.nombreS
+  ORDER BY s.nombreS ASC;
+END$$
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS `sp_cuenta_reporte_mensual_pacientes`;
+DELIMITER $$
+CREATE PROCEDURE `sp_cuenta_reporte_mensual_pacientes`(
+  IN p_anio SMALLINT,
+  IN p_mes TINYINT,
+  IN p_idServicio INT
+)
+BEGIN
+  SELECT
+    p.idPaciente,
+    p.NombreP AS nombrePaciente,
+    SUM(dc.cantidadDC) AS cantidadPaciente,
+    ROUND(SUM(dc.subTotalDC), 2) AS montoPaciente
+  FROM cuenta c
+  INNER JOIN detallecuenta dc ON dc.idC = c.idCuenta
+  INNER JOIN paciente p ON p.idPaciente = c.idPaciente
+  WHERE YEAR(c.fechaC) = p_anio
+    AND MONTH(c.fechaC) = p_mes
+    AND dc.idServicio = p_idServicio
+  GROUP BY p.idPaciente, p.NombreP
+  ORDER BY p.NombreP ASC;
 END$$
 DELIMITER ;
 

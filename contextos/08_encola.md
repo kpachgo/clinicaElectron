@@ -33,7 +33,7 @@
 
 ## Integraciones entre vistas
 - Agenda -> En Cola:
-  - En Agenda, el boton `Q` usa `window.__colaPacienteAPI.addFromAgenda(payload)`.
+  - En Agenda, el boton `Enviar a cola` (icono `queue-list`) usa `window.__colaPacienteAPI.addFromAgenda(payload)`.
   - Payload enviado desde Agenda:
     - `agendaId`
     - `nombrePaciente`

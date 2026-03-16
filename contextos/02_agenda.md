@@ -10,12 +10,12 @@
   - campos: `Nombre`, `Hora`, `Fecha`, `Contacto`, `Estado`, `Comentario`.
   - autocomplete de pacientes en `Nombre`.
   - autocomplete de servicios en `Comentario`.
-- Acciones compactas por fila:
-  - `Q` enviar a cola
-  - `++` copiar cita para reprogramar
-  - `$` cobrar
-  - `x` eliminar
-  - `+` crear paciente
+- Acciones compactas por fila (iconos Heroicons inline, estilo `outline`):
+  - `queue-list` enviar a cola
+  - `document-duplicate` copiar cita para reprogramar
+  - `currency-dollar` cobrar
+  - `trash` eliminar
+  - `plus` crear paciente
 
 ## Flujo principal
 1. Carga por fecha (`input[type=date]`) via backend.
@@ -27,18 +27,18 @@
 7. La sugerencia se inserta/reemplaza solo en el token actual (cursor o seleccion), permitiendo mezclar texto libre en cualquier parte.
 8. El autocomplete de comentario usa debounce (`250ms`) y token de busqueda para descartar respuestas viejas.
 9. Al hacer click en una sugerencia se usa snapshot de rango (`start/end`) para evitar inserciones en posicion incorrecta.
-10. Reprogramacion asistida: desde `++` copia nombre/contacto/comentario/hora a un buffer temporal.
+10. Reprogramacion asistida: desde accion `Copiar para reprogramar` (`document-duplicate`) copia nombre/contacto/comentario/hora a un buffer temporal.
 11. Boton `Pegar Cita` abre modal con datos copiados y fecha destino tomada del datepicker actual.
 12. Boton `Cancelar` limpia el buffer de reprogramacion.
 13. Al salir de la vista Agenda (`__setViewCleanup`) se limpia buffer y estado del modal para evitar residuos entre vistas.
 
 ## Integraciones entre vistas
 - Agenda -> Cobro:
-  - Boton `$` valida paciente por nombre (y desempata por telefono si hay duplicados).
+  - Boton `Cobrar` (`currency-dollar`) valida paciente por nombre (y desempata por telefono si hay duplicados).
   - Si resuelve un paciente unico, guarda prefill en `window.__agendaCobroPrefillPatient`.
   - Luego llama `window.loadView("Cobro")`.
 - Agenda -> Paciente:
-  - Boton `+` consulta `/api/paciente/existe?nombre=...&telefono=...`.
+  - Boton `Crear` (`plus`) consulta `/api/paciente/existe?nombre=...&telefono=...`.
   - Si no existe, guarda `window.__agendaPacientePrefill` con:
     - `NombreP` desde `nombre` de agenda.
     - `telefonoP` desde `contacto` de agenda.

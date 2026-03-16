@@ -194,12 +194,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
 }
 
 .agenda-action-btn {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: none;
   border-radius: 5px;
   cursor: pointer;
@@ -211,6 +211,16 @@
   justify-content: center;
   color: #fff;
   transition: transform 0.14s var(--btn-ease-standard), box-shadow 0.2s var(--btn-ease-standard), filter 0.18s ease;
+}
+.agenda-action-btn .agenda-action-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
 }
 
 .agenda-action-btn.is-cobrar {
@@ -454,8 +464,8 @@
   }
 
   .agenda-container .agenda-action-btn {
-    width: 22px;
-    height: 22px;
+    width: 23px;
+    height: 23px;
     font-size: 11px;
     border-radius: 5px;
   }

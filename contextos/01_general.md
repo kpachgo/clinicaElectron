@@ -34,6 +34,7 @@
   - el sonido `notebook-tab-changed.ogg` se dispara en click del menu lateral (`.accordion`).
   - el estado visual `active` del menu no se cambia por click directo; se sincroniza solo con `syncActiveAccordion(viewName)` cuando `loadView(name)` si cambia de vista.
   - si un guard de salida cancela la navegacion (ej. cambios sin guardar), el foco visual del menu se mantiene en la vista actual.
+  - iconografia actual del topbar/menu: SVG inline estilo `Heroicons outline` (sin CDN), usando `stroke=\"currentColor\"` para respetar tema.
 
 ## Sesion y usuario
 - Token en `localStorage.token`.

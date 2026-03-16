@@ -4,6 +4,13 @@
   let pacienteActual = null;
   let cuentasActuales = [];
   let totalDescuentoActual = 0;
+  let reporteMensualActual = [];
+  let reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+  let reporteMensualFiltroActual = null;
+  let faltantesCobroActual = [];
+  let faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
+  let doctoresCuentaData = [];
+  let cargarDoctoresCuentaPromise = null;
 
   function precioUSD(num) {
     return `$${Number(num || 0).toFixed(2)}`;
@@ -42,6 +49,13 @@
       return `${m[3]}/${m[2]}/${m[1]}`;
     }
     return formatearFecha(raw);
+  }
+
+  function formatearMesCorto(valor) {
+    const raw = String(valor || "").trim();
+    const m = raw.match(/^(\d{4})-(\d{2})$/);
+    if (!m) return raw;
+    return `${m[2]}/${m[1]}`;
   }
 
   function calcularMetricasDia(cuentas, totalDescuento) {
@@ -355,12 +369,23 @@
             <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
             <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
             <label class="cuenta-toggle-numeracion" for="toggle-numeracion-cuentas">
-              <input type="checkbox" id="toggle-numeracion-cuentas" checked>
+              <input type="checkbox" id="toggle-numeracion-cuentas">
               Numeracion
+            </label>
+            <label class="cuenta-toggle-doctor" for="toggle-doctor-cuentas">
+              <input type="checkbox" id="toggle-doctor-cuentas">
+              Doctor
             </label>
             <input type="date" id="cuenta-date">
           <input type="search" id="cuenta-search" name="cuenta-search-cobro" placeholder="Buscar paciente o tratamiento" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <select id="cuenta-doctor-filter" class="cobro-forma-pago" aria-label="Filtrar por doctor">
+            <option value="">Todos los doctores</option>
+            <option value="__none__">Sin doctor</option>
+            <option value="__mixed__">Multiples (reasignar)</option>
+          </select>
           <button id="btn-reporte-cobro" class="btn-cobro-secondary" type="button">Reporte PDF</button>
+          <button id="btn-abrir-reporte-mensual" class="btn-cobro-secondary" type="button">Reporte mensual</button>
+          <button id="btn-abrir-faltantes-cobro" class="btn-cobro-secondary" type="button">Faltantes cobro</button>
         </div>
       </div>
 
@@ -376,6 +401,7 @@
               <th>Forma de Pago</th>
               <th>Cantidad</th>
               <th>Tratamiento</th>
+              <th class="cuenta-col-doctor">Doctor</th>
               <th hidden>Fecha</th>
               <th>Quitar</th>
             </tr>
@@ -430,6 +456,94 @@
         </div>
       </div>
     </div>
+
+    <div id="reporte-mensual-modal" class="cobro-modal" hidden>
+      <div class="cobro-modal-backdrop" data-cobro-modal-close="1"></div>
+      <div class="cobro-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reporte-mensual-modal-title">
+        <div class="cobro-modal-header">
+          <h3 id="reporte-mensual-modal-title">Reporte mensual por tratamiento</h3>
+          <button id="btn-cerrar-reporte-mensual" class="btn-cobro-secondary" type="button">Cerrar</button>
+        </div>
+
+        <div class="cuenta-controls cobro-modal-controls">
+          <input type="month" id="reporte-mensual-mes">
+          <select id="reporte-mensual-servicio" class="cobro-forma-pago">
+            <option value="">Seleccione tratamiento</option>
+          </select>
+          <button id="btn-reporte-mensual-pdf" class="btn-cobro-secondary" type="button">Generar reporte mensual PDF</button>
+        </div>
+
+        <div class="cuenta-table-wrap">
+          <table class="cuenta-table">
+            <thead>
+              <tr>
+                <th>Paciente</th>
+                <th style="width:160px;">Cantidad</th>
+                <th style="width:180px;">Monto</th>
+              </tr>
+            </thead>
+            <tbody id="reporte-mensual-tbody"></tbody>
+          </table>
+
+          <div class="cuenta-totales">
+            <div id="reporte-mensual-pacientes" class="cuenta-total-line">
+              <span>PACIENTES UNICOS:</span>
+              <strong>0</strong>
+            </div>
+            <div id="reporte-mensual-cantidad" class="cuenta-total-line">
+              <span>CANTIDAD TOTAL MES:</span>
+              <strong>0</strong>
+            </div>
+            <div id="reporte-mensual-total" class="cuenta-total-line total-final">
+              <span>MONTO TOTAL MES:</span>
+              <strong>$0.00</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="faltantes-cobro-modal" class="cobro-modal" hidden>
+      <div class="cobro-modal-backdrop" data-cobro-modal-close="1"></div>
+      <div class="cobro-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="faltantes-cobro-modal-title">
+        <div class="cobro-modal-header">
+          <h3 id="faltantes-cobro-modal-title">Faltantes de cobro (En Cola)</h3>
+          <button id="btn-cerrar-faltantes-cobro" class="btn-cobro-secondary" type="button">Cerrar</button>
+        </div>
+
+        <div class="faltantes-cobro-meta">
+          <span id="faltantes-cobro-fecha">Fecha: -</span>
+        </div>
+
+        <div class="faltantes-cobro-resumen">
+          <article class="faltantes-cobro-kpi">
+            <span>Atendidos en cola</span>
+            <strong id="faltantes-cobro-atendidos">0</strong>
+          </article>
+          <article class="faltantes-cobro-kpi">
+            <span>Cobrados</span>
+            <strong id="faltantes-cobro-cobrados">0</strong>
+          </article>
+          <article class="faltantes-cobro-kpi is-danger">
+            <span>Faltantes</span>
+            <strong id="faltantes-cobro-total">0</strong>
+          </article>
+        </div>
+
+        <div class="cuenta-table-wrap">
+          <table class="cuenta-table">
+            <thead>
+              <tr>
+                <th>Paciente</th>
+                <th style="width:180px;">Hora</th>
+                <th style="width:180px;">Contacto</th>
+              </tr>
+            </thead>
+            <tbody id="faltantes-cobro-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 `;
 
@@ -453,13 +567,33 @@
     const formaPagoSelect = document.getElementById("forma-pago");
     const inputFecha = document.getElementById("cuenta-date");
     const cuentaSearch = document.getElementById("cuenta-search");
+    const cuentaDoctorFilter = document.getElementById("cuenta-doctor-filter");
     const btnReporteCobro = document.getElementById("btn-reporte-cobro");
+    const btnAbrirReporteMensual = document.getElementById("btn-abrir-reporte-mensual");
+    const btnAbrirFaltantesCobro = document.getElementById("btn-abrir-faltantes-cobro");
     const toggleNumeracionCuentas = document.getElementById("toggle-numeracion-cuentas");
+    const toggleDoctorCuentas = document.getElementById("toggle-doctor-cuentas");
     const cuentaTable = document.querySelector(".cuenta-table");
     const descuentoTbody = document.getElementById("descuento-tbody");
     const descuentoTotalBox = document.getElementById("descuento-total");
     const btnAgregarDescuento = document.getElementById("btn-agregar-descuento");
     const inputDescuentoNombre = document.getElementById("descuento-nombre");
+    const reporteMensualModal = document.getElementById("reporte-mensual-modal");
+    const btnCerrarReporteMensual = document.getElementById("btn-cerrar-reporte-mensual");
+    const inputReporteMensualMes = document.getElementById("reporte-mensual-mes");
+    const selectReporteMensualServicio = document.getElementById("reporte-mensual-servicio");
+    const btnReporteMensualPdf = document.getElementById("btn-reporte-mensual-pdf");
+    const tbodyReporteMensual = document.getElementById("reporte-mensual-tbody");
+    const reporteMensualPacientesBox = document.getElementById("reporte-mensual-pacientes");
+    const reporteMensualCantidadBox = document.getElementById("reporte-mensual-cantidad");
+    const reporteMensualTotalBox = document.getElementById("reporte-mensual-total");
+    const faltantesCobroModal = document.getElementById("faltantes-cobro-modal");
+    const btnCerrarFaltantesCobro = document.getElementById("btn-cerrar-faltantes-cobro");
+    const faltantesCobroFecha = document.getElementById("faltantes-cobro-fecha");
+    const faltantesCobroAtendidos = document.getElementById("faltantes-cobro-atendidos");
+    const faltantesCobroCobrados = document.getElementById("faltantes-cobro-cobrados");
+    const faltantesCobroTotal = document.getElementById("faltantes-cobro-total");
+    const tbodyFaltantesCobro = document.getElementById("faltantes-cobro-tbody");
     const kpiTotalDia = document.getElementById("kpi-total-dia");
     const kpiBrutoDia = document.getElementById("kpi-bruto-dia");
     const kpiEfectivo = document.getElementById("kpi-efectivo");
@@ -472,6 +606,191 @@
     const chartCentroTotal = document.getElementById("chart-centro-total");
     const cashInputs = Array.from(document.querySelectorAll(".cobro-cash-input"));
     const cashGrandTotal = document.getElementById("cash-grand-total");
+
+    function abrirCobroModal(modalEl) {
+      if (!modalEl) return;
+      modalEl.hidden = false;
+      document.body.classList.add("cobro-modal-open");
+    }
+
+    function cerrarCobroModal(modalEl) {
+      if (!modalEl) return;
+      modalEl.hidden = true;
+      const hayModalVisible = !!document.querySelector(".cobro-modal:not([hidden])");
+      if (!hayModalVisible) {
+        document.body.classList.remove("cobro-modal-open");
+      }
+    }
+
+    function abrirReporteMensualModal() {
+      abrirCobroModal(reporteMensualModal);
+    }
+
+    function cerrarReporteMensualModal() {
+      cerrarCobroModal(reporteMensualModal);
+    }
+
+    function abrirFaltantesCobroModal() {
+      abrirCobroModal(faltantesCobroModal);
+    }
+
+    function cerrarFaltantesCobroModal() {
+      cerrarCobroModal(faltantesCobroModal);
+    }
+
+    function normalizarTextoCruce(value) {
+      const raw = String(value || "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+      if (!raw) return "";
+      return raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    }
+
+    function formatearHoraCola(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "-";
+      const m = raw.match(/^(\d{1,2}):(\d{2})$/);
+      if (!m) return raw;
+      let hh = Number(m[1]);
+      const mm = m[2];
+      const period = hh >= 12 ? "pm" : "am";
+      hh = hh % 12;
+      if (hh === 0) hh = 12;
+      return `${hh}:${mm} ${period}`;
+    }
+
+    function renderFaltantesCobro(lista, resumen, fecha) {
+      if (!tbodyFaltantesCobro) return;
+
+      const rows = Array.isArray(lista) ? lista : [];
+      const safeResumen = {
+        atendidosCola: Number(resumen?.atendidosCola || 0),
+        cobrados: Number(resumen?.cobrados || 0),
+        faltantes: Number(resumen?.faltantes || rows.length || 0)
+      };
+
+      if (faltantesCobroFecha) {
+        faltantesCobroFecha.textContent = `Fecha: ${formatearFechaCorta(fecha) || "-"}`;
+      }
+      if (faltantesCobroAtendidos) faltantesCobroAtendidos.textContent = String(safeResumen.atendidosCola);
+      if (faltantesCobroCobrados) faltantesCobroCobrados.textContent = String(safeResumen.cobrados);
+      if (faltantesCobroTotal) faltantesCobroTotal.textContent = String(safeResumen.faltantes);
+
+      tbodyFaltantesCobro.innerHTML = "";
+      if (!rows.length) {
+        tbodyFaltantesCobro.innerHTML = `
+          <tr>
+            <td colspan="3" style="text-align:center;color:#64748b">No hay faltantes por cobrar</td>
+          </tr>
+        `;
+        return;
+      }
+
+      rows.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(row.nombrePaciente || "-")}</td>
+          <td style="text-align:center">${escapeHtml(formatearHoraCola(row.horaAgenda))}</td>
+          <td style="text-align:center">${escapeHtml(row.contacto || "-")}</td>
+        `;
+        tbodyFaltantesCobro.appendChild(tr);
+      });
+    }
+
+    async function cargarFaltantesCobro() {
+      const fecha = String(inputFecha?.value || "").trim();
+      if (!fecha) {
+        faltantesCobroActual = [];
+        faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
+        renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, "");
+        return;
+      }
+
+      renderFaltantesCobro(
+        [],
+        { atendidosCola: 0, cobrados: 0, faltantes: 0 },
+        fecha
+      );
+      if (tbodyFaltantesCobro) {
+        tbodyFaltantesCobro.innerHTML = `
+          <tr>
+            <td colspan="3" style="text-align:center;color:#64748b">Cargando faltantes...</td>
+          </tr>
+        `;
+      }
+
+      try {
+        const res = await fetch(`/api/cola?fecha=${encodeURIComponent(fecha)}`);
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "No se pudo cargar En Cola");
+        }
+
+        const colaDia = Array.isArray(json.data) ? json.data : [];
+        const atendidosMap = new Map();
+        colaDia.forEach((item) => {
+          const estado = String(item?.estado || "").trim().toLowerCase();
+          if (estado !== "atendido") return;
+
+          const key = normalizarTextoCruce(item?.nombrePaciente);
+          if (!key) return;
+
+          const existente = atendidosMap.get(key);
+          if (!existente) {
+            atendidosMap.set(key, {
+              key,
+              nombrePaciente: String(item?.nombrePaciente || "").trim() || "-",
+              horaAgenda: String(item?.horaAgenda || "").trim(),
+              contacto: String(item?.contacto || "").trim()
+            });
+            return;
+          }
+
+          if (!existente.horaAgenda && item?.horaAgenda) {
+            existente.horaAgenda = String(item.horaAgenda || "").trim();
+          }
+          if (!existente.contacto && item?.contacto) {
+            existente.contacto = String(item.contacto || "").trim();
+          }
+        });
+
+        const cobradosSet = new Set();
+        (cuentasActuales || []).forEach((item) => {
+          const key = normalizarTextoCruce(item?.nombrePaciente);
+          if (key) cobradosSet.add(key);
+        });
+
+        const faltantes = Array.from(atendidosMap.values())
+          .filter((item) => !cobradosSet.has(item.key))
+          .map(({ key, ...row }) => row)
+          .sort((a, b) => String(a.nombrePaciente || "").localeCompare(String(b.nombrePaciente || ""), "es", { sensitivity: "base" }));
+
+        faltantesCobroActual = faltantes;
+        faltantesCobroResumenActual = {
+          atendidosCola: atendidosMap.size,
+          cobrados: cobradosSet.size,
+          faltantes: faltantes.length,
+          fecha
+        };
+        renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, fecha);
+      } catch (err) {
+        console.error(err);
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        } else {
+          alert("Opps ocurrio un error de conexion");
+        }
+
+        if (tbodyFaltantesCobro) {
+          tbodyFaltantesCobro.innerHTML = `
+            <tr>
+              <td colspan="3" style="text-align:center;color:#64748b">No se pudieron cargar los faltantes</td>
+            </tr>
+          `;
+        }
+      }
+    }
 
     function blindarInputAutofill(inputEl, nameBase) {
       if (!inputEl) return;
@@ -840,6 +1159,10 @@
           return;
         }
         drawCuentaRows(json.data);
+        aplicarFiltroCuenta();
+        if (faltantesCobroModal && !faltantesCobroModal.hidden) {
+          await cargarFaltantesCobro();
+        }
       } catch (err) {
         console.error(err);
         if (window.notifyConnectionError) {
@@ -858,6 +1181,256 @@
         renderDescuento(json.data);
       } catch (err) {
         console.error(err);
+      }
+    }
+
+    function obtenerPrimerNombreDoctor(nombreCompleto) {
+      const nombre = String(nombreCompleto || "").trim();
+      if (!nombre) return "";
+      const partes = nombre.split(/\s+/).filter(Boolean);
+      return partes[0] || "";
+    }
+
+    function normalizarDoctorCuenta(raw) {
+      const idDoctor = Number(raw?.idDoctor || 0);
+      if (!Number.isInteger(idDoctor) || idDoctor <= 0) return null;
+      const nombreDCompleto = String(raw?.nombreD || "").trim();
+      const nombreD = obtenerPrimerNombreDoctor(nombreDCompleto) || `Doctor ${idDoctor}`;
+      return { idDoctor, nombreD };
+    }
+
+    function aplicarColorDoctorCuentaSelect(selectEl, selectedValue) {
+      if (!selectEl) return;
+      selectEl.classList.remove("is-doctor", "is-no-doctor", "is-mixed");
+      const raw = String(selectedValue ?? "").trim();
+      if (raw === "__mixed__") {
+        selectEl.classList.add("is-mixed");
+        return;
+      }
+      if (!raw) {
+        selectEl.classList.add("is-no-doctor");
+        return;
+      }
+      selectEl.classList.add("is-doctor");
+    }
+
+    function construirOpcionesDoctorCuenta(selectEl, selectedDoctorId = null, doctorMixto = false) {
+      if (!selectEl) return;
+      const selected = Number(selectedDoctorId || 0) || null;
+      selectEl.innerHTML = "";
+
+      if (doctorMixto) {
+        const optMixed = document.createElement("option");
+        optMixed.value = "__mixed__";
+        optMixed.textContent = "Multiples (reasignar)";
+        selectEl.appendChild(optMixed);
+      }
+
+      const optSinDoctor = document.createElement("option");
+      optSinDoctor.value = "";
+      optSinDoctor.textContent = "Sin doctor";
+      selectEl.appendChild(optSinDoctor);
+
+      doctoresCuentaData.forEach((doc) => {
+        const opt = document.createElement("option");
+        opt.value = String(doc.idDoctor);
+        opt.textContent = doc.nombreD;
+        selectEl.appendChild(opt);
+      });
+
+      if (selected && !doctoresCuentaData.some((d) => d.idDoctor === selected)) {
+        const optFallback = document.createElement("option");
+        optFallback.value = String(selected);
+        optFallback.textContent = `Doctor ${selected}`;
+        selectEl.appendChild(optFallback);
+      }
+
+      if (doctorMixto) {
+        selectEl.value = "__mixed__";
+      } else {
+        selectEl.value = selected ? String(selected) : "";
+      }
+      selectEl.dataset.prevValue = selectEl.value;
+      aplicarColorDoctorCuentaSelect(selectEl, selectEl.value);
+    }
+
+    function construirOpcionesFiltroDoctorCuenta() {
+      if (!cuentaDoctorFilter) return;
+      const selectedRaw = String(cuentaDoctorFilter.value || "");
+      cuentaDoctorFilter.innerHTML = "";
+
+      const optTodos = document.createElement("option");
+      optTodos.value = "";
+      optTodos.textContent = "Todos los doctores";
+      cuentaDoctorFilter.appendChild(optTodos);
+
+      const optSinDoctor = document.createElement("option");
+      optSinDoctor.value = "__none__";
+      optSinDoctor.textContent = "Sin doctor";
+      cuentaDoctorFilter.appendChild(optSinDoctor);
+
+      const optMixed = document.createElement("option");
+      optMixed.value = "__mixed__";
+      optMixed.textContent = "Multiples (reasignar)";
+      cuentaDoctorFilter.appendChild(optMixed);
+
+      doctoresCuentaData.forEach((doc) => {
+        const opt = document.createElement("option");
+        opt.value = String(doc.idDoctor);
+        opt.textContent = doc.nombreD;
+        cuentaDoctorFilter.appendChild(opt);
+      });
+
+      const optionExists = Array.from(cuentaDoctorFilter.options).some((o) => o.value === selectedRaw);
+      cuentaDoctorFilter.value = optionExists ? selectedRaw : "";
+    }
+
+    async function cargarDoctoresCuenta(force = false) {
+      if (!force && cargarDoctoresCuentaPromise) return cargarDoctoresCuentaPromise;
+
+      cargarDoctoresCuentaPromise = (async () => {
+        try {
+          const res = await fetch("/api/doctor/select", { cache: "no-store" });
+          const json = await res.json();
+          if (!res.ok || !json.ok || !Array.isArray(json.data)) {
+            doctoresCuentaData = [];
+            construirOpcionesFiltroDoctorCuenta();
+            return;
+          }
+          doctoresCuentaData = json.data
+            .map(normalizarDoctorCuenta)
+            .filter(Boolean);
+          construirOpcionesFiltroDoctorCuenta();
+
+          if (Array.isArray(cuentasActuales) && cuentasActuales.length > 0) {
+            aplicarFiltroCuenta();
+          }
+        } catch (err) {
+          console.error(err);
+          doctoresCuentaData = [];
+          construirOpcionesFiltroDoctorCuenta();
+        } finally {
+          cargarDoctoresCuentaPromise = null;
+        }
+      })();
+
+      return cargarDoctoresCuentaPromise;
+    }
+
+    async function cargarServiciosReporteMensual() {
+      try {
+        const actual = String(selectReporteMensualServicio?.value || "");
+        const res = await fetch("/api/servicio");
+        const json = await res.json();
+        if (!json.ok || !Array.isArray(json.data)) return;
+
+        selectReporteMensualServicio.innerHTML = "";
+        const optTodos = document.createElement("option");
+        optTodos.value = "";
+        optTodos.textContent = "Seleccione tratamiento";
+        selectReporteMensualServicio.appendChild(optTodos);
+
+        json.data.forEach((s) => {
+          const idServicio = Number(s.idServicio);
+          if (!Number.isInteger(idServicio) || idServicio <= 0) return;
+          const nombre = String(s.nombreS || "").trim();
+          if (!nombre) return;
+
+          const opt = document.createElement("option");
+          opt.value = String(idServicio);
+          opt.textContent = nombre;
+          selectReporteMensualServicio.appendChild(opt);
+        });
+
+        if (actual && Array.from(selectReporteMensualServicio.options).some((o) => o.value === actual)) {
+          selectReporteMensualServicio.value = actual;
+        } else {
+          selectReporteMensualServicio.value = "";
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    function renderReporteMensual(lista, totales) {
+      tbodyReporteMensual.innerHTML = "";
+      const rows = Array.isArray(lista) ? lista : [];
+      const safeTotales = {
+        pacientesUnicos: Number(totales?.pacientesUnicos || 0),
+        cantidadTotalMes: Number(totales?.cantidadTotalMes || 0),
+        montoTotalMes: Number(totales?.montoTotalMes || 0)
+      };
+
+      if (rows.length === 0) {
+        tbodyReporteMensual.innerHTML = `
+          <tr>
+            <td colspan="3" style="text-align:center;color:#64748b">No hay pacientes para el tratamiento y mes seleccionado</td>
+          </tr>
+        `;
+      } else {
+        rows.forEach((item) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${escapeHtml(item.nombrePaciente || "-")}</td>
+            <td style="text-align:center">${Number(item.cantidadPaciente || 0)}</td>
+            <td style="text-align:right">${precioUSD(Number(item.montoPaciente || 0))}</td>
+          `;
+          tbodyReporteMensual.appendChild(tr);
+        });
+      }
+
+      const strongPacientes = reporteMensualPacientesBox?.querySelector("strong");
+      const strongCantidad = reporteMensualCantidadBox?.querySelector("strong");
+      const strongTotal = reporteMensualTotalBox?.querySelector("strong");
+      if (strongPacientes) {
+        strongPacientes.textContent = String(safeTotales.pacientesUnicos);
+      }
+      if (strongCantidad) {
+        strongCantidad.textContent = String(safeTotales.cantidadTotalMes);
+      }
+      if (strongTotal) {
+        strongTotal.textContent = precioUSD(safeTotales.montoTotalMes);
+      }
+    }
+
+    async function cargarReporteMensual() {
+      const mes = String(inputReporteMensualMes?.value || "").trim();
+      const idServicio = String(selectReporteMensualServicio?.value || "").trim();
+
+      if (!mes || !idServicio) {
+        reporteMensualActual = [];
+        reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+        reporteMensualFiltroActual = null;
+        renderReporteMensual(reporteMensualActual, reporteMensualTotalesActual);
+        return;
+      }
+
+      try {
+        const query = new URLSearchParams({ mes, idServicio });
+
+        const res = await fetch(`/api/cuenta/reporte-mensual-pacientes?${query.toString()}`);
+        const json = await res.json();
+        if (!json.ok) {
+          alert(json.message || "Error al cargar reporte mensual");
+          return;
+        }
+
+        reporteMensualActual = Array.isArray(json.data) ? json.data : [];
+        reporteMensualFiltroActual = json.filtroServicio || null;
+        reporteMensualTotalesActual = {
+          pacientesUnicos: Number(json.totales?.pacientesUnicos || 0),
+          cantidadTotalMes: Number(json.totales?.cantidadTotalMes || 0),
+          montoTotalMes: Number(json.totales?.montoTotalMes || 0)
+        };
+
+        renderReporteMensual(reporteMensualActual, reporteMensualTotalesActual);
+      } catch (err) {
+        console.error(err);
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        } else {
+          alert("Opps ocurrio un error de conexion");
+        }
       }
     }
 
@@ -1026,6 +1599,120 @@
       }
     }
 
+    function generarReporteMensualPdf() {
+      const mes = String(inputReporteMensualMes?.value || "").trim();
+      if (!mes) {
+        alert("Seleccione un mes");
+        return;
+      }
+
+      if (!Array.isArray(reporteMensualActual) || reporteMensualActual.length === 0) {
+        alert("No hay datos para generar el reporte mensual");
+        return;
+      }
+
+      const jsPdfCtor = window.jspdf?.jsPDF;
+      if (typeof jsPdfCtor !== "function") {
+        alert("No se encontro el motor PDF");
+        return;
+      }
+      if (typeof jsPdfCtor.API?.autoTable !== "function") {
+        alert("No se encontro el plugin de tablas PDF");
+        return;
+      }
+
+      const labelOriginal = btnReporteMensualPdf?.textContent || "Generar reporte mensual PDF";
+      if (btnReporteMensualPdf) {
+        btnReporteMensualPdf.disabled = true;
+        btnReporteMensualPdf.textContent = "Generando...";
+      }
+
+      try {
+        const usuario = textoSeguro(document.getElementById("top-user-name")?.textContent) || "Usuario";
+        const tratamientoFiltro = reporteMensualFiltroActual?.nombre
+          || selectReporteMensualServicio?.selectedOptions?.[0]?.textContent
+          || "Tratamiento no definido";
+
+        const doc = new jsPdfCtor({
+          orientation: "portrait",
+          unit: "pt",
+          format: "a4"
+        });
+
+        const marginX = 32;
+        const pageWidth = doc.internal.pageSize.getWidth();
+        let y = 38;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(15);
+        doc.text("Sistema Clinica", marginX, y);
+
+        y += 16;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.text("Reporte mensual por pacientes y tratamiento", marginX, y);
+        doc.text(`Mes: ${formatearMesCorto(mes)}`, marginX, y + 13);
+        doc.text(`Tratamiento: ${textoSeguro(tratamientoFiltro)}`, marginX, y + 26);
+        doc.text(`Generado por: ${usuario}`, marginX, y + 39);
+        doc.text(
+          `Generado: ${new Date().toLocaleString("es-SV", { hour12: true })}`,
+          pageWidth - marginX,
+          y + 39,
+          { align: "right" }
+        );
+
+        y += 52;
+
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          theme: "grid",
+          head: [["Resumen mensual", "Valor"]],
+          body: [
+            ["Pacientes unicos", String(Number(reporteMensualTotalesActual.pacientesUnicos || 0))],
+            ["Cantidad total", String(Number(reporteMensualTotalesActual.cantidadTotalMes || 0))],
+            ["Monto total", precioUSD(Number(reporteMensualTotalesActual.montoTotalMes || 0))]
+          ],
+          styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, overflow: "linebreak" },
+          headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: "bold", fontSize: 8.2 }
+        });
+
+        y = (doc.lastAutoTable?.finalY || y) + 8;
+
+        const filasMensuales = reporteMensualActual.map((r) => ([
+          textoSeguro(r.nombrePaciente) || "-",
+          String(Number(r.cantidadPaciente || 0)),
+          precioUSD(Number(r.montoPaciente || 0))
+        ]));
+
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          theme: "striped",
+          head: [["Paciente", "Cantidad", "Monto"]],
+          body: filasMensuales,
+          styles: { fontSize: 7.8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, overflow: "linebreak" },
+          headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold", fontSize: 8 },
+          columnStyles: {
+            0: { cellWidth: 280 },
+            1: { cellWidth: 120, halign: "center" },
+            2: { cellWidth: 140, halign: "right" }
+          }
+        });
+
+        const suffix = selectReporteMensualServicio?.value ? `-servicio-${selectReporteMensualServicio.value}` : "";
+        doc.save(`reporte-cobro-mensual-${mes}${suffix}.pdf`);
+      } catch (err) {
+        console.error(err);
+        alert("No se pudo generar el reporte mensual PDF");
+      } finally {
+        if (btnReporteMensualPdf) {
+          btnReporteMensualPdf.disabled = false;
+          btnReporteMensualPdf.textContent = labelOriginal;
+        }
+      }
+    }
+
     function calcularTotalesCuentas(lista) {
       const subTotal = lista.reduce((acc, c) => acc + Number(c.totalC || 0), 0);
       document.getElementById("cuenta-subtotal").querySelector("strong").textContent = `$${subTotal.toFixed(2)}`;
@@ -1036,19 +1723,27 @@
       return !!toggleNumeracionCuentas?.checked;
     }
 
-    function getCuentaColspan() {
-      return numeracionActiva() ? 7 : 6;
+    function doctorColumnaActiva() {
+      return !!toggleDoctorCuentas?.checked;
     }
 
-    function aplicarVisibilidadNumeracionCuenta() {
+    function getCuentaColspan() {
+      let total = 8;
+      if (!numeracionActiva()) total -= 1;
+      if (!doctorColumnaActiva()) total -= 1;
+      return total;
+    }
+
+    function aplicarVisibilidadColumnasCuenta() {
       if (!cuentaTable) return;
       cuentaTable.classList.toggle("hide-numeracion", !numeracionActiva());
+      cuentaTable.classList.toggle("hide-doctor", !doctorColumnaActiva());
     }
 
     function drawCuentaRows(list, syncSource = true) {
       if (syncSource) cuentasActuales = list;
       actualizarDashboardDia();
-      aplicarVisibilidadNumeracionCuenta();
+      aplicarVisibilidadColumnasCuenta();
       const tbodyCuenta = document.getElementById("cuenta-tbody");
       tbodyCuenta.innerHTML = "";
 
@@ -1073,6 +1768,8 @@
         const cantidadRaw = Number(c.cantidadTotal);
         const cantidadText = Number.isFinite(cantidadRaw) ? String(cantidadRaw) : "-";
         const tratamientoHtml = renderProcedimientoVisual(c.procedimientos);
+        const idDoctorCuenta = Number(c.idDoctorCuenta || 0) || null;
+        const doctorMixto = Number(c.doctorMixto || 0) === 1;
         tr.innerHTML = `
           <td class="cuenta-col-num">${index + 1}</td>
           <td>${c.nombrePaciente}</td>
@@ -1080,9 +1777,58 @@
           <td>${formaPagoHtml}</td>
           <td style="text-align:center">${cantidadText}</td>
           <td>${tratamientoHtml}</td>
+          <td class="cuenta-doctor-cell cuenta-col-doctor"></td>
           <td hidden>${formatearFecha(c.fechaC)}</td>
           <td style="text-align:center"><button class="cobro-btn-remove" title="Eliminar cuenta">x</button></td>
         `;
+
+        const tdDoctor = tr.querySelector(".cuenta-doctor-cell");
+        const selectDoctor = document.createElement("select");
+        selectDoctor.className = "cuenta-doctor-select cobro-forma-pago";
+        construirOpcionesDoctorCuenta(selectDoctor, idDoctorCuenta, doctorMixto);
+        selectDoctor.addEventListener("change", async () => {
+          const previo = String(selectDoctor.dataset.prevValue || "");
+          const seleccionado = String(selectDoctor.value || "");
+          if (seleccionado === "__mixed__") {
+            selectDoctor.value = previo;
+            aplicarColorDoctorCuentaSelect(selectDoctor, selectDoctor.value);
+            return;
+          }
+
+          const idDoctor = seleccionado === "" ? null : Number(seleccionado);
+          if (idDoctor !== null && (!Number.isInteger(idDoctor) || idDoctor <= 0)) {
+            alert("Doctor invalido");
+            selectDoctor.value = previo;
+            aplicarColorDoctorCuentaSelect(selectDoctor, selectDoctor.value);
+            return;
+          }
+
+          aplicarColorDoctorCuentaSelect(selectDoctor, seleccionado);
+          selectDoctor.disabled = true;
+          try {
+            const res = await fetch(`/api/cuenta/${c.idCuenta}/doctor`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ idDoctor })
+            });
+            const json = await res.json();
+            if (!res.ok || !json.ok) {
+              throw new Error(json.message || "No se pudo actualizar doctor");
+            }
+
+            const fecha = document.getElementById("cuenta-date").value;
+            if (fecha) {
+              await cargarCuentasPorFecha(fecha);
+            }
+          } catch (err) {
+            alert(err.message || "Error al asignar doctor");
+            selectDoctor.disabled = false;
+            selectDoctor.value = previo;
+            aplicarColorDoctorCuentaSelect(selectDoctor, selectDoctor.value);
+            return;
+          }
+        });
+        if (tdDoctor) tdDoctor.appendChild(selectDoctor);
 
         tr.querySelector("button").addEventListener("click", async () => {
           const ok = typeof window.showSystemConfirm === "function"
@@ -1109,14 +1855,30 @@
 
     function aplicarFiltroCuenta() {
       const q = (cuentaSearch.value || "").trim().toLowerCase();
-      if (!q) {
+      const doctorFiltro = String(cuentaDoctorFilter?.value || "").trim();
+      if (!q && !doctorFiltro) {
         drawCuentaRows(cuentasActuales, false);
         return;
       }
-      const filtradas = cuentasActuales.filter((c) =>
-        String(c.nombrePaciente || "").toLowerCase().includes(q) ||
-        String(c.procedimientos || "").toLowerCase().includes(q)
-      );
+
+      const filtradas = cuentasActuales.filter((c) => {
+        const matchTexto = !q ||
+          String(c.nombrePaciente || "").toLowerCase().includes(q) ||
+          String(c.procedimientos || "").toLowerCase().includes(q) ||
+          String(c.nombreDoctorCuenta || "").toLowerCase().includes(q);
+
+        if (!matchTexto) return false;
+        if (!doctorFiltro) return true;
+
+        const doctorMixto = Number(c.doctorMixto || 0) === 1;
+        const idDoctorCuenta = Number(c.idDoctorCuenta || 0);
+        const tieneDoctorValido = Number.isInteger(idDoctorCuenta) && idDoctorCuenta > 0;
+
+        if (doctorFiltro === "__none__") return !doctorMixto && !tieneDoctorValido;
+        if (doctorFiltro === "__mixed__") return doctorMixto;
+        return tieneDoctorValido && String(idDoctorCuenta) === doctorFiltro;
+      });
+
       drawCuentaRows(filtradas, false);
     }
 
@@ -1198,19 +1960,71 @@
       cargarCuentasPorFecha(inputFecha.value);
       cargarDescuentosPorFecha(inputFecha.value);
     });
+    btnAbrirReporteMensual?.addEventListener("click", () => {
+      abrirReporteMensualModal();
+      cargarServiciosReporteMensual().then(cargarReporteMensual);
+    });
+    btnCerrarReporteMensual?.addEventListener("click", cerrarReporteMensualModal);
+    reporteMensualModal?.addEventListener("click", (e) => {
+      if (e.target?.closest?.("[data-cobro-modal-close]")) {
+        cerrarReporteMensualModal();
+      }
+    });
+    btnAbrirFaltantesCobro?.addEventListener("click", () => {
+      abrirFaltantesCobroModal();
+      cargarFaltantesCobro();
+    });
+    btnCerrarFaltantesCobro?.addEventListener("click", cerrarFaltantesCobroModal);
+    faltantesCobroModal?.addEventListener("click", (e) => {
+      if (e.target?.closest?.("[data-cobro-modal-close]")) {
+        cerrarFaltantesCobroModal();
+      }
+    });
+    if (!window.__cobroModalEscHandler) {
+      window.__cobroModalEscHandler = (e) => {
+        if (e.key !== "Escape") return;
+        const modalMensual = document.getElementById("reporte-mensual-modal");
+        const modalFaltantes = document.getElementById("faltantes-cobro-modal");
+        const hayMensualAbierto = modalMensual && !modalMensual.hidden;
+        const hayFaltantesAbierto = modalFaltantes && !modalFaltantes.hidden;
+        if (!hayMensualAbierto && !hayFaltantesAbierto) return;
+        if (hayFaltantesAbierto) {
+          modalFaltantes.hidden = true;
+        }
+        if (hayMensualAbierto) {
+          modalMensual.hidden = true;
+        }
+        document.body.classList.remove("cobro-modal-open");
+      };
+      document.addEventListener("keydown", window.__cobroModalEscHandler);
+    }
+    inputReporteMensualMes?.addEventListener("change", cargarReporteMensual);
+    selectReporteMensualServicio?.addEventListener("change", cargarReporteMensual);
 
     cuentaSearch.addEventListener("input", aplicarFiltroCuenta);
+    cuentaDoctorFilter?.addEventListener("change", aplicarFiltroCuenta);
     toggleNumeracionCuentas?.addEventListener("change", () => {
-      aplicarVisibilidadNumeracionCuenta();
+      aplicarVisibilidadColumnasCuenta();
+      aplicarFiltroCuenta();
+    });
+    toggleDoctorCuentas?.addEventListener("change", () => {
+      aplicarVisibilidadColumnasCuenta();
       aplicarFiltroCuenta();
     });
     btnReporteCobro?.addEventListener("click", generarReporteCobroPdf);
-    aplicarVisibilidadNumeracionCuenta();
+    btnReporteMensualPdf?.addEventListener("click", generarReporteMensualPdf);
+    aplicarVisibilidadColumnasCuenta();
+    construirOpcionesFiltroDoctorCuenta();
 
     const hoy = new Date().toISOString().split("T")[0];
+    const mesActual = hoy.slice(0, 7);
     inputFecha.value = hoy;
-    cargarCuentasPorFecha(hoy);
+    if (inputReporteMensualMes) {
+      inputReporteMensualMes.value = mesActual;
+    }
+    cargarDoctoresCuenta().finally(() => cargarCuentasPorFecha(hoy));
     cargarDescuentosPorFecha(hoy);
+    cargarServiciosReporteMensual();
 
     const prefillFromAgenda = window.__agendaCobroPrefillPatient;
     window.__agendaCobroPrefillPatient = null;
@@ -1241,6 +2055,13 @@
     pacienteActual = null;
     cuentasActuales = [];
     totalDescuentoActual = 0;
+    reporteMensualActual = [];
+    reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+    reporteMensualFiltroActual = null;
+    faltantesCobroActual = [];
+    faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
+    doctoresCuentaData = [];
+    cargarDoctoresCuentaPromise = null;
 
     renderCobro(content);
 
@@ -1250,12 +2071,23 @@
         pacienteActual = null;
         cuentasActuales = [];
         totalDescuentoActual = 0;
+        reporteMensualActual = [];
+        reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+        reporteMensualFiltroActual = null;
+        faltantesCobroActual = [];
+        faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
+        doctoresCuentaData = [];
+        cargarDoctoresCuentaPromise = null;
 
         const inputPaciente = document.getElementById("buscar-paciente");
         const inputServicio = document.getElementById("buscar-servicio");
         const formaPago = document.getElementById("forma-pago");
         const inputFecha = document.getElementById("cuenta-date");
         const inputCuentaSearch = document.getElementById("cuenta-search");
+        const inputCuentaDoctorFilter = document.getElementById("cuenta-doctor-filter");
+        const inputReporteMes = document.getElementById("reporte-mensual-mes");
+        const selectReporteServicio = document.getElementById("reporte-mensual-servicio");
+        const faltantesCobroModal = document.getElementById("faltantes-cobro-modal");
         const inputDescuentoNombre = document.getElementById("descuento-nombre");
         const inputDescuentoCantidad = document.getElementById("descuento-cantidad");
 
@@ -1273,7 +2105,10 @@
         if (inputPaciente) inputPaciente.value = "";
         if (inputServicio) inputServicio.value = "";
         if (inputCuentaSearch) inputCuentaSearch.value = "";
+        if (inputCuentaDoctorFilter) inputCuentaDoctorFilter.value = "";
         if (inputFecha) inputFecha.value = "";
+        if (inputReporteMes) inputReporteMes.value = "";
+        if (selectReporteServicio) selectReporteServicio.value = "";
         if (inputDescuentoNombre) inputDescuentoNombre.value = "";
         if (inputDescuentoCantidad) inputDescuentoCantidad.value = "";
 
@@ -1291,10 +2126,20 @@
         const emptyState = document.getElementById("cobro-empty-state");
         const tbodyCobro = document.getElementById("cobro-tbody");
         const tbodyCuenta = document.getElementById("cuenta-tbody");
+        const tbodyReporteMensual = document.getElementById("reporte-mensual-tbody");
+        const tbodyFaltantesCobro = document.getElementById("faltantes-cobro-tbody");
         const tbodyDescuento = document.getElementById("descuento-tbody");
         const totalDescuento = document.getElementById("descuento-total");
         const cuentaSubtotal = document.getElementById("cuenta-subtotal");
         const cuentaTotal = document.getElementById("cuenta-total");
+        const reporteMensualModal = document.getElementById("reporte-mensual-modal");
+        const reporteMensualPacientes = document.getElementById("reporte-mensual-pacientes");
+        const reporteMensualCantidad = document.getElementById("reporte-mensual-cantidad");
+        const reporteMensualTotal = document.getElementById("reporte-mensual-total");
+        const faltantesCobroAtendidos = document.getElementById("faltantes-cobro-atendidos");
+        const faltantesCobroCobrados = document.getElementById("faltantes-cobro-cobrados");
+        const faltantesCobroTotal = document.getElementById("faltantes-cobro-total");
+        const faltantesCobroFecha = document.getElementById("faltantes-cobro-fecha");
 
         if (pacienteSeleccionado) pacienteSeleccionado.textContent = "Sin paciente seleccionado";
         if (resumenPaciente) resumenPaciente.textContent = "Sin seleccionar";
@@ -1305,6 +2150,8 @@
         if (emptyState) emptyState.style.display = "block";
         if (tbodyCobro) tbodyCobro.innerHTML = "";
         if (tbodyCuenta) tbodyCuenta.innerHTML = "";
+        if (tbodyReporteMensual) tbodyReporteMensual.innerHTML = "";
+        if (tbodyFaltantesCobro) tbodyFaltantesCobro.innerHTML = "";
         if (tbodyDescuento) tbodyDescuento.innerHTML = "";
         if (totalDescuento) {
           const strong = totalDescuento.querySelector("strong");
@@ -1318,6 +2165,25 @@
           const strong = cuentaTotal.querySelector("strong");
           if (strong) strong.textContent = "$0.00";
         }
+        if (reporteMensualModal) reporteMensualModal.hidden = true;
+        if (faltantesCobroModal) faltantesCobroModal.hidden = true;
+        document.body.classList.remove("cobro-modal-open");
+        if (reporteMensualPacientes) {
+          const strong = reporteMensualPacientes.querySelector("strong");
+          if (strong) strong.textContent = "0";
+        }
+        if (reporteMensualCantidad) {
+          const strong = reporteMensualCantidad.querySelector("strong");
+          if (strong) strong.textContent = "0";
+        }
+        if (reporteMensualTotal) {
+          const strong = reporteMensualTotal.querySelector("strong");
+          if (strong) strong.textContent = "$0.00";
+        }
+        if (faltantesCobroAtendidos) faltantesCobroAtendidos.textContent = "0";
+        if (faltantesCobroCobrados) faltantesCobroCobrados.textContent = "0";
+        if (faltantesCobroTotal) faltantesCobroTotal.textContent = "0";
+        if (faltantesCobroFecha) faltantesCobroFecha.textContent = "Fecha: -";
 
         const stepPaciente = document.getElementById("step-paciente");
         const stepServicio = document.getElementById("step-servicio");

@@ -20,6 +20,21 @@ router.get(
   role(["Administrador", "Recepcion"]),
   controller.listarPorFecha
 );
+
+// REPORTE MENSUAL POR TRATAMIENTO
+router.get(
+  "/reporte-mensual",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.listarReporteMensual
+);
+
+router.get(
+  "/reporte-mensual-pacientes",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.listarReporteMensualPacientes
+);
 // DESCUENTOS
 router.post(
   "/descuento",
@@ -40,6 +55,13 @@ router.delete(
   auth,
   role(["Administrador", "Recepcion"]),
   controller.eliminarDescuento
+);
+
+router.put(
+  "/:id/doctor",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.actualizarDoctorCuenta
 );
 // ELIMINAR CUENTA
 router.delete(
