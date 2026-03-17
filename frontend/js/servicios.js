@@ -14,6 +14,11 @@
     if (Number.isInteger(num)) return `$${num}`;
     return `$${num.toFixed(2)}`;
   }
+  function renderIcon(name, className) {
+    const registry = window.__uiIcons;
+    if (!registry || typeof registry.get !== "function") return "";
+    return registry.get(name, { className: className || "ui-action-icon" });
+  }
 
   // =========================================
   // UTIL: crear modal mínimo (si falta en el HTML)
@@ -52,16 +57,19 @@
         <div class="servicios-header">
           <div class="servicios-title">Servicios</div>
 
-          <div class="servicios-controls">
+          <div class="servicios-controls ui-toolbar">
             <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
             <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
-            <input type="search" id="servicio-search" name="servicio-search-lista" placeholder="Buscar servicio..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-            <button id="servicio-add" class="btn-cobrar" style="background:#1eab3a">Agregar Servicio</button>
+            <input class="ui-control ui-control-search" type="search" id="servicio-search" name="servicio-search-lista" placeholder="Buscar servicio..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <button id="servicio-add" class="ui-toolbar-btn is-success">
+              ${renderIcon("plus", "ui-toolbar-icon")}
+              <span>Agregar Servicio</span>
+            </button>
           </div>
         </div>
 
-        <div class="servicios-table-wrap">
-          <table class="servicios-table">
+        <div class="servicios-table-wrap ui-table-wrap-compact">
+          <table class="servicios-table ui-table-compact">
             <thead>
               <tr>
                 <th>Nombre</th>
@@ -257,10 +265,12 @@ if (!window.__serviciosEscHandler) {
 
         const tdAcciones = document.createElement("td");
         tdAcciones.style.textAlign = "center";
+        const actionGroup = document.createElement("div");
+        actionGroup.className = "servicios-actions ui-action-group";
         const btnEliminar = document.createElement("button");
         btnEliminar.type = "button";
-        btnEliminar.className = "servicio-btn-delete";
-        btnEliminar.textContent = "x";
+        btnEliminar.className = "servicio-btn-delete ui-action-btn is-danger";
+        btnEliminar.innerHTML = renderIcon("trash");
         btnEliminar.title = "Eliminar";
         btnEliminar.setAttribute("aria-label", "Eliminar servicio");
         btnEliminar.addEventListener("click", async () => {
@@ -282,7 +292,8 @@ if (!window.__serviciosEscHandler) {
             btnEliminar.disabled = false;
           }
         });
-        tdAcciones.appendChild(btnEliminar);
+        actionGroup.appendChild(btnEliminar);
+        tdAcciones.appendChild(actionGroup);
         tr.appendChild(tdAcciones);
 
         tbody.appendChild(tr);

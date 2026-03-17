@@ -1,5 +1,13 @@
 # Vista Servicios
 
+## Estandar visual compartido
+- La vista usa el mismo patron visual de Agenda para componentes base:
+  - Toolbar: `ui-toolbar`, `ui-control`, `ui-toolbar-btn`.
+  - Tabla: `ui-table-wrap-compact`, `ui-table-compact`.
+  - Acciones por fila: `ui-action-btn` (icon-only).
+- Iconos Heroicons inline desde `window.__uiIcons` (`frontend/js/uiIcons.js`), sin CDN.
+- Sin cambios en logica, endpoints, SQL ni payloads.
+
 ## Frontend
 - Archivo: `frontend/js/servicios.js`.
 - Funciones principales:
@@ -11,7 +19,9 @@
   - filtrar por texto.
 - Tabla:
   - columnas `Nombre`, `Precio`, `Acciones`.
-  - accion por fila: boton `Eliminar`.
+  - accion por fila icon-only: `Eliminar` (`trash`).
+- Toolbar:
+  - `Agregar Servicio` (texto + icono `plus`).
 
 ## Flujo
 1. Carga lista con `GET /api/servicio`.

@@ -1,6 +1,9 @@
 name: Release Windows EXE
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
@@ -31,6 +34,7 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             backend/package-lock.json
+            electron-app/package-lock.json
 
       - name: Install root dependencies
         run: npm ci
@@ -38,11 +42,24 @@ jobs:
       - name: Install backend dependencies
         run: npm run install:backend
 
+      - name: Install electron app dependencies
+        run: npm --prefix electron-app ci
+
       - name: Validate BACKEND_ENV secret exists
         shell: pwsh
         run: |
           if ([string]::IsNullOrWhiteSpace("${{ secrets.BACKEND_ENV }}")) {
             throw "Missing required secret: BACKEND_ENV"
+          }
+
+      - name: Validate Windows signing secrets
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_CERT_PFX_BASE64 }}")) {
+            throw "Missing required secret: WINDOWS_CERT_PFX_BASE64"
+          }
+          if ([string]::IsNullOrWhiteSpace("${{ secrets.WINDOWS_CERT_PASSWORD }}")) {
+            throw "Missing required secret: WINDOWS_CERT_PASSWORD"
           }
 
       - name: Create backend .env from GitHub Secret
@@ -56,13 +73,21 @@ jobs:
             throw "backend/.env was not created correctly"
           }
 
+      - name: Prepare Windows signing certificate
+        shell: pwsh
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP "windows-signing.pfx"
+          [System.IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String("${{ secrets.WINDOWS_CERT_PFX_BASE64 }}"))
+          "CSC_LINK=$certPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "CSC_KEY_PASSWORD=${{ secrets.WINDOWS_CERT_PASSWORD }}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Show local electron-builder version
         shell: pwsh
         run: |
           node -e "console.log(require('./node_modules/electron-builder/package.json').version)"
 
       - name: Build Windows installer (x64)
-        run: npm run dist:win -- --x64 --config.win.signAndEditExecutable=false --config.forceCodeSigning=false
+        run: npm run dist:win -- --x64
 
       - name: Validate EXE output exists
         shell: pwsh
@@ -84,6 +109,15 @@ jobs:
           }
           Write-Host $runtimeServer.FullName
 
+      - name: Validate latest.yml output exists
+        shell: pwsh
+        run: |
+          $latest = Get-ChildItem -Path "dist-electron" -Filter "latest.yml" -File -Recurse | Select-Object -First 1
+          if (-not $latest) {
+            throw "latest.yml was not generated in dist-electron/"
+          }
+          Write-Host $latest.FullName
+
       - name: Upload Windows artifact (backup)
         uses: actions/upload-artifact@v4
         with:
@@ -91,6 +125,7 @@ jobs:
           path: |
             dist-electron/*.exe
             dist-electron/*.exe.blockmap
+            dist-electron/latest.yml
           if-no-files-found: error
 
       - name: Publish assets to GitHub Release
@@ -100,5 +135,6 @@ jobs:
           files: |
             dist-electron/*.exe
             dist-electron/*.exe.blockmap
+            dist-electron/latest.yml
           fail_on_unmatched_files: false
           generate_release_notes: true

@@ -9,6 +9,12 @@
     // =========================================
     // FUNCIÓN PRINCIPAL PARA CARGAR LA VISTA
     // =========================================
+    function renderIcon(name, className) {
+        const registry = window.__uiIcons;
+        if (!registry || typeof registry.get !== "function") return "";
+        return registry.get(name, { className: className || "ui-action-icon" });
+    }
+
     function renderDoctor(container) {
 
         container.innerHTML = `
@@ -17,16 +23,19 @@
             <div class="doctor-header">
                 <div class="doctor-title">Doctores</div>
 
-                <div class="doctor-controls">
+                <div class="doctor-controls ui-toolbar">
                     <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
                     <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
-                    <input type="search" id="doctor-search" name="doctor-search-lista" placeholder="Buscar doctor..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-                    <button id="doctor-add" class="btn-add-doctor">Registrar Doctor</button>
+                    <input class="ui-control ui-control-search" type="search" id="doctor-search" name="doctor-search-lista" placeholder="Buscar doctor..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+                    <button id="doctor-add" class="ui-toolbar-btn is-success">
+                        ${renderIcon("plus", "ui-toolbar-icon")}
+                        <span>Registrar Doctor</span>
+                    </button>
                 </div>
             </div>
 
-            <div class="doctor-table-wrap">
-                <table class="doctor-table">
+            <div class="doctor-table-wrap ui-table-wrap-compact">
+                <table class="doctor-table ui-table-compact">
                     <thead>
                         <tr>
                             <th>Nombre</th>
@@ -435,13 +444,13 @@
 
                     <td>
                         ${doctor.firma
-                            ? `<button class="row-btn view-firma" data-id="${doctor.id}">Ver Firma</button>`
+                            ? `<button class="ui-action-btn is-info row-btn view-firma" data-id="${doctor.id}" title="Ver Firma" aria-label="Ver firma de doctor">${renderIcon("document-text")}</button>`
                             : `<em style="color:#64748b">Sin firma</em>`}
                     </td>
 
                     <td>
                         ${doctor.sello
-                            ? `<button class="row-btn view-sello" data-id="${doctor.id}">Ver Sello</button>`
+                            ? `<button class="ui-action-btn is-primary row-btn view-sello" data-id="${doctor.id}" title="Ver Sello" aria-label="Ver sello de doctor">${renderIcon("shield-check")}</button>`
                             : `<em style="color:#64748b">Sin sello</em>`}
                     </td>
                 `;

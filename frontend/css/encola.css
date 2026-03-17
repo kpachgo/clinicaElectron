@@ -150,8 +150,7 @@
   flex-wrap: wrap;
 }
 
-.cola-toolbar input[type="search"],
-.cola-toolbar select {
+.cola-toolbar .ui-control {
   border: 1px solid var(--cola-input-border);
   border-radius: 8px;
   background: var(--cola-input-bg);
@@ -160,47 +159,12 @@
   font-size: 12px;
 }
 
-.cola-toolbar input[type="search"] {
+.cola-toolbar .ui-control.ui-control-search {
   min-width: 280px;
 }
 
-#cola-clear-atendidos,
-#cola-clear-all {
-  border: none;
-  border-radius: 8px;
-  color: #ffffff;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
-}
-
-#cola-clear-atendidos {
-  background: #0f172a;
-}
-
-#cola-clear-all {
-  background: #b91c1c;
-}
-
-#cola-clear-atendidos:hover {
-  background: #1e293b;
-}
-
-#cola-clear-all:hover {
-  background: #991b1b;
-}
-
-#cola-clear-atendidos:active,
-#cola-clear-all:active {
-  transform: translateY(1px);
-}
-
-#cola-clear-atendidos:disabled,
-#cola-clear-all:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.cola-toolbar .ui-toolbar-btn {
+  min-height: 34px;
 }
 
 .cola-table-wrap {
@@ -304,52 +268,8 @@
   gap: 6px;
 }
 
-.cola-btn-open,
-.cola-btn-toggle,
-.cola-btn-remove {
-  border: none;
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background-color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
-}
-
-.cola-btn-open {
-  background: #2563eb;
-  color: #ffffff;
-}
-
-.cola-btn-toggle {
-  background: #0ea5e9;
-  color: #ffffff;
-}
-
-.cola-btn-remove {
-  background: #ef4444;
-  color: #ffffff;
-}
-
-.cola-btn-open:hover {
-  background: #1d4ed8;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
-}
-
-.cola-btn-toggle:hover {
-  background: #0284c7;
-  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.35);
-}
-
-.cola-btn-remove:hover {
-  background: #dc2626;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
-}
-
-.cola-btn-open:active,
-.cola-btn-toggle:active,
-.cola-btn-remove:active {
-  transform: translateY(1px);
+.cola-actions .ui-action-btn {
+  box-shadow: none;
 }
 
 .cola-empty {
@@ -374,7 +294,7 @@
     border-right: none;
   }
 
-  .cola-toolbar input[type="search"] {
+  .cola-toolbar .ui-control.ui-control-search {
     min-width: 0;
     width: 100%;
   }

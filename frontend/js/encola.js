@@ -44,6 +44,11 @@
   function soloDigitos(value) {
     return String(value || "").replace(/\D/g, "");
   }
+  function renderIcon(name, className) {
+    const registry = window.__uiIcons;
+    if (!registry || typeof registry.get !== "function") return "";
+    return registry.get(name, { className: className || "ui-action-icon" });
+  }
 
   function getLocalTodayISO() {
     const now = new Date();
@@ -320,22 +325,28 @@
           </div>
         </div>
 
-        <div class="cola-toolbar">
-          <input type="search" id="cola-search" placeholder="Buscar paciente o tratamiento">
-          <select id="cola-filter-estado">
+        <div class="cola-toolbar ui-toolbar">
+          <input class="ui-control ui-control-search" type="search" id="cola-search" placeholder="Buscar paciente o tratamiento">
+          <select class="ui-control" id="cola-filter-estado">
             <option value="">Todos</option>
             <option value="${ESTADO_ESPERA}">${ESTADO_ESPERA}</option>
             <option value="${ESTADO_ATENDIDO}">${ESTADO_ATENDIDO}</option>
           </select>
-          <select id="cola-filter-doctor" class="cola-doctor-select">
+          <select id="cola-filter-doctor" class="ui-control cola-doctor-select">
             <option value="">Todos los doctores</option>
           </select>
-          <button id="cola-clear-atendidos" type="button">Limpiar atendidos</button>
-          <button id="cola-clear-all" type="button">Borrar todo</button>
+          <button id="cola-clear-atendidos" class="ui-toolbar-btn is-neutral" type="button">
+            ${renderIcon("check-circle", "ui-toolbar-icon")}
+            <span>Limpiar atendidos</span>
+          </button>
+          <button id="cola-clear-all" class="ui-toolbar-btn is-danger" type="button">
+            ${renderIcon("trash", "ui-toolbar-icon")}
+            <span>Borrar todo</span>
+          </button>
         </div>
 
-        <div class="cola-table-wrap">
-          <table class="cola-table">
+        <div class="cola-table-wrap ui-table-wrap-compact">
+          <table class="cola-table ui-table-compact">
             <thead>
               <tr>
                 <th>Paciente</th>
@@ -553,12 +564,17 @@
 
         const tdAcciones = document.createElement("td");
         const actions = document.createElement("div");
-        actions.className = "cola-actions";
+        actions.className = "cola-actions ui-action-group";
 
         const btnToggle = document.createElement("button");
         btnToggle.type = "button";
-        btnToggle.className = "cola-btn-toggle";
-        btnToggle.textContent = item.estado === ESTADO_ATENDIDO ? "Reabrir" : "Atender";
+        const isAtendido = item.estado === ESTADO_ATENDIDO;
+        btnToggle.className = `ui-action-btn ${isAtendido ? "is-info" : "is-success"} cola-btn-toggle`;
+        btnToggle.innerHTML = isAtendido
+          ? renderIcon("arrow-path")
+          : renderIcon("check");
+        btnToggle.title = isAtendido ? "Reabrir" : "Atender";
+        btnToggle.setAttribute("aria-label", isAtendido ? "Reabrir paciente" : "Marcar como atendido");
         btnToggle.addEventListener("click", async () => {
           try {
             const siguienteEstado = item.estado === ESTADO_ATENDIDO ? ESTADO_ESPERA : ESTADO_ATENDIDO;
@@ -571,9 +587,10 @@
 
         const btnBuscar = document.createElement("button");
         btnBuscar.type = "button";
-        btnBuscar.className = "cola-btn-open";
-        btnBuscar.textContent = "Buscar";
+        btnBuscar.className = "ui-action-btn is-primary cola-btn-open";
+        btnBuscar.innerHTML = renderIcon("magnifying-glass");
         btnBuscar.title = "Abrir en Paciente";
+        btnBuscar.setAttribute("aria-label", "Buscar paciente");
         btnBuscar.addEventListener("click", async () => {
           btnBuscar.disabled = true;
           try {
@@ -600,8 +617,10 @@
 
         const btnRemove = document.createElement("button");
         btnRemove.type = "button";
-        btnRemove.className = "cola-btn-remove";
-        btnRemove.textContent = "Eliminar";
+        btnRemove.className = "ui-action-btn is-danger cola-btn-remove";
+        btnRemove.innerHTML = renderIcon("trash");
+        btnRemove.title = "Eliminar";
+        btnRemove.setAttribute("aria-label", "Eliminar paciente de cola");
         btnRemove.addEventListener("click", async () => {
           const ok = typeof window.showSystemConfirm === "function"
             ? await window.showSystemConfirm("Eliminar este paciente de la cola?")

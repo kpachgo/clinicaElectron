@@ -4,6 +4,11 @@
     const isSpace = e.code === "Space" || e.key === " ";
     return e.ctrlKey && e.shiftKey && isSpace;
   }
+  function renderIcon(name, className) {
+    const registry = window.__uiIcons;
+    if (!registry || typeof registry.get !== "function") return "";
+    return registry.get(name, { className: className || "ui-toolbar-icon" });
+  }
 
   function renderLogin(container) {
     container.innerHTML = `
@@ -13,15 +18,20 @@
 
           <div class="login-field">
             <label>Usuario</label>
-            <input type="text" id="login-user" placeholder="Correo">
+            <input class="ui-control" type="text" id="login-user" placeholder="Correo">
           </div>
 
           <div class="login-field">
             <label>Contrasena</label>
-            <input type="password" id="login-pass" placeholder="Contrasena">
+            <input class="ui-control" type="password" id="login-pass" placeholder="Contrasena">
           </div>
 
-          <button id="btn-login" class="btn-login">Entrar</button>
+          <div class="login-actions">
+            <button id="btn-login" class="btn-login ui-toolbar-btn is-primary">
+              ${renderIcon("arrow-right-on-rectangle", "ui-toolbar-icon")}
+              <span>Entrar</span>
+            </button>
+          </div>
 
           <div id="login-error" class="login-error" hidden></div>
           <div id="login-notice" class="login-notice" hidden></div>
@@ -32,47 +42,53 @@
             <div class="hidden-register-grid">
               <div class="hidden-register-field">
                 <label for="reg-correo">Correo</label>
-                <input type="email" id="reg-correo" placeholder="correo@dominio.com">
+                <input class="ui-control" type="email" id="reg-correo" placeholder="correo@dominio.com">
               </div>
 
               <div class="hidden-register-field">
                 <label for="reg-password">Contrasena</label>
-                <input type="password" id="reg-password" placeholder="Minimo 6 caracteres">
+                <input class="ui-control" type="password" id="reg-password" placeholder="Minimo 6 caracteres">
               </div>
 
               <div class="hidden-register-field">
                 <label for="reg-password-confirm">Confirmar contrasena</label>
-                <input type="password" id="reg-password-confirm" placeholder="Repita contrasena">
+                <input class="ui-control" type="password" id="reg-password-confirm" placeholder="Repita contrasena">
               </div>
 
               <div class="hidden-register-field">
                 <label for="reg-nombre">Nombre</label>
-                <input type="text" id="reg-nombre" placeholder="Nombre completo">
+                <input class="ui-control" type="text" id="reg-nombre" placeholder="Nombre completo">
               </div>
 
               <div class="hidden-register-field">
                 <label for="reg-cargo">Cargo</label>
-                <input type="text" id="reg-cargo" placeholder="Cargo (max 20)">
+                <input class="ui-control" type="text" id="reg-cargo" placeholder="Cargo (max 20)">
               </div>
 
               <div class="hidden-register-field">
                 <label for="reg-idrol">Rol</label>
-                <select id="reg-idrol">
+                <select class="ui-control" id="reg-idrol">
                   <option value="">Seleccione rol</option>
                 </select>
               </div>
 
               <div class="hidden-register-field hidden-register-field-full">
                 <label for="reg-iddoctor">Doctor (opcional)</label>
-                <select id="reg-iddoctor">
+                <select class="ui-control" id="reg-iddoctor">
                   <option value="">Sin doctor</option>
                 </select>
               </div>
             </div>
 
             <div class="hidden-register-actions">
-              <button id="btn-registro-guardar" class="btn-login hidden-register-btn-primary" type="button">Crear usuario</button>
-              <button id="btn-registro-cancelar" class="btn-login hidden-register-btn-muted" type="button">Ocultar</button>
+              <button id="btn-registro-guardar" class="btn-login ui-toolbar-btn is-success hidden-register-btn-primary" type="button">
+                ${renderIcon("plus", "ui-toolbar-icon")}
+                <span>Crear usuario</span>
+              </button>
+              <button id="btn-registro-cancelar" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+                ${renderIcon("x-mark", "ui-toolbar-icon")}
+                <span>Ocultar</span>
+              </button>
             </div>
 
             <div id="registro-msg" class="login-error hidden-register-msg" hidden></div>

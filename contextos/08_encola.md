@@ -1,5 +1,13 @@
 # Vista En Cola
 
+## Estandar visual compartido
+- Esta vista ahora usa el patron compartido de UI con Agenda como base:
+  - Toolbar: clases `ui-toolbar`, `ui-control`, `ui-toolbar-btn` (texto + icono).
+  - Tabla: `ui-table-wrap-compact` + `ui-table-compact`.
+  - Acciones por fila: `ui-action-group` + `ui-action-btn` (icon-only).
+- Iconos (Heroicons inline) se obtienen desde `window.__uiIcons` (`frontend/js/uiIcons.js`), sin CDN.
+- No cambia la logica de negocio ni contratos de backend.
+
 ## Frontend
 - Archivos:
   - `frontend/js/encola.js`
@@ -9,8 +17,8 @@
 - Render principal:
   - Header con KPIs (`Total`, `En espera`, `Atendidos`).
   - Toolbar con buscador (`#cola-search`), filtro por estado, filtro por doctor y botones:
-    - `Limpiar atendidos`
-    - `Borrar todo`
+    - `Limpiar atendidos` + icono `check-circle`
+    - `Borrar todo` + icono `trash`
   - Tabla con columnas: Paciente, Tratamiento, Hora, Fecha agenda, Doctor, Estado, Acciones.
   - El dato `Ingreso` (hora de `creadoEn`) se mantiene oculto en UI por ahora.
 
@@ -24,9 +32,15 @@
 7. Los selects de doctor (fila y filtro) usan color por `doctorId` para diferenciacion visual rapida.
 8. Permite cambiar estado:
    - Select por fila (`En espera` / `Atendido`).
-   - Boton rapido `Atender` / `Reabrir`.
+   - Boton rapido icon-only:
+     - `Atender` -> icono `check`
+     - `Reabrir` -> icono `arrow-path`
 9. Permite eliminar fila individual y limpiezas masivas.
-10. Sonido de ingreso nuevo:
+10. Acciones icon-only por fila:
+   - `Buscar` -> `magnifying-glass`
+   - `Eliminar` -> `trash`
+   - Todos los botones mantienen `title` y `aria-label`.
+11. Sonido de ingreso nuevo:
    - cuando `recargar()` detecta `idColaPaciente` nuevo respecto a la ultima carga, reproduce `bell.ogg`.
    - no suena en la primera carga de la vista (evita ruido inicial).
    - usa `window.playUiSound("bell", { minIntervalMs: 450 })`.

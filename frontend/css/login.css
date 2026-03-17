@@ -92,7 +92,7 @@
     color: var(--text-muted);
 }
 
-.login-field input {
+.login-field .ui-control {
     height: 40px;
     font-size: 15px;
     border-radius: 8px;
@@ -103,52 +103,31 @@
     background: var(--login-input-bg);
 }
 
-.login-field input:focus {
+.login-field .ui-control:focus {
     border-color: var(--blue);
     box-shadow: 0 0 0 2px var(--login-focus-ring);
 }
 
-.login-field select {
-    height: 40px;
-    font-size: 15px;
-    border-radius: 8px;
-    padding: 8px 12px;
-    border: 1px solid var(--login-input-border);
-    outline: none;
-    color: var(--login-input-text);
-    background: var(--login-input-bg);
-}
-
-.login-field select:focus {
-    border-color: var(--blue);
-    box-shadow: 0 0 0 2px var(--login-focus-ring);
-}
-
-.login-field input::placeholder {
+.login-field .ui-control::placeholder {
     color: var(--login-placeholder);
 }
 
-.login-field select option {
+.login-field .ui-control option {
     background: var(--login-input-bg);
     color: var(--login-input-text);
 }
 
-.btn-login {
-    width: 100%;
+.login-actions {
     margin-top: 16px;
-    padding: 12px;
-    background: #2563eb;
-    color: #ffffff;
-    border: none;
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: 0.2s ease;
 }
 
-.btn-login:hover {
-    background: #1e4fd8;
+.btn-login.ui-toolbar-btn {
+    width: 100%;
+    min-height: 42px;
+    font-size: 15px;
+    font-weight: 600;
+    justify-content: center;
+    gap: 8px;
 }
 
 .login-error {
@@ -202,8 +181,7 @@
     color: var(--text-muted);
 }
 
-.hidden-register-field input,
-.hidden-register-field select {
+.hidden-register-field .ui-control {
     height: 40px;
     font-size: 15px;
     border-radius: 8px;
@@ -214,17 +192,16 @@
     background: var(--login-input-bg);
 }
 
-.hidden-register-field input:focus,
-.hidden-register-field select:focus {
+.hidden-register-field .ui-control:focus {
     border-color: var(--blue);
     box-shadow: 0 0 0 2px var(--login-focus-ring);
 }
 
-.hidden-register-field input::placeholder {
+.hidden-register-field .ui-control::placeholder {
     color: var(--login-placeholder);
 }
 
-.hidden-register-field select option {
+.hidden-register-field .ui-control option {
     background: var(--login-input-bg);
     color: var(--login-input-text);
 }
@@ -241,11 +218,15 @@
 }
 
 .hidden-register-actions .btn-login {
+    width: 100%;
     margin-top: 0;
+    min-height: 40px;
+    justify-content: center;
 }
 
 .hidden-register-btn-muted {
     background: var(--login-muted-btn);
+    color: #fff;
 }
 
 .hidden-register-btn-muted:hover {

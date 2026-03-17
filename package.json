@@ -1,6 +1,6 @@
 {
   "name": "clinica",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Sistema de clinica empaquetado con Electron",
   "author": "Clinica",
   "repository": {
@@ -14,6 +14,7 @@
     "dev": "node --watch backend/server.js",
     "stop": "node backend/scripts/stop-server.js",
     "install:backend": "npm --prefix backend install",
+    "install:electron-app": "npm --prefix electron-app install",
     "electron": "electron electron-app/main.js",
     "electron:dev": "electron electron-app/main.js",
     "dist": "electron-builder --publish never",
@@ -75,9 +76,18 @@
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ]
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kpachgo",
+        "repo": "clinicaElectron",
+        "releaseType": "release"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true

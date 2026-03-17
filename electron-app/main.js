@@ -3,12 +3,19 @@ const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
 const fs = require("fs");
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require("electron-updater"));
+} catch {
+  autoUpdater = null;
+}
 
 const DEFAULT_SERVER_URL = "http://127.0.0.1:3000";
 const SERVER_URL = String(process.env.CLINICA_SERVER_URL || DEFAULT_SERVER_URL).replace(/\/+$/, "");
 const HEALTH_PATH = "/health";
 const HEALTH_TIMEOUT_MS = 45_000;
 const HEALTH_RETRY_MS = 1_000;
+const UPDATE_CHECK_DELAY_MS = 4_000;
 const ENABLE_CUSTOM_WINDOWS_TITLEBAR = process.env.CLINICA_WIN_CUSTOM_TITLEBAR === "1";
 const THEME_CONSOLE_PREFIX = "__CLINICA_THEME__:";
 const WINDOWS_TITLEBAR_THEMES = {
@@ -22,8 +29,12 @@ let mainWindow = null;
 let backendProcess = null;
 let backendStartedByElectron = false;
 let isQuitting = false;
+let quitForUpdate = false;
 let backendReady = false;
 let fallbackAttempted = false;
+let updaterEnabled = false;
+let updateCheckStarted = false;
+let updateDownloadedInfo = null;
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -337,6 +348,90 @@ function killBackendProcess() {
   });
 }
 
+function promptInstallDownloadedUpdate(info) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const nextVersion = String(info?.version || "").trim() || "nueva";
+  dialog.showMessageBox(mainWindow, {
+    type: "info",
+    buttons: ["Reiniciar e instalar", "Despues"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+    title: "Actualizacion disponible",
+    message: `La version ${nextVersion} se descargo correctamente.`,
+    detail: "Puede reiniciar ahora para instalarla o continuar trabajando e instalar al cerrar la app."
+  }).then(({ response }) => {
+    if (response !== 0) return;
+    quitForUpdate = true;
+    app.quit();
+  }).catch((err) => {
+    logLine("[AUTOUPDATE]", `No se pudo mostrar dialogo de instalacion: ${err.message}`);
+  });
+}
+
+function setupAutoUpdater() {
+  if (!autoUpdater) {
+    logLine("[AUTOUPDATE]", "electron-updater no esta disponible.");
+    return;
+  }
+  if (!app.isPackaged) {
+    logLine("[AUTOUPDATE]", "Modo desarrollo detectado; auto-update deshabilitado.");
+    return;
+  }
+  if (updaterEnabled) return;
+
+  updaterEnabled = true;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowDowngrade = false;
+
+  autoUpdater.on("checking-for-update", () => {
+    logLine("[AUTOUPDATE]", "Buscando actualizaciones...");
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    const version = String(info?.version || "").trim() || "desconocida";
+    logLine("[AUTOUPDATE]", `Actualizacion disponible: ${version}. Iniciando descarga...`);
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    const version = String(info?.version || app.getVersion() || "").trim();
+    logLine("[AUTOUPDATE]", `No hay actualizacion disponible. Version actual: ${version}`);
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    const percent = Number(progress?.percent || 0).toFixed(1);
+    const transferred = Number(progress?.transferred || 0);
+    const total = Number(progress?.total || 0);
+    logLine("[AUTOUPDATE]", `Descargando actualizacion: ${percent}% (${transferred}/${total} bytes)`);
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    updateDownloadedInfo = info || {};
+    const version = String(info?.version || "").trim() || "desconocida";
+    logLine("[AUTOUPDATE]", `Actualizacion descargada (${version}). Esperando instalacion.`);
+    promptInstallDownloadedUpdate(info);
+  });
+
+  autoUpdater.on("error", (err) => {
+    const message = err && err.message ? err.message : String(err || "Error desconocido");
+    logLine("[AUTOUPDATE]", `Error en updater: ${message}`);
+  });
+}
+
+function scheduleAutoUpdateCheck() {
+  if (!updaterEnabled || updateCheckStarted) return;
+  updateCheckStarted = true;
+  setTimeout(() => {
+    if (!updaterEnabled || !autoUpdater) return;
+    autoUpdater.checkForUpdates().catch((err) => {
+      const message = err && err.message ? err.message : String(err || "Error desconocido");
+      logLine("[AUTOUPDATE]", `Fallo al verificar actualizaciones: ${message}`);
+    });
+  }, UPDATE_CHECK_DELAY_MS);
+}
+
 function createWindow() {
   const windowOptions = {
     width: 1440,
@@ -365,6 +460,9 @@ function createWindow() {
   installThemeReporterBridge();
 
   mainWindow.loadURL(SERVER_URL);
+  mainWindow.webContents.on("did-finish-load", () => {
+    scheduleAutoUpdateCheck();
+  });
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -397,6 +495,7 @@ async function bootApp() {
     return;
   }
 
+  setupAutoUpdater();
   createWindow();
 }
 
@@ -428,6 +527,12 @@ app.on("before-quit", async (event) => {
   isQuitting = true;
   event.preventDefault();
   await killBackendProcess();
+  if (updaterEnabled && autoUpdater && updateDownloadedInfo) {
+    const mode = quitForUpdate ? "instalacion inmediata" : "instalacion al cerrar";
+    logLine("[AUTOUPDATE]", `Aplicando actualizacion descargada (${mode}).`);
+    autoUpdater.quitAndInstall(false, true);
+    return;
+  }
   app.exit(0);
 });
 

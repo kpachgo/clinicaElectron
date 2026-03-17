@@ -1,5 +1,13 @@
 # Vista Doctores
 
+## Estandar visual compartido
+- Esta vista adopta el patron visual reutilizable:
+  - Toolbar: `ui-toolbar`, `ui-control`, `ui-toolbar-btn`.
+  - Tabla compacta: `ui-table-wrap-compact`, `ui-table-compact`.
+  - Acciones de fila: `ui-action-btn` (icon-only).
+- Iconos Heroicons inline via `window.__uiIcons` (`frontend/js/uiIcons.js`), sin dependencias externas.
+- No hay cambios en API/backend/SQL.
+
 ## Frontend
 - Archivo: `frontend/js/doctor.js`.
 - Funciones clave:
@@ -8,6 +16,12 @@
   - captura de firma en canvas,
   - subida de sello,
   - vista modal de firma/sello.
+- Toolbar:
+  - `Registrar Doctor` (texto + icono `plus`).
+- Acciones por fila (icon-only):
+  - `Ver Firma` -> `document-text`
+  - `Ver Sello` -> `shield-check`
+  - conservan `title` y `aria-label`.
 
 ## Flujo de registro
 1. Abre modal `#modal-doctor`.

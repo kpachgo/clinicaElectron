@@ -35,12 +35,16 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             backend/package-lock.json
+            electron-app/package-lock.json
 
       - name: Install root dependencies
         run: npm ci
 
       - name: Install backend dependencies
         run: npm run install:backend
+
+      - name: Install electron app dependencies
+        run: npm --prefix electron-app ci
 
       - name: Validate BACKEND_ENV secret exists
         run: |
@@ -49,23 +53,72 @@ jobs:
             exit 1
           fi
 
+      - name: Validate macOS signing/notarization secrets
+        run: |
+          if [ -z "${{ secrets.MAC_CERT_P12_BASE64 }}" ]; then
+            echo "Missing required secret: MAC_CERT_P12_BASE64"
+            exit 1
+          fi
+          if [ -z "${{ secrets.MAC_CERT_PASSWORD }}" ]; then
+            echo "Missing required secret: MAC_CERT_PASSWORD"
+            exit 1
+          fi
+          if [ -z "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" ]; then
+            echo "Missing required secret: APPLE_API_KEY_P8_BASE64"
+            exit 1
+          fi
+          if [ -z "${{ secrets.APPLE_API_KEY_ID }}" ]; then
+            echo "Missing required secret: APPLE_API_KEY_ID"
+            exit 1
+          fi
+          if [ -z "${{ secrets.APPLE_API_ISSUER }}" ]; then
+            echo "Missing required secret: APPLE_API_ISSUER"
+            exit 1
+          fi
+
       - name: Create backend .env from GitHub Secret
         run: |
           printf '%s' "${{ secrets.BACKEND_ENV }}" > backend/.env
           test -s backend/.env
 
-      - name: Build macOS DMG (x64)
-        run: npx electron-builder --mac dmg --x64 --publish never
+      - name: Prepare macOS signing assets
+        run: |
+          CERT_PATH="$RUNNER_TEMP/macos-signing.p12"
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8"
+          echo "${{ secrets.MAC_CERT_P12_BASE64 }}" | base64 --decode > "$CERT_PATH"
+          echo "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" | base64 --decode > "$KEY_PATH"
+          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=${{ secrets.MAC_CERT_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY_ID=${{ secrets.APPLE_API_KEY_ID }}" >> "$GITHUB_ENV"
+          echo "APPLE_API_ISSUER=${{ secrets.APPLE_API_ISSUER }}" >> "$GITHUB_ENV"
 
-      - name: Validate DMG output exists
+      - name: Build macOS installer (x64)
+        run: npm run dist:mac -- --x64
+
+      - name: Validate DMG and ZIP outputs exist
         run: |
           shopt -s nullglob
-          files=(dist-electron/*.dmg)
-          if [ ${#files[@]} -eq 0 ]; then
+          dmg_files=(dist-electron/*.dmg)
+          zip_files=(dist-electron/*.zip)
+          if [ ${#dmg_files[@]} -eq 0 ]; then
             echo "No DMG generated in dist-electron/"
             exit 1
           fi
+          if [ ${#zip_files[@]} -eq 0 ]; then
+            echo "No ZIP generated in dist-electron/"
+            exit 1
+          fi
           ls -lh dist-electron/*.dmg
+          ls -lh dist-electron/*.zip
+
+      - name: Validate latest-mac.yml output exists
+        run: |
+          if [ ! -f dist-electron/latest-mac.yml ]; then
+            echo "latest-mac.yml was not generated in dist-electron/"
+            exit 1
+          fi
+          ls -lh dist-electron/latest-mac.yml
 
       - name: Validate runtime backend included in app bundle
         run: |
@@ -78,10 +131,13 @@ jobs:
       - name: Upload macOS artifact (backup)
         uses: actions/upload-artifact@v4
         with:
-          name: ClinicaElectron-macOS-dmg-${{ env.RELEASE_TAG }}
+          name: ClinicaElectron-macOS-release-${{ env.RELEASE_TAG }}
           path: |
             dist-electron/*.dmg
+            dist-electron/*.zip
             dist-electron/*.dmg.blockmap
+            dist-electron/*.zip.blockmap
+            dist-electron/latest-mac.yml
           if-no-files-found: error
 
       - name: Publish assets to GitHub Release
@@ -90,6 +146,9 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           files: |
             dist-electron/*.dmg
+            dist-electron/*.zip
             dist-electron/*.dmg.blockmap
+            dist-electron/*.zip.blockmap
+            dist-electron/latest-mac.yml
           fail_on_unmatched_files: false
           generate_release_notes: true
