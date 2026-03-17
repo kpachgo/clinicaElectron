@@ -53,27 +53,18 @@ jobs:
             exit 1
           fi
 
-      - name: Validate macOS signing/notarization secrets
+      - name: Detect macOS signing/notarization secrets
         run: |
-          if [ -z "${{ secrets.MAC_CERT_P12_BASE64 }}" ]; then
-            echo "Missing required secret: MAC_CERT_P12_BASE64"
-            exit 1
-          fi
-          if [ -z "${{ secrets.MAC_CERT_PASSWORD }}" ]; then
-            echo "Missing required secret: MAC_CERT_PASSWORD"
-            exit 1
-          fi
-          if [ -z "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" ]; then
-            echo "Missing required secret: APPLE_API_KEY_P8_BASE64"
-            exit 1
-          fi
-          if [ -z "${{ secrets.APPLE_API_KEY_ID }}" ]; then
-            echo "Missing required secret: APPLE_API_KEY_ID"
-            exit 1
-          fi
-          if [ -z "${{ secrets.APPLE_API_ISSUER }}" ]; then
-            echo "Missing required secret: APPLE_API_ISSUER"
-            exit 1
+          if [ -n "${{ secrets.MAC_CERT_P12_BASE64 }}" ] && \
+             [ -n "${{ secrets.MAC_CERT_PASSWORD }}" ] && \
+             [ -n "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" ] && \
+             [ -n "${{ secrets.APPLE_API_KEY_ID }}" ] && \
+             [ -n "${{ secrets.APPLE_API_ISSUER }}" ]; then
+            echo "HAS_MAC_SIGNING=true" >> "$GITHUB_ENV"
+            echo "macOS signing/notarization secrets detected. Build will be signed."
+          else
+            echo "HAS_MAC_SIGNING=false" >> "$GITHUB_ENV"
+            echo "macOS signing/notarization secrets not found. Build will be unsigned (internal testing mode)."
           fi
 
       - name: Create backend .env from GitHub Secret
@@ -82,6 +73,7 @@ jobs:
           test -s backend/.env
 
       - name: Prepare macOS signing assets
+        if: env.HAS_MAC_SIGNING == 'true'
         run: |
           CERT_PATH="$RUNNER_TEMP/macos-signing.p12"
           KEY_PATH="$RUNNER_TEMP/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8"
