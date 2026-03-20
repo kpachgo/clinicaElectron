@@ -1,6 +1,6 @@
 {
   "name": "clinica-electron-runtime",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "private": true,
   "main": "main.js",
   "description": "Runtime app",
