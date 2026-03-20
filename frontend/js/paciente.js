@@ -968,7 +968,7 @@ async function cargarDoctoresEnSelect() {
   select.innerHTML = `<option value="">Seleccione doctor</option>`;
 
   try {
-    const res = await fetch("/api/doctor/select");
+    const res = await fetch("/api/doctor/select?soloActivos=1");
     const json = await res.json();
 
     if (!json.ok || !Array.isArray(json.data)) return;
@@ -2622,6 +2622,8 @@ function limpiarVistaPaciente() {
     .forEach(el => {
       if (!el.disabled) el.value = "";
     });
+  const edadInput = document.getElementById("edadP");
+  if (edadInput) edadInput.value = "";
   actualizarEstadoFirmaPaciente("");
   actualizarColorEstadoPaciente();
   actualizarColorTipoTratamiento();

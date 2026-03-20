@@ -252,6 +252,359 @@ function canAccessView(viewName) {
     return allowedViews.includes(viewName);
 }
 
+/* =========================================================
+   ALERTA SUSCRIPCION (TOPBAR)
+========================================================= */
+const LICENSE_WARNING_STORAGE_PREFIX = "license_warning_seen::";
+const LICENSE_WARNING_DEFAULT_WINDOW_DAYS = 3;
+let licenseBellGlobalEventsBound = false;
+let lastLicenseWarningStatus = null;
+let licenseWarningRefreshSeq = 0;
+let licenseBellRefsWarned = false;
+
+function isTruthyFlag(rawValue) {
+    if (rawValue === true || rawValue === 1) return true;
+    const normalized = String(rawValue || "").trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+}
+
+function isLicenseDebugEnabled() {
+    try {
+        const fromWindow = typeof window !== "undefined" ? window.CLINICA_DEBUG_LICENSE : "";
+        const fromStorage = localStorage.getItem("CLINICA_DEBUG_LICENSE");
+        const fromQuery = new URLSearchParams(window.location.search || "").get("CLINICA_DEBUG_LICENSE");
+        return isTruthyFlag(fromWindow || fromStorage || fromQuery);
+    } catch {
+        return false;
+    }
+}
+
+function logLicenseDebug(label, payload) {
+    if (!isLicenseDebugEnabled()) return;
+    if (payload !== undefined) {
+        console.info(`[licencia-ui] ${label}`, payload);
+        return;
+    }
+    console.info(`[licencia-ui] ${label}`);
+}
+
+function getLicenseBellRefs() {
+    const panel = document.getElementById("license-bell-panel");
+    const titleById = document.getElementById("license-bell-title");
+    const titleByClass = panel ? panel.querySelector(".license-bell-title") : null;
+
+    return {
+        wrap: document.querySelector(".license-bell-wrap"),
+        btn: document.getElementById("license-bell-btn"),
+        badge: document.getElementById("license-bell-badge"),
+        panel,
+        title: titleById || titleByClass || document.querySelector("#license-bell-panel .license-bell-title"),
+        message: document.getElementById("license-bell-message"),
+        meta: document.getElementById("license-bell-meta")
+    };
+}
+
+function getMissingLicenseBellRefs(refs) {
+    const missing = [];
+    if (!refs.wrap) missing.push("wrap(.license-bell-wrap)");
+    if (!refs.btn) missing.push("btn(#license-bell-btn)");
+    if (!refs.badge) missing.push("badge(#license-bell-badge)");
+    if (!refs.panel) missing.push("panel(#license-bell-panel)");
+    if (!refs.title) missing.push("title(#license-bell-title|.license-bell-title)");
+    if (!refs.message) missing.push("message(#license-bell-message)");
+    if (!refs.meta) missing.push("meta(#license-bell-meta)");
+    return missing;
+}
+
+function warnMissingLicenseBellRefs(missing) {
+    if (missing.length === 0 || licenseBellRefsWarned) return;
+    licenseBellRefsWarned = true;
+    console.warn(`[licencia-ui] No se encontraron elementos de campana: ${missing.join(", ")}`);
+}
+
+function closeLicenseBellPanel() {
+    const { btn, panel } = getLicenseBellRefs();
+    if (!btn || !panel) return;
+    panel.hidden = true;
+    btn.setAttribute("aria-expanded", "false");
+}
+
+function bindLicenseBellEvents() {
+    const { btn, panel, wrap } = getLicenseBellRefs();
+    if (!btn || !panel || !wrap) return;
+
+    if (btn.dataset.binded !== "true") {
+        btn.dataset.binded = "true";
+        btn.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const shouldOpen = panel.hidden === true;
+            if (shouldOpen) {
+                await refreshLicenseWarning({ force: false, showPopup: false });
+            }
+            panel.hidden = !shouldOpen;
+            btn.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+        });
+    }
+
+    if (licenseBellGlobalEventsBound) return;
+    licenseBellGlobalEventsBound = true;
+
+    document.addEventListener("click", (e) => {
+        const refs = getLicenseBellRefs();
+        if (!refs.panel || refs.panel.hidden) return;
+        const clickInside = refs.wrap && refs.wrap.contains(e.target);
+        if (!clickInside) {
+            closeLicenseBellPanel();
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            closeLicenseBellPanel();
+        }
+    });
+}
+
+function parseDiasRestantes(rawValue) {
+    if (rawValue === null || rawValue === undefined || rawValue === "") return null;
+    const n = Number(rawValue);
+    return Number.isFinite(n) ? n : null;
+}
+
+function normalizeLicenseUsage(rawUsage) {
+    const usage = rawUsage && typeof rawUsage === "object" ? rawUsage : {};
+    const diasRestantes = parseDiasRestantes(usage.diasRestantes ?? usage.dias_restantes);
+
+    const warningWindowRaw = usage.warningWindowDays ?? usage.warning_window_days;
+    const warningWindowDays = Number.isFinite(Number(warningWindowRaw))
+        ? Number(warningWindowRaw)
+        : LICENSE_WARNING_DEFAULT_WINDOW_DAYS;
+
+    const fechaVencimientoRaw = usage.fechaVencimiento ?? usage.fecha_vencimiento ?? null;
+    const fechaVencimiento = fechaVencimientoRaw === null || fechaVencimientoRaw === undefined
+        ? null
+        : String(fechaVencimientoRaw).trim() || null;
+
+    const mensajeAvisoRaw = usage.mensajeAviso ?? usage.mensaje_aviso ?? null;
+    const mensajeAviso = mensajeAvisoRaw === null || mensajeAvisoRaw === undefined
+        ? null
+        : String(mensajeAvisoRaw).trim() || null;
+
+    const proximaRaw = usage.proximaAVencer ?? usage.proxima_a_vencer;
+    const proximaAVencer = isTruthyFlag(proximaRaw);
+
+    return {
+        ...usage,
+        fechaVencimiento,
+        diasRestantes,
+        warningWindowDays,
+        proximaAVencer,
+        mensajeAviso
+    };
+}
+
+function normalizeLicenseStatusData(statusData) {
+    const status = statusData && typeof statusData === "object" ? statusData : {};
+    return {
+        ...status,
+        usage: normalizeLicenseUsage(status.usage)
+    };
+}
+
+function formatVencimientoText(rawValue) {
+    const raw = String(rawValue || "").trim();
+    if (!raw) return null;
+    const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toLocaleString("es-GT", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
+
+function setLicenseBellMetaLines(metaEl, lines) {
+    if (!metaEl) return;
+    metaEl.innerHTML = "";
+    (lines || [])
+        .filter(Boolean)
+        .forEach((line) => {
+            const row = document.createElement("div");
+            row.textContent = line;
+            metaEl.appendChild(row);
+        });
+}
+
+function updateLicenseBellUi(statusData) {
+    const refs = getLicenseBellRefs();
+    const missingRefs = getMissingLicenseBellRefs(refs);
+    if (missingRefs.length > 0) {
+        warnMissingLicenseBellRefs(missingRefs);
+        return false;
+    }
+
+    const normalizedStatus = normalizeLicenseStatusData(statusData);
+    const usage = normalizedStatus.usage;
+    const diasRestantes = usage.diasRestantes;
+    const fechaVencimientoRaw = usage.fechaVencimiento || null;
+    const fechaVencimientoTxt = formatVencimientoText(fechaVencimientoRaw);
+    const warningWindowDays = usage.warningWindowDays;
+    const proximaFromBackend = usage.proximaAVencer === true;
+    const proximaByRange = (
+        diasRestantes !== null &&
+        diasRestantes >= 0 &&
+        diasRestantes <= warningWindowDays
+    );
+    const proximaAVencer = proximaFromBackend || proximaByRange;
+
+    let title = "Suscripcion";
+    let message = "Sin alertas por el momento.";
+    const metaLines = [];
+
+    if (proximaAVencer) {
+        title = "Suscripcion proxima a vencer";
+        message = String(usage.mensajeAviso || "Su suscripcion esta proxima a vencer.");
+        if (diasRestantes !== null) {
+            metaLines.push(`Dias restantes: ${diasRestantes}`);
+        }
+        if (fechaVencimientoTxt) {
+            metaLines.push(`Vence: ${fechaVencimientoTxt}`);
+        }
+        metaLines.push(`Ventana de aviso: ${warningWindowDays} dias`);
+    } else if (diasRestantes !== null && diasRestantes < 0) {
+        title = "Suscripcion vencida";
+        message = "La suscripcion ya vencio. Renueve para mantener habilitado el sistema.";
+        if (fechaVencimientoTxt) {
+            metaLines.push(`Vencio: ${fechaVencimientoTxt}`);
+        }
+    } else if (fechaVencimientoTxt) {
+        message = `Suscripcion activa. Fecha de vencimiento: ${fechaVencimientoTxt}.`;
+        if (diasRestantes !== null) {
+            metaLines.push(`Dias restantes: ${diasRestantes}`);
+        }
+    }
+
+    refs.title.textContent = title;
+    refs.message.textContent = message;
+    setLicenseBellMetaLines(refs.meta, metaLines);
+    refs.badge.hidden = !proximaAVencer;
+    refs.btn.classList.toggle("has-warning", proximaAVencer);
+    logLicenseDebug("campana renderizada", {
+        proximaAVencer,
+        diasRestantes,
+        warningWindowDays,
+        fechaVencimiento: fechaVencimientoRaw,
+        mensajeAviso: usage.mensajeAviso
+    });
+    return true;
+}
+
+function updateLicenseBellUiUnavailable() {
+    const refs = getLicenseBellRefs();
+    const missingRefs = getMissingLicenseBellRefs(refs);
+    if (missingRefs.length > 0) {
+        warnMissingLicenseBellRefs(missingRefs);
+        return false;
+    }
+
+    refs.title.textContent = "Suscripcion";
+    refs.message.textContent = "No se pudo consultar el estado de suscripcion.";
+    setLicenseBellMetaLines(refs.meta, ["Intente de nuevo en unos segundos."]);
+    refs.badge.hidden = true;
+    refs.btn.classList.remove("has-warning");
+    logLicenseDebug("campana en estado no disponible");
+    return true;
+}
+
+function getTodayLocalKey() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+}
+
+function buildWarningSeenStorageKey(codigoLicencia) {
+    const code = String(codigoLicencia || "sin-codigo").trim() || "sin-codigo";
+    return `${LICENSE_WARNING_STORAGE_PREFIX}${code}::${getTodayLocalKey()}`;
+}
+
+function maybeShowLicenseWarningPopup(statusData) {
+    const normalizedStatus = normalizeLicenseStatusData(statusData);
+    const usage = normalizedStatus.usage;
+    if (usage.proximaAVencer !== true) return;
+
+    const codigoRef = String(normalizedStatus?.codigoLicenciaMasked || "sin-codigo").trim() || "sin-codigo";
+    const storageKey = buildWarningSeenStorageKey(codigoRef);
+    const alreadyShown = localStorage.getItem(storageKey) === "1";
+    if (alreadyShown) return;
+
+    localStorage.setItem(storageKey, "1");
+    const msg = String(usage.mensajeAviso || "Su suscripcion esta proxima a vencer.");
+    if (typeof window.showSystemMessage === "function") {
+        window.showSystemMessage(msg, { title: "Recordatorio de suscripcion", type: "warning" });
+    } else {
+        alert(msg);
+    }
+}
+
+async function refreshLicenseWarning(options = {}) {
+    const { force = false, showPopup = false } = options;
+    bindLicenseBellEvents();
+    const refreshSeq = ++licenseWarningRefreshSeq;
+
+    const params = new URLSearchParams();
+    if (force) params.set("force", "1");
+    params.set("_ts", String(Date.now()));
+    const query = `?${params.toString()}`;
+    try {
+        const res = await fetch(`/api/licencia/estado${query}`, { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok || data?.ok !== true || !data?.data) {
+            if (refreshSeq !== licenseWarningRefreshSeq) return null;
+            if (lastLicenseWarningStatus) {
+                updateLicenseBellUi(lastLicenseWarningStatus);
+            } else {
+                updateLicenseBellUiUnavailable();
+            }
+            return null;
+        }
+
+        const statusData = normalizeLicenseStatusData(data.data);
+        logLicenseDebug("payload /api/licencia/estado", statusData);
+
+        if (refreshSeq !== licenseWarningRefreshSeq) return null;
+        const rendered = updateLicenseBellUi(statusData);
+        if (rendered) {
+            lastLicenseWarningStatus = statusData;
+        } else if (lastLicenseWarningStatus) {
+            updateLicenseBellUi(lastLicenseWarningStatus);
+        }
+
+        if (showPopup) {
+            maybeShowLicenseWarningPopup(statusData);
+        }
+        return statusData;
+    } catch (err) {
+        console.error(err);
+        if (refreshSeq !== licenseWarningRefreshSeq) return null;
+        if (lastLicenseWarningStatus) {
+            updateLicenseBellUi(lastLicenseWarningStatus);
+        } else {
+            updateLicenseBellUiUnavailable();
+        }
+        return null;
+    }
+}
+
+function resetLicenseWarningUi() {
+    lastLicenseWarningStatus = null;
+    updateLicenseBellUi(null);
+    closeLicenseBellPanel();
+}
 
 /* =========================================================
    USER INFO (TOPBAR)
@@ -286,6 +639,7 @@ function logout() {
 
     setAppChromeVisible(false);
     clearTopUser();
+    resetLicenseWarningUi();
     mountLogin();
 }
 
@@ -465,13 +819,14 @@ if (!document.body.dataset.logoutBinded) {
     document.body.dataset.logoutBinded = "true";
 
     document.addEventListener("click", async (e) => {
-        if (e.target && e.target.id === "btn-logout") {
-            const ok = typeof window.showSystemConfirm === "function"
-                ? await window.showSystemConfirm("Desea cerrar sesion?")
-                : confirm("Desea cerrar sesion?");
-            if (ok) {
-                logout();
-            }
+        const logoutBtn = e.target?.closest?.("#btn-logout");
+        if (!logoutBtn) return;
+
+        const ok = typeof window.showSystemConfirm === "function"
+            ? await window.showSystemConfirm("Desea cerrar sesion?")
+            : confirm("Desea cerrar sesion?");
+        if (ok) {
+            logout();
         }
     });
 }
@@ -485,14 +840,18 @@ window.loadView = loadView;
 window.applyMenuPermissions = applyMenuPermissions;
 window.__setAppChromeVisible = setAppChromeVisible;
 window.__applyTheme = applyTheme;
+window.refreshLicenseWarning = refreshLicenseWarning;
 
 
 document.addEventListener("DOMContentLoaded", () => {
     initTopbarEnhancements();
+    bindLicenseBellEvents();
     if (isAuthenticated()) {
         setAppChromeVisible(true);
 
         applyMenuPermissions(); // FALTA ESTA LINEA
+
+        void refreshLicenseWarning({ force: false, showPopup: true });
 
         
         const defaultView = getDefaultViewByRole();

@@ -150,6 +150,114 @@
     text-align: center;
 }
 
+.license-subtitle {
+    margin: -6px 0 14px;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: center;
+}
+
+.license-status-card {
+    border: 1px solid var(--login-input-border);
+    background: var(--login-input-bg);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.license-status-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.license-status-meta > span {
+    min-width: 0;
+}
+
+.license-device-line {
+    display: block;
+    width: 100%;
+}
+
+.license-device-value {
+    display: block;
+    margin-top: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.license-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.license-status-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.license-status-pill {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+}
+
+.license-status-pill.is-ok {
+    color: #166534;
+    background: #dcfce7;
+    border: 1px solid #86efac;
+}
+
+.license-status-pill.is-blocked {
+    color: #991b1b;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+}
+
+.dark-mode .license-status-pill.is-ok {
+    color: #bbf7d0;
+    background: #14532d;
+    border: 1px solid #22c55e;
+}
+
+.dark-mode .license-status-pill.is-blocked {
+    color: #fecaca;
+    background: #7f1d1d;
+    border: 1px solid #ef4444;
+}
+
+.license-status-detail {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    word-break: break-word;
+}
+
+.license-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.license-actions.license-actions-single {
+    grid-template-columns: 1fr;
+}
+
 .hidden-register-box {
     margin-top: 18px;
     padding-top: 14px;
@@ -252,6 +360,10 @@
     }
 
     .hidden-register-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .license-actions {
         grid-template-columns: 1fr;
     }
 }

@@ -505,6 +505,19 @@ BEGIN
 END$$
 DELIMITER ;
 
+DROP PROCEDURE IF EXISTS `sp_doctor_listar_select_activos`;
+DELIMITER $$
+CREATE PROCEDURE `sp_doctor_listar_select_activos`()
+BEGIN
+    SELECT
+        idDoctor,
+        nombreD
+    FROM doctor
+    WHERE COALESCE(estadoD, 1) = 1
+    ORDER BY nombreD ASC;
+END$$
+DELIMITER ;
+
 DROP PROCEDURE IF EXISTS `sp_foto_paciente_crear`;
 DELIMITER $$
 CREATE PROCEDURE `sp_foto_paciente_crear`(

@@ -3,11 +3,19 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 
 const authService = require("../services/auth.service");
+const licenciaService = require("../services/licencia.service");
 const { badRequest, serverError } = require("../utils/http");
 
 function isHiddenRegisterEnabled() {
     const raw = String(process.env.AUTH_HIDDEN_REGISTER_ENABLED || "").trim().toLowerCase();
     return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
+function getHttpStatusByLicenseCode(code) {
+    const value = String(code || "");
+    if (value.startsWith("db_no_disponible")) return 503;
+    if (value === "sp_no_disponible") return 503;
+    return 403;
 }
 
 async function login(req, res) {
@@ -16,6 +24,24 @@ async function login(req, res) {
 
         if (!correo || !password) {
             return badRequest(res, "Correo y contrasena requeridos");
+        }
+
+        const runtimeStatus = licenciaService.getRuntimeStatus();
+        if (!runtimeStatus?.startup?.ok) {
+            return res.status(getHttpStatusByLicenseCode(runtimeStatus.startup.code)).json({
+                ok: false,
+                code: runtimeStatus.startup.code,
+                message: runtimeStatus.startup.message
+            });
+        }
+
+        const usageStatus = await licenciaService.validateSystemUsageConfigured({ force: true });
+        if (!usageStatus?.ok) {
+            return res.status(getHttpStatusByLicenseCode(usageStatus.code)).json({
+                ok: false,
+                code: usageStatus.code,
+                message: usageStatus.message
+            });
         }
 
         const usuario = await authService.login(correo, password);
@@ -68,18 +94,16 @@ async function registroOculto(req, res) {
             correo,
             password,
             nombre,
-            cargo,
             idRol,
             idDoctor
         } = req.body || {};
 
-        if (!correo || !password || !nombre || !cargo || !idRol) {
+        if (!correo || !password || !nombre || !idRol) {
             return badRequest(res, "Datos incompletos para registro");
         }
 
         const correoLimpio = String(correo).trim().toLowerCase();
         const nombreLimpio = String(nombre).trim();
-        const cargoLimpio = String(cargo).trim();
         const idRolNum = Number(idRol);
         const idDoctorNum = idDoctor === "" || idDoctor == null
             ? null
@@ -93,12 +117,18 @@ async function registroOculto(req, res) {
             return badRequest(res, "Nombre invalido o demasiado largo");
         }
 
-        if (!cargoLimpio || cargoLimpio.length > 20) {
-            return badRequest(res, "Cargo invalido o demasiado largo");
-        }
-
         if (!Number.isInteger(idRolNum) || idRolNum <= 0) {
             return badRequest(res, "idRol invalido");
+        }
+
+        const rolRegistro = await authService.obtenerRolPorId(idRolNum);
+        if (!rolRegistro) {
+            return badRequest(res, "idRol no existe");
+        }
+
+        const cargoDerivado = String(rolRegistro.nombreR || "").trim();
+        if (!cargoDerivado || cargoDerivado.length > 20) {
+            return badRequest(res, "Cargo derivado del rol invalido");
         }
 
         if (idDoctorNum !== null && (!Number.isInteger(idDoctorNum) || idDoctorNum <= 0)) {
@@ -115,7 +145,7 @@ async function registroOculto(req, res) {
             correo: correoLimpio,
             passwordHash,
             nombre: nombreLimpio,
-            cargo: cargoLimpio,
+            cargo: cargoDerivado,
             idRol: idRolNum,
             idDoctor: idDoctorNum
         });

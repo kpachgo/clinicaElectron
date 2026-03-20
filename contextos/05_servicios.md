@@ -60,3 +60,19 @@
 - Eliminacion:
   - usa `sp_servicio_delete`.
   - si el servicio esta referenciado por cuentas/detalles, backend responde `400` con mensaje de bloqueo por relacion existente.
+
+## Correcciones recientes (2026-03-18)
+- Frontend (`frontend/js/servicios.js`):
+  - Carga robusta de lista con `AbortController` + secuencia para evitar respuestas viejas al cambiar de vista.
+  - Alta de servicio idempotente:
+    - guarda `isCreatingServicio`
+    - boton guardar deshabilitado durante `POST /api/servicio`.
+  - Edicion inline de nombre y precio sin duplicados:
+    - guardas `isSaving` + `isClosed`.
+    - evita doble request por `Enter + blur`.
+  - Cleanup de vista:
+    - aborta request en vuelo,
+    - limpia estado local y modal.
+- Backend (`backend/controllers/servicio.controller.js`):
+  - `crear`: valida `nombre` no vacio y `precio` numerico >= 0.
+  - `actualizar`: valida existencia de `idServicio` antes de `UPDATE`; responde `404` si no existe.

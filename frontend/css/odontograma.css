@@ -30,7 +30,10 @@
 /* Niños superior e inferior */
 .odont-mid-top,
 .odont-mid-bottom {
-    justify-content: center;
+    width: 62.5%;
+    margin-left: auto;
+    margin-right: auto;
+    justify-content: space-between;
 }
 
 /* ============================================
@@ -75,10 +78,11 @@
 
 .tooth-note.is-odontograma-locked,
 .odonto-piece-input.is-odontograma-locked {
-    background: #f3f4f6;
-    border-color: #d1d5db;
-    color: #6b7280;
+    background: #fbfdff;
+    border-color: #dbe5f1;
+    color: #64748b;
     cursor: not-allowed;
+    opacity: 1;
 }
 
 /* Controles del odontograma en dark mode (botones + inputs) */

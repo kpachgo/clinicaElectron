@@ -15,6 +15,8 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `10_electron.md`
 - `11_build_mac.md`
 - `12_release_github_actions.md`
+- `13_revision_vistas_pendientes.md`
 
 ## Nota
 - El contexto de Paciente (`03_paciente.md`) incluye la parte de odontograma.
+- Para seguimiento de auditoria de rendimiento/bugs por vista, usar `13_revision_vistas_pendientes.md`.

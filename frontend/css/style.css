@@ -449,7 +449,7 @@ body {
     align-items: center;
     gap: 16px;
 }
-.top-right > .icon,
+.top-icon-btn,
 .theme-btn {
     width: 38px;
     height: 38px;
@@ -462,10 +462,11 @@ body {
     color: var(--text-color);
     transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
-.top-right > .icon {
+.top-icon-btn {
+    cursor: pointer;
     font-size: 16px;
 }
-.top-right > .icon svg,
+.top-icon-btn svg,
 .theme-btn svg {
     width: 16px;
     height: 16px;
@@ -475,14 +476,89 @@ body {
     stroke-linejoin: round;
     fill: none;
 }
-.top-right > .icon:hover,
+.top-icon-btn:hover,
 .theme-btn:hover {
     background: var(--sidebar-hover);
     border-color: #c7d2fe;
 }
-.top-right > .icon:active,
+.top-icon-btn:active,
 .theme-btn:active {
     transform: translateY(1px);
+}
+
+.license-bell-wrap {
+    position: relative;
+}
+
+.license-bell-btn.has-warning {
+    border-color: #fca5a5;
+    background: rgba(254, 226, 226, 0.72);
+    color: #b91c1c;
+}
+
+.license-bell-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 0 4px;
+    color: #fff;
+    background: #dc2626;
+    border: 1px solid #fee2e2;
+}
+
+.license-bell-badge[hidden] {
+    display: none !important;
+}
+
+.license-bell-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    width: min(320px, calc(100vw - 36px));
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: var(--topbar-bg);
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.18);
+    padding: 12px 12px 10px;
+    z-index: 1210;
+}
+
+.license-bell-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-bottom: 6px;
+}
+
+.license-bell-message {
+    font-size: 13px;
+    line-height: 1.35;
+    color: var(--text-color);
+    margin-bottom: 8px;
+}
+
+.license-bell-meta {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text-muted);
+}
+
+.dark-mode .license-bell-btn.has-warning {
+    border-color: #7f1d1d;
+    background: rgba(127, 29, 29, 0.35);
+    color: #fecaca;
+}
+
+.dark-mode .license-bell-panel {
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.5);
 }
 
 /* Botón hamburguesa */
@@ -769,10 +845,10 @@ body[data-theme="princess"] .theme-btn .crown {
     }
 
     /* Iconos */
-    .top-right .icon {
+    .top-icon-btn {
         font-size: 13px;
     }
-    .top-right .icon svg,
+    .top-icon-btn svg,
     .theme-btn svg {
         width: 13px;
         height: 13px;

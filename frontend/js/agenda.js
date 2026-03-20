@@ -37,7 +37,7 @@
     return String(value || "").trim().toLowerCase();
   }
   function isTokenChar(ch) {
-    return /[A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü]/.test(String(ch || ""));
+    return /[A-Za-z0-9\u00C1\u00C9\u00CD\u00D3\u00DA\u00E1\u00E9\u00ED\u00F3\u00FA\u00D1\u00F1\u00DC\u00FC]/.test(String(ch || ""));
   }
   function getTokenInfoFromCaret(inputEl) {
     if (!inputEl) {
@@ -184,7 +184,7 @@
     opt.value = e;
     opt.textContent = e;
 
-    // si value es null / "" → Pendiente queda seleccionado
+    // si value es null / "" -> Pendiente queda seleccionado
     if ((value || "Pendiente") === opt.value) opt.selected = true;
 
     sel.appendChild(opt);
@@ -380,37 +380,81 @@
 
       </div>
     `;
+    let agendaFetchSeq = 0;
+    let agendaFetchController = null;
+    let agendaFetchDate = "";
+    let isCreatingAgenda = false;
+
     async function cargarAgendaPorFecha(fechaISO) {
-    if (!fechaISO) return;
-    try {
-    const res = await fetch(`/api/agenda?fecha=${fechaISO}`);
-    const json = await res.json();
+      const fechaObjetivo = String(fechaISO || "").trim();
+      if (!fechaObjetivo) return;
 
-    if (!json.ok) {
-      alert(json.message || "Error al cargar agenda");
-      return;
+      if (agendaFetchController) {
+        try {
+          agendaFetchController.abort();
+        } catch {
+          // ignore abort failures
+        }
+      }
+
+      const localSeq = ++agendaFetchSeq;
+      const controller = typeof AbortController !== "undefined"
+        ? new AbortController()
+        : null;
+      agendaFetchController = controller;
+      agendaFetchDate = fechaObjetivo;
+
+      try {
+        const fetchOptions = controller ? { signal: controller.signal } : undefined;
+        const res = await fetch(
+          `/api/agenda?fecha=${encodeURIComponent(fechaObjetivo)}`,
+          fetchOptions
+        );
+        const json = await res.json();
+
+        const isLatestRequest = localSeq === agendaFetchSeq;
+        const currentDateValue = String(dateInput?.value || "").trim();
+        const isTargetDateStillSelected = currentDateValue === fechaObjetivo;
+        if (!isLatestRequest || !isTargetDateStillSelected) return;
+
+        if (!res.ok || !json?.ok) {
+          alert(json?.message || "Error al cargar agenda");
+          return;
+        }
+
+        // limpiar datos actuales del dia y cache de busqueda mensual
+        agendaData.length = 0;
+        agendaMesResultados = null;
+        agendaMesBusquedaToken++;
+
+        // normalizar datos backend -> frontend
+        const rows = Array.isArray(json.data) ? json.data : [];
+        rows.forEach(item => {
+          agendaData.push(normalizarAgendaRow(item, fechaObjetivo, true));
+        });
+
+        aplicarFiltros();
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+
+        const isLatestRequest = localSeq === agendaFetchSeq;
+        const currentDateValue = String(dateInput?.value || "").trim();
+        const isTargetDateStillSelected = currentDateValue === fechaObjetivo;
+        if (!isLatestRequest || !isTargetDateStillSelected) return;
+
+        console.error(err);
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        } else {
+          alert("Opps ocurrio un error de conexion");
+        }
+      } finally {
+        if (agendaFetchController === controller) {
+          agendaFetchController = null;
+          agendaFetchDate = "";
+        }
+      }
     }
-    // limpiar datos actuales del dia y cache de busqueda mensual
-    agendaData.length = 0;
-    agendaMesResultados = null;
-    agendaMesBusquedaToken++;
-
-    // normalizar datos backend -> frontend
-    json.data.forEach(item => {
-      agendaData.push(normalizarAgendaRow(item, fechaISO, true));
-    });
-
-    aplicarFiltros();
-
-  } catch (err) {
-    console.error(err);
-    if (window.notifyConnectionError) {
-      window.notifyConnectionError("Opps ocurrio un error de conexion");
-    } else {
-      alert("Opps ocurrio un error de conexion");
-    }
-  }
-}
     // ===========REFERENCIAS==============
     const tbody = container.querySelector("#agenda-tbody");
     const agendaTable = container.querySelector(".agenda-table");
@@ -871,120 +915,124 @@
     // ==========================
     // GUARDAR CITA
     // ==========================
-    // reemplaza el handler actual por este
     btnGuardar.addEventListener("click", async (ev) => {
-  // prevenir comportamiento por defecto (por si hay un form)
-  if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      // prevenir comportamiento por defecto (por si hay un form)
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      if (isCreatingAgenda) return;
 
-  // referencias a campos del modal (recalculadas por seguridad)
-    const nombreEl = document.querySelector("#modal-nombre");
-    const horaEl = document.querySelector("#modal-hora");
-    const fechaEl = document.querySelector("#modal-fecha");
-    const contactoEl = document.querySelector("#modal-contacto");
-    const estadoEl = document.querySelector("#modal-estado");
-    const comentarioEl = modalComentario || document.querySelector("#modal-comentario");
+      isCreatingAgenda = true;
+      btnGuardar.disabled = true;
 
-  // Si algún campo no existe: aviso y no cerrar modal
-    if (!nombreEl || !horaEl || !fechaEl || !contactoEl || !estadoEl || !comentarioEl) {
-    console.error("Faltan campos del modal. Verifica que existan los inputs con los ids esperados.");
-    alert("Error interno: faltan campos del modal. Revisa la consola.");
-    return;
-  }
+      try {
+        // referencias a campos del modal (recalculadas por seguridad)
+        const nombreEl = document.querySelector("#modal-nombre");
+        const horaEl = document.querySelector("#modal-hora");
+        const fechaEl = document.querySelector("#modal-fecha");
+        const contactoEl = document.querySelector("#modal-contacto");
+        const estadoEl = document.querySelector("#modal-estado");
+        const comentarioEl = modalComentario || document.querySelector("#modal-comentario");
 
-  // valores
-    const nombre = nombreEl.value.trim();
-    const horaRaw = horaEl.value.trim();
-    const fechaISO = fechaEl.value; // YYYY-MM-DD
-    const contacto = contactoEl.value.trim();
-    const estadoValue = estadoEl.value.trim();
-    const comentario = comentarioEl.value.trim();
+        // Si algun campo no existe: aviso y no cerrar modal
+        if (!nombreEl || !horaEl || !fechaEl || !contactoEl || !estadoEl || !comentarioEl) {
+          console.error("Faltan campos del modal. Verifica que existan los inputs con los ids esperados.");
+          alert("Error interno: faltan campos del modal. Revisa la consola.");
+          return;
+        }
 
-  // VALIDACIONES (si falla => mostrar y NO cerrar modal)
-  if (!fechaISO) {
-    alert("⛔ Debe seleccionar una FECHA.");
-    return;
-  }
-  if (!nombre) {
-    alert("⛔ El campo NOMBRE no puede estar vacío.");
-    nombreEl.focus();
-    return;
-  }
-  if (!horaRaw) {
-    alert("⛔ El campo HORA no puede estar vacío.");
-    horaEl.focus();
-    return;
-  }
-  if (!contacto) {
-    alert("⛔ El campo CONTACTO no puede estar vacío.");
-    contactoEl.focus();
-    return;
-  }
-  if (!comentario) {
-    alert("⛔ El campo COMENTARIO no puede estar vacío.");
-    comentarioEl.focus();
-    return;
-  }
+        // valores
+        const nombre = nombreEl.value.trim();
+        const horaRaw = horaEl.value.trim();
+        const fechaISO = fechaEl.value; // YYYY-MM-DD
+        const contacto = contactoEl.value.trim();
+        const estadoValue = estadoEl.value.trim();
+        const comentario = comentarioEl.value.trim();
 
-  // autoformatear la hora y validar
-  const horaForzada = autoFormatearBasico(horaRaw.toLowerCase());
-  if (!validarHora(horaForzada)) {
-    alert("⛔ Hora inválida.\nEjemplos válidos:\n 8:00 am\n 1:30 pm");
-    horaEl.value = horaForzada; // mostrar autoformateado (si aplica) para que el usuario corrija
-    horaEl.focus();
-    return;
-  }
-  // convertir a 24h (08:00)
-  const hora24 = to24(horaForzada);
-  // preparar fecha DD/MM/YYYY
-  const fechaDDMM = isoToDDMMYYYY(fechaISO);
-  // guardar en agendaData
-    try {
-  const res = await fetch("/api/agenda", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      nombre,
-      hora: hora24,
-      fecha: fechaISO,
-      contacto,
-      estado: estadoValue,
-      comentario
-    })
-  });
+        // VALIDACIONES (si falla => mostrar y NO cerrar modal)
+        if (!fechaISO) {
+          alert("Debe seleccionar una FECHA.");
+          return;
+        }
+        if (!nombre) {
+          alert("El campo NOMBRE no puede estar vacio.");
+          nombreEl.focus();
+          return;
+        }
+        if (!horaRaw) {
+          alert("El campo HORA no puede estar vacio.");
+          horaEl.focus();
+          return;
+        }
+        if (!contacto) {
+          alert("El campo CONTACTO no puede estar vacio.");
+          contactoEl.focus();
+          return;
+        }
+        if (!comentario) {
+          alert("El campo COMENTARIO no puede estar vacio.");
+          comentarioEl.focus();
+          return;
+        }
 
-  const json = await res.json();
+        // autoformatear la hora y validar
+        const horaForzada = autoFormatearBasico(horaRaw.toLowerCase());
+        if (!validarHora(horaForzada)) {
+          alert("Hora invalida.\nEjemplos validos:\n 8:00 am\n 1:30 pm");
+          horaEl.value = horaForzada; // mostrar autoformateado (si aplica) para que el usuario corrija
+          horaEl.focus();
+          return;
+        }
+        // convertir a 24h (08:00)
+        const hora24 = to24(horaForzada);
+        // preparar fecha DD/MM/YYYY
+        const fechaDDMM = isoToDDMMYYYY(fechaISO);
 
-  if (!json.ok) {
-    throw new Error(json.message || "Error al crear cita");
-  }
+        const res = await fetch("/api/agenda", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre,
+            hora: hora24,
+            fecha: fechaISO,
+            contacto,
+            estado: estadoValue,
+            comentario
+          })
+        });
 
-  // usar ID REAL de BD
-  agendaData.unshift({
-    idAgendaAP: json.idAgendaAP,
-    nombre,
-    hora: hora24,
-    fecha: fechaDDMM,
-    _fechaISO: fechaISO,
-    contacto,
-    estado: estadoValue,
-    comentario
-  });
+        const json = await res.json();
 
-  aplicarFiltros();
-  if (agendaModalDesdeReprogramacion) {
-    limpiarBufferReprogramacion();
-  }
-  modal.classList.remove("show");
-  resetAgendaModalState();
+        if (!json.ok) {
+          throw new Error(json.message || "Error al crear cita");
+        }
 
-} catch (err) {
-  alert("❌ No se pudo crear la cita");
-  console.error(err);
-  return;
-}
+        // usar ID REAL de BD
+        agendaData.unshift({
+          idAgendaAP: json.idAgendaAP,
+          nombre,
+          hora: hora24,
+          fecha: fechaDDMM,
+          _fechaISO: fechaISO,
+          contacto,
+          estado: estadoValue,
+          comentario
+        });
 
-
-});
+        aplicarFiltros();
+        if (agendaModalDesdeReprogramacion) {
+          limpiarBufferReprogramacion();
+        }
+        modal.classList.remove("show");
+        resetAgendaModalState();
+      } catch (err) {
+        alert("No se pudo crear la cita");
+        console.error(err);
+      } finally {
+        isCreatingAgenda = false;
+        if (btnGuardar && btnGuardar.isConnected) {
+          btnGuardar.disabled = false;
+        }
+      }
+    });
     // =============FECHA ACTUAL (FILTRO)===========
     dateInput.value = getLocalTodayISO();
     actualizarUiReprogramacion();
@@ -996,7 +1044,7 @@
     actualizarUiReprogramacion();
     cargarAgendaPorFecha(dateInput.value);
     });
-    // ============FUNCIONES DE EDICIÓN EN TABLA================
+    // ============FUNCIONES DE EDICION EN TABLA================
     function editarFecha(td, item) {
       const input = document.createElement("input");
       input.type = "date";
@@ -1035,64 +1083,75 @@
     td.appendChild(input);
     input.focus();
 
+    let isSaving = false;
+    let isClosed = false;
+
+    function renderCellValue(value) {
+      if (campo === "nombre") {
+        renderAgendaNombreCell(td, value);
+      } else {
+        td.textContent = value;
+      }
+    }
+
+    function closeEditor(value) {
+      if (isClosed) return;
+      isClosed = true;
+      renderCellValue(value);
+    }
+
     async function save() {
-    const nuevoValor = input.value.trim();
+      if (isSaving || isClosed) return;
+      isSaving = true;
 
-    // Si no cambió nada, solo restaurar
-    if (nuevoValor === valorOriginal) {
-      if (campo === "nombre") {
-        renderAgendaNombreCell(td, valorOriginal);
-      } else {
-        td.textContent = valorOriginal;
+      const nuevoValor = input.value.trim();
+
+      // Si no cambio nada, solo restaurar
+      if (nuevoValor === valorOriginal) {
+        closeEditor(valorOriginal);
+        isSaving = false;
+        return;
       }
-      return;
-    }
 
-    // Optimistic UI (actualiza primero)
-    item[campo] = nuevoValor;
-    if (campo === "nombre") {
-      renderAgendaNombreCell(td, nuevoValor);
-    } else {
-      td.textContent = nuevoValor;
-    }
+      // Optimistic UI (actualiza primero)
+      item[campo] = nuevoValor;
+      closeEditor(nuevoValor);
 
-    try {
-      const res = await fetch(`/api/agenda/${item.idAgendaAP}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [campo]: nuevoValor })
-      });
+      try {
+        const res = await fetch(`/api/agenda/${item.idAgendaAP}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ [campo]: nuevoValor })
+        });
 
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.message);
+      } catch (err) {
+        // rollback si falla
+        alert("Error al guardar el cambio");
+        console.error(err);
 
-    } catch (err) {
-      // rollback si falla
-      alert("❌ Error al guardar el cambio");
-      console.error(err);
-
-      item[campo] = valorOriginal;
-      if (campo === "nombre") {
-        renderAgendaNombreCell(td, valorOriginal);
-      } else {
-        td.textContent = valorOriginal;
+        item[campo] = valorOriginal;
+        renderCellValue(valorOriginal);
+      } finally {
+        isSaving = false;
       }
     }
-  }
 
-  input.addEventListener("keydown", e => {
-    if (e.key === "Enter") save();
-    if (e.key === "Escape") {
-      item[campo] = valorOriginal;
-      if (campo === "nombre") {
-        renderAgendaNombreCell(td, valorOriginal);
-      } else {
-        td.textContent = valorOriginal;
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        save();
       }
-    }
-  });
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (isClosed) return;
+        item[campo] = valorOriginal;
+        closeEditor(valorOriginal);
+      }
+    });
 
-  input.addEventListener("blur", save);
+    input.addEventListener("blur", save);
     }
     function editarHora(td, item) {
       const input = document.createElement("input");
@@ -1113,7 +1172,7 @@
         let v = autoFormatearBasico(input.value.trim().toLowerCase());
 
         if (!validarHora(v)) {
-          alert("⛔ Hora inválida.\nEjemplos válidos:\n 8:00 am\n 1:30 pm");
+          alert("Hora invalida.\nEjemplos validos:\n 8:00 am\n 1:30 pm");
           td.textContent = formatTime12(item.hora);
           aplicarRefuerzoVisualHora(td, item.hora);
           return;
@@ -1231,18 +1290,30 @@
           tdComentario.replaceChild(input, span);
           input.focus();
 
+          let isSavingComentario = false;
+          let isClosedComentario = false;
+
+          function closeComentarioEditor(value) {
+            if (isClosedComentario) return;
+            isClosedComentario = true;
+            pintarComentarioVisual(span, value);
+            tdComentario.replaceChild(span, input);
+          }
+
           async function save() {
+            if (isSavingComentario || isClosedComentario) return;
+            isSavingComentario = true;
+
             const nuevoComentario = input.value.trim();
 
             if (nuevoComentario === valorOriginal) {
-              pintarComentarioVisual(span, valorOriginal);
-              tdComentario.replaceChild(span, input);
+              closeComentarioEditor(valorOriginal);
+              isSavingComentario = false;
               return;
             }
 
             item.comentario = nuevoComentario;
-            pintarComentarioVisual(span, item.comentario);
-            tdComentario.replaceChild(span, input);
+            closeComentarioEditor(item.comentario);
 
             try {
               const res = await fetch(`/api/agenda/${item.idAgendaAP}`, {
@@ -1258,15 +1329,21 @@
               pintarComentarioVisual(span, valorOriginal);
               alert("No se pudo guardar el comentario");
               console.error(err);
+            } finally {
+              isSavingComentario = false;
             }
           }
 
           input.addEventListener("keydown", e => {
-            if (e.key === "Enter") save();
+            if (e.key === "Enter") {
+              e.preventDefault();
+              save();
+            }
             if (e.key === "Escape") {
+              e.preventDefault();
+              if (isClosedComentario) return;
               item.comentario = valorOriginal;
-              pintarComentarioVisual(span, valorOriginal);
-              tdComentario.replaceChild(span, input);
+              closeComentarioEditor(valorOriginal);
             }
           });
 
@@ -1654,6 +1731,17 @@
 
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
+        if (agendaFetchController) {
+          try {
+            agendaFetchController.abort();
+          } catch {
+            // ignore abort failures
+          }
+        }
+        agendaFetchController = null;
+        agendaFetchDate = "";
+        agendaFetchSeq++;
+
         limpiarBufferReprogramacion();
         resetAgendaModalState();
         closeAgendaModal();
@@ -1667,6 +1755,7 @@
   }
   window.__mountAgenda = mountAgenda;
 })();
+
 
 
 

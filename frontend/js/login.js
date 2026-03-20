@@ -4,10 +4,224 @@
     const isSpace = e.code === "Space" || e.key === " ";
     return e.ctrlKey && e.shiftKey && isSpace;
   }
+
   function renderIcon(name, className) {
     const registry = window.__uiIcons;
     if (!registry || typeof registry.get !== "function") return "";
     return registry.get(name, { className: className || "ui-toolbar-icon" });
+  }
+
+  function sanitizeText(value, fallback = "") {
+    const text = String(value || "").trim();
+    return text || fallback;
+  }
+
+  function formatMaskedCode(maskedCode) {
+    const raw = sanitizeText(maskedCode);
+    return raw ? raw : "No configurado";
+  }
+
+  async function fetchLicenseStatus(options = {}) {
+    const { force = false } = options;
+    try {
+      const params = new URLSearchParams();
+      if (force) params.set("force", "1");
+      params.set("_ts", String(Date.now()));
+
+      const res = await fetch(`/api/licencia/estado?${params.toString()}`, {
+        cache: "no-store"
+      });
+      const data = await res.json();
+
+      if (!data || data.ok !== true) {
+        return {
+          ok: false,
+          code: sanitizeText(data?.code, "estado_no_disponible"),
+          message: sanitizeText(data?.message, "No se pudo leer estado de licencia")
+        };
+      }
+
+      return {
+        ok: true,
+        data: data.data || {}
+      };
+    } catch (err) {
+      console.error(err);
+      return {
+        ok: false,
+        code: "estado_no_disponible",
+        message: "No se pudo conectar para validar licencia"
+      };
+    }
+  }
+
+  function renderStatusLine(label, status, fallbackCode, fallbackMessage) {
+    const ok = status?.ok === true;
+    const code = sanitizeText(status?.code, fallbackCode);
+    const message = sanitizeText(status?.message, fallbackMessage);
+    const stateText = ok ? "OK" : "BLOQUEADO";
+    return `
+      <div class="license-status-row">
+        <span class="license-status-label">${label}</span>
+        <span class="license-status-pill ${ok ? "is-ok" : "is-blocked"}">${stateText}</span>
+      </div>
+      <div class="license-status-detail"><strong>${code}</strong>: ${message}</div>
+    `;
+  }
+
+  function renderActivationScreen(container, state = {}, options = {}) {
+    const startup = state?.startup || {};
+    const usage = state?.usage || {};
+    const statusFetchFailed = options.statusFetchFailed === true;
+
+    container.innerHTML = `
+      <div class="login-container">
+        <div class="login-box">
+          <h2>Activacion inicial</h2>
+          <p class="license-subtitle">
+            Este servidor necesita una licencia valida antes de habilitar el sistema.
+          </p>
+
+          <div class="license-status-card">
+            <div class="license-status-meta">
+              <span><strong>Licencia:</strong> ${formatMaskedCode(state?.codigoLicenciaMasked)}</span>
+              <span><strong>Origen:</strong> ${sanitizeText(state?.codeSource, "none")}</span>
+            </div>
+            <div class="license-status-meta">
+              <span class="license-device-line">
+                <strong>Device:</strong>
+                <span class="license-device-value">${sanitizeText(state?.deviceId, "N/D")}</span>
+              </span>
+            </div>
+            ${renderStatusLine("Arranque", startup, "arranque_no_validado", "Arranque no validado")}
+            ${renderStatusLine("Suscripcion", usage, "suscripcion_no_validada", "Suscripcion no validada")}
+          </div>
+
+          <div class="login-field">
+            <label for="activation-code">Codigo de licencia</label>
+            <input
+              class="ui-control"
+              type="text"
+              id="activation-code"
+              placeholder="CLINICA-2026-A8KD-X9PL"
+              autocomplete="off"
+            >
+          </div>
+
+          <div class="login-actions license-actions">
+            <button id="btn-license-activate" class="btn-login ui-toolbar-btn is-primary" type="button">
+              ${renderIcon("shield-check", "ui-toolbar-icon")}
+              <span>Activar equipo</span>
+            </button>
+            <button id="btn-license-refresh" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+              ${renderIcon("arrow-path", "ui-toolbar-icon")}
+              <span>Revalidar estado</span>
+            </button>
+          </div>
+
+          <div id="activation-error" class="login-error" ${statusFetchFailed ? "" : "hidden"}>
+            ${statusFetchFailed ? "No se pudo consultar estado de licencia. Verifique conexion a BD." : ""}
+          </div>
+          <div id="activation-notice" class="login-notice" hidden></div>
+        </div>
+      </div>
+    `;
+
+    const codeInput = container.querySelector("#activation-code");
+    const btnActivate = container.querySelector("#btn-license-activate");
+    const btnRefresh = container.querySelector("#btn-license-refresh");
+    const errorBox = container.querySelector("#activation-error");
+    const noticeBox = container.querySelector("#activation-notice");
+
+    setTimeout(() => codeInput.focus(), 60);
+
+    btnRefresh.addEventListener("click", () => {
+      void mountLogin({ forceStatus: true });
+    });
+
+    btnActivate.addEventListener("click", async () => {
+      const codigoLicencia = sanitizeText(codeInput.value);
+      errorBox.hidden = true;
+      noticeBox.hidden = true;
+
+      if (!codigoLicencia) {
+        errorBox.textContent = "Debe ingresar un codigo de licencia";
+        errorBox.hidden = false;
+        return;
+      }
+
+      btnActivate.disabled = true;
+      btnRefresh.disabled = true;
+
+      try {
+        const res = await fetch("/api/licencia/activar-inicial", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codigoLicencia })
+        });
+        const data = await res.json();
+
+        if (!data?.ok) {
+          errorBox.textContent = data?.message || "No se pudo activar la licencia";
+          errorBox.hidden = false;
+          return;
+        }
+
+        noticeBox.textContent = data?.message || "Licencia activada correctamente";
+        noticeBox.hidden = false;
+        setTimeout(() => {
+          void mountLogin({ forceStatus: true });
+        }, 600);
+      } catch (err) {
+        console.error(err);
+        errorBox.textContent = "Opps ocurrio un error de conexion";
+        errorBox.hidden = false;
+      } finally {
+        btnActivate.disabled = false;
+        btnRefresh.disabled = false;
+      }
+    });
+
+    codeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        btnActivate.click();
+      }
+    });
+  }
+
+  function renderUsageBlockedScreen(container, state = {}) {
+    const usage = state?.usage || {};
+
+    container.innerHTML = `
+      <div class="login-container">
+        <div class="login-box">
+          <h2>Sistema bloqueado</h2>
+          <p class="license-subtitle">
+            El servidor esta activo, pero el uso del sistema esta bloqueado por suscripcion.
+          </p>
+
+          <div class="license-status-card">
+            <div class="license-status-meta">
+              <span><strong>Licencia:</strong> ${formatMaskedCode(state?.codigoLicenciaMasked)}</span>
+              <span><strong>Origen:</strong> ${sanitizeText(state?.codeSource, "none")}</span>
+            </div>
+            ${renderStatusLine("Suscripcion", usage, "suscripcion_no_validada", "Suscripcion no validada")}
+          </div>
+
+          <div class="login-actions license-actions license-actions-single">
+            <button id="btn-license-refresh" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+              ${renderIcon("arrow-path", "ui-toolbar-icon")}
+              <span>Revalidar estado</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const btnRefresh = container.querySelector("#btn-license-refresh");
+    btnRefresh.addEventListener("click", () => {
+      void mountLogin({ forceStatus: true });
+    });
   }
 
   function renderLogin(container) {
@@ -61,11 +275,6 @@
               </div>
 
               <div class="hidden-register-field">
-                <label for="reg-cargo">Cargo</label>
-                <input class="ui-control" type="text" id="reg-cargo" placeholder="Cargo (max 20)">
-              </div>
-
-              <div class="hidden-register-field">
                 <label for="reg-idrol">Rol</label>
                 <select class="ui-control" id="reg-idrol">
                   <option value="">Seleccione rol</option>
@@ -112,7 +321,6 @@
     const regPassword = container.querySelector("#reg-password");
     const regPasswordConfirm = container.querySelector("#reg-password-confirm");
     const regNombre = container.querySelector("#reg-nombre");
-    const regCargo = container.querySelector("#reg-cargo");
     const regIdRol = container.querySelector("#reg-idrol");
     const regIdDoctor = container.querySelector("#reg-iddoctor");
     let registroCatalogosCargados = false;
@@ -185,7 +393,6 @@
       regPassword.value = "";
       regPasswordConfirm.value = "";
       regNombre.value = "";
-      regCargo.value = "";
       regIdRol.value = "";
       regIdDoctor.value = "";
     }
@@ -227,7 +434,7 @@
         })
       })
         .then(res => res.json())
-        .then(data => {
+        .then(async (data) => {
           if (!data.ok) {
             errorBox.textContent = data.message || "Correo o contrasena incorrectos";
             errorBox.hidden = false;
@@ -249,6 +456,14 @@
             window.applyMenuPermissions();
           }
 
+          if (window.refreshLicenseWarning) {
+            try {
+              await window.refreshLicenseWarning({ force: false, showPopup: true });
+            } catch (refreshErr) {
+              console.error(refreshErr);
+            }
+          }
+
           if (window.loadView) {
             detachShortcut();
             const defaultView = window.getDefaultViewByRole
@@ -256,7 +471,7 @@
               : null;
 
             if (defaultView) {
-              window.loadView(defaultView);
+              await window.loadView(defaultView);
             }
           }
         })
@@ -277,12 +492,11 @@
       const password = regPassword.value;
       const passwordConfirm = regPasswordConfirm.value;
       const nombre = regNombre.value.trim();
-      const cargo = regCargo.value.trim();
       const idRol = Number(regIdRol.value);
       const idDoctorRaw = regIdDoctor.value;
       const idDoctor = idDoctorRaw === "" ? null : Number(idDoctorRaw);
 
-      if (!correo || !password || !passwordConfirm || !nombre || !cargo || !idRol) {
+      if (!correo || !password || !passwordConfirm || !nombre || !idRol) {
         registroMsg.textContent = "Complete los campos obligatorios";
         registroMsg.hidden = false;
         return;
@@ -308,7 +522,6 @@
             correo,
             password,
             nombre,
-            cargo,
             idRol,
             idDoctor
           })
@@ -365,19 +578,73 @@
       document.addEventListener("keydown", onLoginKeydown, true);
     };
 
-    const detachShortcut = () => {
+    function detachShortcut() {
       if (window.__loginHiddenShortcutHandler) {
         document.removeEventListener("keydown", window.__loginHiddenShortcutHandler, true);
         window.__loginHiddenShortcutHandler = null;
       }
-    };
+    }
 
     attachShortcut();
   }
 
-  function mountLogin() {
+  async function mountLogin(options = {}) {
+    const { forceStatus = false } = options;
     const content = document.querySelector(".content");
     if (!content) return;
+
+    if (window.__loginHiddenShortcutHandler) {
+      document.removeEventListener("keydown", window.__loginHiddenShortcutHandler, true);
+      window.__loginHiddenShortcutHandler = null;
+    }
+
+    content.innerHTML = `
+      <div class="login-container">
+        <div class="login-box">
+          <h2>Validando licencia...</h2>
+          <p class="license-subtitle">Espere un momento.</p>
+        </div>
+      </div>
+    `;
+
+    const statusResult = await fetchLicenseStatus({ force: forceStatus });
+    if (!statusResult.ok) {
+      renderActivationScreen(
+        content,
+        {
+          startup: {
+            ok: false,
+            code: statusResult.code,
+            message: statusResult.message
+          },
+          usage: {
+            ok: false,
+            code: "suscripcion_no_validada",
+            message: "No se pudo consultar suscripcion"
+          },
+          codigoLicenciaMasked: null,
+          codeSource: "none",
+          deviceId: null
+        },
+        { statusFetchFailed: true }
+      );
+      return;
+    }
+
+    const state = statusResult.data || {};
+    const startupOk = state?.startup?.ok === true;
+    const usageOk = state?.usage?.ok === true;
+
+    if (!startupOk) {
+      renderActivationScreen(content, state, { statusFetchFailed: false });
+      return;
+    }
+
+    if (!usageOk) {
+      renderUsageBlockedScreen(content, state);
+      return;
+    }
+
     renderLogin(content);
   }
 

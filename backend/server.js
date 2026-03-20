@@ -2,6 +2,8 @@ const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
 const express = require("express");
 const storagePaths = require("./config/storagePaths");
+const licenciaService = require("./services/licencia.service");
+const licenciaMiddleware = require("./middlewares/licencia.middleware");
 
 const app = express();
 const PORT = 3000;
@@ -30,15 +32,16 @@ app.get("/health", (req, res) => {
 });
 
 // Rutas API
+app.use("/api/licencia", require("./routes/licencia.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));
-app.use("/api/agenda", require("./routes/agenda.routes"));
-app.use("/api/doctor", require("./routes/doctor.routes"));
-app.use("/api/servicio", require("./routes/servicio.routes"));
-app.use("/api/paciente", require("./routes/paciente.routes"));
-app.use("/api/cuenta", require("./routes/cuenta.routes"));
-app.use("/api/odontograma", require("./routes/odontograma.routes"));
-app.use("/api/foto-paciente", require("./routes/fotoPaciente.routes"));
-app.use("/api/cola", require("./routes/cola.routes"));
+app.use("/api/agenda", licenciaMiddleware.requireLicensedAccess, require("./routes/agenda.routes"));
+app.use("/api/doctor", licenciaMiddleware.requireLicensedAccess, require("./routes/doctor.routes"));
+app.use("/api/servicio", licenciaMiddleware.requireLicensedAccess, require("./routes/servicio.routes"));
+app.use("/api/paciente", licenciaMiddleware.requireLicensedAccess, require("./routes/paciente.routes"));
+app.use("/api/cuenta", licenciaMiddleware.requireLicensedAccess, require("./routes/cuenta.routes"));
+app.use("/api/odontograma", licenciaMiddleware.requireLicensedAccess, require("./routes/odontograma.routes"));
+app.use("/api/foto-paciente", licenciaMiddleware.requireLicensedAccess, require("./routes/fotoPaciente.routes"));
+app.use("/api/cola", licenciaMiddleware.requireLicensedAccess, require("./routes/cola.routes"));
 
 storagePaths.ensureDataDirsSync();
 
@@ -58,10 +61,13 @@ async function getDbConnectionStatus() {
 
 async function startServer() {
   const dbStatus = await getDbConnectionStatus();
+  const licenciaStatus = await licenciaService.initializeRuntimeValidation();
 
   app.listen(PORT, HOST, () => {
     const dbText = dbStatus.ok ? "DB: conectado" : `DB: no conectado (${dbStatus.message})`;
-    console.log(`[BOOT] Proyecto levantado en http://localhost:${PORT} | ${dbText} | DATA: ${storagePaths.dataRootDir}`);
+    const licStartup = licenciaStatus?.startup?.ok ? "startup:ok" : `startup:bloqueado(${licenciaStatus?.startup?.code || "n/a"})`;
+    const licUsage = licenciaStatus?.usage?.ok ? "uso:ok" : `uso:bloqueado(${licenciaStatus?.usage?.code || "n/a"})`;
+    console.log(`[BOOT] Proyecto levantado en http://localhost:${PORT} | ${dbText} | LIC: ${licStartup}, ${licUsage} | DATA: ${storagePaths.dataRootDir}`);
   });
 }
 

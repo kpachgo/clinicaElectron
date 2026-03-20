@@ -153,3 +153,88 @@ Notas
 - Este modelo da control central real con costo bajo.
 - Si internet cae por mucho tiempo, la politica de gracia define continuidad.
 - Sin validacion remota no hay control central confiable.
+
+ACTUALIZACION DE IMPLEMENTACION (2026-03-17)
+
+Estado actual aplicado
+- Se creo el archivo SQL: backend/sql/sp_licencias.sql
+- Este archivo incluye:
+  - Tabla licencias
+  - Tabla licencia_sesiones
+  - sp_licencia_activar_inicial
+  - sp_licencia_validar_arranque
+  - sp_licencia_validar_uso_sistema
+  - sp_licencia_cerrar_sesion
+  - sp_licencia_limpiar_sesion_dia
+
+Importante
+- No se modifico backend/sql/sp_todos_railway.sql en esta fase para no romper el flujo actual.
+- Para instalar licenciamiento, ejecutar backend/sql/sp_licencias.sql adicionalmente en Railway.
+
+Politica actual offline
+- De momento no hay fallback offline activo.
+- Si la BD remota no esta disponible, no hay validacion operativa de licencias.
+- A futuro se agregara base/capa local de respaldo para offline real.
+
+Operacion manual para traslado de PC (mismo dia)
+- Regla vigente: se requiere limpieza manual de sesion diaria.
+- SP para soporte:
+  CALL sp_licencia_limpiar_sesion_dia('CODIGO-LICENCIA', CURDATE());
+
+ACLARACION IMPORTANTE: NULL vs VACIO vs 'null'
+- NULL (sin comillas) = sin valor real en SQL.
+- '' (cadena vacia) = texto vacio, NO es NULL.
+- 'null' (con comillas) = texto literal "null", NO es NULL.
+
+Recordatorio de ejecucion: SP crear licencia
+- SP: sp_licencia_crear
+- Ruta SQL: backend/sql/sp_licencia_crear.sql
+- Ejemplo recomendado:
+  CALL sp_licencia_crear(
+    'DENTALSIVAR-SONSONATE-2026-A8KD-X9PL',
+    'DENTAL-SIVAR-SONSONATE',
+    'activa',
+    'activa',
+    1,
+    1,
+    NULL,
+    '2026-12-31 23:59:59'
+  );
+
+Notas de fecha
+- p_fecha_inicio:
+  - Si envias NULL, el SP usa NOW() internamente.
+  - Si quieres fecha fija, envia 'YYYY-MM-DD HH:MM:SS'.
+- p_fecha_vencimiento:
+  - Es la fecha/hora limite de suscripcion.
+  - Si ya paso, la validacion responde suscripcion_vencida.
+
+ACTUALIZACION DE IMPLEMENTACION (2026-03-17) - AVISO DE VENCIMIENTO
+
+Backend (/api/licencia/estado)
+- El objeto data.usage ahora incluye:
+  - fechaVencimiento
+  - diasRestantes
+  - proximaAVencer
+  - warningWindowDays
+  - mensajeAviso
+- Regla de aviso activo:
+  - estado_suscripcion = 'activa'
+  - suscripcion_habilitada = 1
+  - fecha_vencimiento no nula
+  - 0 <= diasRestantes <= 3
+
+Frontend (campanita)
+- La campanita del topbar muestra badge rojo cuando proximaAVencer = true.
+- Al abrir la campanita se muestra panel con dias restantes, fecha y mensaje.
+- Popup automatico: solo 1 vez por dia por navegador/equipo usando localStorage.
+- Clave usada:
+  - license_warning_seen::<codigo>::YYYY-MM-DD
+
+Renovacion manual (obligatorio actualizar los 3 campos)
+UPDATE licencias
+SET
+  estado_suscripcion = 'activa',
+  suscripcion_habilitada = 1,
+  fecha_vencimiento = 'YYYY-MM-DD HH:MM:SS'
+WHERE codigo_licencia = 'TU-CODIGO';

@@ -1,33 +1,29 @@
 // js/servicios.js
 (function () {
-
   // =========================================
-  // DATOS DE EJEMPLO (en memoria)
+  // DATOS EN MEMORIA
   // =========================================
   const serviciosData = [];
 
   // =========================================
-  // UTIL: formatea precio para mostrar
+  // UTIL
   // =========================================
   function formatoPrecio(num) {
     if (Number.isNaN(num)) return "";
     if (Number.isInteger(num)) return `$${num}`;
     return `$${num.toFixed(2)}`;
   }
+
   function renderIcon(name, className) {
     const registry = window.__uiIcons;
     if (!registry || typeof registry.get !== "function") return "";
     return registry.get(name, { className: className || "ui-action-icon" });
   }
 
-  // =========================================
-  // UTIL: crear modal mínimo (si falta en el HTML)
-  // =========================================
   function ensureServicioModalExists() {
     let modal = document.getElementById("modal-servicio");
     if (modal) return modal;
 
-    // crear markup mínimo para el modal si no existe
     modal = document.createElement("div");
     modal.id = "modal-servicio";
     modal.className = "modal";
@@ -82,58 +78,31 @@
         </div>
       </div>
     `;
-    // BLINDAJE GLOBAL DE SERVICIOS====
-if (!window.__serviciosEscHandler) {
-  window.__serviciosEscHandler = (e) => {
-    if (e.key === "Escape") {
-      const m = document.getElementById("modal-servicio");
-      if (m) m.classList.remove("show");
-      const inputNombre = document.getElementById("servicio-nombre");
-      const inputPrecio = document.getElementById("servicio-precio");
-      if (inputNombre) inputNombre.value = "";
-      if (inputPrecio) inputPrecio.value = "";
-    }
-  };
-  document.addEventListener("keydown", window.__serviciosEscHandler);
-}
-    async function cargarServicios() {
-    try {
-    const res = await fetch("/api/servicio");
-    const json = await res.json();
-    if (!json.ok) {
-      alert(json.message || "Error al cargar servicios");
-      return;
+
+    let serviciosFetchSeq = 0;
+    let serviciosFetchController = null;
+    let isCreatingServicio = false;
+
+    if (!window.__serviciosEscHandler) {
+      window.__serviciosEscHandler = (e) => {
+        if (e.key !== "Escape") return;
+        const m = document.getElementById("modal-servicio");
+        if (m) m.classList.remove("show");
+        const inputNombre = document.getElementById("servicio-nombre");
+        const inputPrecio = document.getElementById("servicio-precio");
+        if (inputNombre) inputNombre.value = "";
+        if (inputPrecio) inputPrecio.value = "";
+      };
+      document.addEventListener("keydown", window.__serviciosEscHandler);
     }
 
-    serviciosData.length = 0;
-
-    json.data.forEach(s => {
-      serviciosData.push({
-        id: s.idServicio,
-        nombre: s.nombreS,
-        precio: Number(s.precioS)
-      });
-    });
-
-    drawRows(serviciosData);
-  } catch (err) {
-    console.error(err);
-    if (window.notifyConnectionError) {
-      window.notifyConnectionError("Opps ocurrio un error de conexion");
-    } else {
-      alert("Opps ocurrio un error de conexion");
-    }
-  }
-    }
-
-    // referencias internas
     const tbody = container.querySelector("#servicio-tbody");
     const searchInput = container.querySelector("#servicio-search");
     const addBtn = container.querySelector("#servicio-add");
+
     if (searchInput) {
       searchInput.setAttribute("name", `servicio-search-${Date.now()}`);
       searchInput.value = "";
-      // Evita autofill agresivo del navegador al recargar (F5).
       searchInput.readOnly = true;
       setTimeout(() => {
         if (!searchInput.isConnected) return;
@@ -150,8 +119,8 @@ if (!window.__serviciosEscHandler) {
       }, 1200);
     }
 
-    // Aseguramos que el modal exista (en DOM o lo creamos)
     const modal = ensureServicioModalExists();
+
     function resetServicioModalState() {
       const inputNombre = document.getElementById("servicio-nombre");
       const inputPrecio = document.getElementById("servicio-precio");
@@ -160,7 +129,61 @@ if (!window.__serviciosEscHandler) {
       if (modal) modal.classList.remove("show");
     }
 
-    // buscaremos los inputs cada vez que abramos el modal (evita nulls)
+    async function cargarServicios() {
+      if (serviciosFetchController) {
+        try {
+          serviciosFetchController.abort();
+        } catch {
+          // ignore abort failures
+        }
+      }
+
+      const localSeq = ++serviciosFetchSeq;
+      const controller = typeof AbortController !== "undefined"
+        ? new AbortController()
+        : null;
+      serviciosFetchController = controller;
+
+      try {
+        const fetchOptions = controller ? { signal: controller.signal } : undefined;
+        const res = await fetch("/api/servicio", fetchOptions);
+        const json = await res.json();
+
+        if (localSeq !== serviciosFetchSeq || !container.isConnected) return;
+
+        if (!res.ok || !json?.ok) {
+          alert(json?.message || "Error al cargar servicios");
+          return;
+        }
+
+        serviciosData.length = 0;
+        const rows = Array.isArray(json.data) ? json.data : [];
+        rows.forEach((s) => {
+          serviciosData.push({
+            id: s.idServicio,
+            nombre: s.nombreS,
+            precio: Number(s.precioS)
+          });
+        });
+
+        aplicarFiltro();
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+        if (localSeq !== serviciosFetchSeq || !container.isConnected) return;
+
+        console.error(err);
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        } else {
+          alert("Opps ocurrio un error de conexion");
+        }
+      } finally {
+        if (serviciosFetchController === controller) {
+          serviciosFetchController = null;
+        }
+      }
+    }
+
     function openModalForCreate() {
       const inputNombre = document.getElementById("servicio-nombre");
       const inputPrecio = document.getElementById("servicio-precio");
@@ -168,70 +191,72 @@ if (!window.__serviciosEscHandler) {
       const btnSave = document.getElementById("modal-servicio-save");
 
       if (!inputNombre || !inputPrecio || !btnCancel || !btnSave) {
-        console.error("Elementos del modal no encontrados después de crear/asegurar modal.");
+        console.error("Elementos del modal no encontrados despues de crear/asegurar modal.");
         alert("Error interno: modal incompleto.");
         return;
       }
 
-      // limpiar
       inputNombre.value = "";
       inputPrecio.value = "";
-
       modal.classList.add("show");
       setTimeout(() => inputNombre.focus(), 50);
 
-      // remover posibles listeners previos (para evitar duplicados)
       btnCancel.onclick = () => resetServicioModalState();
 
       btnSave.onclick = async (ev) => {
-        if (ev && ev.preventDefault) ev.preventDefault();
-        const nombre = (inputNombre.value || "").trim();
+        if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+        if (isCreatingServicio) return;
+
+        const nombre = String(inputNombre.value || "").trim();
         const precioRaw = inputPrecio.value;
         const precio = precioRaw === "" ? NaN : Number(precioRaw);
 
-        // validaciones
         if (!nombre) {
-          alert("⛔ El nombre del servicio no puede estar vacío.");
+          alert("El nombre del servicio no puede estar vacio.");
           inputNombre.focus();
           return;
         }
         if (!Number.isFinite(precio) || precio < 0) {
-          alert("⛔ Precio inválido. Ingrese un número válido mayor o igual a 0.");
+          alert("Precio invalido. Ingrese un numero valido mayor o igual a 0.");
           inputPrecio.focus();
           return;
         }
 
-        const res = await fetch("/api/servicio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre, precio })
-        });
+        isCreatingServicio = true;
+        btnSave.disabled = true;
 
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.message);
+        try {
+          const res = await fetch("/api/servicio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nombre, precio })
+          });
+          const json = await res.json();
+          if (!res.ok || !json?.ok) {
+            throw new Error(json?.message || "No se pudo crear servicio");
+          }
 
-        serviciosData.unshift({
-        id: json.idServicio,
-        nombre,
-        precio
-        });
-        aplicarFiltro();
-        resetServicioModalState();
-    }}
-
-    // abrir modal al click (asegurando inputs dinámicamente)
-    addBtn.addEventListener("click", openModalForCreate);
-
-    if (window.__setViewCleanup) {
-      window.__setViewCleanup(() => {
-        serviciosData.length = 0;
-        if (searchInput) searchInput.value = "";
-        if (tbody) tbody.innerHTML = "";
-        resetServicioModalState();
-      });
+          serviciosData.unshift({
+            id: json.idServicio,
+            nombre,
+            precio
+          });
+          aplicarFiltro();
+          resetServicioModalState();
+        } catch (err) {
+          console.error(err);
+          alert(err?.message || "No se pudo crear el servicio");
+        } finally {
+          isCreatingServicio = false;
+          if (btnSave && btnSave.isConnected) {
+            btnSave.disabled = false;
+          }
+        }
+      };
     }
 
-    // ------------- dibujar filas
+    addBtn?.addEventListener("click", openModalForCreate);
+
     function drawRows(list) {
       tbody.innerHTML = "";
       if (!list || list.length === 0) {
@@ -239,10 +264,9 @@ if (!window.__serviciosEscHandler) {
         return;
       }
 
-      list.forEach(s => {
+      list.forEach((s) => {
         const tr = document.createElement("tr");
 
-        // nombre (editable con dblclick inline)
         const tdNombre = document.createElement("td");
         tdNombre.textContent = s.nombre;
         tdNombre.className = "serv-nombre editable";
@@ -252,7 +276,6 @@ if (!window.__serviciosEscHandler) {
         });
         tr.appendChild(tdNombre);
 
-        // precio
         const tdPrecio = document.createElement("td");
         tdPrecio.style.textAlign = "right";
         tdPrecio.textContent = formatoPrecio(s.precio);
@@ -278,6 +301,7 @@ if (!window.__serviciosEscHandler) {
             ? await window.showSystemConfirm(`Eliminar servicio "${s.nombre}"?`)
             : confirm(`Eliminar servicio "${s.nombre}"?`);
           if (!ok) return;
+
           btnEliminar.disabled = true;
           try {
             const res = await fetch(`/api/servicio/${s.id}`, { method: "DELETE" });
@@ -288,7 +312,7 @@ if (!window.__serviciosEscHandler) {
             if (idx >= 0) serviciosData.splice(idx, 1);
             aplicarFiltro();
           } catch (err) {
-            alert(err.message || "Error al eliminar servicio");
+            alert(err?.message || "Error al eliminar servicio");
             btnEliminar.disabled = false;
           }
         });
@@ -300,66 +324,74 @@ if (!window.__serviciosEscHandler) {
       });
     }
 
-    // ------------- edición inline para texto (nombre)
-    // ------------- edición inline para texto (nombre)
-async function editarTextoInline(td, objeto, campo) {
-  const valorOriginal = objeto[campo];
+    async function editarTextoInline(td, objeto, campo) {
+      const valorOriginal = objeto[campo];
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = valorOriginal;
+      input.className = "comment-edit";
 
-  const input = document.createElement("input");
-  input.type = "text";
-  input.value = valorOriginal;
-  input.className = "comment-edit";
+      td.textContent = "";
+      td.appendChild(input);
+      input.focus();
 
-  td.textContent = "";
-  td.appendChild(input);
-  input.focus();
+      let isSaving = false;
+      let isClosed = false;
 
-  async function save() {
-    const nuevoValor = input.value.trim();
+      function closeEditor(value) {
+        if (isClosed) return;
+        isClosed = true;
+        td.textContent = value;
+      }
 
-    // Si no cambió nada
-    if (nuevoValor === valorOriginal) {
-      td.textContent = valorOriginal;
-      return;
-    }
+      async function save() {
+        if (isSaving || isClosed) return;
+        isSaving = true;
 
-    // Optimistic UI
-    objeto[campo] = nuevoValor;
-    td.textContent = nuevoValor;
+        const nuevoValor = input.value.trim();
+        if (nuevoValor === valorOriginal) {
+          closeEditor(valorOriginal);
+          isSaving = false;
+          return;
+        }
 
-    try {
-      const res = await fetch(`/api/servicio/${objeto.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [campo]: nuevoValor })
+        objeto[campo] = nuevoValor;
+        closeEditor(nuevoValor);
+
+        try {
+          const res = await fetch(`/api/servicio/${objeto.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ [campo]: nuevoValor })
+          });
+          const json = await res.json();
+          if (!json?.ok) throw new Error(json?.message || "Error al guardar cambio");
+        } catch (err) {
+          console.error(err);
+          alert("Error al guardar el cambio");
+          objeto[campo] = valorOriginal;
+          td.textContent = valorOriginal;
+        } finally {
+          isSaving = false;
+        }
+      }
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          if (isClosed) return;
+          objeto[campo] = valorOriginal;
+          closeEditor(valorOriginal);
+        }
       });
 
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
-
-    } catch (err) {
-      console.error(err);
-      alert("❌ Error al guardar el cambio");
-
-      // rollback
-      objeto[campo] = valorOriginal;
-      td.textContent = valorOriginal;
+      input.addEventListener("blur", save);
     }
-  }
 
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") save();
-    if (e.key === "Escape") {
-      objeto[campo] = valorOriginal;
-      td.textContent = valorOriginal;
-    }
-  });
-
-  input.addEventListener("blur", save);
-}
-
-
-    // ------------- edición inline para precio
     function editarPrecioInline(td, objeto) {
       const input = document.createElement("input");
       input.type = "number";
@@ -367,60 +399,106 @@ async function editarTextoInline(td, objeto, campo) {
       input.value = objeto.precio;
       input.className = "comment-edit";
       input.style.textAlign = "right";
+
       td.textContent = "";
       td.appendChild(input);
       input.focus();
 
-     async function save() {
-  const val = Number(input.value);
+      let isSaving = false;
+      let isClosed = false;
 
-  if (!Number.isFinite(val) || val < 0) {
-    alert("Precio inválido.");
-    td.textContent = formatoPrecio(objeto.precio);
-    return;
-  }
+      function closeEditor(value) {
+        if (isClosed) return;
+        isClosed = true;
+        td.textContent = formatoPrecio(value);
+      }
 
-  const nuevoPrecio = Math.round(val * 100) / 100;
-  const original = objeto.precio;
+      async function save() {
+        if (isSaving || isClosed) return;
+        isSaving = true;
 
-  objeto.precio = nuevoPrecio;
-  td.textContent = formatoPrecio(nuevoPrecio);
+        const val = Number(input.value);
+        if (!Number.isFinite(val) || val < 0) {
+          alert("Precio invalido.");
+          closeEditor(objeto.precio);
+          isSaving = false;
+          return;
+        }
 
-  try {
-    const res = await fetch(`/api/servicio/${objeto.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ precio: nuevoPrecio })
-    });
+        const nuevoPrecio = Math.round(val * 100) / 100;
+        const precioOriginal = objeto.precio;
 
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.message);
+        if (nuevoPrecio === precioOriginal) {
+          closeEditor(precioOriginal);
+          isSaving = false;
+          return;
+        }
 
-  } catch (err) {
-    alert("❌ Error al guardar precio");
-    objeto.precio = original;
-    td.textContent = formatoPrecio(original);
-  }
-}
+        objeto.precio = nuevoPrecio;
+        closeEditor(nuevoPrecio);
 
+        try {
+          const res = await fetch(`/api/servicio/${objeto.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ precio: nuevoPrecio })
+          });
+          const json = await res.json();
+          if (!json?.ok) throw new Error(json?.message || "Error al guardar precio");
+        } catch (err) {
+          console.error(err);
+          alert("Error al guardar precio");
+          objeto.precio = precioOriginal;
+          td.textContent = formatoPrecio(precioOriginal);
+        } finally {
+          isSaving = false;
+        }
+      }
 
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") save();
-        if (e.key === "Escape") td.textContent = formatoPrecio(objeto.precio);
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          if (isClosed) return;
+          closeEditor(objeto.precio);
+        }
       });
       input.addEventListener("blur", save);
     }
 
-    // ------------- filtro por texto
     function aplicarFiltro() {
-      const q = (searchInput.value || "").trim().toLowerCase();
-      const filtered = serviciosData.filter(s => s.nombre.toLowerCase().includes(q));
+      const q = String(searchInput?.value || "").trim().toLowerCase();
+      const filtered = serviciosData.filter((s) =>
+        String(s.nombre || "").toLowerCase().includes(q)
+      );
       drawRows(filtered);
     }
 
-    searchInput.addEventListener("input", aplicarFiltro);
+    searchInput?.addEventListener("input", aplicarFiltro);
 
-    // primera carga
+    if (window.__setViewCleanup) {
+      window.__setViewCleanup(() => {
+        if (serviciosFetchController) {
+          try {
+            serviciosFetchController.abort();
+          } catch {
+            // ignore abort failures
+          }
+        }
+        serviciosFetchController = null;
+        serviciosFetchSeq++;
+        isCreatingServicio = false;
+
+        serviciosData.length = 0;
+        if (searchInput) searchInput.value = "";
+        if (tbody) tbody.innerHTML = "";
+        resetServicioModalState();
+      });
+    }
+
     cargarServicios();
   }
 
@@ -433,7 +511,5 @@ async function editarTextoInline(td, objeto, campo) {
     renderServicios(content);
   }
 
-  // exponer para que web.js SPA pueda llamarlo
   window.__mountServicios = mountServicios;
-
 })();

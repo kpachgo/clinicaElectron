@@ -51,6 +51,14 @@ async function listarRolesRegistro() {
     return rows || [];
 }
 
+async function obtenerRolPorId(idRol) {
+    const [rows] = await db.query(
+        "SELECT idRol, nombreR FROM rol WHERE idRol = ? LIMIT 1",
+        [idRol]
+    );
+    return rows?.[0] || null;
+}
+
 async function listarDoctoresRegistro() {
     const [rows] = await db.query("CALL sp_doctor_listar_select()");
     return rows?.[0] || [];
@@ -60,5 +68,6 @@ module.exports = {
     login,
     crearUsuario,
     listarRolesRegistro,
-    listarDoctoresRegistro
+    listarDoctoresRegistro,
+    obtenerRolPorId
 };

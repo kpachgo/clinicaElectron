@@ -20,10 +20,14 @@ const listar = async (req, res) => {
 // =======================
 const crear = async (req, res) => {
   try {
-    const { nombre, precio } = req.body;
+    const nombre = String(req.body?.nombre || "").trim();
+    const precio = Number(req.body?.precio);
 
-    if (!nombre || precio == null) {
-      return badRequest(res, "Datos incompletos");
+    if (!nombre) {
+      return badRequest(res, "Nombre invalido");
+    }
+    if (!Number.isFinite(precio) || precio < 0) {
+      return badRequest(res, "Precio invalido");
     }
 
     const [rows] = await pool.query(
@@ -61,6 +65,14 @@ const actualizar = async (req, res) => {
 
     if (campo !== "nombre" && campo !== "precio") {
       return badRequest(res, "Campo invalido");
+    }
+
+    const [existsRows] = await pool.query(
+      "SELECT idServicio FROM servicio WHERE idServicio = ? LIMIT 1",
+      [id]
+    );
+    if (!Array.isArray(existsRows) || existsRows.length === 0) {
+      return notFound(res, "Servicio no encontrado");
     }
 
     if (campo === "nombre") {

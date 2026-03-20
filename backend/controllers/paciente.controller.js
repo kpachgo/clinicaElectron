@@ -21,6 +21,25 @@ function esRegistroFisico(nombreDoctor) {
   return textoNormalizado(nombreDoctor) === DOCTOR_REGISTRO_FISICO;
 }
 
+function normalizarEstadoDoctor(value) {
+  const txt = String(value ?? "").trim().toLowerCase();
+  if (txt === "0" || txt === "inactivo" || txt === "inactive" || txt === "false") return 0;
+  if (txt === "1" || txt === "activo" || txt === "active" || txt === "true") return 1;
+  return Number(value) === 0 ? 0 : 1;
+}
+
+async function existeColumnaEstadoDoctor() {
+  const [rows] = await pool.query(
+    `SELECT 1
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'doctor'
+        AND COLUMN_NAME = 'estadoD'
+      LIMIT 1`
+  );
+  return Array.isArray(rows) && rows.length > 0;
+}
+
 async function obtenerVinculoDoctorPorUsuario(idUsuario) {
   const [rows] = await pool.query(
     "SELECT idDoctor FROM usuario WHERE idUsuario = ? LIMIT 1",
@@ -42,11 +61,19 @@ async function obtenerMetaCita(idCitaPaciente) {
 }
 
 async function obtenerMetaDoctor(idDoctor) {
+  const tieneColumnaEstado = await existeColumnaEstadoDoctor();
   const [rows] = await pool.query(
-    "SELECT idDoctor, nombreD FROM doctor WHERE idDoctor = ? LIMIT 1",
+    tieneColumnaEstado
+      ? "SELECT idDoctor, nombreD, estadoD FROM doctor WHERE idDoctor = ? LIMIT 1"
+      : "SELECT idDoctor, nombreD FROM doctor WHERE idDoctor = ? LIMIT 1",
     [idDoctor]
   );
-  return rows?.[0] || null;
+  const doctor = rows?.[0] || null;
+  if (!doctor) return null;
+  if (tieneColumnaEstado) {
+    doctor.estadoD = normalizarEstadoDoctor(doctor.estadoD);
+  }
+  return doctor;
 }
 async function obtenerCorreoUsuarioDoctorPorIdDoctor(idDoctor) {
   const [rows] = await pool.query(
@@ -246,6 +273,9 @@ const crearCitaPaciente = async (req, res) => {
       doctor = await obtenerMetaDoctor(doctorIdNum);
       if (!doctor) {
         return notFound(res, "Doctor no encontrado");
+      }
+      if (Object.prototype.hasOwnProperty.call(doctor, "estadoD") && doctor.estadoD !== 1) {
+        return badRequest(res, "El doctor seleccionado esta inactivo");
       }
     }
 

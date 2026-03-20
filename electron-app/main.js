@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, session } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
@@ -17,6 +17,8 @@ const HEALTH_TIMEOUT_MS = 45_000;
 const HEALTH_RETRY_MS = 1_000;
 const UPDATE_CHECK_DELAY_MS = 4_000;
 const ENABLE_CUSTOM_WINDOWS_TITLEBAR = process.env.CLINICA_WIN_CUSTOM_TITLEBAR === "1";
+const BOOL_TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
+const BOOL_FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 const THEME_CONSOLE_PREFIX = "__CLINICA_THEME__:";
 const WINDOWS_TITLEBAR_THEMES = {
   light: { color: "#ffffff", symbolColor: "#0f172a" },
@@ -24,6 +26,23 @@ const WINDOWS_TITLEBAR_THEMES = {
   vampire: { color: "#252526", symbolColor: "#d4d4d4" },
   princess: { color: "#ffdeef", symbolColor: "#4a2340" }
 };
+const SERVER_URL_INFO = (() => {
+  try {
+    const parsed = new URL(`${SERVER_URL}/`);
+    return {
+      hostname: parsed.hostname || "127.0.0.1",
+      port: Number(parsed.port || "3000")
+    };
+  } catch {
+    return {
+      hostname: "127.0.0.1",
+      port: 3000
+    };
+  }
+})();
+const SERVER_PORT = Number.isInteger(SERVER_URL_INFO.port) && SERVER_URL_INFO.port > 0
+  ? SERVER_URL_INFO.port
+  : 3000;
 
 let mainWindow = null;
 let backendProcess = null;
@@ -35,6 +54,18 @@ let fallbackAttempted = false;
 let updaterEnabled = false;
 let updateCheckStarted = false;
 let updateDownloadedInfo = null;
+let devNoCachePoliciesInstalled = false;
+
+function readBooleanFlag(name, defaultValue) {
+  const raw = String(process.env[name] || "").trim().toLowerCase();
+  if (!raw) return Boolean(defaultValue);
+  if (BOOL_TRUE_VALUES.has(raw)) return true;
+  if (BOOL_FALSE_VALUES.has(raw)) return false;
+  return Boolean(defaultValue);
+}
+
+const DEV_DISABLE_CACHE = !app.isPackaged && readBooleanFlag("CLINICA_DEV_DISABLE_CACHE", true);
+const DEV_FORCE_BACKEND_RESTART = !app.isPackaged && readBooleanFlag("CLINICA_DEV_FORCE_BACKEND_RESTART", true);
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -218,6 +249,106 @@ async function waitForServerReady(timeoutMs) {
   return false;
 }
 
+async function waitForServerDown(timeoutMs = 12_000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const healthy = await checkServerHealth();
+    if (!healthy) return true;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  }
+  return false;
+}
+
+function runNodeScript(scriptPath, args = [], timeoutMs = 20_000) {
+  return new Promise((resolve) => {
+    const env = getSanitizedEnv({ ELECTRON_RUN_AS_NODE: "1" });
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      cwd: getRuntimeDir(),
+      env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        if (process.platform === "win32") {
+          spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+            windowsHide: true,
+            stdio: "ignore"
+          });
+        } else {
+          child.kill("SIGTERM");
+        }
+      } catch {
+        // ignore
+      }
+      resolve({ ok: false, code: "timeout", stdout, stderr });
+    }, timeoutMs);
+
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({
+        ok: false,
+        code: "spawn_error",
+        stdout,
+        stderr: `${stderr}\n${err?.message || err}`
+      });
+    });
+
+    child.on("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({
+        ok: code === 0,
+        code: String(code),
+        stdout,
+        stderr
+      });
+    });
+  });
+}
+
+async function stopExistingBackendOnPortInDev() {
+  if (!DEV_FORCE_BACKEND_RESTART) return;
+
+  const healthy = await checkServerHealth();
+  if (!healthy) return;
+
+  const stopScript = path.join(getRuntimeDir(), "backend", "scripts", "stop-server.js");
+  if (!fs.existsSync(stopScript)) {
+    logLine("[ELECTRON]", `No se encontro script de stop para reinicio forzado: ${stopScript}`);
+    return;
+  }
+
+  logLine("[ELECTRON]", `Modo dev: reinicio forzado backend en puerto ${SERVER_PORT}.`);
+  const result = await runNodeScript(stopScript, [String(SERVER_PORT)], 25_000);
+  const out = String(result.stdout || "").trim();
+  const err = String(result.stderr || "").trim();
+  if (out) logLine("[ELECTRON]", `stop-server stdout: ${out}`);
+  if (err) logLine("[ELECTRON]", `stop-server stderr: ${err}`);
+
+  const down = await waitForServerDown(12_000);
+  if (!down) {
+    logLine("[ELECTRON]", "Backend previo sigue respondiendo en /health tras stop-server.");
+  }
+}
+
 function startBackendWithNpm() {
   if (backendProcess) return;
 
@@ -348,6 +479,54 @@ function killBackendProcess() {
   });
 }
 
+function buildNoCacheResponseHeaders(originalHeaders = {}) {
+  const headers = { ...originalHeaders };
+  headers["Cache-Control"] = ["no-store, no-cache, must-revalidate, max-age=0"];
+  headers["Pragma"] = ["no-cache"];
+  headers["Expires"] = ["0"];
+  return headers;
+}
+
+async function installDevNoCachePolicies() {
+  if (!DEV_DISABLE_CACHE || devNoCachePoliciesInstalled) return;
+  if (!session?.defaultSession) return;
+
+  const ses = session.defaultSession;
+  devNoCachePoliciesInstalled = true;
+
+  try {
+    await ses.clearCache();
+    await ses.clearStorageData({
+      storages: ["appcache", "serviceworkers", "cachestorage", "shadercache"]
+    });
+    logLine("[ELECTRON]", "Modo dev: cache web limpiado para evitar assets viejos.");
+  } catch (err) {
+    logLine("[ELECTRON]", `No se pudo limpiar cache dev: ${err?.message || err}`);
+  }
+
+  const urls = [
+    `${SERVER_URL}/*`,
+    `http://127.0.0.1:${SERVER_PORT}/*`,
+    `http://localhost:${SERVER_PORT}/*`
+  ];
+
+  ses.webRequest.onBeforeSendHeaders({ urls }, (details, callback) => {
+    const requestHeaders = {
+      ...(details.requestHeaders || {}),
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0"
+    };
+    callback({ requestHeaders });
+  });
+
+  ses.webRequest.onHeadersReceived({ urls }, (details, callback) => {
+    callback({
+      responseHeaders: buildNoCacheResponseHeaders(details.responseHeaders || {})
+    });
+  });
+}
+
 function promptInstallDownloadedUpdate(info) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const nextVersion = String(info?.version || "").trim() || "nueva";
@@ -459,7 +638,10 @@ function createWindow() {
   mainWindow = new BrowserWindow(windowOptions);
   installThemeReporterBridge();
 
-  mainWindow.loadURL(SERVER_URL);
+  const launchUrl = DEV_DISABLE_CACHE
+    ? `${SERVER_URL}/?_ts=${Date.now()}`
+    : SERVER_URL;
+  mainWindow.loadURL(launchUrl);
   mainWindow.webContents.on("did-finish-load", () => {
     scheduleAutoUpdateCheck();
   });
@@ -470,11 +652,16 @@ function createWindow() {
 
 async function bootApp() {
   logLine("[ELECTRON]", `Boot iniciado. app.isPackaged=${app.isPackaged}`);
+
+  if (DEV_FORCE_BACKEND_RESTART) {
+    await stopExistingBackendOnPortInDev();
+  }
+
   const isAlreadyRunning = await checkServerHealth();
-  if (!isAlreadyRunning) {
+  if (DEV_FORCE_BACKEND_RESTART || !isAlreadyRunning) {
     startBackendWithNpm();
   } else {
-    logLine("[ELECTRON]", "Backend ya estaba saludable en /health.");
+    logLine("[ELECTRON]", "Backend ya estaba saludable en /health (reuso habilitado).");
   }
 
   const ready = await waitForServerReady(HEALTH_TIMEOUT_MS);
@@ -496,6 +683,7 @@ async function bootApp() {
   }
 
   setupAutoUpdater();
+  await installDevNoCachePolicies();
   createWindow();
 }
 

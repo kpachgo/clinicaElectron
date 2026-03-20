@@ -56,6 +56,64 @@
   vertical-align: middle;
 }
 
+.doctor-estado-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.doctor-estado-chip.is-activo {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.doctor-estado-chip.is-inactivo {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.doctor-estado-target {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  color: var(--text-muted, #64748b);
+}
+
+.doctor-table .ui-action-btn.is-warning {
+  background: #d97706;
+}
+
+.doctor-file-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  margin: 4px 0 10px;
+}
+
+.doctor-file-input::file-selector-button {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+.doctor-file-input:hover::file-selector-button {
+  background: #eef2f7;
+}
+
 /* signature canvas */
 .signature-canvas,
 #signature-canvas {

@@ -6,7 +6,7 @@
   - Tabla compacta: `ui-table-wrap-compact`, `ui-table-compact`.
   - Acciones de fila: `ui-action-btn` (icon-only).
 - Iconos Heroicons inline via `window.__uiIcons` (`frontend/js/uiIcons.js`), sin dependencias externas.
-- No hay cambios en API/backend/SQL.
+- Vista actualizada con mejoras de robustez en frontend y validaciones extra en backend.
 
 ## Frontend
 - Archivo: `frontend/js/doctor.js`.
@@ -39,6 +39,8 @@
   - sube sello y actualiza ruta en BD.
 - `GET /api/doctor/select`
   - usado por vista Paciente para seleccionar doctor en citas.
+- `PUT /api/doctor/:id/estado`
+  - cambia estado activo/inactivo del doctor vinculado (con validacion de contrasena).
 - `GET /api/doctor/:id`
   - detalle doctor para modal en Paciente.
 
@@ -53,4 +55,23 @@
 
 ## Reglas de roles
 - Lista/crear/sello: `Administrador`, `Doctor`.
+- Cambio de estado: `Doctor` (sobre su propio doctor vinculado).
 - Select y detalle por id: `Administrador`, `Recepcion`, `Doctor`, `Asistente`.
+
+## Correcciones recientes (2026-03-18)
+- Frontend (`frontend/js/doctor.js`):
+  - Carga de doctores con `AbortController` + secuencia (`doctorFetchSeq`) para evitar estados viejos.
+  - Registro de doctor idempotente:
+    - guarda `isCreatingDoctor`,
+    - deshabilita boton guardar durante `POST /api/doctor`.
+  - Cambio de estado robusto:
+    - guarda `isUpdatingEstado`,
+    - evita doble `PUT` por clicks repetidos.
+  - Cleanup de vista:
+    - aborta requests en vuelo,
+    - limpia estado local/modales,
+    - remueve handler `Escape` de la vista.
+- Backend (`backend/controllers/doctor.controller.js`):
+  - `crear`: normaliza/valida `nombre` y `telefono`.
+  - `subirSello`: valida `id` numerico y responde `404` si doctor no existe.
+  - `obtenerPorId`: valida `id` numerico antes de ejecutar SP.

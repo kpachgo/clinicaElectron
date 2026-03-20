@@ -14,6 +14,9 @@
   - `GET /api/auth/registro-oculto/catalogos`
 - Crear usuario:
   - `POST /api/auth/registro-oculto`
+- `cargo` ya no se captura en UI; backend lo deriva de `rol.nombreR` usando `idRol`.
+- Campos requeridos recomendados: `correo`, `password`, `nombre`, `idRol`.
+- Campos opcionales: `idDoctor` y `cargo` (retrocompatibilidad con clientes viejos).
 - Tiene validaciones de campos, password y confirmacion.
 
 ## Backend Auth

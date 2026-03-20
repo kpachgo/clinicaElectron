@@ -127,11 +127,26 @@
                 </span>
             </button>
 
-            <span class="icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
-                    <path d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.08 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"></path>
-                </svg>
-            </span>
+            <div class="license-bell-wrap">
+                <button
+                    id="license-bell-btn"
+                    type="button"
+                    class="top-icon-btn license-bell-btn"
+                    aria-label="Notificaciones de suscripcion"
+                    aria-expanded="false"
+                    aria-controls="license-bell-panel"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false">
+                        <path d="M14.857 17.082a23.848 23.848 0 0 0 5.454-1.31A8.967 8.967 0 0 1 18 9.75V9A6 6 0 0 0 6 9v.75a8.967 8.967 0 0 1-2.312 6.022c1.733.64 3.56 1.08 5.455 1.31m5.714 0a24.255 24.255 0 0 1-5.714 0m5.714 0a3 3 0 1 1-5.714 0"></path>
+                    </svg>
+                    <span id="license-bell-badge" class="license-bell-badge" hidden>!</span>
+                </button>
+                <div id="license-bell-panel" class="license-bell-panel" hidden>
+                    <h4 id="license-bell-title" class="license-bell-title">Suscripcion</h4>
+                    <p id="license-bell-message" class="license-bell-message">Sin alertas por el momento.</p>
+                    <div id="license-bell-meta" class="license-bell-meta"></div>
+                </div>
+            </div>
 
             <div class="user-info">
                 <div class="user-text">
@@ -211,7 +226,8 @@
         <label>Teléfono</label>
         <input type="text" id="doctor-telefono" placeholder="Teléfono">
 
-        <label>Firma (dibuje abajo)</label>
+        <label>Firma (dibuje abajo o suba imagen)</label>
+        <input type="file" id="doctor-firma-file" class="doctor-file-input" accept="image/*">
         <canvas id="signature-canvas" class="signature-canvas"></canvas>
 
         <div class="signature-actions">
@@ -219,7 +235,7 @@
         </div>
 
         <label>Sello (subir imagen)</label>
-        <input type="file" id="doctor-sello" accept="image/*">
+        <input type="file" id="doctor-sello" class="doctor-file-input" accept="image/*">
 
         <div class="modal-buttons" style="margin-top:20px;">
             <button id="modal-doctor-cancel" class="btn-cancelar">Cancelar</button>

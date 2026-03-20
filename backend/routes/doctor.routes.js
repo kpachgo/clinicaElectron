@@ -37,6 +37,12 @@ router.get(
   roleMiddleware(["Administrador", "Recepcion", "Doctor", "Asistente"]),
   doctorController.listarSelect
 );
+router.put(
+  "/:id/estado",
+  authMiddleware,
+  roleMiddleware(["Doctor"]),
+  doctorController.actualizarEstado
+);
 router.get(
   "/:id",
   authMiddleware,

@@ -365,6 +365,29 @@ body[data-theme="princess"] .paciente-card .btn-cita-paciente:hover {
   background: #cd0067;
 }
 
+body[data-theme="princess"] #btn-ver-firma-paciente {
+  background: #ff4fa6;
+  border-color: #ff3e9b;
+  color: #ffffff;
+}
+
+body[data-theme="princess"] #btn-ver-firma-paciente:hover:not(:disabled) {
+  background: #cd0067;
+  border-color: #b10059;
+}
+
+body[data-theme="princess"] #btn-ver-firma-paciente:focus-visible {
+  outline: 2px solid rgba(205, 0, 103, 0.35);
+  outline-offset: 1px;
+}
+
+body[data-theme="princess"] #btn-ver-firma-paciente:disabled {
+  background: #f3a3cd;
+  border-color: #eb92c3;
+  color: #fff6fb;
+  opacity: 1;
+}
+
 body[data-theme="princess"] .paciente-busqueda .btn-action-new {
   background: #ff69b4;
 }

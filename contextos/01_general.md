@@ -69,3 +69,15 @@
 ## Notas tecnicas detectadas
 - `backend/routes/cobro.routes.js` existe como placeholder y no se monta en `server.js`.
 - `backend/config/db.js` tiene `module.exports = pool` duplicado (no rompe, pero esta repetido).
+
+## Estado de revision de vistas (rendimiento/bugs)
+- Revisadas y corregidas en esta ronda:
+  - Agenda
+  - Servicios
+  - Doctores
+- Pendientes para siguiente ronda:
+  - Cobro
+  - En Cola
+  - Paciente (incluye odontograma)
+  - Login/Auth
+- Referencia de seguimiento: `contextos/13_revision_vistas_pendientes.md`.

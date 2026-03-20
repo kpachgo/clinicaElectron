@@ -94,3 +94,15 @@
 - Para `GET /api/servicio/search`: `Administrador`, `Recepcion`, `Doctor`, `Asistente`.
 - `DELETE` elimina registro de agenda en backend y actualiza la tabla local.
 - Busqueda mensual toma todo el mes de la fecha seleccionada.
+
+## Correcciones recientes (2026-03-18)
+- Se corrigio race condition en carga por fecha:
+  - `cargarAgendaPorFecha` ahora usa `AbortController` + secuencia (`agendaFetchSeq`) para abortar/ignorar respuestas viejas.
+  - Solo pinta resultados si la fecha actual del datepicker sigue coincidiendo con el request en vuelo.
+- Se corrigieron requests duplicados al crear cita:
+  - guardas con `isCreatingAgenda`.
+  - boton guardar deshabilitado mientras se procesa `POST /api/agenda`.
+- Se corrigieron requests duplicados en edicion inline (nombre/contacto/comentario):
+  - guardas por editor (`isSaving` + `isClosed`).
+  - `Enter` + `blur` ya no dispara doble `PUT`.
+- En cleanup de vista se aborta fetch activo para evitar que una respuesta tardia pinte DOM desmontado.
