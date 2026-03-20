@@ -7,7 +7,9 @@ const ENV_KEYS = {
   password: ["DB_PASS", "MYSQLPASSWORD"],
   database: ["DB_NAME", "MYSQLDATABASE", "MYSQL_DATABASE"],
   ssl: ["DB_SSL", "MYSQL_SSL"],
-  poolLimit: ["DB_POOL_LIMIT"]
+  poolLimit: ["DB_POOL_LIMIT"],
+  connectTimeout: ["DB_CONNECT_TIMEOUT", "MYSQL_CONNECT_TIMEOUT"],
+  queueLimit: ["DB_QUEUE_LIMIT"]
 };
 function pickEnv(keys, fallback = undefined) {
   for (const key of keys) {
@@ -68,8 +70,11 @@ const pool = mysql.createPool({
   password,
   database,
   ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+  connectTimeout: pickNumber(ENV_KEYS.connectTimeout, 15000),
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
   waitForConnections: true,
   connectionLimit: pickNumber(ENV_KEYS.poolLimit, 10),
-  queueLimit: 0
+  queueLimit: pickNumber(ENV_KEYS.queueLimit, 0)
 });
 module.exports = pool;

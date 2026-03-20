@@ -25,19 +25,41 @@ const FROM_COLA_JOIN_DOCTOR = `
 function normalizarEstado(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "atendido") return ESTADO_ATENDIDO;
-  return ESTADO_ESPERA;
+  if (raw === "en espera" || raw === "espera") return ESTADO_ESPERA;
+  return "__INVALID__";
+}
+
+function esFechaIsoReal(fechaIso) {
+  const m = String(fechaIso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return (
+    Number.isFinite(dt.getTime()) &&
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === mo - 1 &&
+    dt.getUTCDate() === d
+  );
 }
 
 function validarFechaISO(value) {
   const txt = String(value || "").trim();
   if (!txt) return null;
-  return /^\d{4}-\d{2}-\d{2}$/.test(txt) ? txt : "__INVALID__";
+  return esFechaIsoReal(txt) ? txt : "__INVALID__";
 }
 
 function validarHoraHHMM(value) {
   const txt = String(value || "").trim();
   if (!txt) return null;
-  return /^\d{2}:\d{2}$/.test(txt) ? txt : "__INVALID__";
+  const m = txt.match(/^(\d{2}):(\d{2})$/);
+  if (!m) return "__INVALID__";
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (!Number.isInteger(hh) || !Number.isInteger(mm)) return "__INVALID__";
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return "__INVALID__";
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
 function validarDoctorId(value) {
@@ -213,6 +235,9 @@ exports.actualizarEstado = async (req, res) => {
     }
 
     const estado = normalizarEstado(req.body?.estado);
+    if (estado === "__INVALID__") {
+      return badRequest(res, "Estado invalido. Use 'En espera' o 'Atendido'");
+    }
 
     const [result] = await pool.query(
       `UPDATE cola_paciente

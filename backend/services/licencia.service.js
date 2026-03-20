@@ -33,7 +33,8 @@ const runtimeState = {
 
 const usageCache = {
   at: 0,
-  result: null
+  result: null,
+  inFlight: null
 };
 
 function buildUsageWarningDefaults() {
@@ -533,44 +534,59 @@ async function validateSystemUsageConfigured(options = {}) {
     return usageCache.result;
   }
 
-  const configured = configuredCode || await resolveConfiguredCode();
-  runtimeState.codigoLicencia = configured.codigoLicencia;
-  runtimeState.codeSource = configured.source;
-
-  if (!configured.codigoLicencia) {
-    const usageDenied = {
-      ok: false,
-      code: configured?.resolution?.code || "codigo_no_configurado",
-      message: configured?.resolution?.message || "No hay codigo de licencia configurado",
-      ...buildUsageWarningDefaults()
-    };
-
-    usageCache.result = usageDenied;
-    usageCache.at = now;
-    runtimeState.usage = usageDenied;
-    return usageDenied;
+  if (usageCache.inFlight) {
+    return usageCache.inFlight;
   }
 
-  const usageRaw = await validarUsoSistemaConCodigo(configured.codigoLicencia);
-  const startupId = Number(runtimeState?.startup?.id_licencia);
-  const usageId = Number(usageRaw?.id_licencia);
-  const hintId = Number(idLicenciaHint);
-  const usage = await enrichUsageWithWarningFields(
-    usageRaw,
-    configured.codigoLicencia,
-    Number.isInteger(usageId) && usageId > 0
-      ? usageId
-      : Number.isInteger(hintId) && hintId > 0
-        ? hintId
-        : Number.isInteger(startupId) && startupId > 0
-          ? startupId
-          : null
-  );
+  const validationPromise = (async () => {
+    const configured = configuredCode || await resolveConfiguredCode();
+    runtimeState.codigoLicencia = configured.codigoLicencia;
+    runtimeState.codeSource = configured.source;
 
-  usageCache.result = usage;
-  usageCache.at = now;
-  runtimeState.usage = usage;
-  return usage;
+    if (!configured.codigoLicencia) {
+      const usageDenied = {
+        ok: false,
+        code: configured?.resolution?.code || "codigo_no_configurado",
+        message: configured?.resolution?.message || "No hay codigo de licencia configurado",
+        ...buildUsageWarningDefaults()
+      };
+
+      usageCache.result = usageDenied;
+      usageCache.at = Date.now();
+      runtimeState.usage = usageDenied;
+      return usageDenied;
+    }
+
+    const usageRaw = await validarUsoSistemaConCodigo(configured.codigoLicencia);
+    const startupId = Number(runtimeState?.startup?.id_licencia);
+    const usageId = Number(usageRaw?.id_licencia);
+    const hintId = Number(idLicenciaHint);
+    const usage = await enrichUsageWithWarningFields(
+      usageRaw,
+      configured.codigoLicencia,
+      Number.isInteger(usageId) && usageId > 0
+        ? usageId
+        : Number.isInteger(hintId) && hintId > 0
+          ? hintId
+          : Number.isInteger(startupId) && startupId > 0
+            ? startupId
+            : null
+    );
+
+    usageCache.result = usage;
+    usageCache.at = Date.now();
+    runtimeState.usage = usage;
+    return usage;
+  })();
+
+  usageCache.inFlight = validationPromise;
+  try {
+    return await validationPromise;
+  } finally {
+    if (usageCache.inFlight === validationPromise) {
+      usageCache.inFlight = null;
+    }
+  }
 }
 
 async function initializeRuntimeValidation() {

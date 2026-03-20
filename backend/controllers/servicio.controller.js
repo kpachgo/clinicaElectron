@@ -3,15 +3,64 @@ const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet, firstRow } = require("../utils/dbResult");
 const { isValidId } = require("../utils/validators");
 
+function isTransientDbError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  if (!code) return false;
+  return (
+    code.includes("ETIMEDOUT") ||
+    code.includes("ECONNRESET") ||
+    code.includes("ECONNREFUSED") ||
+    code.includes("PROTOCOL_CONNECTION_LOST")
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function queryReadWithRetry(sql, params = [], options = {}) {
+  const attempts = Number.isInteger(Number(options.attempts)) && Number(options.attempts) > 0
+    ? Number(options.attempts)
+    : 2;
+  const baseDelayMs = Number.isInteger(Number(options.baseDelayMs)) && Number(options.baseDelayMs) >= 0
+    ? Number(options.baseDelayMs)
+    : 120;
+
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await pool.query(sql, params);
+    } catch (err) {
+      lastError = err;
+      const hasNextAttempt = i < attempts - 1;
+      if (!hasNextAttempt || !isTransientDbError(err)) {
+        throw err;
+      }
+      await sleep(baseDelayMs * (i + 1));
+    }
+  }
+  throw lastError || new Error("Error desconocido en consulta de lectura");
+}
+
+function handleServicioError(res, err, fallbackMessage) {
+  if (isTransientDbError(err)) {
+    return res.status(503).json({
+      ok: false,
+      message: "Base de datos temporalmente no disponible. Intente de nuevo."
+    });
+  }
+  return serverError(res, err, fallbackMessage);
+}
+
 // =======================
 // LISTAR
 // =======================
 const listar = async (req, res) => {
   try {
-    const [rows] = await pool.query("CALL sp_servicio_listar()");
+    const [rows] = await queryReadWithRetry("CALL sp_servicio_listar()");
     res.json({ ok: true, data: firstResultSet(rows) });
   } catch (err) {
-    return serverError(res, err, "Error al listar servicios");
+    return handleServicioError(res, err, "Error al listar servicios");
   }
 };
 
@@ -41,7 +90,7 @@ const crear = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al crear servicio");
+    return handleServicioError(res, err, "Error al crear servicio");
   }
 };
 
@@ -67,7 +116,7 @@ const actualizar = async (req, res) => {
       return badRequest(res, "Campo invalido");
     }
 
-    const [existsRows] = await pool.query(
+    const [existsRows] = await queryReadWithRetry(
       "SELECT idServicio FROM servicio WHERE idServicio = ? LIMIT 1",
       [id]
     );
@@ -100,7 +149,7 @@ const actualizar = async (req, res) => {
     res.json({ ok: true });
 
   } catch (err) {
-    return serverError(res, err, "Error al actualizar servicio");
+    return handleServicioError(res, err, "Error al actualizar servicio");
   }
 };
 
@@ -133,7 +182,7 @@ const eliminar = async (req, res) => {
         "No se puede eliminar el servicio porque esta asociado a cuentas existentes"
       );
     }
-    return serverError(res, err, "Error al eliminar servicio");
+    return handleServicioError(res, err, "Error al eliminar servicio");
   }
 };
 
@@ -148,7 +197,7 @@ const buscarLigero = async (req, res) => {
       return res.json({ ok: true, data: [] });
     }
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       "CALL sp_servicio_buscar_ligero(?)",
       [q]
     );
@@ -156,7 +205,7 @@ const buscarLigero = async (req, res) => {
     res.json({ ok: true, data: rows[0] });
 
   } catch (err) {
-    return serverError(res, err, "Error al buscar servicios");
+    return handleServicioError(res, err, "Error al buscar servicios");
   }
 };
 

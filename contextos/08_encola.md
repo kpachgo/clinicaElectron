@@ -90,10 +90,14 @@
   - `nombrePaciente` requerido en creacion.
 - Normalizacion de estado:
   - Solo se persisten `En espera` o `Atendido`.
+  - `actualizarEstado` rechaza valores fuera de esos estados (400).
 - Doctor en cola:
   - Campo `doctorId` nullable en `cola_paciente`.
   - Asignacion editable desde la vista En Cola.
   - `actualizarDoctor` valida que el doctor exista cuando se envia `doctorId`.
+- Validaciones de fecha/hora:
+  - `fecha` exige fecha ISO real (`YYYY-MM-DD`) valida.
+  - `horaAgenda` exige `HH:mm` en rango `00:00..23:59`.
 - Duplicados al crear:
   - Si llega `agendaId`: evita duplicado por `agendaId + fechaAgenda + estado=En espera`.
   - Si no llega `agendaId` y hay fecha: evita duplicado por `nombrePaciente (case-insensitive, trim) + fechaAgenda + estado=En espera`.
@@ -124,6 +128,8 @@
 
 ## Notas operativas
 - En la vista En Cola, las recargas y el boton `Limpiar atendidos` trabajan sobre la fecha del dia local.
-- El boton `Borrar todo` en la UI actualmente llama `DELETE /api/cola/todo` sin fecha, por lo que borra todos los dias.
+- El boton `Borrar todo` en la UI llama `DELETE /api/cola/todo?fecha=YYYY-MM-DD` con la fecha local de la vista, por lo que borra solo el dia activo.
 - `encola.js` registra cleanup con `window.__setViewCleanup` para limpiar el `setInterval` al salir de la vista.
+- `encola.js` tambien aborta requests en vuelo (`AbortController`) y usa secuencia para ignorar respuestas obsoletas.
+- Las acciones criticas de fila/toolbar tienen guardas anti-duplicado para evitar doble envio por doble click/cambios rapidos.
 - El sonido de campana requiere que el sistema de sonidos este cargado (`frontend/js/uiSounds.js`).

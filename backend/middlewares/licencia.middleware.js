@@ -15,6 +15,14 @@ function deny(res, result) {
   });
 }
 
+function denyUnexpectedError(res, err, fallbackMessage) {
+  console.error("[licencia.middleware] Error inesperado validando licencia:", err);
+  return deny(res, {
+    code: "db_no_disponible_licencia",
+    message: fallbackMessage || "No se pudo validar licencia temporalmente"
+  });
+}
+
 async function requireStartupAuthorized(req, res, next) {
   const status = licenciaService.getRuntimeStatus();
   if (!status?.startup?.ok) {
@@ -24,25 +32,33 @@ async function requireStartupAuthorized(req, res, next) {
 }
 
 async function requireSystemUsageAuthorized(req, res, next) {
-  const usage = await licenciaService.validateSystemUsageConfigured();
-  if (!usage?.ok) {
-    return deny(res, usage);
+  try {
+    const usage = await licenciaService.validateSystemUsageConfigured();
+    if (!usage?.ok) {
+      return deny(res, usage);
+    }
+    return next();
+  } catch (err) {
+    return denyUnexpectedError(res, err, "No se pudo validar la suscripcion temporalmente");
   }
-  return next();
 }
 
 async function requireLicensedAccess(req, res, next) {
-  const status = licenciaService.getRuntimeStatus();
-  if (!status?.startup?.ok) {
-    return deny(res, status.startup);
-  }
+  try {
+    const status = licenciaService.getRuntimeStatus();
+    if (!status?.startup?.ok) {
+      return deny(res, status.startup);
+    }
 
-  const usage = await licenciaService.validateSystemUsageConfigured();
-  if (!usage?.ok) {
-    return deny(res, usage);
-  }
+    const usage = await licenciaService.validateSystemUsageConfigured();
+    if (!usage?.ok) {
+      return deny(res, usage);
+    }
 
-  return next();
+    return next();
+  } catch (err) {
+    return denyUnexpectedError(res, err, "No se pudo validar licencia temporalmente");
+  }
 }
 
 module.exports = {

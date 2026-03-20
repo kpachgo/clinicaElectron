@@ -88,10 +88,13 @@
     return json;
   }
 
-  async function apiList(fechaISO) {
+  async function apiList(fechaISO, options = {}) {
     const fecha = String(fechaISO || "").trim();
     const qs = fecha ? `?fecha=${encodeURIComponent(fecha)}` : "";
-    const json = await fetchJson(`/api/cola${qs}`);
+    const json = await fetchJson(`/api/cola${qs}`, {
+      cache: "no-store",
+      ...(options || {})
+    });
     return Array.isArray(json.data) ? json.data.map(normalizarItem) : [];
   }
 
@@ -102,9 +105,10 @@
     return { idDoctor, nombreD };
   }
 
-  async function apiListDoctores() {
+  async function apiListDoctores(options = {}) {
     const json = await fetchJson("/api/doctor/select", {
-      cache: "no-store"
+      cache: "no-store",
+      ...(options || {})
     });
     const data = Array.isArray(json.data) ? json.data : [];
     return data.map(normalizarDoctor).filter(Boolean);
@@ -376,11 +380,26 @@
 
     let colaData = [];
     let doctoresData = [];
-    let isRefreshing = false;
     let refreshTimer = null;
     const fechaVista = getLocalTodayISO();
     let idsVistos = new Set();
     let cargaInicialCompleta = false;
+    let isDisposed = false;
+    let colaFetchSeq = 0;
+    let colaFetchController = null;
+    let doctorFetchSeq = 0;
+    let doctorFetchController = null;
+    let isClearingAtendidos = false;
+    let isClearingAll = false;
+
+    function abortControllerSafe(controller) {
+      if (!controller) return;
+      try {
+        controller.abort();
+      } catch {
+        // ignore abort failures
+      }
+    }
 
     function notificarNuevosIngresos(nuevos) {
       if (!cargaInicialCompleta || nuevos <= 0) return;
@@ -511,13 +530,17 @@
         const selDoctor = document.createElement("select");
         selDoctor.className = "cola-doctor-select";
         buildDoctorOptions(selDoctor, item.doctorId);
+        let isSavingDoctor = false;
         selDoctor.addEventListener("change", async () => {
+          if (isSavingDoctor || isDisposed) return;
+          isSavingDoctor = true;
           const doctorPrevio = item.doctorId;
           const doctorRaw = String(selDoctor.value || "");
           const doctorId = doctorRaw === "" ? null : Number(doctorRaw);
           if (doctorId !== null && (!Number.isInteger(doctorId) || doctorId <= 0)) {
             alert("Doctor invalido");
             buildDoctorOptions(selDoctor, doctorPrevio);
+            isSavingDoctor = false;
             return;
           }
 
@@ -530,7 +553,10 @@
             alert(err.message || "No se pudo asignar doctor");
             buildDoctorOptions(selDoctor, doctorPrevio);
           } finally {
-            selDoctor.disabled = false;
+            isSavingDoctor = false;
+            if (selDoctor.isConnected) {
+              selDoctor.disabled = false;
+            }
           }
         });
         tdDoctor.appendChild(selDoctor);
@@ -547,9 +573,13 @@
           selEstado.appendChild(opt);
         });
         aplicarColorEstadoSelect(selEstado, item.estado);
+        let isSavingEstado = false;
         selEstado.addEventListener("change", async () => {
+          if (isSavingEstado || isDisposed) return;
+          isSavingEstado = true;
           const estadoPrevio = item.estado;
           aplicarColorEstadoSelect(selEstado, selEstado.value);
+          selEstado.disabled = true;
           try {
             await apiSetEstado(item.idColaPaciente, selEstado.value);
             await recargar();
@@ -557,6 +587,11 @@
             alert(err.message || "No se pudo actualizar el estado");
             selEstado.value = estadoPrevio;
             aplicarColorEstadoSelect(selEstado, estadoPrevio);
+          } finally {
+            isSavingEstado = false;
+            if (selEstado.isConnected) {
+              selEstado.disabled = false;
+            }
           }
         });
         tdEstado.appendChild(selEstado);
@@ -575,13 +610,22 @@
           : renderIcon("check");
         btnToggle.title = isAtendido ? "Reabrir" : "Atender";
         btnToggle.setAttribute("aria-label", isAtendido ? "Reabrir paciente" : "Marcar como atendido");
+        let isTogglingEstado = false;
         btnToggle.addEventListener("click", async () => {
+          if (isTogglingEstado || isDisposed) return;
+          isTogglingEstado = true;
+          btnToggle.disabled = true;
           try {
             const siguienteEstado = item.estado === ESTADO_ATENDIDO ? ESTADO_ESPERA : ESTADO_ATENDIDO;
             await apiSetEstado(item.idColaPaciente, siguienteEstado);
             await recargar();
           } catch (err) {
             alert(err.message || "No se pudo cambiar el estado");
+          } finally {
+            isTogglingEstado = false;
+            if (btnToggle.isConnected) {
+              btnToggle.disabled = false;
+            }
           }
         });
 
@@ -621,16 +665,31 @@
         btnRemove.innerHTML = renderIcon("trash");
         btnRemove.title = "Eliminar";
         btnRemove.setAttribute("aria-label", "Eliminar paciente de cola");
+        let isRemoving = false;
         btnRemove.addEventListener("click", async () => {
+          if (isRemoving || isDisposed) return;
+          isRemoving = true;
+          btnRemove.disabled = true;
           const ok = typeof window.showSystemConfirm === "function"
             ? await window.showSystemConfirm("Eliminar este paciente de la cola?")
             : confirm("Eliminar este paciente de la cola?");
-          if (!ok) return;
+          if (!ok) {
+            isRemoving = false;
+            if (btnRemove.isConnected) {
+              btnRemove.disabled = false;
+            }
+            return;
+          }
           try {
             await apiRemove(item.idColaPaciente);
             await recargar();
           } catch (err) {
             alert(err.message || "No se pudo eliminar");
+          } finally {
+            isRemoving = false;
+            if (btnRemove.isConnected) {
+              btnRemove.disabled = false;
+            }
           }
         });
 
@@ -645,21 +704,35 @@
     }
 
     async function recargar(options = {}) {
+      if (isDisposed) return;
       const silent = !!options.silent;
-      if (isRefreshing) return;
-      isRefreshing = true;
+      abortControllerSafe(colaFetchController);
+      const localSeq = ++colaFetchSeq;
+      const controller = typeof AbortController !== "undefined"
+        ? new AbortController()
+        : null;
+      colaFetchController = controller;
       let dataNueva = null;
       try {
-        dataNueva = await apiList(fechaVista);
+        dataNueva = await apiList(
+          fechaVista,
+          controller ? { signal: controller.signal } : undefined
+        );
       } catch (err) {
+        if (err?.name === "AbortError") return;
+        if (isDisposed || localSeq !== colaFetchSeq) return;
         if (!silent) {
           colaData = [];
+          draw();
           alert(err.message || "No se pudo cargar la cola");
         }
         return;
       } finally {
-        isRefreshing = false;
+        if (colaFetchController === controller) {
+          colaFetchController = null;
+        }
       }
+      if (isDisposed || localSeq !== colaFetchSeq) return;
 
       const idsNuevos = new Set();
       let ingresosNuevos = 0;
@@ -680,12 +753,28 @@
     }
 
     async function recargarDoctores() {
+      if (isDisposed) return;
+      abortControllerSafe(doctorFetchController);
+      const localSeq = ++doctorFetchSeq;
+      const controller = typeof AbortController !== "undefined"
+        ? new AbortController()
+        : null;
+      doctorFetchController = controller;
       try {
-        doctoresData = await apiListDoctores();
+        doctoresData = await apiListDoctores(
+          controller ? { signal: controller.signal } : undefined
+        );
       } catch (err) {
+        if (err?.name === "AbortError") return;
+        if (isDisposed || localSeq !== doctorFetchSeq) return;
         doctoresData = [];
         console.error("No se pudieron cargar doctores para cola", err);
+      } finally {
+        if (doctorFetchController === controller) {
+          doctorFetchController = null;
+        }
       }
+      if (isDisposed || localSeq !== doctorFetchSeq) return;
 
       const doctorSelActual = (() => {
         if (!filterDoctor) return "";
@@ -711,27 +800,55 @@
       draw();
     });
     btnClearAtendidos?.addEventListener("click", async () => {
+      if (isClearingAtendidos || isDisposed) return;
+      isClearingAtendidos = true;
+      btnClearAtendidos.disabled = true;
       const ok = typeof window.showSystemConfirm === "function"
         ? await window.showSystemConfirm("Eliminar todos los pacientes atendidos de la cola?")
         : confirm("Eliminar todos los pacientes atendidos de la cola?");
-      if (!ok) return;
+      if (!ok) {
+        isClearingAtendidos = false;
+        if (btnClearAtendidos.isConnected) {
+          btnClearAtendidos.disabled = false;
+        }
+        return;
+      }
       try {
         await apiClearAtendidos(fechaVista);
         await recargar();
       } catch (err) {
         alert(err.message || "No se pudo limpiar atendidos");
+      } finally {
+        isClearingAtendidos = false;
+        if (btnClearAtendidos.isConnected) {
+          btnClearAtendidos.disabled = false;
+        }
       }
     });
     btnClearAll?.addEventListener("click", async () => {
+      if (isClearingAll || isDisposed) return;
+      isClearingAll = true;
+      btnClearAll.disabled = true;
       const ok = typeof window.showSystemConfirm === "function"
-        ? await window.showSystemConfirm("Borrar todo el contenido de la cola?")
-        : confirm("Borrar todo el contenido de la cola?");
-      if (!ok) return;
+        ? await window.showSystemConfirm("Borrar todo el contenido de la cola del dia de hoy?")
+        : confirm("Borrar todo el contenido de la cola del dia de hoy?");
+      if (!ok) {
+        isClearingAll = false;
+        if (btnClearAll.isConnected) {
+          btnClearAll.disabled = false;
+        }
+        return;
+      }
       try {
-        await apiClearAll();
+        await apiClearAll(fechaVista);
         await recargar();
       } catch (err) {
         alert(err.message || "No se pudo borrar la cola");
+      } finally {
+        isClearingAll = false;
+        if (btnClearAll.isConnected) {
+          btnClearAll.disabled = false;
+        }
       }
     });
 
@@ -744,10 +861,17 @@
     });
 
     return () => {
+      isDisposed = true;
       if (refreshTimer) {
         clearInterval(refreshTimer);
         refreshTimer = null;
       }
+      abortControllerSafe(colaFetchController);
+      abortControllerSafe(doctorFetchController);
+      colaFetchController = null;
+      doctorFetchController = null;
+      colaFetchSeq += 1;
+      doctorFetchSeq += 1;
     };
   }
 
