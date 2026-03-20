@@ -58,6 +58,14 @@
     return `${m[2]}/${m[1]}`;
   }
 
+  function obtenerHoyLocalISO() {
+    const ahora = new Date();
+    const yyyy = ahora.getFullYear();
+    const mm = String(ahora.getMonth() + 1).padStart(2, "0");
+    const dd = String(ahora.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
   function calcularMetricasDia(cuentas, totalDescuento) {
     const acumulados = {
       efectivo: 0,
@@ -1112,6 +1120,12 @@
         return;
       }
 
+      const fechaCuenta = String(inputFecha?.value || "").trim();
+      if (!fechaCuenta) {
+        alert("Seleccione una fecha");
+        return;
+      }
+
       const itemsPayload = cobroItems.map((i) => ({
         idServicio: i.id,
         cantidad: Math.max(1, Number(i.cantidad) || 1),
@@ -1127,6 +1141,7 @@
       const payload = {
         idPaciente: pacienteActual.idPaciente,
         formaPago,
+        fecha: fechaCuenta,
         items: itemsPayload
       };
 
@@ -1144,6 +1159,11 @@
         cobroItems = [];
         pacienteActual = null;
         renderCobro(container);
+        const nextInputFecha = document.getElementById("cuenta-date");
+        if (nextInputFecha) {
+          nextInputFecha.value = fechaCuenta;
+          nextInputFecha.dispatchEvent(new Event("change"));
+        }
       } catch (err) {
         console.error(err);
         alert("Error al guardar la cuenta");
@@ -2016,7 +2036,7 @@
     aplicarVisibilidadColumnasCuenta();
     construirOpcionesFiltroDoctorCuenta();
 
-    const hoy = new Date().toISOString().split("T")[0];
+    const hoy = obtenerHoyLocalISO();
     const mesActual = hoy.slice(0, 7);
     inputFecha.value = hoy;
     if (inputReporteMensualMes) {

@@ -7,10 +7,24 @@ function redondear2(value) {
   return Math.round(Number(value) * 100) / 100;
 }
 
-const crear = async (req, res) => {
-  const { idPaciente, formaPago, items } = req.body;
+function esFechaISOValida(fecha) {
+  if (typeof fecha !== "string") return false;
+  const valor = fecha.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false;
 
-  if (!idPaciente || !formaPago || !isValidCuentaItems(items)) {
+  const [anio, mes, dia] = valor.split("-").map(Number);
+  const date = new Date(anio, mes - 1, dia);
+  return (
+    date.getFullYear() === anio &&
+    date.getMonth() === mes - 1 &&
+    date.getDate() === dia
+  );
+}
+
+const crear = async (req, res) => {
+  const { idPaciente, formaPago, fecha, items } = req.body;
+
+  if (!idPaciente || !formaPago || !esFechaISOValida(fecha) || !isValidCuentaItems(items)) {
     return badRequest(res, "Datos incompletos o items invalidos");
   }
 
@@ -40,6 +54,11 @@ const crear = async (req, res) => {
     if (!idCuenta) {
       throw new Error("No se pudo obtener idCuenta");
     }
+
+    await conn.query(
+      "UPDATE cuenta SET fechaC = ? WHERE idCuenta = ?",
+      [fecha, idCuenta]
+    );
 
     for (const item of itemsNormalizados) {
       await conn.query(
