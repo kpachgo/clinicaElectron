@@ -129,3 +129,29 @@
 - Crear/listar cuenta y descuentos: `Administrador`, `Recepcion`.
 - Eliminar cuenta: solo `Administrador`.
 - Modal de faltantes (consulta `/api/cola`): disponible para `Administrador` y `Recepcion` en Cobro.
+
+## Endurecimiento tecnico aplicado (2026-03-20)
+- Frontend (`frontend/js/cobro.js`)
+  - Cargas criticas con control `abort + seq`:
+    - cuentas por fecha
+    - descuentos por fecha
+    - faltantes de cobro (cola)
+    - reporte mensual
+    - catalogo de servicios mensual
+    - autocompletes de paciente/servicio
+  - Guardas anti-duplicado:
+    - `Guardar cobro`
+    - asignacion de doctor por cuenta
+    - eliminar cuenta
+    - crear/eliminar descuento
+  - Cleanup de vista fortalece navegacion rapida:
+    - invalida y aborta requests en vuelo para evitar respuestas tardias fuera de Cobro.
+- Backend (`backend/controllers/cuenta.controller.js`)
+  - Validaciones adicionales:
+    - `fecha` valida en listados de cuentas/descuentos y creacion de descuento.
+    - IDs validos en eliminar cuenta/descuento.
+  - Consistencia de respuesta:
+    - `404` para cuenta/descuento no encontrado.
+  - Tolerancia a DB transitoria:
+    - lecturas con reintento corto (`queryReadWithRetry`).
+    - errores de conexion (`ETIMEDOUT`/`ECONN*`) responden `503` en lugar de `500`.

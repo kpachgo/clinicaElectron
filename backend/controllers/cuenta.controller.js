@@ -1,5 +1,5 @@
 const pool = require("../config/db");
-const { badRequest, serverError } = require("../utils/http");
+const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet, firstRow } = require("../utils/dbResult");
 const { isValidCuentaItems } = require("../utils/validators");
 
@@ -19,6 +19,56 @@ function esFechaISOValida(fecha) {
     date.getMonth() === mes - 1 &&
     date.getDate() === dia
   );
+}
+
+function isTransientDbError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  if (!code) return false;
+  return (
+    code.includes("ETIMEDOUT") ||
+    code.includes("ECONNRESET") ||
+    code.includes("ECONNREFUSED") ||
+    code.includes("PROTOCOL_CONNECTION_LOST")
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function queryReadWithRetry(sql, params = [], options = {}) {
+  const attempts = Number.isInteger(Number(options.attempts)) && Number(options.attempts) > 0
+    ? Number(options.attempts)
+    : 2;
+  const baseDelayMs = Number.isInteger(Number(options.baseDelayMs)) && Number(options.baseDelayMs) >= 0
+    ? Number(options.baseDelayMs)
+    : 120;
+
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await pool.query(sql, params);
+    } catch (err) {
+      lastError = err;
+      const hasNextAttempt = i < attempts - 1;
+      if (!hasNextAttempt || !isTransientDbError(err)) {
+        throw err;
+      }
+      await sleep(baseDelayMs * (i + 1));
+    }
+  }
+
+  throw lastError || new Error("Error desconocido en consulta de lectura");
+}
+
+function handleCuentaError(res, err, fallbackMessage) {
+  if (isTransientDbError(err)) {
+    return res.status(503).json({
+      ok: false,
+      message: "Base de datos temporalmente no disponible. Intente de nuevo."
+    });
+  }
+  return serverError(res, err, fallbackMessage);
 }
 
 const crear = async (req, res) => {
@@ -79,7 +129,7 @@ const crear = async (req, res) => {
     if (conn) {
       await conn.rollback();
     }
-    return serverError(res, err, "Error al crear cuenta");
+    return handleCuentaError(res, err, "Error al crear cuenta");
   } finally {
     if (conn) {
       conn.release();
@@ -89,13 +139,16 @@ const crear = async (req, res) => {
 // LISTAR CUENTAS POR FECHA
 const listarPorFecha = async (req, res) => {
   try {
-    const { fecha } = req.query;
+    const fecha = String(req.query?.fecha || "").trim();
 
     if (!fecha) {
       return badRequest(res, "Fecha requerida");
     }
+    if (!esFechaISOValida(fecha)) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       "CALL sp_cuenta_listar_por_fecha(?)",
       [fecha]
     );
@@ -106,7 +159,7 @@ const listarPorFecha = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al listar cuentas");
+    return handleCuentaError(res, err, "Error al listar cuentas");
   }
 };
 
@@ -126,16 +179,16 @@ const actualizarDoctorCuenta = async (req, res) => {
       return badRequest(res, "idDoctor invalido");
     }
 
-    const [cuentaRows] = await pool.query(
+    const [cuentaRows] = await queryReadWithRetry(
       "SELECT idCuenta FROM cuenta WHERE idCuenta = ? LIMIT 1",
       [idCuenta]
     );
     if (!Array.isArray(cuentaRows) || !cuentaRows[0]) {
-      return badRequest(res, "Cuenta no encontrada");
+      return notFound(res, "Cuenta no encontrada");
     }
 
     if (idDoctor !== null) {
-      const [doctorRows] = await pool.query(
+      const [doctorRows] = await queryReadWithRetry(
         "SELECT idDoctor FROM doctor WHERE idDoctor = ? LIMIT 1",
         [idDoctor]
       );
@@ -144,7 +197,7 @@ const actualizarDoctorCuenta = async (req, res) => {
       }
     }
 
-    const [colRows] = await pool.query(
+    const [colRows] = await queryReadWithRetry(
       `SELECT COUNT(*) AS total
        FROM INFORMATION_SCHEMA.COLUMNS
        WHERE TABLE_SCHEMA = DATABASE()
@@ -170,7 +223,7 @@ const actualizarDoctorCuenta = async (req, res) => {
       idDoctor
     });
   } catch (err) {
-    return serverError(res, err, "Error al asignar doctor en cuenta");
+    return handleCuentaError(res, err, "Error al asignar doctor en cuenta");
   }
 };
 
@@ -195,7 +248,7 @@ const listarReporteMensual = async (req, res) => {
         return badRequest(res, "idServicio invalido");
       }
 
-      const [servicioRows] = await pool.query(
+      const [servicioRows] = await queryReadWithRetry(
         "SELECT idServicio, nombreS FROM servicio WHERE idServicio = ? LIMIT 1",
         [idServicio]
       );
@@ -209,7 +262,7 @@ const listarReporteMensual = async (req, res) => {
       };
     }
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       "CALL sp_cuenta_reporte_mensual(?, ?, ?)",
       [anio, mesNumero, idServicio]
     );
@@ -238,7 +291,7 @@ const listarReporteMensual = async (req, res) => {
       totales
     });
   } catch (err) {
-    return serverError(res, err, "Error al listar reporte mensual");
+    return handleCuentaError(res, err, "Error al listar reporte mensual");
   }
 };
 
@@ -257,7 +310,7 @@ const listarReporteMensualPacientes = async (req, res) => {
       return badRequest(res, "idServicio es requerido y debe ser entero positivo");
     }
 
-    const [servicioRows] = await pool.query(
+    const [servicioRows] = await queryReadWithRetry(
       "SELECT idServicio, nombreS FROM servicio WHERE idServicio = ? LIMIT 1",
       [idServicio]
     );
@@ -269,7 +322,7 @@ const listarReporteMensualPacientes = async (req, res) => {
     const anio = Number(mesMatch[1]);
     const mesNumero = Number(mesMatch[2]);
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       "CALL sp_cuenta_reporte_mensual_pacientes(?, ?, ?)",
       [anio, mesNumero, idServicio]
     );
@@ -301,21 +354,28 @@ const listarReporteMensualPacientes = async (req, res) => {
       totales
     });
   } catch (err) {
-    return serverError(res, err, "Error al listar reporte mensual por pacientes");
+    return handleCuentaError(res, err, "Error al listar reporte mensual por pacientes");
   }
 };
 
 const eliminar = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    if (!id) {
+    const idCuenta = Number(req.params?.id || 0);
+    if (!Number.isInteger(idCuenta) || idCuenta <= 0) {
       return badRequest(res, "ID de cuenta requerido");
+    }
+
+    const [rowsCuenta] = await queryReadWithRetry(
+      "SELECT idCuenta FROM cuenta WHERE idCuenta = ? LIMIT 1",
+      [idCuenta]
+    );
+    if (!Array.isArray(rowsCuenta) || !rowsCuenta[0]) {
+      return notFound(res, "Cuenta no encontrada");
     }
 
     await pool.query(
       "CALL sp_cuenta_eliminar(?)",
-      [id]
+      [idCuenta]
     );
 
     res.json({
@@ -324,7 +384,7 @@ const eliminar = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al eliminar cuenta");
+    return handleCuentaError(res, err, "Error al eliminar cuenta");
   }
 };
 
@@ -332,13 +392,21 @@ const eliminar = async (req, res) => {
 const crearDescuento = async (req, res) => {
   try {
     const { nombre, fecha, cantidad } = req.body;
-    if (!nombre || !fecha || cantidad == null) {
+    const nombreSafe = String(nombre || "").trim();
+    const cantidadNum = Number(cantidad);
+    if (!nombreSafe || !fecha || cantidad == null) {
       return badRequest(res, "Datos incompletos");
+    }
+    if (!esFechaISOValida(String(fecha || "").trim())) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
+    if (!Number.isFinite(cantidadNum) || cantidadNum <= 0) {
+      return badRequest(res, "Cantidad invalida");
     }
 
     const [rows] = await pool.query(
       "CALL sp_descuento_crear(?, ?, ?)",
-      [nombre, fecha, cantidad]
+      [nombreSafe, fecha, cantidadNum]
     );
 
     res.json({
@@ -347,17 +415,20 @@ const crearDescuento = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al crear descuento");
+    return handleCuentaError(res, err, "Error al crear descuento");
   }
 };
 const listarDescuentoPorFecha = async (req, res) => {
   try {
-    const { fecha } = req.query;
+    const fecha = String(req.query?.fecha || "").trim();
     if (!fecha) {
       return badRequest(res, "Fecha requerida");
     }
+    if (!esFechaISOValida(fecha)) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       "CALL sp_descuento_listar_por_fecha(?)",
       [fecha]
     );
@@ -368,25 +439,33 @@ const listarDescuentoPorFecha = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al listar descuentos");
+    return handleCuentaError(res, err, "Error al listar descuentos");
   }
 };
 const eliminarDescuento = async (req, res) => {
   try {
-    const { id } = req.params;
-    if (!id) {
+    const idDescuento = Number(req.params?.id || 0);
+    if (!Number.isInteger(idDescuento) || idDescuento <= 0) {
       return badRequest(res, "ID de descuento requerido");
+    }
+
+    const [rowsDescuento] = await queryReadWithRetry(
+      "SELECT idDescuento FROM descuento WHERE idDescuento = ? LIMIT 1",
+      [idDescuento]
+    );
+    if (!Array.isArray(rowsDescuento) || !rowsDescuento[0]) {
+      return notFound(res, "Descuento no encontrado");
     }
 
     await pool.query(
       "CALL sp_descuento_eliminar(?)",
-      [id]
+      [idDescuento]
     );
 
     res.json({ ok: true });
 
   } catch (err) {
-    return serverError(res, err, "Error al eliminar descuento");
+    return handleCuentaError(res, err, "Error al eliminar descuento");
   }
 };
 

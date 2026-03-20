@@ -76,8 +76,8 @@
   - Servicios
   - Doctores
   - En Cola
-- Pendientes para siguiente ronda:
   - Cobro
+- Pendientes para siguiente ronda:
   - Paciente (incluye odontograma)
   - Login/Auth
 - Referencia de seguimiento: `contextos/13_revision_vistas_pendientes.md`.

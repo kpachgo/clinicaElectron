@@ -1,5 +1,18 @@
 // js/login.js
 (function () {
+  let loginMountSeq = 0;
+  let loginStatusController = null;
+
+  function abortLoginStatusRequest() {
+    if (!loginStatusController) return;
+    try {
+      loginStatusController.abort();
+    } catch {
+      // ignore abort failure
+    }
+    loginStatusController = null;
+  }
+
   function isShortcutOpenRegister(e) {
     const isSpace = e.code === "Space" || e.key === " ";
     return e.ctrlKey && e.shiftKey && isSpace;
@@ -21,15 +34,21 @@
     return raw ? raw : "No configurado";
   }
 
+  function isAbortError(err) {
+    return String(err?.name || "") === "AbortError";
+  }
+
   async function fetchLicenseStatus(options = {}) {
     const { force = false } = options;
+    const signal = options?.signal;
     try {
       const params = new URLSearchParams();
       if (force) params.set("force", "1");
       params.set("_ts", String(Date.now()));
 
       const res = await fetch(`/api/licencia/estado?${params.toString()}`, {
-        cache: "no-store"
+        cache: "no-store",
+        signal
       });
       const data = await res.json();
 
@@ -46,6 +65,13 @@
         data: data.data || {}
       };
     } catch (err) {
+      if (isAbortError(err)) {
+        return {
+          ok: false,
+          code: "aborted",
+          message: "Consulta cancelada"
+        };
+      }
       console.error(err);
       return {
         ok: false,
@@ -324,57 +350,68 @@
     const regIdRol = container.querySelector("#reg-idrol");
     const regIdDoctor = container.querySelector("#reg-iddoctor");
     let registroCatalogosCargados = false;
+    let registroCatalogosPromise = null;
+    let loginInFlight = false;
+    let registroInFlight = false;
     let noticeTimer = null;
 
     setTimeout(() => userInput.focus(), 50);
 
     async function cargarCatalogosRegistro() {
       if (registroCatalogosCargados) return true;
+      if (registroCatalogosPromise) return registroCatalogosPromise;
 
-      try {
-        const res = await fetch("/api/auth/registro-oculto/catalogos", {
-          cache: "no-store"
-        });
-        const data = await res.json();
+      registroCatalogosPromise = (async () => {
+        try {
+          const res = await fetch("/api/auth/registro-oculto/catalogos", {
+            cache: "no-store"
+          });
+          const data = await res.json();
 
-        if (!data.ok) {
-          registroMsg.textContent = data.message || "No se pudieron cargar catalogos";
+          if (!data.ok) {
+            registroMsg.textContent = data.message || "No se pudieron cargar catalogos";
+            registroMsg.hidden = false;
+            return false;
+          }
+
+          const roles = Array.isArray(data?.data?.roles) ? data.data.roles : [];
+          const doctores = Array.isArray(data?.data?.doctores) ? data.data.doctores : [];
+
+          regIdRol.innerHTML = '<option value="">Seleccione rol</option>';
+          roles.forEach((r) => {
+            const opt = document.createElement("option");
+            opt.value = String(r.idRol);
+            opt.textContent = `${r.nombreR} (${r.idRol})`;
+            regIdRol.appendChild(opt);
+          });
+
+          regIdDoctor.innerHTML = '<option value="">Sin doctor</option>';
+          doctores.forEach((d) => {
+            const opt = document.createElement("option");
+            const doctorId = d.idDoctor ?? d.IDDoctor ?? d.iddoctor;
+            const doctorNombre = d.nombreD ?? d.NombreD ?? d.nombred ?? `Doctor ${doctorId}`;
+            opt.value = String(doctorId);
+            opt.textContent = doctorNombre;
+            regIdDoctor.appendChild(opt);
+          });
+
+          registroCatalogosCargados = true;
+          return true;
+        } catch (err) {
+          if (isAbortError(err)) return false;
+          console.error(err);
+          registroMsg.textContent = "Opps ocurrio un error de conexion";
           registroMsg.hidden = false;
+          if (window.notifyConnectionError) {
+            window.notifyConnectionError("Opps ocurrio un error de conexion");
+          }
           return false;
+        } finally {
+          registroCatalogosPromise = null;
         }
+      })();
 
-        const roles = Array.isArray(data?.data?.roles) ? data.data.roles : [];
-        const doctores = Array.isArray(data?.data?.doctores) ? data.data.doctores : [];
-
-        regIdRol.innerHTML = '<option value="">Seleccione rol</option>';
-        roles.forEach((r) => {
-          const opt = document.createElement("option");
-          opt.value = String(r.idRol);
-          opt.textContent = `${r.nombreR} (${r.idRol})`;
-          regIdRol.appendChild(opt);
-        });
-
-        regIdDoctor.innerHTML = '<option value="">Sin doctor</option>';
-        doctores.forEach((d) => {
-          const opt = document.createElement("option");
-          const doctorId = d.idDoctor ?? d.IDDoctor ?? d.iddoctor;
-          const doctorNombre = d.nombreD ?? d.NombreD ?? d.nombred ?? `Doctor ${doctorId}`;
-          opt.value = String(doctorId);
-          opt.textContent = doctorNombre;
-          regIdDoctor.appendChild(opt);
-        });
-
-        registroCatalogosCargados = true;
-        return true;
-      } catch (err) {
-        console.error(err);
-        registroMsg.textContent = "Opps ocurrio un error de conexion";
-        registroMsg.hidden = false;
-        if (window.notifyConnectionError) {
-          window.notifyConnectionError("Opps ocurrio un error de conexion");
-        }
-        return false;
-      }
+      return registroCatalogosPromise;
     }
 
     async function mostrarRegistro(msg = "") {
@@ -413,7 +450,8 @@
 
     btnRegistroCancelar.addEventListener("click", ocultarRegistro);
 
-    btnLogin.addEventListener("click", () => {
+    btnLogin.addEventListener("click", async () => {
+      if (loginInFlight) return;
       const user = userInput.value.trim();
       const pass = passInput.value.trim();
 
@@ -425,67 +463,73 @@
         return;
       }
 
-      fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          correo: user,
-          password: pass
-        })
-      })
-        .then(res => res.json())
-        .then(async (data) => {
-          if (!data.ok) {
-            errorBox.textContent = data.message || "Correo o contrasena incorrectos";
-            errorBox.hidden = false;
-            return;
-          }
-
-          localStorage.setItem("token", data.token);
-          sessionStorage.setItem("user", JSON.stringify(data.usuario));
-
-          if (window.renderTopUser) {
-            window.renderTopUser();
-          }
-
-          if (window.__setAppChromeVisible) {
-            window.__setAppChromeVisible(true);
-          }
-
-          if (window.applyMenuPermissions) {
-            window.applyMenuPermissions();
-          }
-
-          if (window.refreshLicenseWarning) {
-            try {
-              await window.refreshLicenseWarning({ force: false, showPopup: true });
-            } catch (refreshErr) {
-              console.error(refreshErr);
-            }
-          }
-
-          if (window.loadView) {
-            detachShortcut();
-            const defaultView = window.getDefaultViewByRole
-              ? window.getDefaultViewByRole()
-              : null;
-
-            if (defaultView) {
-              await window.loadView(defaultView);
-            }
-          }
-        })
-        .catch(err => {
-          console.error(err);
-          errorBox.textContent = "Opps ocurrio un error de conexion";
-          errorBox.hidden = false;
-          if (window.notifyConnectionError) {
-            window.notifyConnectionError("Opps ocurrio un error de conexion");
-          }
+      loginInFlight = true;
+      btnLogin.disabled = true;
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            correo: user,
+            password: pass
+          })
         });
+        const data = await res.json();
+        if (!data.ok) {
+          errorBox.textContent = data.message || "Correo o contrasena incorrectos";
+          errorBox.hidden = false;
+          return;
+        }
+
+        localStorage.setItem("token", data.token);
+        sessionStorage.setItem("user", JSON.stringify(data.usuario));
+
+        if (window.renderTopUser) {
+          window.renderTopUser();
+        }
+
+        if (window.__setAppChromeVisible) {
+          window.__setAppChromeVisible(true);
+        }
+
+        if (window.applyMenuPermissions) {
+          window.applyMenuPermissions();
+        }
+
+        if (window.refreshLicenseWarning) {
+          try {
+            await window.refreshLicenseWarning({ force: false, showPopup: true });
+          } catch (refreshErr) {
+            console.error(refreshErr);
+          }
+        }
+
+        if (window.loadView) {
+          detachShortcut();
+          const defaultView = window.getDefaultViewByRole
+            ? window.getDefaultViewByRole()
+            : null;
+
+          if (defaultView) {
+            await window.loadView(defaultView);
+          }
+        }
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error(err);
+        errorBox.textContent = "Opps ocurrio un error de conexion";
+        errorBox.hidden = false;
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        }
+      } finally {
+        loginInFlight = false;
+        btnLogin.disabled = false;
+      }
     });
 
     btnRegistroGuardar.addEventListener("click", async () => {
+      if (registroInFlight) return;
       registroMsg.hidden = true;
 
       const correo = regCorreo.value.trim();
@@ -514,6 +558,8 @@
         return;
       }
 
+      registroInFlight = true;
+      btnRegistroGuardar.disabled = true;
       try {
         const res = await fetch("/api/auth/registro-oculto", {
           method: "POST",
@@ -538,12 +584,16 @@
         ocultarRegistro();
         mostrarNotificacionExito(`Usuario creado. ID: ${data.idUsuario || "N/D"}`);
       } catch (err) {
+        if (isAbortError(err)) return;
         console.error(err);
         registroMsg.textContent = "Opps ocurrio un error de conexion";
         registroMsg.hidden = false;
         if (window.notifyConnectionError) {
           window.notifyConnectionError("Opps ocurrio un error de conexion");
         }
+      } finally {
+        registroInFlight = false;
+        btnRegistroGuardar.disabled = false;
       }
     });
 
@@ -590,6 +640,7 @@
 
   async function mountLogin(options = {}) {
     const { forceStatus = false } = options;
+    const mountSeq = ++loginMountSeq;
     const content = document.querySelector(".content");
     if (!content) return;
 
@@ -597,6 +648,11 @@
       document.removeEventListener("keydown", window.__loginHiddenShortcutHandler, true);
       window.__loginHiddenShortcutHandler = null;
     }
+    abortLoginStatusRequest();
+    const controller = typeof AbortController !== "undefined"
+      ? new AbortController()
+      : null;
+    loginStatusController = controller;
 
     content.innerHTML = `
       <div class="login-container">
@@ -607,7 +663,31 @@
       </div>
     `;
 
-    const statusResult = await fetchLicenseStatus({ force: forceStatus });
+    const statusResult = await fetchLicenseStatus({
+      force: forceStatus,
+      signal: controller ? controller.signal : undefined
+    });
+    if (mountSeq !== loginMountSeq) {
+      if (loginStatusController === controller && controller?.signal?.aborted) {
+        loginStatusController = null;
+      }
+      return;
+    }
+    if (statusResult.code === "aborted") {
+      if (loginStatusController === controller) {
+        loginStatusController = null;
+      }
+      return;
+    }
+    if (controller?.signal?.aborted) {
+      if (loginStatusController === controller) {
+        loginStatusController = null;
+      }
+      return;
+    }
+    if (loginStatusController === controller) {
+      loginStatusController = null;
+    }
     if (!statusResult.ok) {
       renderActivationScreen(
         content,

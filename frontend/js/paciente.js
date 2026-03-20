@@ -17,6 +17,89 @@
   let pacienteTieneCambiosPendientes = false;
   let pacienteDirtySuspendido = false;
   let pacienteOdontogramaSnapshotBase = "";
+  const PACIENTE_REQUEST_KEYS = [
+    "buscarPaciente",
+    "detallePaciente",
+    "fotosPaciente",
+    "citasPaciente",
+    "historialOdontograma",
+    "odontogramaVersion",
+    "odontogramaUltimo",
+    "doctoresSelect",
+    "doctorInfo"
+  ];
+  const pacienteRequestState = PACIENTE_REQUEST_KEYS.reduce((acc, key) => {
+    acc[key] = { seq: 0, controller: null };
+    return acc;
+  }, {});
+  let pacienteViewDisposed = false;
+  let isSavingPaciente = false;
+  let isSavingCitaPaciente = false;
+  let isSavingFirmaPaciente = false;
+  let isSavingOdontogramaPaciente = false;
+  let isUploadingFotoPaciente = false;
+  let isDeletingFotosPaciente = false;
+  let isSettingFotoPrincipalPaciente = false;
+  let isAuthorizingCitaPaciente = false;
+
+function isAbortError(err) {
+  return String(err?.name || "") === "AbortError";
+}
+function abortControllerSafe(controller) {
+  if (!controller) return;
+  try {
+    controller.abort();
+  } catch {
+    // ignore abort failures
+  }
+}
+function isPacienteViewActive() {
+  return (
+    !pacienteViewDisposed &&
+    window.currentView === "Paciente" &&
+    !!document.querySelector(".paciente-container")
+  );
+}
+function abortRequest(key) {
+  const state = pacienteRequestState[key];
+  if (!state) return;
+  abortControllerSafe(state.controller);
+  state.controller = null;
+}
+function invalidateRequest(key) {
+  const state = pacienteRequestState[key];
+  if (!state) return;
+  state.seq += 1;
+  abortRequest(key);
+}
+function beginRequest(key) {
+  const state = pacienteRequestState[key];
+  if (!state) return { seq: 0, controller: null, signal: undefined };
+  abortRequest(key);
+  state.seq += 1;
+  const controller = typeof AbortController !== "undefined"
+    ? new AbortController()
+    : null;
+  state.controller = controller;
+  return {
+    seq: state.seq,
+    controller,
+    signal: controller ? controller.signal : undefined
+  };
+}
+function endRequest(key, controller) {
+  const state = pacienteRequestState[key];
+  if (!state) return;
+  if (state.controller === controller) {
+    state.controller = null;
+  }
+}
+function isStaleRequest(key, seq) {
+  return !isPacienteViewActive() || !pacienteRequestState[key] || seq !== pacienteRequestState[key].seq;
+}
+function abortAllPacienteRequests() {
+  Object.keys(pacienteRequestState).forEach((key) => invalidateRequest(key));
+}
 // UTILIDADES
 function toInputDate(fechaISO) {
   if (!fechaISO) return "";
@@ -108,12 +191,14 @@ function sincronizarFotoPrincipalPaciente() {
 async function setFotoPrincipalPaciente(fotoId) {
   const id = Number(fotoId || 0);
   if (!id) return;
+  if (isSettingFotoPrincipalPaciente) return;
   const idPaciente = Number(window.pacienteActual?.idPaciente || 0);
   if (!idPaciente) return;
   if (!Array.isArray(window.fotosPaciente) || !window.fotosPaciente.some(f => Number(f.id) === id)) {
     return;
   }
 
+  isSettingFotoPrincipalPaciente = true;
   try {
     const res = await fetch("/api/foto-paciente/principal", {
       method: "POST",
@@ -135,6 +220,8 @@ async function setFotoPrincipalPaciente(fotoId) {
   } catch (err) {
     console.error("Error guardando foto principal", err);
     alert("Error al guardar la foto principal");
+  } finally {
+    isSettingFotoPrincipalPaciente = false;
   }
 }
 function renderFotoPrincipalPaciente() {
@@ -368,14 +455,23 @@ async function cargarHistorialOdontogramas(idPaciente, selectedId = null) {
   const select = document.getElementById("fechaO");
   if (!select) return [];
 
-  if (!idPaciente) {
+  const idPacienteNum = Number(idPaciente || 0);
+  if (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0) {
+    invalidateRequest("historialOdontograma");
     llenarSelectFechasOdontograma([]);
     return [];
   }
 
+  const req = beginRequest("historialOdontograma");
+  const localSeq = req.seq;
+
   try {
-    const res = await fetch(`/api/odontograma/historial/${idPaciente}`);
+    const res = await fetch(`/api/odontograma/historial/${idPacienteNum}`, {
+      signal: req.signal
+    });
     const json = await res.json();
+
+    if (isStaleRequest("historialOdontograma", localSeq)) return [];
 
     if (!json.ok || !Array.isArray(json.data)) {
       llenarSelectFechasOdontograma([]);
@@ -385,9 +481,12 @@ async function cargarHistorialOdontogramas(idPaciente, selectedId = null) {
     llenarSelectFechasOdontograma(json.data, selectedId);
     return json.data;
   } catch (err) {
+    if (isAbortError(err)) return [];
     console.error("Error cargando historial de odontogramas", err);
     llenarSelectFechasOdontograma([]);
     return [];
+  } finally {
+    endRequest("historialOdontograma", req.controller);
   }
 }
 function actualizarColorEstadoPaciente() {
@@ -967,10 +1066,16 @@ async function cargarDoctoresEnSelect() {
   select.disabled = false;
   select.innerHTML = `<option value="">Seleccione doctor</option>`;
 
+  const req = beginRequest("doctoresSelect");
+  const localSeq = req.seq;
+
   try {
-    const res = await fetch("/api/doctor/select?soloActivos=1");
+    const res = await fetch("/api/doctor/select?soloActivos=1", {
+      signal: req.signal
+    });
     const json = await res.json();
 
+    if (isStaleRequest("doctoresSelect", localSeq)) return;
     if (!json.ok || !Array.isArray(json.data)) return;
 
     if (json.data.length === 0) {
@@ -1001,7 +1106,10 @@ async function cargarDoctoresEnSelect() {
     }
 
   } catch (err) {
+    if (isAbortError(err)) return;
     console.error("Error cargando doctores", err);
+  } finally {
+    endRequest("doctoresSelect", req.controller);
   }
 }
 // Renderizar album
@@ -1040,9 +1148,25 @@ function renderFotosPaciente() {
     renderFotoPrincipalPaciente();
 }
 async function cargarFotosPaciente(idPaciente) {
+  const idPacienteNum = Number(idPaciente || 0);
+  if (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0) {
+    invalidateRequest("fotosPaciente");
+    window.fotosPaciente = [];
+    renderFotosPaciente();
+    return;
+  }
+
+  const req = beginRequest("fotosPaciente");
+  const localSeq = req.seq;
+
   try {
-    const res = await fetch(`/api/foto-paciente/${idPaciente}`);
+    const res = await fetch(`/api/foto-paciente/${idPacienteNum}`, {
+      signal: req.signal
+    });
     const json = await res.json();
+
+    if (isStaleRequest("fotosPaciente", localSeq)) return;
+    if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteNum) return;
 
     if (!json.ok) {
       window.fotosPaciente = [];
@@ -1060,9 +1184,14 @@ async function cargarFotosPaciente(idPaciente) {
     renderFotosPaciente();
 
   } catch (err) {
+    if (isAbortError(err)) return;
     console.error("Error cargando fotos del paciente", err);
-    window.fotosPaciente = [];
-    renderFotosPaciente();
+    if (Number(window.pacienteActual?.idPaciente || 0) === idPacienteNum) {
+      window.fotosPaciente = [];
+      renderFotosPaciente();
+    }
+  } finally {
+    endRequest("fotosPaciente", req.controller);
   }
 }
 async function subirFotografia(file) {
@@ -1070,6 +1199,10 @@ async function subirFotografia(file) {
     alert("Debe seleccionar un paciente");
     return;
   }
+  if (!file) return;
+  if (isUploadingFotoPaciente) return;
+
+  isUploadingFotoPaciente = true;
   const formData = new FormData();
   // En multipart el orden importa para multer.filename:
   // enviar campos antes del archivo evita nombres con "undefined".
@@ -1087,11 +1220,13 @@ async function subirFotografia(file) {
     if (!json.ok) throw new Error(json.message);
 
     // Y recargar fotos desde BD
-    cargarFotosPaciente(window.pacienteActual.idPaciente);
+    await cargarFotosPaciente(window.pacienteActual.idPaciente);
 
   } catch (err) {
     console.error(err);
     alert("Error al subir fotografia");
+  } finally {
+    isUploadingFotoPaciente = false;
   }
 }
 async function eliminarFotosSeleccionadas() {
@@ -1099,6 +1234,7 @@ async function eliminarFotosSeleccionadas() {
     alert("Debe cargar un paciente");
     return;
   }
+  if (isDeletingFotosPaciente) return;
 
   const seleccionados = [...document.querySelectorAll(".foto-select:checked")];
 
@@ -1114,6 +1250,7 @@ async function eliminarFotosSeleccionadas() {
     return;
   }
 
+  isDeletingFotosPaciente = true;
   try {
     const idsEliminados = new Set();
 
@@ -1145,6 +1282,8 @@ async function eliminarFotosSeleccionadas() {
   } catch (err) {
     console.error("Error eliminando fotografias", err);
     alert("Error al eliminar una o mas fotografias");
+  } finally {
+    isDeletingFotosPaciente = false;
   }
 }
 // Modal de foto
@@ -1436,6 +1575,7 @@ function cerrarModalCita() {
     document.getElementById("modal-cita-paciente").classList.remove("show");
 }
 async function guardarCitaPaciente() {
+  if (isSavingCitaPaciente) return;
   const fecha = document.getElementById("cita-fecha").value;
   const procedimiento = String(document.getElementById("cita-procedimiento").value || "").trim();
   const valorRaw = document.getElementById("cita-valor").value;
@@ -1467,6 +1607,7 @@ async function guardarCitaPaciente() {
     return;
   }
 
+  isSavingCitaPaciente = true;
   try {
     const res = await fetch("/api/paciente/cita", {
       method: "POST",
@@ -1485,11 +1626,13 @@ async function guardarCitaPaciente() {
     if (!json.ok) throw new Error(json.message);
 
     cerrarModalCita();
-    cargarCitasPaciente(window.pacienteActual.idPaciente);
+    await cargarCitasPaciente(window.pacienteActual.idPaciente);
 
   } catch (err) {
     console.error(err);
     alert("Error al guardar cita");
+  } finally {
+    isSavingCitaPaciente = false;
   }
 }
 async function actualizarCitaPacienteEnBD(cita) {
@@ -1668,20 +1811,28 @@ function initAutocompletePaciente() {
   const input = document.getElementById("buscar-paciente-p");
   const lista = document.getElementById("lista-paciente");
 
-  if (!input) return;
+  if (!input || !lista) return;
   blindarInputContraAutofill(input, "paciente-search");
 
   const buscar = debounce(async (texto) => {
     lista.innerHTML = "";
     lista.style.display = "none";
 
-    if (texto.length < 3) return;
+    if (texto.length < 3) {
+      invalidateRequest("buscarPaciente");
+      return;
+    }
+
+    const req = beginRequest("buscarPaciente");
+    const localSeq = req.seq;
 
     try {
       const res = await fetch(
-        `/api/paciente/search?q=${encodeURIComponent(texto)}`
+        `/api/paciente/search?q=${encodeURIComponent(texto)}`,
+        { signal: req.signal }
       );
       const json = await res.json();
+      if (isStaleRequest("buscarPaciente", localSeq)) return;
       if (!json.ok) return;
 
       json.data.forEach(p => {
@@ -1720,7 +1871,10 @@ function initAutocompletePaciente() {
       }
 
     } catch (err) {
+      if (isAbortError(err)) return;
       console.error("Autocomplete paciente error:", err);
+    } finally {
+      endRequest("buscarPaciente", req.controller);
     }
   }, 350);
 
@@ -1729,18 +1883,30 @@ function initAutocompletePaciente() {
   });
 }
 async function cargarPaciente(idPaciente) {
+  const idPacienteNum = Number(idPaciente || 0);
+  if (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0) {
+    alert("Paciente invalido");
+    return false;
+  }
+
+  const req = beginRequest("detallePaciente");
+  const localSeq = req.seq;
+
   try {
-    const res = await fetch(`/api/paciente/${idPaciente}`, {
-      cache: "no-store"
+    const res = await fetch(`/api/paciente/${idPacienteNum}`, {
+      cache: "no-store",
+      signal: req.signal
     });
 
     const json = await res.json();
+    if (isStaleRequest("detallePaciente", localSeq)) return false;
     if (!json.ok) {
       alert(json.message || "Error al cargar paciente");
       return false;
     }
     
     const p = json.data;
+    const idPacienteCargado = Number(p.idPaciente || idPacienteNum);
     window.pacienteActual = p; // estado global del paciente
     window.pacienteFotoPrincipalId = Number(p.fotoPrincipalId || 0) || null;
     renderFotoPrincipalPaciente();
@@ -1813,10 +1979,13 @@ async function cargarPaciente(idPaciente) {
       cargarFotosPaciente(p.idPaciente),
       cargarCitasPaciente(p.idPaciente)
     ]);
+    if (isStaleRequest("detallePaciente", localSeq)) return false;
+    if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteCargado) return false;
     setPacienteCambiosPendientes(false);
     return true;
     
   } catch (err) {
+    if (isAbortError(err)) return false;
     console.error("Error cargando paciente:", err);
     if (window.notifyConnectionError) {
       window.notifyConnectionError("Opps ocurrio un error de conexion");
@@ -1824,17 +1993,31 @@ async function cargarPaciente(idPaciente) {
       alert("Opps ocurrio un error de conexion");
     }
     return false;
+  } finally {
+    endRequest("detallePaciente", req.controller);
   }
 }
 async function cargarCitasPaciente(idPaciente) {
-  if (!idPaciente) return;
+  const idPacienteNum = Number(idPaciente || 0);
+  if (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0) {
+    invalidateRequest("citasPaciente");
+    window.citasPaciente = [];
+    renderCitasPaciente();
+    return;
+  }
+
+  const req = beginRequest("citasPaciente");
+  const localSeq = req.seq;
 
   try {
-    const res = await fetch(`/api/paciente/${idPaciente}/citas`, {
-      cache: "no-store"
+    const res = await fetch(`/api/paciente/${idPacienteNum}/citas`, {
+      cache: "no-store",
+      signal: req.signal
     });
 
     const json = await res.json();
+    if (isStaleRequest("citasPaciente", localSeq)) return;
+    if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteNum) return;
     if (!json.ok) return;
 
     // guardar estado real
@@ -1844,7 +2027,10 @@ async function cargarCitasPaciente(idPaciente) {
     renderCitasPaciente();
 
   } catch (err) {
+    if (isAbortError(err)) return;
     console.error("Error cargando citas del paciente", err);
+  } finally {
+    endRequest("citasPaciente", req.controller);
   }
 }
 function calcularEdad(fechaNacimiento) {
@@ -1889,29 +2075,31 @@ function limpiarOdontogramaActivoEnVista(options = {}) {
   sincronizarSnapshotOdontogramaBase();
 }
 async function guardarOdontogramaEnBD() {
+  if (isSavingOdontogramaPaciente) return;
+  isSavingOdontogramaPaciente = true;
 
-  if (!pacienteActual?.idPaciente) {
-    alert("Debe cargar un paciente");
-    return;
-  }
-
-  // 1a Construir JSON (usa tu funcion real)
-  window.odontogramaAPI.guardar();
-
-  // 2a Obtener el objeto completo
-  const data = window.odontogramaAPI.getData();
-
-  const payload = {
-    idPaciente: pacienteActual.idPaciente,
-    fechaO: new Date().toISOString().split("T")[0],
-    odontograma: JSON.stringify(data)
-  };
-  
   try {
+    if (!pacienteActual?.idPaciente) {
+      alert("Debe cargar un paciente");
+      return;
+    }
+
+    // 1a Construir JSON (usa tu funcion real)
+    window.odontogramaAPI.guardar();
+
+    // 2a Obtener el objeto completo
+    const data = window.odontogramaAPI.getData();
+
+    const payload = {
+      idPaciente: pacienteActual.idPaciente,
+      fechaO: new Date().toISOString().split("T")[0],
+      odontograma: JSON.stringify(data)
+    };
+
     if (!data.piezas || Object.keys(data.piezas).length === 0) {
-    alert("Odontograma vacio, no se puede guardar");
-    console.error(data);
-    return;
+      alert("Odontograma vacio, no se puede guardar");
+      console.error(data);
+      return;
     }
     const res = await fetch("/api/odontograma", {
       method: "POST",
@@ -1933,7 +2121,8 @@ async function guardarOdontogramaEnBD() {
   } catch (err) {
     console.error(err);
     alert("Error al guardar odontograma");
-    actualizarOdontogramaActual(payload.fechaO);
+  } finally {
+    isSavingOdontogramaPaciente = false;
   }
 }
 async function cargarOdontogramaPorId(idOdontograma, options = {}) {
@@ -1949,9 +2138,15 @@ async function cargarOdontogramaPorId(idOdontograma, options = {}) {
     return false;
   }
 
+  const req = beginRequest("odontogramaVersion");
+  const localSeq = req.seq;
+
   try {
-    const res = await fetch(`/api/odontograma/version/${idOdontograma}`);
+    const res = await fetch(`/api/odontograma/version/${idOdontograma}`, {
+      signal: req.signal
+    });
     const json = await res.json();
+    if (isStaleRequest("odontogramaVersion", localSeq)) return false;
 
     if (!json.ok || !json.data?.Odontograma) {
       if (!silentNoData) {
@@ -1964,6 +2159,7 @@ async function cargarOdontogramaPorId(idOdontograma, options = {}) {
     window.odontogramaAPI.setData(data);
 
     await new Promise(resolve => requestAnimationFrame(resolve));
+    if (isStaleRequest("odontogramaVersion", localSeq)) return false;
     window.odontogramaAPI.cargar();
     actualizarOdontogramaActual(json.data.idOdontograma);
     sincronizarSnapshotOdontogramaBase();
@@ -1978,9 +2174,12 @@ async function cargarOdontogramaPorId(idOdontograma, options = {}) {
     }
     return true;
   } catch (err) {
+    if (isAbortError(err)) return false;
     console.error(err);
     alert("Error al cargar odontograma");
     return false;
+  } finally {
+    endRequest("odontogramaVersion", req.controller);
   }
 }
 async function cargarUltimoOdontogramaPaciente(options = {}) {
@@ -1990,17 +2189,23 @@ async function cargarUltimoOdontogramaPaciente(options = {}) {
   } = options;
 
   if (!window.pacienteActual?.idPaciente) {
+    invalidateRequest("odontogramaUltimo");
     limpiarOdontogramaActivoEnVista();
     alert("Seleccione un paciente");
     return false;
   }
 
+  const req = beginRequest("odontogramaUltimo");
+  const localSeq = req.seq;
+
   try {
     const res = await fetch(
-      `/api/odontograma/ultimo/${window.pacienteActual.idPaciente}`
+      `/api/odontograma/ultimo/${window.pacienteActual.idPaciente}`,
+      { signal: req.signal }
     );
 
     const json = await res.json();
+    if (isStaleRequest("odontogramaUltimo", localSeq)) return false;
 
     if (!json.ok || !json.data?.Odontograma) {
       limpiarOdontogramaActivoEnVista({ clearHistorial: false });
@@ -2016,6 +2221,7 @@ async function cargarUltimoOdontogramaPaciente(options = {}) {
     window.odontogramaAPI.setData(data);
 
     await new Promise(resolve => requestAnimationFrame(resolve));
+    if (isStaleRequest("odontogramaUltimo", localSeq)) return false;
     window.odontogramaAPI.cargar();
     actualizarOdontogramaActual(json.data.idOdontograma);
     sincronizarSnapshotOdontogramaBase();
@@ -2026,10 +2232,13 @@ async function cargarUltimoOdontogramaPaciente(options = {}) {
     return true;
 
   } catch (err) {
+    if (isAbortError(err)) return false;
     console.error(err);
     limpiarOdontogramaActivoEnVista({ clearHistorial: false });
     alert("Error al cargar odontograma");
     return false;
+  } finally {
+    endRequest("odontogramaUltimo", req.controller);
   }
 }
 // ============= FIRMA PACIENTE====
@@ -2151,6 +2360,7 @@ function cerrarModalVerFirma() {
   if (modal) modal.style.display = "none";
 }
 async function guardarFirmaPaciente() {
+  if (isSavingFirmaPaciente) return;
 
   if (!window.pacienteActual?.idPaciente) {
     alert("Paciente no valido");
@@ -2159,6 +2369,7 @@ async function guardarFirmaPaciente() {
 
   const imagenBase64 = canvasFirma.toDataURL("image/png");
 
+  isSavingFirmaPaciente = true;
   try {
     const res = await fetch("/api/paciente/firma", {
       method: "POST",
@@ -2183,11 +2394,14 @@ async function guardarFirmaPaciente() {
   } catch (err) {
     console.error(err);
     alert(" Error al guardar firma");
+  } finally {
+    isSavingFirmaPaciente = false;
   }
 }
 async function guardarPaciente() {
+  if (isSavingPaciente) return;
     
-    const payload = {
+  const payload = {
     idPaciente: window.pacienteActual?.idPaciente || null,
 
     NombreP: NombreP.value,
@@ -2222,6 +2436,7 @@ async function guardarPaciente() {
     notasObservacionP: notasObservacionP.value
   };
 
+  isSavingPaciente = true;
   try {
     const res = await fetch("/api/paciente/guardar", {
       method: "POST",
@@ -2245,6 +2460,8 @@ async function guardarPaciente() {
   } catch (err) {
     console.error(err);
     alert(" Error al guardar paciente");
+  } finally {
+    isSavingPaciente = false;
   }
 }
 function renderCitasPaciente() {
@@ -2321,9 +2538,15 @@ function registrarEventoVerDoctor() {
     const doctorId = Number(e.target.dataset.doctorId);
     if (!doctorId) return;
 
+    const req = beginRequest("doctorInfo");
+    const localSeq = req.seq;
+
     try {
-      const res = await fetch(`/api/doctor/${doctorId}`);
+      const res = await fetch(`/api/doctor/${doctorId}`, {
+        signal: req.signal
+      });
       const json = await res.json();
+      if (isStaleRequest("doctorInfo", localSeq)) return;
 
       if (!json.ok) {
         alert("No se pudo cargar el doctor");
@@ -2361,8 +2584,11 @@ function registrarEventoVerDoctor() {
       modal.classList.add("show");
 
     } catch (err) {
+      if (isAbortError(err)) return;
       console.error(err);
       alert("Error cargando doctor");
+    } finally {
+      endRequest("doctorInfo", req.controller);
     }
   };
 
@@ -2405,7 +2631,11 @@ function cerrarModalAutorizarCita() {
 }
 async function ejecutarAutorizacionCita(idCita, credenciales = null) {
   if (!idCita) return { ok: false, message: "ID de cita invalido" };
+  if (isAuthorizingCitaPaciente) {
+    return { ok: false, message: "Ya hay una autorizacion en proceso" };
+  }
 
+  isAuthorizingCitaPaciente = true;
   try {
     const res = await fetch(`/api/paciente/cita/${idCita}/autorizar`, {
       method: "POST",
@@ -2424,6 +2654,8 @@ async function ejecutarAutorizacionCita(idCita, credenciales = null) {
   } catch (err) {
     console.error(err);
     return { ok: false, message: "Error de red al autorizar cita" };
+  } finally {
+    isAuthorizingCitaPaciente = false;
   }
 }
 function registrarEventoAutorizarCita() {
@@ -2493,12 +2725,22 @@ function registrarEventoAutorizarCita() {
 }
 // ============= FUNCION PARA LIMPIAR TODO LO DE LA VISTA PACIENTE ====
 function limpiarVistaPaciente() {
+  abortAllPacienteRequests();
+  isSavingPaciente = false;
+  isSavingCitaPaciente = false;
+  isSavingFirmaPaciente = false;
+  isSavingOdontogramaPaciente = false;
+  isUploadingFotoPaciente = false;
+  isDeletingFotosPaciente = false;
+  isSettingFotoPrincipalPaciente = false;
+  isAuthorizingCitaPaciente = false;
 
   /* =====================================================
      1a ESTADO GLOBAL / MEMORIA
   ===================================================== */
   window.pacienteActual = null;
   window.citasPaciente = [];
+  window.citasPacienteView = [];
   window.fotosPaciente = [];
   window.odontogramaData = null;
   window._odontogramaCargado = false;
@@ -2693,6 +2935,16 @@ window.__mountPaciente = function () {
 
     const content = document.querySelector(".content");
     if (!content) return;
+    pacienteViewDisposed = false;
+    abortAllPacienteRequests();
+    isSavingPaciente = false;
+    isSavingCitaPaciente = false;
+    isSavingFirmaPaciente = false;
+    isSavingOdontogramaPaciente = false;
+    isUploadingFotoPaciente = false;
+    isDeletingFotosPaciente = false;
+    isSettingFotoPrincipalPaciente = false;
+    isAuthorizingCitaPaciente = false;
 
     // 1a Renderizar TODA la vista paciente
     renderPaciente(content);
@@ -2789,6 +3041,7 @@ window.__mountPaciente = function () {
     }
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
+        pacienteViewDisposed = true;
         limpiarVistaPaciente();
       });
     }

@@ -13,6 +13,70 @@ const METODO_AUTORIZACION_VALIDACION = "VALIDACION_CREDENCIAL";
 const METODO_AUTORIZACION_SIN_DOCTOR = "SIN_DOCTOR";
 const DOCTOR_REGISTRO_FISICO = "registro fisico";
 
+function isTransientDbError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  if (!code) return false;
+  return (
+    code.includes("ETIMEDOUT") ||
+    code.includes("ECONNRESET") ||
+    code.includes("ECONNREFUSED") ||
+    code.includes("PROTOCOL_CONNECTION_LOST")
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function queryReadWithRetry(sql, params = [], options = {}) {
+  const attempts = Number.isInteger(Number(options.attempts)) && Number(options.attempts) > 0
+    ? Number(options.attempts)
+    : 2;
+  const baseDelayMs = Number.isInteger(Number(options.baseDelayMs)) && Number(options.baseDelayMs) >= 0
+    ? Number(options.baseDelayMs)
+    : 120;
+
+  let lastError = null;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await pool.query(sql, params);
+    } catch (err) {
+      lastError = err;
+      const hasNextAttempt = i < attempts - 1;
+      if (!hasNextAttempt || !isTransientDbError(err)) {
+        throw err;
+      }
+      await sleep(baseDelayMs * (i + 1));
+    }
+  }
+
+  throw lastError || new Error("Error desconocido en consulta de lectura");
+}
+
+function handlePacienteError(res, err, fallbackMessage) {
+  if (isTransientDbError(err)) {
+    return res.status(503).json({
+      ok: false,
+      message: "Base de datos temporalmente no disponible. Intente de nuevo."
+    });
+  }
+  return serverError(res, err, fallbackMessage);
+}
+
+function esFechaISOValida(fecha) {
+  if (typeof fecha !== "string") return false;
+  const valor = fecha.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false;
+
+  const [anio, mes, dia] = valor.split("-").map(Number);
+  const date = new Date(anio, mes - 1, dia);
+  return (
+    date.getFullYear() === anio &&
+    date.getMonth() === mes - 1 &&
+    date.getDate() === dia
+  );
+}
+
 function textoNormalizado(value) {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -29,7 +93,7 @@ function normalizarEstadoDoctor(value) {
 }
 
 async function existeColumnaEstadoDoctor() {
-  const [rows] = await pool.query(
+  const [rows] = await queryReadWithRetry(
     `SELECT 1
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
@@ -41,7 +105,7 @@ async function existeColumnaEstadoDoctor() {
 }
 
 async function obtenerVinculoDoctorPorUsuario(idUsuario) {
-  const [rows] = await pool.query(
+  const [rows] = await queryReadWithRetry(
     "SELECT idDoctor FROM usuario WHERE idUsuario = ? LIMIT 1",
     [idUsuario]
   );
@@ -49,7 +113,7 @@ async function obtenerVinculoDoctorPorUsuario(idUsuario) {
 }
 
 async function obtenerMetaCita(idCitaPaciente) {
-  const [rows] = await pool.query(
+  const [rows] = await queryReadWithRetry(
     `SELECT c.idcitasPaciente, c.doctorId, c.estadoAutorizacionCP, d.nombreD AS nombreDoctor
      FROM citaspaciente c
      LEFT JOIN doctor d ON d.idDoctor = c.doctorId
@@ -62,7 +126,7 @@ async function obtenerMetaCita(idCitaPaciente) {
 
 async function obtenerMetaDoctor(idDoctor) {
   const tieneColumnaEstado = await existeColumnaEstadoDoctor();
-  const [rows] = await pool.query(
+  const [rows] = await queryReadWithRetry(
     tieneColumnaEstado
       ? "SELECT idDoctor, nombreD, estadoD FROM doctor WHERE idDoctor = ? LIMIT 1"
       : "SELECT idDoctor, nombreD FROM doctor WHERE idDoctor = ? LIMIT 1",
@@ -76,7 +140,7 @@ async function obtenerMetaDoctor(idDoctor) {
   return doctor;
 }
 async function obtenerCorreoUsuarioDoctorPorIdDoctor(idDoctor) {
-  const [rows] = await pool.query(
+  const [rows] = await queryReadWithRetry(
     `SELECT correoU
      FROM usuario
      WHERE idDoctor = ?
@@ -91,16 +155,16 @@ async function obtenerCorreoUsuarioDoctorPorIdDoctor(idDoctor) {
 // ============================
 const buscar = async (req, res) => {
   try {
-    const { q } = req.query;
+    const q = String(req.query?.q || "").trim();
 
-    if (!q || q.length < 3) {
+    if (q.length < 3) {
       return badRequest(res, "Minimo 3 caracteres");
     }
 
-    const [rows] = await pool.query(
-  "CALL sp_paciente_buscar_ligero(?)",
-  [q]
-);
+    const [rows] = await queryReadWithRetry(
+      "CALL sp_paciente_buscar_ligero(?)",
+      [q]
+    );
 
     const data = firstResultSet(rows);
 
@@ -110,7 +174,7 @@ const buscar = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al buscar pacientes");
+    return handlePacienteError(res, err, "Error al buscar pacientes");
   }
 };
 
@@ -119,13 +183,13 @@ const buscar = async (req, res) => {
 // ============================
 const obtenerPorId = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = Number(req.params?.id || 0);
 
-    if (!id) {
-      return badRequest(res, "ID de paciente requerido");
+    if (!Number.isInteger(id) || id <= 0) {
+      return badRequest(res, "ID de paciente invalido");
     }
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       "CALL sp_paciente_get_by_id(?)",
       [id]
     );
@@ -141,7 +205,7 @@ const obtenerPorId = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al obtener paciente");
+    return handlePacienteError(res, err, "Error al obtener paciente");
   }
 };
 // ============================
@@ -149,9 +213,10 @@ const obtenerPorId = async (req, res) => {
 // ============================
 const guardarFirma = async (req, res) => {
   try {
-    const { idPaciente, imagenBase64 } = req.body;
+    const idPaciente = Number(req.body?.idPaciente || 0);
+    const imagenBase64 = req.body?.imagenBase64;
 
-    if (!idPaciente || !imagenBase64) {
+    if (!Number.isInteger(idPaciente) || idPaciente <= 0 || !imagenBase64) {
       return badRequest(res, "Datos incompletos");
     }
 
@@ -176,7 +241,7 @@ const guardarFirma = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al guardar firma");
+    return handlePacienteError(res, err, "Error al guardar firma");
   }
 };
 // ============================
@@ -185,12 +250,32 @@ const guardarFirma = async (req, res) => {
 const guardarPaciente = async (req, res) => {
   try {
     const p = req.body;
+    const idPacienteNum = p?.idPaciente === null || p?.idPaciente === undefined || p?.idPaciente === ""
+      ? null
+      : Number(p.idPaciente);
+    const nombre = String(p?.NombreP || "").trim();
+
+    if (idPacienteNum !== null && (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0)) {
+      return badRequest(res, "idPaciente invalido");
+    }
+    if (!nombre) {
+      return badRequest(res, "Nombre de paciente requerido");
+    }
+    if (p?.fechaRegistroP && !esFechaISOValida(String(p.fechaRegistroP))) {
+      return badRequest(res, "fechaRegistroP invalida");
+    }
+    if (p?.fechaNacimientoP && !esFechaISOValida(String(p.fechaNacimientoP))) {
+      return badRequest(res, "fechaNacimientoP invalida");
+    }
+    if (p?.ultimaVisitaP && !esFechaISOValida(String(p.ultimaVisitaP))) {
+      return badRequest(res, "ultimaVisitaP invalida");
+    }
 
     const [rows] = await pool.query(
       "CALL sp_paciente_guardar(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       [
-        p.idPaciente || null,
-        p.NombreP,
+        idPacienteNum,
+        nombre,
         p.direccionP,
         p.telefonoP,
         p.fechaRegistroP,
@@ -226,7 +311,7 @@ const guardarPaciente = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al guardar paciente");
+    return handlePacienteError(res, err, "Error al guardar paciente");
   }
 };
 // ============================
@@ -242,10 +327,14 @@ const crearCitaPaciente = async (req, res) => {
       abono,
       doctorId
     } = req.body;
+    const idPacienteNum = Number(idPaciente || 0);
 
     const procedimientoTxt = String(procedimiento || "").trim();
-    if (!idPaciente || !fecha || !procedimientoTxt) {
+    if (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0 || !fecha || !procedimientoTxt) {
       return badRequest(res, "Datos incompletos");
+    }
+    if (!esFechaISOValida(String(fecha))) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
     }
 
     const valorNum = valor === "" || valor === null || valor === undefined
@@ -302,7 +391,7 @@ const crearCitaPaciente = async (req, res) => {
     const [rows] = await pool.query(
       "CALL sp_cita_paciente_crear(?,?,?,?,?,?,?,?,?,?)",
       [
-        idPaciente,
+        idPacienteNum,
         fecha,
         procedimientoTxt,
         valorNum,
@@ -323,7 +412,7 @@ const crearCitaPaciente = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al crear cita");
+    return handlePacienteError(res, err, "Error al crear cita");
   }
 };
 // ============================
@@ -331,26 +420,34 @@ const crearCitaPaciente = async (req, res) => {
 // ============================
 const actualizarCitaPaciente = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = Number(req.params?.id || 0);
     const { fecha, procedimiento, valor, abono } = req.body;
 
-    if (!id) {
-      return badRequest(res, "ID de cita requerido");
+    if (!Number.isInteger(id) || id <= 0) {
+      return badRequest(res, "ID de cita invalido");
     }
     if (!fecha || !procedimiento || valor === undefined || valor === null) {
       return badRequest(res, "Datos incompletos");
+    }
+    if (!esFechaISOValida(String(fecha))) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
+
+    const procedimientoTxt = String(procedimiento || "").trim();
+    if (!procedimientoTxt) {
+      return badRequest(res, "Procedimiento invalido");
     }
 
     const valorNum = Number(valor);
     const abonoNum = Number(abono ?? 0);
 
-    if (!Number.isFinite(valorNum) || !Number.isFinite(abonoNum)) {
+    if (!Number.isFinite(valorNum) || !Number.isFinite(abonoNum) || valorNum < 0 || abonoNum < 0) {
       return badRequest(res, "Valor o abono invalido");
     }
 
     const [rows] = await pool.query(
       "CALL sp_cita_paciente_actualizar(?,?,?,?,?)",
-      [id, fecha, procedimiento, valorNum, abonoNum]
+      [id, fecha, procedimientoTxt, valorNum, abonoNum]
     );
 
     const out = firstRow(rows);
@@ -361,7 +458,7 @@ const actualizarCitaPaciente = async (req, res) => {
     res.json({ ok: true });
 
   } catch (err) {
-    return serverError(res, err, "Error al actualizar cita");
+    return handlePacienteError(res, err, "Error al actualizar cita");
   }
 };
 // ============================
@@ -478,15 +575,18 @@ const autorizarCitaPaciente = async (req, res) => {
       metodoAutorizacion: METODO_AUTORIZACION_VALIDACION
     });
   } catch (err) {
-    return serverError(res, err, "Error al autorizar cita");
+    return handlePacienteError(res, err, "Error al autorizar cita");
   }
 };
 
 const listarCitasPaciente = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = Number(req.params?.id || 0);
+    if (!Number.isInteger(id) || id <= 0) {
+      return badRequest(res, "ID de paciente invalido");
+    }
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       "CALL sp_cita_paciente_listar(?)",
       [id]
     );
@@ -500,7 +600,7 @@ const listarCitasPaciente = async (req, res) => {
 
     const correoPorDoctor = new Map();
     if (doctorIds.length > 0) {
-      const [usuariosRows] = await pool.query(
+      const [usuariosRows] = await queryReadWithRetry(
         `SELECT idDoctor, correoU, idUsuario
          FROM usuario
          WHERE idDoctor IN (?)
@@ -526,7 +626,7 @@ const listarCitasPaciente = async (req, res) => {
     });
 
   } catch (err) {
-    return serverError(res, err, "Error al listar citas");
+    return handlePacienteError(res, err, "Error al listar citas");
   }
 };
 
@@ -543,7 +643,7 @@ const existePaciente = async (req, res) => {
     const telefonoNorm = telefonoRaw.toLowerCase();
     const telefonoDigitos = telefonoRaw.replace(/\D+/g, "");
 
-    const [rows] = await pool.query(
+    const [rows] = await queryReadWithRetry(
       `SELECT idPaciente, NombreP, telefonoP
        FROM paciente
        WHERE LOWER(TRIM(NombreP)) = ?
@@ -593,7 +693,7 @@ const existePaciente = async (req, res) => {
         : null
     });
   } catch (err) {
-    return serverError(res, err, "Error al validar paciente existente");
+    return handlePacienteError(res, err, "Error al validar paciente existente");
   }
 };
 

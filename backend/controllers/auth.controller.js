@@ -11,6 +11,27 @@ function isHiddenRegisterEnabled() {
     return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
 }
 
+function isTransientDbError(err) {
+    const code = String(err?.code || "").toUpperCase();
+    if (!code) return false;
+    return (
+        code.includes("ETIMEDOUT") ||
+        code.includes("ECONNRESET") ||
+        code.includes("ECONNREFUSED") ||
+        code.includes("PROTOCOL_CONNECTION_LOST")
+    );
+}
+
+function handleAuthError(res, err, fallbackMessage) {
+    if (isTransientDbError(err)) {
+        return res.status(503).json({
+            ok: false,
+            message: "Base de datos temporalmente no disponible. Intente de nuevo."
+        });
+    }
+    return serverError(res, err, fallbackMessage);
+}
+
 function getHttpStatusByLicenseCode(code) {
     const value = String(code || "");
     if (value.startsWith("db_no_disponible")) return 503;
@@ -20,10 +41,14 @@ function getHttpStatusByLicenseCode(code) {
 
 async function login(req, res) {
     try {
-        const { correo, password } = req.body;
+        const correo = String(req.body?.correo || "").trim().toLowerCase();
+        const password = String(req.body?.password || "");
 
         if (!correo || !password) {
             return badRequest(res, "Correo y contrasena requeridos");
+        }
+        if (correo.length > 60) {
+            return badRequest(res, "Correo invalido");
         }
 
         const runtimeStatus = licenciaService.getRuntimeStatus();
@@ -77,7 +102,7 @@ async function login(req, res) {
         });
 
     } catch (error) {
-        return serverError(res, error, "Error interno del servidor");
+        return handleAuthError(res, error, "Error interno del servidor");
     }
 }
 
@@ -163,7 +188,7 @@ async function registroOculto(req, res) {
             });
         }
 
-        return serverError(res, error, "Error al crear usuario");
+        return handleAuthError(res, error, "Error al crear usuario");
     }
 }
 
@@ -189,7 +214,7 @@ async function registroCatalogos(req, res) {
             }
         });
     } catch (error) {
-        return serverError(res, error, "Error al cargar catalogos de registro");
+        return handleAuthError(res, error, "Error al cargar catalogos de registro");
     }
 }
 

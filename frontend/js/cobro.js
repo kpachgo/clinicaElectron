@@ -614,6 +614,79 @@
     const chartCentroTotal = document.getElementById("chart-centro-total");
     const cashInputs = Array.from(document.querySelectorAll(".cobro-cash-input"));
     const cashGrandTotal = document.getElementById("cash-grand-total");
+    let isDisposed = false;
+    let isSavingCuenta = false;
+    let isCreatingDescuento = false;
+
+    const requestState = {
+      paciente: { seq: 0, controller: null },
+      servicio: { seq: 0, controller: null },
+      cuentas: { seq: 0, controller: null },
+      descuentos: { seq: 0, controller: null },
+      doctores: { seq: 0, controller: null },
+      serviciosMensual: { seq: 0, controller: null },
+      reporteMensual: { seq: 0, controller: null },
+      faltantes: { seq: 0, controller: null }
+    };
+
+    function isAbortError(err) {
+      return String(err?.name || "") === "AbortError";
+    }
+
+    function isCobroViewActive() {
+      return !isDisposed && !!container?.isConnected && window.currentView === "Cobro";
+    }
+
+    function abortControllerSafe(controller) {
+      if (!controller) return;
+      try {
+        controller.abort();
+      } catch {
+        // ignore abort failures
+      }
+    }
+
+    function abortRequest(key) {
+      const state = requestState[key];
+      if (!state) return;
+      abortControllerSafe(state.controller);
+      state.controller = null;
+    }
+
+    function invalidateRequest(key) {
+      const state = requestState[key];
+      if (!state) return;
+      state.seq += 1;
+      abortRequest(key);
+    }
+
+    function beginRequest(key) {
+      const state = requestState[key];
+      if (!state) return { seq: 0, controller: null, signal: undefined };
+      abortRequest(key);
+      state.seq += 1;
+      const controller = typeof AbortController !== "undefined"
+        ? new AbortController()
+        : null;
+      state.controller = controller;
+      return {
+        seq: state.seq,
+        controller,
+        signal: controller ? controller.signal : undefined
+      };
+    }
+
+    function endRequest(key, controller) {
+      const state = requestState[key];
+      if (!state) return;
+      if (state.controller === controller) {
+        state.controller = null;
+      }
+    }
+
+    function isStaleRequest(key, seq) {
+      return !isCobroViewActive() || !requestState[key] || seq !== requestState[key].seq;
+    }
 
     function abrirCobroModal(modalEl) {
       if (!modalEl) return;
@@ -707,6 +780,7 @@
     }
 
     async function cargarFaltantesCobro() {
+      if (!isCobroViewActive()) return;
       const fecha = String(inputFecha?.value || "").trim();
       if (!fecha) {
         faltantesCobroActual = [];
@@ -714,6 +788,8 @@
         renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, "");
         return;
       }
+      const req = beginRequest("faltantes");
+      const localSeq = req.seq;
 
       renderFaltantesCobro(
         [],
@@ -729,8 +805,12 @@
       }
 
       try {
-        const res = await fetch(`/api/cola?fecha=${encodeURIComponent(fecha)}`);
+        const res = await fetch(
+          `/api/cola?fecha=${encodeURIComponent(fecha)}`,
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
         const json = await res.json();
+        if (isStaleRequest("faltantes", localSeq)) return;
         if (!res.ok || !json?.ok) {
           throw new Error(json?.message || "No se pudo cargar En Cola");
         }
@@ -781,8 +861,10 @@
           faltantes: faltantes.length,
           fecha
         };
+        if (isStaleRequest("faltantes", localSeq)) return;
         renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, fecha);
       } catch (err) {
+        if (isAbortError(err) || isStaleRequest("faltantes", localSeq)) return;
         console.error(err);
         if (window.notifyConnectionError) {
           window.notifyConnectionError("Opps ocurrio un error de conexion");
@@ -797,6 +879,8 @@
             </tr>
           `;
         }
+      } finally {
+        endRequest("faltantes", req.controller);
       }
     }
 
@@ -1041,11 +1125,20 @@
     const buscarPaciente = debounce(async (texto) => {
       listaPacientes.innerHTML = "";
       listaPacientes.style.display = "none";
-      if (texto.length < 2) return;
+      if (texto.length < 2 || !isCobroViewActive()) {
+        invalidateRequest("paciente");
+        return;
+      }
+      const req = beginRequest("paciente");
+      const localSeq = req.seq;
 
       try {
-        const res = await fetch(`/api/paciente/search?q=${encodeURIComponent(texto)}`);
+        const res = await fetch(
+          `/api/paciente/search?q=${encodeURIComponent(texto)}`,
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
         const json = await res.json();
+        if (isStaleRequest("paciente", localSeq)) return;
         if (!json.ok) return;
 
         json.data.forEach((p) => {
@@ -1065,18 +1158,30 @@
 
         if (json.data.length) listaPacientes.style.display = "block";
       } catch (err) {
+        if (isAbortError(err) || isStaleRequest("paciente", localSeq)) return;
         console.error(err);
+      } finally {
+        endRequest("paciente", req.controller);
       }
     }, 350);
 
     const buscarServicio = debounce(async (texto) => {
       listaServicios.innerHTML = "";
       listaServicios.style.display = "none";
-      if (texto.length < 2) return;
+      if (texto.length < 2 || !isCobroViewActive()) {
+        invalidateRequest("servicio");
+        return;
+      }
+      const req = beginRequest("servicio");
+      const localSeq = req.seq;
 
       try {
-        const res = await fetch(`/api/servicio/search?q=${encodeURIComponent(texto)}`);
+        const res = await fetch(
+          `/api/servicio/search?q=${encodeURIComponent(texto)}`,
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
         const json = await res.json();
+        if (isStaleRequest("servicio", localSeq)) return;
         if (!json.ok) return;
 
         json.data.forEach((s) => {
@@ -1093,7 +1198,10 @@
 
         if (json.data.length) listaServicios.style.display = "block";
       } catch (err) {
+        if (isAbortError(err) || isStaleRequest("servicio", localSeq)) return;
         console.error(err);
+      } finally {
+        endRequest("servicio", req.controller);
       }
     }, 350);
 
@@ -1105,6 +1213,7 @@
     });
 
     btnGuardar.addEventListener("click", async () => {
+      if (isSavingCuenta || !isCobroViewActive()) return;
       if (!pacienteActual) {
         alert("Seleccione un paciente");
         return;
@@ -1145,6 +1254,8 @@
         items: itemsPayload
       };
 
+      isSavingCuenta = true;
+      btnGuardar.disabled = true;
       try {
         const res = await fetch("/api/cuenta", {
           method: "POST",
@@ -1154,6 +1265,7 @@
 
         const json = await res.json();
         if (!json.ok) throw new Error(json.message);
+        if (!isCobroViewActive()) return;
 
         alert("Cuenta guardada correctamente");
         cobroItems = [];
@@ -1165,42 +1277,74 @@
           nextInputFecha.dispatchEvent(new Event("change"));
         }
       } catch (err) {
+        if (!isCobroViewActive()) return;
         console.error(err);
         alert("Error al guardar la cuenta");
+      } finally {
+        isSavingCuenta = false;
+        if (isCobroViewActive()) {
+          actualizarEstadoFlujo();
+        }
       }
     });
 
     async function cargarCuentasPorFecha(fecha) {
+      if (!isCobroViewActive()) return;
+      const fechaObjetivo = String(fecha || "").trim();
+      if (!fechaObjetivo) return;
+      const req = beginRequest("cuentas");
+      const localSeq = req.seq;
       try {
-        const res = await fetch(`/api/cuenta?fecha=${fecha}`);
+        const res = await fetch(
+          `/api/cuenta?fecha=${encodeURIComponent(fechaObjetivo)}`,
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
         const json = await res.json();
+        if (isStaleRequest("cuentas", localSeq)) return;
         if (!json.ok) {
           alert(json.message || "Error al cargar cuentas");
           return;
         }
+        if (String(inputFecha?.value || "").trim() !== fechaObjetivo) return;
         drawCuentaRows(json.data);
         aplicarFiltroCuenta();
         if (faltantesCobroModal && !faltantesCobroModal.hidden) {
           await cargarFaltantesCobro();
         }
       } catch (err) {
+        if (isAbortError(err) || isStaleRequest("cuentas", localSeq)) return;
         console.error(err);
         if (window.notifyConnectionError) {
           window.notifyConnectionError("Opps ocurrio un error de conexion");
         } else {
           alert("Opps ocurrio un error de conexion");
         }
+      } finally {
+        endRequest("cuentas", req.controller);
       }
     }
 
     async function cargarDescuentosPorFecha(fecha) {
+      if (!isCobroViewActive()) return;
+      const fechaObjetivo = String(fecha || "").trim();
+      if (!fechaObjetivo) return;
+      const req = beginRequest("descuentos");
+      const localSeq = req.seq;
       try {
-        const res = await fetch(`/api/cuenta/descuento?fecha=${fecha}`);
+        const res = await fetch(
+          `/api/cuenta/descuento?fecha=${encodeURIComponent(fechaObjetivo)}`,
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
         const json = await res.json();
+        if (isStaleRequest("descuentos", localSeq)) return;
         if (!json.ok) return;
+        if (String(inputFecha?.value || "").trim() !== fechaObjetivo) return;
         renderDescuento(json.data);
       } catch (err) {
+        if (isAbortError(err) || isStaleRequest("descuentos", localSeq)) return;
         console.error(err);
+      } finally {
+        endRequest("descuentos", req.controller);
       }
     }
 
@@ -1306,12 +1450,19 @@
     }
 
     async function cargarDoctoresCuenta(force = false) {
+      if (!isCobroViewActive()) return null;
       if (!force && cargarDoctoresCuentaPromise) return cargarDoctoresCuentaPromise;
 
       cargarDoctoresCuentaPromise = (async () => {
+        const req = beginRequest("doctores");
+        const localSeq = req.seq;
         try {
-          const res = await fetch("/api/doctor/select", { cache: "no-store" });
+          const options = req.signal
+            ? { cache: "no-store", signal: req.signal }
+            : { cache: "no-store" };
+          const res = await fetch("/api/doctor/select", options);
           const json = await res.json();
+          if (isStaleRequest("doctores", localSeq)) return;
           if (!res.ok || !json.ok || !Array.isArray(json.data)) {
             doctoresCuentaData = [];
             construirOpcionesFiltroDoctorCuenta();
@@ -1326,10 +1477,12 @@
             aplicarFiltroCuenta();
           }
         } catch (err) {
+          if (isAbortError(err) || isStaleRequest("doctores", localSeq)) return;
           console.error(err);
           doctoresCuentaData = [];
           construirOpcionesFiltroDoctorCuenta();
         } finally {
+          endRequest("doctores", req.controller);
           cargarDoctoresCuentaPromise = null;
         }
       })();
@@ -1338,10 +1491,17 @@
     }
 
     async function cargarServiciosReporteMensual() {
+      if (!isCobroViewActive()) return;
+      const req = beginRequest("serviciosMensual");
+      const localSeq = req.seq;
       try {
         const actual = String(selectReporteMensualServicio?.value || "");
-        const res = await fetch("/api/servicio");
+        const res = await fetch(
+          "/api/servicio",
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
         const json = await res.json();
+        if (isStaleRequest("serviciosMensual", localSeq)) return;
         if (!json.ok || !Array.isArray(json.data)) return;
 
         selectReporteMensualServicio.innerHTML = "";
@@ -1368,7 +1528,10 @@
           selectReporteMensualServicio.value = "";
         }
       } catch (err) {
+        if (isAbortError(err) || isStaleRequest("serviciosMensual", localSeq)) return;
         console.error(err);
+      } finally {
+        endRequest("serviciosMensual", req.controller);
       }
     }
 
@@ -1414,22 +1577,30 @@
     }
 
     async function cargarReporteMensual() {
+      if (!isCobroViewActive()) return;
       const mes = String(inputReporteMensualMes?.value || "").trim();
       const idServicio = String(selectReporteMensualServicio?.value || "").trim();
 
       if (!mes || !idServicio) {
+        invalidateRequest("reporteMensual");
         reporteMensualActual = [];
         reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
         reporteMensualFiltroActual = null;
         renderReporteMensual(reporteMensualActual, reporteMensualTotalesActual);
         return;
       }
+      const req = beginRequest("reporteMensual");
+      const localSeq = req.seq;
 
       try {
         const query = new URLSearchParams({ mes, idServicio });
 
-        const res = await fetch(`/api/cuenta/reporte-mensual-pacientes?${query.toString()}`);
+        const res = await fetch(
+          `/api/cuenta/reporte-mensual-pacientes?${query.toString()}`,
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
         const json = await res.json();
+        if (isStaleRequest("reporteMensual", localSeq)) return;
         if (!json.ok) {
           alert(json.message || "Error al cargar reporte mensual");
           return;
@@ -1443,14 +1614,23 @@
           montoTotalMes: Number(json.totales?.montoTotalMes || 0)
         };
 
+        if (
+          String(inputReporteMensualMes?.value || "").trim() !== mes ||
+          String(selectReporteMensualServicio?.value || "").trim() !== idServicio
+        ) {
+          return;
+        }
         renderReporteMensual(reporteMensualActual, reporteMensualTotalesActual);
       } catch (err) {
+        if (isAbortError(err) || isStaleRequest("reporteMensual", localSeq)) return;
         console.error(err);
         if (window.notifyConnectionError) {
           window.notifyConnectionError("Opps ocurrio un error de conexion");
         } else {
           alert("Opps ocurrio un error de conexion");
         }
+      } finally {
+        endRequest("reporteMensual", req.controller);
       }
     }
 
@@ -1806,12 +1986,16 @@
         const selectDoctor = document.createElement("select");
         selectDoctor.className = "cuenta-doctor-select cobro-forma-pago";
         construirOpcionesDoctorCuenta(selectDoctor, idDoctorCuenta, doctorMixto);
+        let isSavingDoctorCuenta = false;
         selectDoctor.addEventListener("change", async () => {
+          if (isSavingDoctorCuenta || !isCobroViewActive()) return;
+          isSavingDoctorCuenta = true;
           const previo = String(selectDoctor.dataset.prevValue || "");
           const seleccionado = String(selectDoctor.value || "");
           if (seleccionado === "__mixed__") {
             selectDoctor.value = previo;
             aplicarColorDoctorCuentaSelect(selectDoctor, selectDoctor.value);
+            isSavingDoctorCuenta = false;
             return;
           }
 
@@ -1820,6 +2004,7 @@
             alert("Doctor invalido");
             selectDoctor.value = previo;
             aplicarColorDoctorCuentaSelect(selectDoctor, selectDoctor.value);
+            isSavingDoctorCuenta = false;
             return;
           }
 
@@ -1842,19 +2027,31 @@
             }
           } catch (err) {
             alert(err.message || "Error al asignar doctor");
-            selectDoctor.disabled = false;
             selectDoctor.value = previo;
             aplicarColorDoctorCuentaSelect(selectDoctor, selectDoctor.value);
-            return;
+          } finally {
+            isSavingDoctorCuenta = false;
+            if (selectDoctor.isConnected) {
+              selectDoctor.disabled = false;
+            }
           }
         });
         if (tdDoctor) tdDoctor.appendChild(selectDoctor);
 
-        tr.querySelector("button").addEventListener("click", async () => {
+        const btnEliminarCuenta = tr.querySelector("button");
+        let isDeletingCuenta = false;
+        btnEliminarCuenta?.addEventListener("click", async () => {
+          if (isDeletingCuenta || !isCobroViewActive()) return;
+          isDeletingCuenta = true;
+          if (btnEliminarCuenta) btnEliminarCuenta.disabled = true;
           const ok = typeof window.showSystemConfirm === "function"
             ? await window.showSystemConfirm("Eliminar esta cuenta?")
             : confirm("Eliminar esta cuenta?");
-          if (!ok) return;
+          if (!ok) {
+            isDeletingCuenta = false;
+            if (btnEliminarCuenta?.isConnected) btnEliminarCuenta.disabled = false;
+            return;
+          }
           try {
             const res = await fetch(`/api/cuenta/${c.idCuenta}`, { method: "DELETE" });
             const json = await res.json();
@@ -1864,6 +2061,9 @@
           } catch (err) {
             alert("Error al eliminar la cuenta");
             console.error(err);
+          } finally {
+            isDeletingCuenta = false;
+            if (btnEliminarCuenta?.isConnected) btnEliminarCuenta.disabled = false;
           }
         });
 
@@ -1931,10 +2131,26 @@
           <td style="text-align:center"><button class="cobro-btn-remove">x</button></td>
         `;
 
-        tr.querySelector("button").addEventListener("click", async () => {
-          await fetch(`/api/cuenta/descuento/${d.idDescuento}`, { method: "DELETE" });
-          const fecha = document.getElementById("cuenta-date").value;
-          if (fecha) cargarDescuentosPorFecha(fecha);
+        const btnEliminarDescuento = tr.querySelector("button");
+        let isDeletingDescuento = false;
+        btnEliminarDescuento?.addEventListener("click", async () => {
+          if (isDeletingDescuento || !isCobroViewActive()) return;
+          isDeletingDescuento = true;
+          if (btnEliminarDescuento) btnEliminarDescuento.disabled = true;
+          try {
+            const res = await fetch(`/api/cuenta/descuento/${d.idDescuento}`, { method: "DELETE" });
+            const json = await res.json();
+            if (!res.ok || !json?.ok) {
+              throw new Error(json?.message || "No se pudo eliminar descuento");
+            }
+            const fecha = document.getElementById("cuenta-date").value;
+            if (fecha) await cargarDescuentosPorFecha(fecha);
+          } catch (err) {
+            alert(err?.message || "Error al eliminar descuento");
+          } finally {
+            isDeletingDescuento = false;
+            if (btnEliminarDescuento?.isConnected) btnEliminarDescuento.disabled = false;
+          }
         });
 
         descuentoTbody.appendChild(tr);
@@ -1944,6 +2160,7 @@
     }
 
     btnAgregarDescuento.addEventListener("click", async () => {
+      if (isCreatingDescuento || !isCobroViewActive()) return;
       const nombre = document.getElementById("descuento-nombre").value.trim();
       const cantidad = Number(document.getElementById("descuento-cantidad").value);
       const fecha = document.getElementById("cuenta-date").value;
@@ -1957,6 +2174,8 @@
         return;
       }
 
+      isCreatingDescuento = true;
+      btnAgregarDescuento.disabled = true;
       try {
         const res = await fetch("/api/cuenta/descuento", {
           method: "POST",
@@ -1969,9 +2188,14 @@
 
         document.getElementById("descuento-nombre").value = "";
         document.getElementById("descuento-cantidad").value = "";
-        cargarDescuentosPorFecha(fecha);
+        await cargarDescuentosPorFecha(fecha);
       } catch (err) {
         alert("Error al guardar descuento");
+      } finally {
+        isCreatingDescuento = false;
+        if (btnAgregarDescuento?.isConnected) {
+          btnAgregarDescuento.disabled = false;
+        }
       }
     });
 
@@ -2087,6 +2311,10 @@
 
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
+        isDisposed = true;
+        Object.keys(requestState).forEach((key) => invalidateRequest(key));
+        isSavingCuenta = false;
+        isCreatingDescuento = false;
         cobroItems = [];
         pacienteActual = null;
         cuentasActuales = [];

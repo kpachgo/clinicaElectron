@@ -210,6 +210,29 @@
 - Resetea estado global, UI, modales, citas, fotos, firma, odontograma y buscadores.
 - En mount se registra cleanup:
   - `window.__setViewCleanup(() => limpiarVistaPaciente())`.
+ - Hardening 2026-03-20:
+  - cleanup invalida y aborta requests en vuelo para evitar respuestas tardias al cambiar de vista.
+
+## Hardening aplicado (2026-03-20)
+- Frontend (`frontend/js/paciente.js`)
+  - control unificado `abort + seq` para:
+    - autocomplete de paciente
+    - carga de detalle de paciente
+    - carga de citas y fotos
+    - historial/carga de odontograma
+    - selects de doctor y modal "Ver doctor"
+  - guardas anti-duplicado para acciones criticas:
+    - guardar paciente, cita, firma y odontograma
+    - subir/eliminar foto y cambiar foto principal
+    - autorizar cita
+- Backend
+  - `backend/controllers/paciente.controller.js`:
+    - validaciones adicionales de IDs y fechas ISO.
+    - lecturas con retry en errores transitorios de DB.
+    - respuesta `503` para fallos transitorios (`ETIMEDOUT`, `ECONNRESET`, etc).
+  - `backend/controllers/odontograma.controller.js`:
+    - validaciones de IDs/fecha y JSON de odontograma.
+    - lecturas con retry y respuesta `503` en fallos transitorios.
 
 ## Backend API usada por Paciente (incluyendo odontograma)
 - `GET /api/paciente/search`

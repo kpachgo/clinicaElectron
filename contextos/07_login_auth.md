@@ -19,10 +19,25 @@
 - Campos opcionales: `idDoctor` y `cargo` (retrocompatibilidad con clientes viejos).
 - Tiene validaciones de campos, password y confirmacion.
 
+### Hardening aplicado (2026-03-20)
+- Guardas anti-duplicado:
+  - login (`#btn-login`) evita requests concurrentes.
+  - registro oculto (`#btn-registro-guardar`) evita envios dobles.
+- Estado de licencia en login:
+  - `mountLogin()` ahora invalida/cancela consulta anterior de licencia.
+  - evita que respuestas tardias sobrescriban la UI al refrescar rapido.
+- Catalogos de registro oculto:
+  - se consolida promesa en vuelo para evitar multiples fetch paralelos.
+
 ## Backend Auth
 - Rutas: `backend/routes/auth.routes.js`.
 - Controller: `backend/controllers/auth.controller.js`.
 - Service: `backend/services/auth.service.js`.
+
+### Hardening backend aplicado (2026-03-20)
+- `auth.controller`:
+  - sanitiza correo de login (`trim + lowercase`) y valida longitud.
+  - en fallos DB transitorios (`ETIMEDOUT`, `ECONNRESET`, etc.) responde `503` consistente.
 
 ## SP/Auth SQL
 - `sp_login_usuario`
