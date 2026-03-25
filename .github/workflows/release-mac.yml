@@ -46,6 +46,29 @@ jobs:
       - name: Install electron app dependencies
         run: npm --prefix electron-app ci
 
+      - name: Resolve release version from tag
+        run: |
+          TAG="${RELEASE_TAG}"
+          if [ -z "$TAG" ]; then
+            echo "RELEASE_TAG is empty"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([\-+][0-9A-Za-z\.-]+)?$'; then
+            echo "Invalid release tag format: '$TAG'. Expected vX.Y.Z"
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved RELEASE_VERSION=$VERSION"
+
+      - name: Align project version with release tag
+        run: |
+          if [ -z "${RELEASE_VERSION}" ]; then
+            echo "RELEASE_VERSION is empty"
+            exit 1
+          fi
+          RELEASE_VERSION="$RELEASE_VERSION" node -e "const fs=require('fs'); const files=['package.json','electron-app/package.json','runtime.package.json']; const v=process.env.RELEASE_VERSION; for (const f of files){ const j=JSON.parse(fs.readFileSync(f,'utf8')); j.version=v; fs.writeFileSync(f, JSON.stringify(j, null, 2)+'\n'); console.log('updated '+f+' -> '+v); }"
+
       - name: Validate BACKEND_ENV secret exists
         run: |
           if [ -z "${{ secrets.BACKEND_ENV }}" ]; then

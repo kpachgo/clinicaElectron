@@ -48,6 +48,28 @@ jobs:
       - name: Install electron app dependencies
         run: npm --prefix electron-app ci
 
+      - name: Resolve release version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ env.RELEASE_TAG }}".Trim()
+          if ([string]::IsNullOrWhiteSpace($tag)) {
+            throw "RELEASE_TAG is empty"
+          }
+          $version = if ($tag.StartsWith("v")) { $tag.Substring(1) } else { $tag }
+          if (-not ($version -match '^\d+\.\d+\.\d+([\-+][0-9A-Za-z\.-]+)?$')) {
+            throw "Invalid release tag format: '$tag'. Expected vX.Y.Z"
+          }
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Resolved RELEASE_VERSION=$version"
+
+      - name: Align project version with release tag
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace("${{ env.RELEASE_VERSION }}")) {
+            throw "RELEASE_VERSION is empty"
+          }
+          node -e "const fs=require('fs'); const files=['package.json','electron-app/package.json','runtime.package.json']; const v=process.env.RELEASE_VERSION; for (const f of files){ const j=JSON.parse(fs.readFileSync(f,'utf8')); j.version=v; fs.writeFileSync(f, JSON.stringify(j, null, 2)+'\n'); console.log('updated '+f+' -> '+v); }"
+
       - name: Validate BACKEND_ENV secret exists
         shell: pwsh
         run: |
