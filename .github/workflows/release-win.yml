@@ -18,8 +18,11 @@ jobs:
   build-windows-exe:
     name: Build and publish Windows EXE (x64)
     runs-on: windows-latest
+    timeout-minutes: 90
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      DEBUG: electron-builder*
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -102,10 +105,10 @@ jobs:
         run: |
           if ("${{ env.HAS_WIN_SIGNING }}" -eq "true") {
             Write-Host "Running signed Windows build..."
-            npm run dist:win -- --x64
+            npm run dist:win -- --x64 --config.compression=store --config.nsis.differentialPackage=false
           } else {
             Write-Host "Running unsigned Windows build (local parity)..."
-            npm run dist:win:local
+            npm run dist:win:local -- --config.compression=store --config.nsis.differentialPackage=false
           }
 
       - name: Validate EXE output exists
