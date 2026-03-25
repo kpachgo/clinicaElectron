@@ -1,0 +1,62 @@
+CONEXION MYSQL RAILWAY EN MYSQL WORKBENCH
+
+Objetivo
+- Conectar una base MySQL de Railway desde MySQL Workbench.
+
+Formato de URL de Railway
+- mysql://USUARIO:CONTRASENA@HOST:PUERTO/BASE_DE_DATOS
+
+Ejemplo (enmascarado)
+- mysql://root:********@enterbeam.proxy.rlwy.net:42861/railway
+
+Campos en MySQL Workbench
+1. Connection Name:
+   - Railway
+2. Connection Method:
+   - Standard (TCP/IP)
+3. Hostname:
+   - Valor de HOST en MYSQL_PUBLIC_URL
+   - Ejemplo: enterbeam.proxy.rlwy.net
+4. Port:
+   - Valor de PUERTO en MYSQL_PUBLIC_URL
+   - Ejemplo: 42861
+5. Username:
+   - Valor de USUARIO en MYSQL_PUBLIC_URL
+   - Ejemplo: root
+6. Password:
+   - Valor de CONTRASENA en MYSQL_PUBLIC_URL
+7. Default Schema:
+   - Valor de BASE_DE_DATOS en MYSQL_PUBLIC_URL
+   - Ejemplo: railway
+
+Variables equivalentes de Railway (si prefieres no usar URL completa)
+- MYSQLHOST -> Hostname
+- MYSQLPORT -> Port
+- MYSQLUSER -> Username
+- MYSQLPASSWORD -> Password
+- MYSQLDATABASE (o MYSQL_DATABASE) -> Default Schema
+
+Paso a paso rapido
+1. Abre MySQL Workbench.
+2. Crea una nueva conexion.
+3. Llena los campos anteriores.
+4. En Password, clic en "Store in Vault..." y guarda la clave.
+5. Clic en "Test Connection".
+
+SSL (si falla la primera prueba)
+1. Ir a la pestaña SSL de la conexion.
+2. Probar "Use SSL: If available".
+3. Si aun falla, cambiar a "Require".
+
+Errores comunes
+- Poner 127.0.0.1:
+  - Incorrecto para Railway remoto.
+- Usar puerto 3306 por defecto:
+  - Debe ser el puerto de la URL/variables de Railway.
+- Copiar host con typo:
+  - Usar exactamente el valor de MYSQLHOST o MYSQL_PUBLIC_URL.
+
+Recomendacion de seguridad
+- Si la contrasena se expuso en una captura o chat:
+  1. Rotar MYSQL_ROOT_PASSWORD en Railway.
+  2. Actualizar la conexion en Workbench.

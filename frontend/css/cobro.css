@@ -1,0 +1,1769 @@
+/* cobro.css - vista cobro estilo POS */
+
+:root {
+  --cobro-ring-empty: #e2e8f0;
+  --cobro-cash-panel-bg: #f8fafc;
+  --cobro-cash-panel-border: #dbe5f0;
+  --cobro-cash-title: #334155;
+  --cobro-cash-head-bg: #eef2ff;
+  --cobro-cash-head-text: #334155;
+  --cobro-cash-cell-border: #dbe5f0;
+  --cobro-cash-cell-bg: #ffffff;
+  --cobro-cash-cell-text: #0f172a;
+  --cobro-cash-input-bg: #ffffff;
+  --cobro-cash-input-border: #cbd5e1;
+  --cobro-cash-focus: #60a5fa;
+  --cobro-cash-focus-ring: rgba(96, 165, 250, 0.18);
+  --cobro-cash-total-bg: #eff6ff;
+  --cobro-cash-total-text: #1d4ed8;
+}
+
+.dark-mode {
+  --cobro-ring-empty: #334155;
+  --cobro-cash-panel-bg: #111b2d;
+  --cobro-cash-panel-border: #2a3a52;
+  --cobro-cash-title: #cbd5e1;
+  --cobro-cash-head-bg: #1f2f53;
+  --cobro-cash-head-text: #bfdbfe;
+  --cobro-cash-cell-border: #334155;
+  --cobro-cash-cell-bg: #111c2f;
+  --cobro-cash-cell-text: #e2e8f0;
+  --cobro-cash-input-bg: #111c2f;
+  --cobro-cash-input-border: #334155;
+  --cobro-cash-focus: #3b82f6;
+  --cobro-cash-focus-ring: rgba(59, 130, 246, 0.22);
+  --cobro-cash-total-bg: #1f2f53;
+  --cobro-cash-total-text: #bfdbfe;
+}
+
+.cobro-view {
+  font-family: var(--font-family-base);
+  width: 100%;
+  margin: 20px auto;
+  padding: 0 10px;
+}
+
+.cobro-dashboard {
+  width: 100%;
+  margin: 0 0 16px 0;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.cobro-kpi {
+  background: #ffffff;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cobro-kpi .kpi-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.icon-total {
+  color: #1d4ed8;
+}
+
+.icon-bruto {
+  color: #0f766e;
+}
+
+.icon-efectivo {
+  color: #16a34a;
+}
+
+.icon-caja {
+  color: #15803d;
+}
+
+.icon-tarjeta {
+  color: #dc2626;
+}
+
+.icon-igs {
+  color: #ea580c;
+}
+
+.icon-transferencia {
+  color: #0284c7;
+}
+
+.icon-descuento {
+  color: #b91c1c;
+}
+
+.icon-chart {
+  color: #334155;
+}
+
+.cobro-kpi strong {
+  font-size: 22px;
+  line-height: 1.1;
+  color: #0f172a;
+}
+
+.cobro-kpi.kpi-descuento strong {
+  color: #b91c1c;
+}
+
+.cobro-kpi.kpi-efectivo-caja strong {
+  color: #166534;
+}
+
+.cobro-kpi.kpi-total-dia,
+.cobro-kpi.is-kpi-active {
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  border-color: #1d4ed8;
+}
+
+.cobro-kpi.kpi-total-dia .kpi-label,
+.cobro-kpi.kpi-total-dia strong,
+.cobro-kpi.kpi-total-dia .kpi-icon,
+.cobro-kpi.is-kpi-active .kpi-label,
+.cobro-kpi.is-kpi-active strong,
+.cobro-kpi.is-kpi-active .kpi-icon {
+  color: #ffffff;
+}
+
+.cobro-kpi.kpi-total-dia.kpi-total-dia-suspended {
+  background: #ffffff;
+  border-color: #dbe5f0;
+}
+
+.cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-label {
+  color: #64748b;
+}
+
+.cobro-kpi.kpi-total-dia.kpi-total-dia-suspended strong {
+  color: #0f172a;
+}
+
+.cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-icon {
+  color: #1d4ed8;
+}
+
+.cobro-dashboard-chart {
+  width: 100%;
+  margin: 0 0 18px 0;
+}
+
+.cobro-dashboard-unified {
+  width: 100%;
+  margin: 0 0 18px 0;
+}
+
+.cobro-unified-card {
+  padding: 14px;
+}
+
+.cobro-unified-layout {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr) minmax(320px, 420px);
+  gap: 14px;
+  align-items: start;
+}
+
+.cobro-unified-chart,
+.cobro-unified-totales,
+.cobro-unified-cash {
+  min-width: 0;
+}
+
+.cobro-unified-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.cobro-unified-chart .cobro-chart-title,
+.cobro-unified-totales .cobro-chart-title,
+.cobro-unified-cash .cobro-chart-title {
+  margin-bottom: 0;
+}
+
+.cobro-totales-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.cobro-totales-grid .cobro-kpi {
+  padding: 10px;
+  gap: 6px;
+}
+
+.cobro-totales-grid .cobro-kpi strong {
+  font-size: 20px;
+}
+
+.cobro-unified-cash .cobro-cash-counter {
+  margin-top: 10px;
+}
+
+.cobro-chart-card {
+  background: #ffffff;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+}
+
+.cobro-chart-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 10px;
+}
+
+.cobro-chart-body {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+.cobro-chart-ring {
+  --ring-gradient: conic-gradient(#e2e8f0 0deg 360deg);
+  width: 170px;
+  height: 170px;
+  border-radius: 999px;
+  background: var(--ring-gradient);
+  position: relative;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.cobro-chart-ring::after {
+  content: "";
+  position: absolute;
+  inset: 24px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1px #dbe5f0;
+}
+
+.cobro-chart-center {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.cobro-chart-center span {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.cobro-chart-center strong {
+  font-size: 16px;
+  color: #0f172a;
+}
+
+.cobro-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.cobro-legend-dot.dot-efectivo {
+  background: #22c55e;
+}
+
+.cobro-legend-dot.dot-tarjeta {
+  background: #ef4444;
+}
+
+.cobro-legend-dot.dot-igs {
+  background: #f97316;
+}
+
+.cobro-legend-dot.dot-transferencia {
+  background: #0ea5e9;
+}
+
+.cobro-cash-counter {
+  border: 1px solid var(--cobro-cash-panel-border);
+  border-radius: 10px;
+  background: var(--cobro-cash-panel-bg);
+  padding: 8px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cobro-cash-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--cobro-cash-title);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.cobro-cash-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  table-layout: fixed;
+}
+
+.cobro-cash-table th,
+.cobro-cash-table td {
+  border: 1px solid var(--cobro-cash-cell-border);
+  padding: 6px 8px;
+  background: var(--cobro-cash-cell-bg);
+  color: var(--cobro-cash-cell-text);
+}
+
+.cobro-cash-table th {
+  background: var(--cobro-cash-head-bg);
+  color: var(--cobro-cash-head-text);
+  text-align: left;
+  font-weight: 800;
+}
+
+.cobro-cash-table th:nth-child(1) {
+  width: 20%;
+}
+
+.cobro-cash-table th:nth-child(2) {
+  width: 50%;
+}
+
+.cobro-cash-table th:nth-child(3) {
+  width: 30%;
+}
+
+.cobro-cash-table td:first-child {
+  text-align: right;
+  font-weight: 700;
+}
+
+.cobro-cash-table td:last-child {
+  text-align: right;
+  font-weight: 700;
+}
+
+.cobro-cash-input {
+  width: 100%;
+  border: 1px solid var(--cobro-cash-input-border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  text-align: right;
+  background: var(--cobro-cash-input-bg);
+  color: var(--cobro-cash-cell-text);
+}
+
+.cobro-cash-input:focus {
+  outline: none;
+  border-color: var(--cobro-cash-focus);
+  box-shadow: 0 0 0 2px var(--cobro-cash-focus-ring);
+}
+
+.cobro-cash-total-row td {
+  background: var(--cobro-cash-total-bg);
+  color: var(--cobro-cash-total-text);
+  border-color: var(--cobro-cash-total-bg);
+  font-weight: 900;
+}
+
+.cobro-kpi.cobro-kpi-cash {
+  grid-column: 1 / -1;
+  padding: 10px;
+  gap: 10px;
+}
+
+.cobro-kpi.cobro-kpi-cash .cobro-cash-counter {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.cobro-kpi.cobro-kpi-cash .cobro-cash-table {
+  width: 100%;
+}
+
+.cobro-container,
+.cuenta-container,
+.descuento-container {
+  width: 100%;
+  margin: 0 0 24px 0;
+  background: var(--bg-white, #fff);
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+}
+
+.cobro-pos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+}
+
+.cobro-pos-main {
+  min-width: 0;
+}
+
+.cobro-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 18px;
+}
+
+.cobro-step {
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f8fafc;
+}
+
+.cobro-step.is-active {
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.cobro-step.is-done {
+  border-color: #16a34a;
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.cobro-section {
+  margin-bottom: 14px;
+}
+
+.cobro-section.is-disabled {
+  opacity: 0.55;
+}
+
+.cobro-buscador {
+  position: relative;
+}
+
+.cobro-view .autofill-trap {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cobro-buscador input,
+.cobro-forma-pago,
+.cuenta-controls input,
+.descuento-form input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #0f172a;
+  outline: none;
+}
+
+.cobro-buscador input:focus,
+.cobro-forma-pago:focus,
+.cuenta-controls input:focus,
+.descuento-form input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.cobro-forma-pago.fp-efectivo {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.cobro-forma-pago.fp-tarjeta {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.cobro-forma-pago.fp-igs {
+  background: #ffedd5;
+  border-color: #f97316;
+  color: #9a3412;
+}
+
+.cobro-forma-pago.fp-transferencia {
+  background: #fce7f3;
+  border-color: #ec4899;
+  color: #9d174d;
+}
+
+.forma-pago-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.forma-pago-chip.fp-efectivo {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.forma-pago-chip.fp-tarjeta {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.forma-pago-chip.fp-igs {
+  background: #ffedd5;
+  border-color: #f97316;
+  color: #9a3412;
+}
+
+.forma-pago-chip.fp-transferencia {
+  background: #fce7f3;
+  border-color: #ec4899;
+  color: #9d174d;
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 30;
+  display: none;
+}
+
+.autocomplete-item {
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.autocomplete-item:hover {
+  background: #eff6ff;
+}
+
+.cobro-selected-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.paciente-seleccionado {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.btn-cobro-secondary {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.btn-cobro-secondary:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+
+.btn-cobro-secondary:active {
+  transform: translateY(1px);
+}
+
+.btn-cobro-icon-btn {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.cobro-action-icon {
+  width: 17px;
+  height: 17px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.btn-cobro-icon-btn.is-busy {
+  opacity: 0.7;
+}
+
+.cobro-table-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.cobro-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.cobro-table th {
+  background: #f1f5f9;
+  color: #475569;
+  text-align: left;
+  padding: 3px 6px;
+  line-height: 1.1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cobro-table td {
+  padding: 3px 6px;
+  line-height: 1.1;
+  border-bottom: 1px solid #edf2f7;
+  font-size: 12px;
+  color: #1f2937;
+}
+
+.cobro-empty-state {
+  padding: 14px;
+  text-align: center;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.cobro-qty-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cobro-qty-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #1f2937;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.cobro-qty-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.cobro-qty-btn:active {
+  transform: translateY(1px);
+}
+
+.cobro-cantidad-input {
+  width: 50px;
+  text-align: center;
+  padding: 5px 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-weight: 700;
+}
+
+.cobro-precio-input {
+  width: 96px;
+  text-align: right;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.cobro-precio-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+  outline: none;
+}
+
+.cobro-btn-remove {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition: background-color 0.18s ease, transform 0.12s ease, box-shadow 0.18s ease;
+}
+
+.cobro-btn-remove:hover {
+  background: #dc2626;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+}
+
+.cobro-btn-remove:active {
+  transform: translateY(1px);
+}
+
+.cobro-pos-summary {
+  position: sticky;
+  top: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+  background: #ffffff;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+}
+
+.cobro-summary-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 12px;
+}
+
+.cobro-summary-patient,
+.cobro-summary-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px dashed #dbe5f0;
+  font-size: 14px;
+}
+
+.cobro-summary-patient strong,
+.cobro-summary-line strong {
+  color: #0f172a;
+}
+
+.cobro-summary-total-line {
+  border-bottom: 0;
+  margin-top: 4px;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.cobro-summary-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cobro-summary-actions .btn-cobrar {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 9px;
+  font-weight: 700;
+}
+
+.cobro-summary-actions .btn-cobrar:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* cuentas */
+.cuenta-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.cuenta-header .cuenta-title {
+  flex: 0 0 auto;
+  line-height: 1.1;
+  padding-top: 2px;
+}
+
+.cuenta-toggle-numeracion,
+.cuenta-toggle-doctor {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #475569;
+  user-select: none;
+}
+
+.cuenta-toggle-numeracion input[type="checkbox"],
+.cuenta-toggle-doctor input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #2563eb;
+}
+
+.cuenta-header .cuenta-controls {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px 10px;
+  flex: 1 1 860px;
+  min-width: 0;
+}
+
+.cuenta-header .cuenta-controls-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cuenta-header .cuenta-controls-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+  flex: 0 1 auto;
+}
+
+.cuenta-header .cuenta-controls-main input[type="date"] {
+  flex: 0 0 150px;
+  min-width: 140px;
+  max-width: 155px;
+}
+
+.cuenta-header .cuenta-controls-main input[type="month"] {
+  flex: 0 0 160px;
+  min-width: 150px;
+  max-width: 170px;
+}
+
+.cuenta-header .cuenta-controls-main input[type="text"],
+.cuenta-header .cuenta-controls-main input[type="search"] {
+  flex: 1 1 280px;
+  min-width: 240px;
+  max-width: 340px;
+}
+
+.cuenta-header .cuenta-controls-main select {
+  flex: 0 1 210px;
+  min-width: 170px;
+  max-width: 220px;
+}
+
+.cuenta-header .cuenta-controls-actions #btn-reporte-cobro,
+.cuenta-header .cuenta-controls-actions #btn-abrir-reporte-mensual,
+.cuenta-header .cuenta-controls-actions #btn-abrir-faltantes-cobro {
+  white-space: nowrap;
+}
+
+.cobro-modal-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cobro-modal-controls input[type="month"] {
+  width: 160px;
+  flex: 0 0 160px;
+}
+
+.cobro-modal-controls select {
+  width: 280px;
+  flex: 1 1 240px;
+}
+
+.cobro-modal-controls #reporte-mensual-forma-pago {
+  width: 220px;
+  flex: 0 1 220px;
+}
+
+.cuenta-table-wrap {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+  margin-top: 12px;
+}
+
+.cuenta-table {
+  min-width: 980px;
+  font-size: 12px;
+}
+
+.cuenta-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  z-index: 2;
+}
+
+.cuenta-table thead th,
+.cuenta-table tbody td,
+.descuento-table thead th,
+.descuento-table tbody td {
+  padding: 3px 6px;
+  line-height: 1.1;
+}
+
+.cuenta-table tbody tr,
+.descuento-table tbody tr {
+  height: 26px;
+}
+
+.cuenta-table .forma-pago-chip {
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.cuenta-doctor-cell {
+  min-width: 190px;
+}
+
+.cuenta-doctor-select {
+  width: 100%;
+  min-width: 170px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.cuenta-doctor-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.cuenta-doctor-select.is-doctor {
+  background: #dcfce7;
+  border-color: #22c55e;
+  color: #166534;
+}
+
+.cuenta-doctor-select.is-no-doctor {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.cuenta-table .cobro-btn-remove,
+.descuento-table .cobro-btn-remove {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.cuenta-col-num {
+  width: 52px;
+  text-align: center;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.cuenta-table.hide-numeracion .cuenta-col-num {
+  display: none;
+}
+
+.cuenta-table.hide-doctor .cuenta-col-doctor {
+  display: none;
+}
+
+.cuenta-totales {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding-right: 8px;
+}
+
+.cuenta-total-line {
+  display: flex;
+  gap: 12px;
+  min-width: 260px;
+  justify-content: space-between;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 16px;
+  color: #334155;
+}
+
+.cuenta-total-line.total-final {
+  background: #eef2ff;
+  color: #1e3a8a;
+}
+
+body.cobro-modal-open {
+  overflow: hidden;
+}
+
+.cobro-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  padding: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cobro-modal[hidden] {
+  display: none !important;
+}
+
+.cobro-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.cobro-modal-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(1080px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  border: 1px solid #dbe5f0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.28);
+  padding: 16px;
+}
+
+.cobro-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cobro-modal-header h3 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.cobro-modal-controls {
+  margin-bottom: 10px;
+}
+
+.cobro-modal .cuenta-table {
+  min-width: 640px;
+}
+
+.faltantes-cobro-meta {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.faltantes-cobro-resumen {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.faltantes-cobro-kpi {
+  border: 1px solid #dbe5f0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.faltantes-cobro-kpi span {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.faltantes-cobro-kpi strong {
+  font-size: 21px;
+  line-height: 1.1;
+  color: #0f172a;
+}
+
+.faltantes-cobro-kpi.is-danger {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.faltantes-cobro-kpi.is-danger strong {
+  color: #9a3412;
+}
+
+/* descuentos */
+.descuento-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.descuento-form {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.descuento-table-wrap {
+  max-height: 300px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.descuento-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.descuento-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+}
+
+.descuento-totales {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.descuento-total-line {
+  background: #fff3f3;
+  color: #b91c1c;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+/* =====================================================
+   COBRO - DARK MODE
+===================================================== */
+.dark-mode .cobro-kpi {
+  background: #111b2d;
+  border-color: #2a3a52;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+}
+
+.dark-mode .cobro-kpi .kpi-label {
+  color: #9fb0c5;
+}
+
+.dark-mode .cobro-kpi strong {
+  color: #e2e8f0;
+}
+
+.dark-mode .cobro-kpi.kpi-total-dia,
+.dark-mode .cobro-kpi.is-kpi-active {
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+  border-color: #1d4ed8;
+}
+
+.dark-mode .cobro-kpi.kpi-total-dia .kpi-label,
+.dark-mode .cobro-kpi.kpi-total-dia strong,
+.dark-mode .cobro-kpi.kpi-total-dia .kpi-icon,
+.dark-mode .cobro-kpi.is-kpi-active .kpi-label,
+.dark-mode .cobro-kpi.is-kpi-active strong,
+.dark-mode .cobro-kpi.is-kpi-active .kpi-icon {
+  color: #ffffff;
+}
+
+.dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended {
+  background: #111b2d;
+  border-color: #2a3a52;
+}
+
+.dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-label {
+  color: #9fb0c5;
+}
+
+.dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended strong {
+  color: #e2e8f0;
+}
+
+.dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-icon {
+  color: #1d4ed8;
+}
+
+.dark-mode .cobro-kpi.kpi-descuento strong {
+  color: #fca5a5;
+}
+
+.dark-mode .cobro-kpi.kpi-efectivo-caja strong {
+  color: #86efac;
+}
+
+.dark-mode .cobro-chart-card {
+  background: #0f172a;
+  border-color: #2a3a52;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.32);
+}
+
+.dark-mode .cobro-chart-title {
+  color: #e2e8f0;
+}
+
+.dark-mode .icon-chart {
+  color: #cbd5e1;
+}
+
+.dark-mode .cobro-chart-ring {
+  --ring-gradient: conic-gradient(#2a3a52 0deg 360deg);
+}
+
+.dark-mode .cobro-chart-ring::after {
+  background: #0f172a;
+  box-shadow: inset 0 0 0 1px #2a3a52;
+}
+
+.dark-mode .cobro-chart-center span {
+  color: #9fb0c5;
+}
+
+.dark-mode .cobro-chart-center strong {
+  color: #e2e8f0;
+}
+
+.dark-mode .cobro-cash-counter {
+  background: var(--cobro-cash-panel-bg);
+  border-color: var(--cobro-cash-panel-border);
+}
+
+.dark-mode .cobro-cash-title {
+  color: var(--cobro-cash-title);
+}
+
+.dark-mode .cobro-cash-table th,
+.dark-mode .cobro-cash-table td {
+  border-color: var(--cobro-cash-cell-border);
+}
+
+.dark-mode .cobro-cash-table th {
+  background: var(--cobro-cash-head-bg);
+  color: var(--cobro-cash-head-text);
+}
+
+.dark-mode .cobro-cash-table td {
+  color: var(--cobro-cash-cell-text);
+}
+
+.dark-mode .cobro-cash-input {
+  background: var(--cobro-cash-input-bg);
+  border-color: var(--cobro-cash-input-border);
+  color: var(--cobro-cash-cell-text);
+}
+
+.dark-mode .cobro-cash-input:focus {
+  border-color: var(--cobro-cash-focus);
+  box-shadow: 0 0 0 2px var(--cobro-cash-focus-ring);
+}
+
+.dark-mode .cobro-cash-total-row td {
+  background: var(--cobro-cash-total-bg);
+  border-color: var(--cobro-cash-total-bg);
+  color: var(--cobro-cash-total-text);
+}
+
+.dark-mode .cobro-container,
+.dark-mode .cuenta-container,
+.dark-mode .descuento-container {
+  border-color: #253246;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode .cobro-step {
+  border-color: #2a3a52;
+  color: #9fb0c5;
+  background: #111b2d;
+}
+
+.dark-mode .cobro-step.is-active {
+  border-color: #3b82f6;
+  color: #bfdbfe;
+  background: #1f2f53;
+}
+
+.dark-mode .cobro-step.is-done {
+  border-color: #2d7a57;
+  color: #86efac;
+  background: #183428;
+}
+
+.dark-mode .cobro-buscador input,
+.dark-mode .cobro-forma-pago,
+.dark-mode .cuenta-controls input,
+.dark-mode .descuento-form input {
+  border-color: #334155;
+  background: #111c2f;
+  color: #e2e8f0;
+}
+
+.dark-mode .cobro-buscador input::placeholder,
+.dark-mode .cuenta-controls input::placeholder,
+.dark-mode .descuento-form input::placeholder {
+  color: #8ea0b7;
+}
+
+.dark-mode .cobro-forma-pago,
+.dark-mode .forma-pago-chip {
+  border-color: #334155;
+  background: #111c2f;
+  color: #cbd5e1;
+}
+
+.dark-mode .autocomplete-list {
+  background: #0f172a;
+  border-color: #2a3a52;
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.36);
+}
+
+.dark-mode .autocomplete-item {
+  color: #e2e8f0;
+}
+
+.dark-mode .autocomplete-item:hover {
+  background: #1f2f53;
+}
+
+.dark-mode .paciente-seleccionado {
+  color: #e2e8f0;
+}
+
+.dark-mode .btn-cobro-secondary {
+  border-color: #334155;
+  background: #111c2f;
+  color: #cbd5e1;
+}
+
+.dark-mode .btn-cobro-secondary:hover {
+  background: #1e293b;
+  border-color: #475569;
+}
+
+.dark-mode .cobro-table-wrap {
+  border-color: #2a3a52;
+  background: #0f172a;
+}
+
+.dark-mode .cobro-table th {
+  background: #111b2d;
+  color: #9fb0c5;
+}
+
+.dark-mode .cobro-table td {
+  border-bottom-color: #223046;
+  color: #dbe5f2;
+}
+
+.dark-mode .cobro-empty-state {
+  color: #95a5bb;
+}
+
+.dark-mode .cobro-qty-btn {
+  border-color: #334155;
+  background: #111c2f;
+  color: #dbe5f2;
+}
+
+.dark-mode .cobro-qty-btn:hover {
+  background: #1e293b;
+  border-color: #475569;
+}
+
+.dark-mode .cobro-cantidad-input,
+.dark-mode .cobro-precio-input {
+  border-color: #334155;
+  background: #111c2f;
+  color: #e2e8f0;
+}
+
+.dark-mode .cobro-pos-summary {
+  border-color: #2a3a52;
+  background: #111b2d;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.34);
+}
+
+.dark-mode .cobro-summary-title {
+  color: #e2e8f0;
+}
+
+.dark-mode .cobro-summary-patient,
+.dark-mode .cobro-summary-line {
+  color: #cbd5e1;
+  border-bottom-color: #2a3a52;
+}
+
+.dark-mode .cobro-summary-patient strong,
+.dark-mode .cobro-summary-line strong {
+  color: #e2e8f0;
+}
+
+.dark-mode .cuenta-table thead th,
+.dark-mode .descuento-table thead th {
+  background: #111b2d;
+  color: #9fb0c5;
+}
+
+.dark-mode .cuenta-toggle-numeracion,
+.dark-mode .cuenta-toggle-doctor {
+  color: #cbd5e1;
+}
+
+.dark-mode .cuenta-table tbody td,
+.dark-mode .descuento-table tbody td {
+  border-bottom-color: #223046;
+  color: #dbe5f2;
+}
+
+.dark-mode .cuenta-doctor-select {
+  border-color: #334155;
+  background: #111c2f;
+  color: #cbd5e1;
+}
+
+.dark-mode .cuenta-doctor-select.is-doctor {
+  background: #183428;
+  border-color: #2d7a57;
+  color: #86efac;
+}
+
+.dark-mode .cuenta-doctor-select.is-no-doctor {
+  background: #111c2f;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+.dark-mode .cuenta-total-line {
+  background: #111b2d;
+  color: #cbd5e1;
+}
+
+.dark-mode .cuenta-total-line.total-final {
+  background: #1f2f53;
+  color: #bfdbfe;
+}
+
+.dark-mode .cobro-modal-backdrop {
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.dark-mode .cobro-modal-dialog {
+  border-color: #2a3a52;
+  background: #0f172a;
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.5);
+}
+
+.dark-mode .cobro-modal-header h3 {
+  color: #e2e8f0;
+}
+
+.dark-mode .faltantes-cobro-meta {
+  color: #cbd5e1;
+}
+
+.dark-mode .faltantes-cobro-kpi {
+  border-color: #334155;
+  background: #111b2d;
+}
+
+.dark-mode .faltantes-cobro-kpi span {
+  color: #9fb0c5;
+}
+
+.dark-mode .faltantes-cobro-kpi strong {
+  color: #e2e8f0;
+}
+
+.dark-mode .faltantes-cobro-kpi.is-danger {
+  background: #3d2c1c;
+  border-color: #9a5b20;
+}
+
+.dark-mode .faltantes-cobro-kpi.is-danger strong {
+  color: #fdba74;
+}
+
+.dark-mode .descuento-total-line {
+  background: #3a1f24;
+  color: #fca5a5;
+}
+
+.dark-mode .cobro-forma-pago option {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.dark-mode .cuenta-controls input[type="date"],
+.dark-mode .cuenta-controls input[type="month"] {
+  color-scheme: dark;
+}
+
+.dark-mode .cobro-forma-pago.fp-efectivo,
+.dark-mode .forma-pago-chip.fp-efectivo {
+  background: #183428;
+  border-color: #2d7a57;
+  color: #86efac;
+}
+
+.dark-mode .cobro-forma-pago.fp-tarjeta,
+.dark-mode .forma-pago-chip.fp-tarjeta {
+  background: #3a1f24;
+  border-color: #9f3642;
+  color: #fca5a5;
+}
+
+.dark-mode .cobro-forma-pago.fp-igs,
+.dark-mode .forma-pago-chip.fp-igs {
+  background: #3d2c1c;
+  border-color: #9a5b20;
+  color: #fdba74;
+}
+
+.dark-mode .cobro-forma-pago.fp-transferencia,
+.dark-mode .forma-pago-chip.fp-transferencia {
+  background: #1a3348;
+  border-color: #2f6f9f;
+  color: #7dd3fc;
+}
+
+@media (max-width: 1200px) {
+  .cobro-dashboard {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .cobro-unified-layout {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .cobro-unified-cash {
+    grid-column: 1 / -1;
+  }
+
+  .cobro-pos {
+    grid-template-columns: 1fr;
+  }
+
+  .cobro-pos-summary {
+    position: static;
+  }
+
+  .cuenta-header .cuenta-title {
+    flex: 1 0 100%;
+  }
+
+  .cuenta-header .cuenta-controls {
+    flex: 1 0 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .cuenta-header .cuenta-controls-main {
+    width: 100%;
+    flex: 1 0 100%;
+  }
+
+  .cuenta-header .cuenta-controls-actions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .cobro-dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cobro-unified-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cobro-totales-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cobro-chart-body {
+    justify-content: center;
+  }
+
+  .cobro-chart-ring {
+    justify-self: center;
+  }
+
+  .cobro-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .cobro-selected-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cuenta-header .cuenta-controls {
+    gap: 10px;
+  }
+
+  .cuenta-header .cuenta-controls-main,
+  .cuenta-header .cuenta-controls-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-left: 0;
+  }
+
+  .cuenta-header .cuenta-controls-main input[type="date"],
+  .cuenta-header .cuenta-controls-main input[type="month"],
+  .cuenta-header .cuenta-controls-main select,
+  .cuenta-header .cuenta-controls-main input[type="text"],
+  .cuenta-header .cuenta-controls-main input[type="search"],
+  .cuenta-header .cuenta-controls-actions #btn-reporte-cobro,
+  .cuenta-header .cuenta-controls-actions #btn-abrir-reporte-mensual,
+  .cuenta-header .cuenta-controls-actions #btn-abrir-faltantes-cobro,
+  .cobro-modal-controls input[type="month"],
+  .cobro-modal-controls select,
+  .cobro-modal-controls #btn-reporte-mensual-pdf,
+  .descuento-form input {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .cuenta-header .cuenta-controls-main .cuenta-toggle-numeracion,
+  .cuenta-header .cuenta-controls-main .cuenta-toggle-doctor {
+    align-self: flex-start;
+  }
+
+  .cuenta-header .cuenta-controls-actions {
+    flex-direction: row;
+    justify-content: flex-start;
+  }
+
+  .cuenta-header .cuenta-controls-actions #btn-reporte-cobro.btn-cobro-icon-btn,
+  .cuenta-header .cuenta-controls-actions #btn-abrir-reporte-mensual.btn-cobro-icon-btn,
+  .cuenta-header .cuenta-controls-actions #btn-abrir-faltantes-cobro.btn-cobro-icon-btn {
+    width: 36px;
+    min-width: 36px;
+    max-width: 36px;
+    flex: 0 0 36px;
+    padding: 0;
+  }
+
+  .faltantes-cobro-resumen {
+    grid-template-columns: 1fr;
+  }
+
+  .cobro-modal {
+    padding: 12px;
+  }
+
+  .cobro-modal-dialog {
+    max-height: calc(100vh - 24px);
+    padding: 12px;
+  }
+
+  .cobro-modal-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .cobro-modal-header h3 {
+    font-size: 18px;
+  }
+
+  .descuento-form {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .cobro-dashboard {
+    grid-template-columns: 1fr;
+  }
+}
+

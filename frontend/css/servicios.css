@@ -1,0 +1,152 @@
+/* servicios.css - reglas especificas de Servicios */
+
+:root {
+  --servicios-row-hover: #f1f5f9;
+  --servicios-cell-hover: #e2e8f0;
+  --servicios-edit-bg: #ffffff;
+  --servicios-edit-text: #0f172a;
+  --servicios-edit-border: #cbd5e1;
+}
+
+.dark-mode {
+  --servicios-row-hover: rgba(59, 130, 246, 0.12);
+  --servicios-cell-hover: rgba(59, 130, 246, 0.2);
+  --servicios-edit-bg: #0b1220;
+  --servicios-edit-text: #e2e8f0;
+  --servicios-edit-border: #334155;
+}
+
+.servicios-container {
+  font-family: var(--font-family-base);
+  width: 98%;
+  max-width: 100%;
+  margin: 20px auto;
+}
+
+.servicios-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.servicios-controls .autofill-trap {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.servicios-controls .ui-control {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: var(--bg-white, #fff);
+  color: var(--text-color, #0f172a);
+  font-size: 12px;
+  width: 260px;
+}
+
+.servicios-table-wrap {
+  border-top: 1px solid var(--border-color, #e5e7eb);
+  padding-top: 10px;
+  overflow-x: auto;
+}
+
+.servicios-table {
+  font-size: 12px;
+}
+
+.servicios-table thead th,
+.servicios-table tbody td {
+  font-size: 12px;
+  padding: 3px 6px;
+  line-height: 1.1;
+}
+
+.servicios-table .serv-precio {
+  font-weight: 700;
+}
+
+.servicio-btn-delete {
+  box-shadow: none;
+}
+
+.servicio-btn-delete:hover {
+  box-shadow: none;
+}
+
+.servicio-btn-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.empty-row td {
+  padding: 30px 12px;
+  font-style: italic;
+}
+
+#modal-servicio .modal-content {
+  max-width: 420px;
+  width: 92%;
+  padding: 20px;
+  border-radius: 12px;
+}
+
+#modal-servicio label {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted, #6b7280);
+}
+
+#modal-servicio input[type="text"],
+#modal-servicio input[type="number"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  margin-top: 6px;
+  background: var(--bg-white, #fff);
+}
+
+#modal-servicio .modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+/* Hover completo en la fila */
+.servicios-table tbody tr:hover {
+  background-color: var(--servicios-row-hover);
+  transition: background-color 0.15s ease-in-out;
+}
+
+/* Cursor para indicar que puede editarse */
+.servicios-table td.editable {
+  cursor: pointer;
+}
+
+/* Hover mas fuerte al estar sobre una celda editable */
+.servicios-table td.editable:hover {
+  background-color: var(--servicios-cell-hover);
+}
+
+.servicios-table .comment-edit {
+  width: 100%;
+  padding: 2px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--servicios-edit-border);
+  background: var(--servicios-edit-bg);
+  color: var(--servicios-edit-text);
+}
+
+.servicios-table .comment-edit:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}

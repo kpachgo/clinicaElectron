@@ -1,0 +1,369 @@
+/* login.css */
+
+:root {
+    --login-overlay: rgba(15, 23, 42, 0.55);
+    --login-panel-bg: #ffffff;
+    --login-panel-border: var(--border-color);
+    --login-panel-shadow: rgba(0, 0, 0, 0.25) 0px 8px 20px;
+    --login-input-bg: #ffffff;
+    --login-input-border: #cdd3dd;
+    --login-input-text: var(--text-color);
+    --login-placeholder: #94a3b8;
+    --login-focus-ring: rgba(37, 99, 235, 0.2);
+    --login-register-separator: #e2e8f0;
+    --login-register-title: #111827;
+    --login-notice-bg: #f0fdf4;
+    --login-notice-border: #86efac;
+    --login-notice-text: #166534;
+    --login-muted-btn: #6b7280;
+    --login-muted-btn-hover: #5b6372;
+}
+
+.dark-mode {
+    --login-overlay: rgba(2, 8, 23, 0.72);
+    --login-panel-bg: #0f172a;
+    --login-panel-border: #2a3a52;
+    --login-panel-shadow: rgba(0, 0, 0, 0.45) 0px 10px 26px;
+    --login-input-bg: #111c2f;
+    --login-input-border: #344861;
+    --login-input-text: #e2e8f0;
+    --login-placeholder: #8ea0b7;
+    --login-focus-ring: rgba(96, 165, 250, 0.24);
+    --login-register-separator: #2a3a52;
+    --login-register-title: #e2e8f0;
+    --login-notice-bg: #183428;
+    --login-notice-border: #2d7a57;
+    --login-notice-text: #86efac;
+    --login-muted-btn: #334155;
+    --login-muted-btn-hover: #3f5167;
+}
+
+.login-container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 90px;
+    padding-left: 20px;
+    padding-right: 20px;
+    background-image:
+        linear-gradient(
+            var(--login-overlay),
+            var(--login-overlay)
+        ),
+        url("../img/FondoLogin.jpg");
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+}
+
+.login-box {
+    width: 100%;
+    max-width: 460px;
+    background: var(--login-panel-bg);
+    padding: 34px 32px;
+    border-radius: 14px;
+    border: 1px solid var(--login-panel-border);
+    box-shadow: var(--login-panel-shadow);
+}
+
+.login-box h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 22px;
+    color: var(--text-color);
+    text-align: center;
+}
+
+.login-field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 18px;
+}
+
+.login-field label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: var(--text-muted);
+}
+
+.login-field .ui-control {
+    height: 40px;
+    font-size: 15px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--login-input-border);
+    outline: none;
+    color: var(--login-input-text);
+    background: var(--login-input-bg);
+}
+
+.login-field .ui-control:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px var(--login-focus-ring);
+}
+
+.login-field .ui-control::placeholder {
+    color: var(--login-placeholder);
+}
+
+.login-field .ui-control option {
+    background: var(--login-input-bg);
+    color: var(--login-input-text);
+}
+
+.login-actions {
+    margin-top: 16px;
+}
+
+.btn-login.ui-toolbar-btn {
+    width: 100%;
+    min-height: 42px;
+    font-size: 15px;
+    font-weight: 600;
+    justify-content: center;
+    gap: 8px;
+}
+
+.login-error {
+    margin-top: 14px;
+    font-size: 14px;
+    color: #dc2626;
+    font-weight: 500;
+    text-align: center;
+}
+
+.login-notice {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--login-notice-border);
+    background: var(--login-notice-bg);
+    color: var(--login-notice-text);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.license-subtitle {
+    margin: -6px 0 14px;
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: center;
+}
+
+.license-status-card {
+    border: 1px solid var(--login-input-border);
+    background: var(--login-input-bg);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.license-status-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.license-status-meta > span {
+    min-width: 0;
+}
+
+.license-device-line {
+    display: block;
+    width: 100%;
+}
+
+.license-device-value {
+    display: block;
+    margin-top: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.license-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.license-status-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.license-status-pill {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+}
+
+.license-status-pill.is-ok {
+    color: #166534;
+    background: #dcfce7;
+    border: 1px solid #86efac;
+}
+
+.license-status-pill.is-blocked {
+    color: #991b1b;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+}
+
+.dark-mode .license-status-pill.is-ok {
+    color: #bbf7d0;
+    background: #14532d;
+    border: 1px solid #22c55e;
+}
+
+.dark-mode .license-status-pill.is-blocked {
+    color: #fecaca;
+    background: #7f1d1d;
+    border: 1px solid #ef4444;
+}
+
+.license-status-detail {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+    word-break: break-word;
+}
+
+.license-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.license-actions.license-actions-single {
+    grid-template-columns: 1fr;
+}
+
+.hidden-register-box {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--login-register-separator);
+}
+
+.hidden-register-title {
+    margin: 0 0 12px 0;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--login-register-title);
+}
+
+.hidden-register-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 12px;
+}
+
+.hidden-register-field {
+    display: flex;
+    flex-direction: column;
+}
+
+.hidden-register-field label {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: var(--text-muted);
+}
+
+.hidden-register-field .ui-control {
+    height: 40px;
+    font-size: 15px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--login-input-border);
+    outline: none;
+    color: var(--login-input-text);
+    background: var(--login-input-bg);
+}
+
+.hidden-register-field .ui-control:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 2px var(--login-focus-ring);
+}
+
+.hidden-register-field .ui-control::placeholder {
+    color: var(--login-placeholder);
+}
+
+.hidden-register-field .ui-control option {
+    background: var(--login-input-bg);
+    color: var(--login-input-text);
+}
+
+.hidden-register-field-full {
+    grid-column: 1 / -1;
+}
+
+.hidden-register-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.hidden-register-actions .btn-login {
+    width: 100%;
+    margin-top: 0;
+    min-height: 40px;
+    justify-content: center;
+}
+
+.hidden-register-btn-muted {
+    background: var(--login-muted-btn);
+    color: #fff;
+}
+
+.hidden-register-btn-muted:hover {
+    background: var(--login-muted-btn-hover);
+}
+
+.hidden-register-msg {
+    margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+    .login-container {
+        padding-top: 60px;
+    }
+
+    .login-box {
+        padding: 26px 22px;
+    }
+
+    .hidden-register-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .hidden-register-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .license-actions {
+        grid-template-columns: 1fr;
+    }
+}

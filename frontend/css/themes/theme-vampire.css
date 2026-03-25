@@ -1,0 +1,506 @@
+/* theme-vampire.css - paleta VS Code oscura */
+
+body[data-theme="vampire"] {
+  --bg-gray: #1e1e1e;
+  --sidebar-bg: #252526;
+  --topbar-bg: #252526;
+  --bg-white: #1f1f1f;
+  --text-color: #d4d4d4;
+  --text-muted: #9da5b4;
+  --border-color: #3c3c3c;
+  --sidebar-hover: #2a2d2e;
+  --blue: #007acc;
+  --danger: #f14c4c;
+  --danger-hover: #c93c3c;
+  --success: #4ec9b0;
+  --success-hover: #36b39a;
+  --table-row-border: rgba(212, 212, 212, 0.1);
+  --table-row-hover: rgba(0, 122, 204, 0.12);
+  color-scheme: dark;
+}
+
+/* Ajustes de croma para que se sienta mas VS Code */
+body[data-theme="vampire"] .topbar .sidebar-menu .accordion:hover {
+  background: #2a2d2e;
+}
+
+body[data-theme="vampire"] .topbar .sidebar-menu .accordion.active {
+  background: #094771;
+  color: #ffffff;
+  box-shadow: inset 0 -2px 0 #007acc;
+}
+
+body[data-theme="vampire"] .top-right > .icon:hover,
+body[data-theme="vampire"] .theme-btn:hover {
+  background: #2a2d2e;
+  border-color: #007acc;
+}
+
+/* =====================================================
+   LOGIN - VAMPIRE
+===================================================== */
+body[data-theme="vampire"].dark-mode {
+  --login-overlay: rgba(30, 30, 30, 0.78);
+  --login-panel-bg: #252526;
+  --login-panel-border: #3c3c3c;
+  --login-panel-shadow: rgba(0, 0, 0, 0.45) 0px 12px 30px;
+  --login-input-bg: #1f1f1f;
+  --login-input-border: #3c3c3c;
+  --login-input-text: #d4d4d4;
+  --login-placeholder: #808080;
+  --login-focus-ring: rgba(0, 122, 204, 0.24);
+  --login-register-separator: #3c3c3c;
+  --login-register-title: #d4d4d4;
+  --login-notice-bg: #18392f;
+  --login-notice-border: #2f5f47;
+  --login-notice-text: #4ec9b0;
+  --login-muted-btn: #3c3c3c;
+  --login-muted-btn-hover: #4a4a4a;
+}
+
+body[data-theme="vampire"] .btn-login {
+  background: #007acc;
+}
+
+body[data-theme="vampire"] .btn-login:hover {
+  background: #005f99;
+}
+
+body[data-theme="vampire"] .login-error {
+  color: #f14c4c;
+}
+
+/* =====================================================
+   EN COLA - VAMPIRE
+===================================================== */
+body[data-theme="vampire"].dark-mode {
+  --cola-surface: #1f1f1f;
+  --cola-border: #3c3c3c;
+  --cola-text: #d4d4d4;
+  --cola-text-muted: #9da5b4;
+
+  --cola-kpi-total-bg: #094771;
+  --cola-kpi-total-text: #ffffff;
+  --cola-kpi-wait-bg: #4b2d21;
+  --cola-kpi-wait-text: #d19a66;
+  --cola-kpi-done-bg: #1f3a2a;
+  --cola-kpi-done-text: #4ec9b0;
+
+  --cola-input-bg: #252526;
+  --cola-input-border: #3c3c3c;
+  --cola-input-text: #d4d4d4;
+
+  --cola-table-head-bg: #252526;
+  --cola-table-head-text: #9da5b4;
+  --cola-row-border: #323232;
+  --cola-row-text: #d4d4d4;
+  --cola-row-atendido-text: #9da5b4;
+  --cola-row-hover: rgba(0, 122, 204, 0.12);
+  --cola-empty-text: #9da5b4;
+
+  --cola-status-wait-bg: #4b2d21;
+  --cola-status-wait-text: #d19a66;
+  --cola-status-wait-border: #7a4f3a;
+  --cola-status-done-bg: #1f3a2a;
+  --cola-status-done-text: #4ec9b0;
+  --cola-status-done-border: #2f5f47;
+
+  --cola-doctor-all-bg: #094771;
+  --cola-doctor-all-text: #ffffff;
+  --cola-doctor-all-border: #007acc;
+  --cola-doctor-none-bg: #2a2d2e;
+  --cola-doctor-none-text: #d4d4d4;
+  --cola-doctor-none-border: #4a4a4a;
+}
+
+body[data-theme="vampire"].dark-mode #cola-clear-atendidos {
+  background: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode #cola-clear-atendidos:hover {
+  background: #005f99;
+}
+
+body[data-theme="vampire"].dark-mode #cola-clear-all {
+  background: #c93c3c;
+}
+
+body[data-theme="vampire"].dark-mode #cola-clear-all:hover {
+  background: #a92f2f;
+}
+
+body[data-theme="vampire"].dark-mode .cola-toolbar select option,
+body[data-theme="vampire"].dark-mode .cola-doctor-select option,
+body[data-theme="vampire"].dark-mode .cola-estado-select option {
+  background: #252526;
+  color: #d4d4d4;
+}
+
+/* =====================================================
+   PACIENTE - VAMPIRE
+===================================================== */
+body[data-theme="vampire"].dark-mode {
+  --pac-card-bg: #1f1f1f;
+  --pac-card-border: #3c3c3c;
+  --pac-card-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
+  --pac-title: #d4d4d4;
+  --pac-label: #9da5b4;
+  --pac-muted: #9da5b4;
+  --pac-input-bg: #252526;
+  --pac-input-border: #3c3c3c;
+  --pac-input-text: #d4d4d4;
+  --pac-input-placeholder: #808080;
+  --pac-table-text: #d4d4d4;
+  --pac-table-hover: rgba(0, 122, 204, 0.1);
+  --pac-chip-bg: #2a2d2e;
+  --pac-chip-text: #d4d4d4;
+  --pac-avatar-bg: #2a2d2e;
+  --pac-img-border: #3c3c3c;
+  --pac-disabled-bg: #2a2d2e;
+  --pac-disabled-border: #3c3c3c;
+  --pac-disabled-text: #808080;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .form-control:focus,
+body[data-theme="vampire"].dark-mode .paciente-container .p-textarea:focus {
+  border-color: #007acc;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.25);
+}
+
+body[data-theme="vampire"].dark-mode .citas-table .cita-inline-editor {
+  background: #252526;
+}
+
+body[data-theme="vampire"].dark-mode .citas-table tbody tr:hover {
+  background: rgba(0, 122, 204, 0.1);
+}
+
+body[data-theme="vampire"].dark-mode .paciente-foto-resumen {
+  background: linear-gradient(180deg, #1f1f1f 0%, #252526 100%);
+}
+
+body[data-theme="vampire"].dark-mode .foto-item img:hover,
+body[data-theme="vampire"].dark-mode .paciente-card .foto-principal-btn.is-active,
+body[data-theme="vampire"].dark-mode .paciente-card .foto-principal-btn.is-active:hover {
+  border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-card .foto-principal-btn {
+  background: #2a2d2e;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-card .foto-principal-btn:hover {
+  background: #323233;
+  border-color: #4a4a4a;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-busqueda .autocomplete-item:hover {
+  background: #2a2d2e;
+}
+
+body[data-theme="vampire"].dark-mode .canvas-firma {
+  background: #252526;
+}
+
+body[data-theme="vampire"].dark-mode .btn-firma.cerrar {
+  background: #3c3c3c;
+  color: #d4d4d4;
+}
+
+/* =====================================================
+   COBRO - VAMPIRE
+===================================================== */
+body[data-theme="vampire"].dark-mode {
+  --cobro-ring-empty: #3c3c3c;
+  --cobro-cash-panel-bg: #252526;
+  --cobro-cash-panel-border: #3c3c3c;
+  --cobro-cash-title: #9da5b4;
+  --cobro-cash-head-bg: #2a2d2e;
+  --cobro-cash-head-text: #d4d4d4;
+  --cobro-cash-cell-border: #3c3c3c;
+  --cobro-cash-cell-bg: #1f1f1f;
+  --cobro-cash-cell-text: #d4d4d4;
+  --cobro-cash-input-bg: #252526;
+  --cobro-cash-input-border: #3c3c3c;
+  --cobro-cash-focus: #007acc;
+  --cobro-cash-focus-ring: rgba(0, 122, 204, 0.25);
+  --cobro-cash-total-bg: #094771;
+  --cobro-cash-total-text: #ffffff;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi {
+  background: #252526;
+  border-color: #3c3c3c;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.32);
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi .kpi-label {
+  color: #9da5b4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi strong {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi.is-kpi-active,
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) {
+  background: linear-gradient(135deg, #384155 0%, #252b3b 100%);
+  border-color: #4b5d7a;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi.is-kpi-active .kpi-label,
+body[data-theme="vampire"].dark-mode .cobro-kpi.is-kpi-active strong,
+body[data-theme="vampire"].dark-mode .cobro-kpi.is-kpi-active .kpi-icon,
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) .kpi-label,
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) strong,
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) .kpi-icon {
+  color: #ffffff;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-label {
+  color: #9da5b4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended strong {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-icon {
+  color: #4b5d7a;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-chart-card {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-chart-ring {
+  --ring-gradient: conic-gradient(#3c3c3c 0deg 360deg);
+}
+
+body[data-theme="vampire"].dark-mode .cobro-chart-ring::after {
+  background: #1f1f1f;
+  box-shadow: inset 0 0 0 1px #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-chart-title,
+body[data-theme="vampire"].dark-mode .cobro-chart-center strong,
+body[data-theme="vampire"].dark-mode .cobro-legend-item strong,
+body[data-theme="vampire"].dark-mode .paciente-seleccionado,
+body[data-theme="vampire"].dark-mode .cobro-summary-title,
+body[data-theme="vampire"].dark-mode .cobro-summary-patient strong,
+body[data-theme="vampire"].dark-mode .cobro-summary-line strong {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .icon-chart,
+body[data-theme="vampire"].dark-mode .cobro-chart-center span,
+body[data-theme="vampire"].dark-mode .cobro-legend-label,
+body[data-theme="vampire"].dark-mode .cobro-empty-state {
+  color: #9da5b4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-legend-item {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-container,
+body[data-theme="vampire"].dark-mode .cuenta-container,
+body[data-theme="vampire"].dark-mode .descuento-container,
+body[data-theme="vampire"].dark-mode .cobro-pos-summary {
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-pos-summary {
+  background: #1f1f1f;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.32);
+}
+
+body[data-theme="vampire"].dark-mode .cobro-step {
+  border-color: #3c3c3c;
+  color: #9da5b4;
+  background: #252526;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-step.is-active {
+  border-color: #007acc;
+  color: #ffffff;
+  background: #094771;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-step.is-done {
+  border-color: #2f5f47;
+  color: #4ec9b0;
+  background: #1f3a2a;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-buscador input,
+body[data-theme="vampire"].dark-mode .cobro-forma-pago,
+body[data-theme="vampire"].dark-mode .cuenta-controls input,
+body[data-theme="vampire"].dark-mode .descuento-form input,
+body[data-theme="vampire"].dark-mode .cobro-cantidad-input,
+body[data-theme="vampire"].dark-mode .cobro-precio-input,
+body[data-theme="vampire"].dark-mode .cobro-qty-btn,
+body[data-theme="vampire"].dark-mode .btn-cobro-secondary {
+  background: #252526;
+  border-color: #3c3c3c;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-buscador input::placeholder,
+body[data-theme="vampire"].dark-mode .cuenta-controls input::placeholder,
+body[data-theme="vampire"].dark-mode .descuento-form input::placeholder {
+  color: #808080;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-buscador input:focus,
+body[data-theme="vampire"].dark-mode .cobro-forma-pago:focus,
+body[data-theme="vampire"].dark-mode .cuenta-controls input:focus,
+body[data-theme="vampire"].dark-mode .descuento-form input:focus,
+body[data-theme="vampire"].dark-mode .cobro-precio-input:focus {
+  border-color: #007acc;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.25);
+}
+
+body[data-theme="vampire"].dark-mode .autocomplete-list {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .autocomplete-item {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .autocomplete-item:hover {
+  background: #2a2d2e;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-table-wrap {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-table th,
+body[data-theme="vampire"].dark-mode .cuenta-table thead th,
+body[data-theme="vampire"].dark-mode .descuento-table thead th {
+  background: #252526;
+  color: #9da5b4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-table td,
+body[data-theme="vampire"].dark-mode .cuenta-table tbody td,
+body[data-theme="vampire"].dark-mode .descuento-table tbody td {
+  border-bottom-color: #323232;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-summary-patient,
+body[data-theme="vampire"].dark-mode .cobro-summary-line {
+  color: #9da5b4;
+  border-bottom-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .cuenta-total-line {
+  background: #252526;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .cuenta-total-line.total-final {
+  background: #094771;
+  color: #ffffff;
+}
+
+body[data-theme="vampire"].dark-mode .descuento-total-line {
+  background: #4a2525;
+  color: #ffb4b4;
+}
+
+body[data-theme="vampire"].dark-mode .cobro-forma-pago option {
+  background: #252526;
+  color: #d4d4d4;
+}
+
+/* =====================================================
+   ODONTOGRAMA - VAMPIRE (SELECCION POR PIEZA)
+===================================================== */
+body[data-theme="vampire"].dark-mode .odonto-piece-modal-card {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-piece-left,
+body[data-theme="vampire"].dark-mode .odonto-piece-right {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-piece-touch-zone {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-piece-modal-header h6,
+body[data-theme="vampire"].dark-mode .odonto-piece-label,
+body[data-theme="vampire"].dark-mode .odonto-piece-menu-title,
+body[data-theme="vampire"].dark-mode .odonto-piece-tooth-wrap .tooth-label {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-piece-modal .odonto-piece-treatments button {
+  background: #252526;
+  border-color: #3c3c3c;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-piece-modal .odonto-piece-treatments button:hover {
+  background: #2a2d2e;
+  border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-piece-modal .odonto-piece-nav:disabled,
+body[data-theme="vampire"].dark-mode #odonto-piece-modal .odonto-piece-treatments button:disabled {
+  background: #2a2d2e;
+  border-color: #3c3c3c;
+  color: #808080;
+  opacity: 1;
+}
+
+/* Menu flotante odontograma */
+body[data-theme="vampire"].dark-mode #menu {
+  background: #252526;
+  border: 1px solid #3c3c3c;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+body[data-theme="vampire"].dark-mode .menu-title {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #menu-options button {
+  background: #2a2d2e;
+  border-color: #3c3c3c;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #menu-options button:hover {
+  background: #323233;
+  border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode #close-menu {
+  background: #2a2d2e;
+  border-color: #3c3c3c;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #close-menu:hover {
+  background: #323233;
+  border-color: #007acc;
+}

@@ -1,0 +1,193 @@
+/* doctor.css - reglas especificas de Doctores */
+
+.doctor-container {
+  font-family: var(--font-family-base);
+  width: 98%;
+  max-width: 100%;
+  margin: 20px auto;
+}
+
+.doctor-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.doctor-controls .autofill-trap {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.doctor-controls .ui-control {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+  color: var(--text-color);
+  font-size: 12px;
+  min-width: 220px;
+}
+
+/* tabla */
+.doctor-table-wrap {
+  max-height: 420px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  margin-top: 12px;
+}
+
+.doctor-table { min-width: 700px; }
+
+.doctor-table thead th {
+  position: sticky;
+  top: 0;
+  background: transparent;
+  z-index: 2;
+}
+
+/* botones fila */
+.row-btn {
+  vertical-align: middle;
+}
+
+.doctor-estado-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.doctor-estado-chip.is-activo {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.doctor-estado-chip.is-inactivo {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
+.doctor-estado-target {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  color: var(--text-muted, #64748b);
+}
+
+.doctor-table .ui-action-btn.is-warning {
+  background: #d97706;
+}
+
+.doctor-file-input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #0f172a;
+  margin: 4px 0 10px;
+}
+
+.doctor-file-input::file-selector-button {
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+.doctor-file-input:hover::file-selector-button {
+  background: #eef2f7;
+}
+
+/* signature canvas */
+.signature-canvas,
+#signature-canvas {
+  display: block;
+  width: 100%;
+  height: 160px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  touch-action: none;
+}
+
+/* firma / sello preview */
+.firma-img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #e6edf3;
+  background: #fff;
+}
+
+/* botones canvas */
+.signature-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.btn-clear-sign {
+  background: #ef4444;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.12s ease;
+}
+
+.btn-save-sign {
+  background: #16a34a;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.12s ease;
+}
+
+.btn-clear-sign:hover {
+  background: #dc2626;
+}
+
+.btn-save-sign:hover {
+  background: #15803d;
+}
+
+.btn-clear-sign:active,
+.btn-save-sign:active {
+  transform: translateY(1px);
+}
+
+/* responsive */
+@media (max-width: 520px) {
+  .modal .modal-content {
+    width: calc(100% - 32px);
+    padding: 18px;
+  }
+
+  .signature-canvas {
+    height: 140px;
+  }
+
+  .doctor-controls .ui-control {
+    min-width: 120px;
+  }
+}

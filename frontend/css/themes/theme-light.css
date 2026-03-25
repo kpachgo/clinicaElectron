@@ -1,0 +1,59 @@
+/* theme-light.css - paleta base (claro) */
+
+:root,
+body[data-theme="light"] {
+  --bg-gray: #f1f5f9;
+  --sidebar-bg: #ffffff;
+  --topbar-bg: #ffffff;
+  --bg-white: #ffffff;
+  --text-color: #0f172a;
+  --text-muted: #6b7280;
+  --border-color: #e5e7eb;
+  --sidebar-hover: #e5efff;
+  --blue: #2563eb;
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --success: #16a34a;
+  --success-hover: #15803d;
+}
+
+body[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* =====================================================
+   ODONTOGRAMA - LIGHT (SELECCION POR PIEZA)
+===================================================== */
+body[data-theme="light"] .odonto-piece-modal-card {
+  background: #f5f6f8;
+  border-color: #d6d9df;
+}
+
+body[data-theme="light"] .odonto-piece-left,
+body[data-theme="light"] .odonto-piece-right {
+  background: #ffffff;
+  border-color: #d7dbe4;
+}
+
+body[data-theme="light"] .odonto-piece-touch-zone {
+  background: #fbfcff;
+  border-color: #c9cfdb;
+}
+
+body[data-theme="light"] .odonto-piece-modal-header h6,
+body[data-theme="light"] .odonto-piece-label,
+body[data-theme="light"] .odonto-piece-menu-title,
+body[data-theme="light"] .odonto-piece-tooth-wrap .tooth-label {
+  color: #172449;
+}
+
+body[data-theme="light"] #odonto-piece-modal .odonto-piece-treatments button {
+  background: #f7f8fb;
+  border-color: #d3d7e1;
+  color: #1f2937;
+}
+
+body[data-theme="light"] #odonto-piece-modal .odonto-piece-treatments button:hover {
+  background: #edf2ff;
+  border-color: #b9c8f0;
+}

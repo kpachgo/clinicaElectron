@@ -1,0 +1,242 @@
+.server-error-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(8, 19, 34, 0.78);
+  backdrop-filter: blur(3px);
+}
+
+.server-error-overlay.is-open {
+  display: flex;
+}
+
+.server-error-card {
+  width: min(560px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background:
+    radial-gradient(90% 120% at 10% 5%, #1f3752 0%, #11253d 58%, #0b1728 100%);
+  box-shadow: 0 26px 62px rgba(0, 0, 0, 0.46);
+  color: #f8fafc;
+  padding: 20px 22px 18px;
+  text-align: center;
+  transform: translateY(10px);
+  opacity: 0;
+  animation: serverErrorCardIn 240ms ease forwards;
+}
+
+.server-error-code {
+  margin: 0;
+  color: #f97316;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.28);
+}
+
+.server-error-title {
+  margin: 6px 0 2px;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.server-error-svg-wrap {
+  width: min(100%, 440px);
+  margin: 0 auto 8px;
+}
+
+.server-error-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.server-error-screen {
+  fill: #0f172a;
+  stroke: #334155;
+  stroke-width: 2;
+}
+
+.server-error-glow {
+  fill: rgba(14, 116, 144, 0.12);
+  stroke: rgba(56, 189, 248, 0.35);
+  stroke-width: 1;
+}
+
+.server-error-dot {
+  fill: #38bdf8;
+  animation: dotBlink 1.8s ease infinite;
+}
+
+.server-error-dot.dot-2 {
+  animation-delay: 0.25s;
+}
+
+.server-error-dot.dot-3 {
+  animation-delay: 0.5s;
+}
+
+.server-error-line {
+  stroke: rgba(226, 232, 240, 0.7);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 240;
+  stroke-dashoffset: 240;
+  animation: lineScan 2.6s linear infinite;
+}
+
+.server-error-line.line-2 {
+  animation-delay: 0.25s;
+}
+
+.server-error-line.line-3 {
+  animation-delay: 0.5s;
+}
+
+.server-error-digit {
+  fill: #f8fafc;
+  font: 900 66px/1 "Trebuchet MS", "Segoe UI", sans-serif;
+  paint-order: stroke fill;
+  stroke: #0f172a;
+  stroke-width: 2;
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: digitJump 1.8s ease-in-out infinite;
+}
+
+.server-error-digit.d-center {
+  fill: #facc15;
+  animation-delay: 0.13s;
+}
+
+.server-error-digit.d-right {
+  fill: #fb7185;
+  animation-delay: 0.26s;
+}
+
+.server-error-pulse {
+  fill: #fde047;
+  opacity: 0;
+  animation: pulseRise 1.25s linear infinite;
+}
+
+.server-error-pulse.pulse-2 {
+  animation-delay: 0.3s;
+}
+
+.server-error-pulse.pulse-3 {
+  animation-delay: 0.6s;
+}
+
+.server-error-message {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: #e2e8f0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.server-error-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.server-error-btn {
+  border: none;
+  border-radius: 11px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.server-error-btn.secondary {
+  background: #334155;
+  color: #f8fafc;
+}
+
+.server-error-btn.primary {
+  background: #22c55e;
+  color: #052e16;
+}
+
+.server-error-btn:hover {
+  filter: brightness(0.96);
+}
+
+@keyframes serverErrorCardIn {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes lineScan {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 240;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.25;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes digitJump {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  30% {
+    transform: translateY(-4px) scale(1.08);
+  }
+  55% {
+    transform: translateY(2px) scale(0.98);
+  }
+}
+
+@keyframes pulseRise {
+  0% {
+    transform: translateY(12px) scale(0.6);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-12px) scale(1.35);
+    opacity: 0;
+  }
+}
+
+@keyframes dotBlink {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  45% {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .server-error-card {
+    padding: 18px 16px 16px;
+  }
+
+  .server-error-title {
+    font-size: 21px;
+  }
+
+  .server-error-digit {
+    font-size: 58px;
+  }
+}

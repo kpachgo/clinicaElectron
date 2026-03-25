@@ -1,0 +1,146 @@
+name: Release macOS DMG
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (example: v1.0.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-dmg:
+    name: Build and publish macOS DMG (x64)
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            electron-app/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm run install:backend
+
+      - name: Install electron app dependencies
+        run: npm --prefix electron-app ci
+
+      - name: Validate BACKEND_ENV secret exists
+        run: |
+          if [ -z "${{ secrets.BACKEND_ENV }}" ]; then
+            echo "Missing required secret: BACKEND_ENV"
+            exit 1
+          fi
+
+      - name: Detect macOS signing/notarization secrets
+        run: |
+          if [ -n "${{ secrets.MAC_CERT_P12_BASE64 }}" ] && \
+             [ -n "${{ secrets.MAC_CERT_PASSWORD }}" ] && \
+             [ -n "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" ] && \
+             [ -n "${{ secrets.APPLE_API_KEY_ID }}" ] && \
+             [ -n "${{ secrets.APPLE_API_ISSUER }}" ]; then
+            echo "HAS_MAC_SIGNING=true" >> "$GITHUB_ENV"
+            echo "macOS signing/notarization secrets detected. Build will be signed."
+          else
+            echo "HAS_MAC_SIGNING=false" >> "$GITHUB_ENV"
+            echo "macOS signing/notarization secrets not found. Build will be unsigned (internal testing mode)."
+          fi
+
+      - name: Create backend .env from GitHub Secret
+        run: |
+          printf '%s' "${{ secrets.BACKEND_ENV }}" > backend/.env
+          test -s backend/.env
+
+      - name: Prepare macOS signing assets
+        if: env.HAS_MAC_SIGNING == 'true'
+        run: |
+          CERT_PATH="$RUNNER_TEMP/macos-signing.p12"
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${{ secrets.APPLE_API_KEY_ID }}.p8"
+          echo "${{ secrets.MAC_CERT_P12_BASE64 }}" | base64 --decode > "$CERT_PATH"
+          echo "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" | base64 --decode > "$KEY_PATH"
+          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+          echo "CSC_KEY_PASSWORD=${{ secrets.MAC_CERT_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY_ID=${{ secrets.APPLE_API_KEY_ID }}" >> "$GITHUB_ENV"
+          echo "APPLE_API_ISSUER=${{ secrets.APPLE_API_ISSUER }}" >> "$GITHUB_ENV"
+
+      - name: Build macOS installer (x64)
+        run: npm run dist:mac -- --x64
+
+      - name: Validate DMG and ZIP outputs exist
+        run: |
+          shopt -s nullglob
+          dmg_files=(dist-electron/*.dmg)
+          zip_files=(dist-electron/*.zip)
+          if [ ${#dmg_files[@]} -eq 0 ]; then
+            echo "No DMG generated in dist-electron/"
+            exit 1
+          fi
+          if [ ${#zip_files[@]} -eq 0 ]; then
+            echo "No ZIP generated in dist-electron/"
+            exit 1
+          fi
+          ls -lh dist-electron/*.dmg
+          ls -lh dist-electron/*.zip
+
+      - name: Validate latest-mac.yml output exists
+        run: |
+          if [ ! -f dist-electron/latest-mac.yml ]; then
+            echo "latest-mac.yml was not generated in dist-electron/"
+            exit 1
+          fi
+          ls -lh dist-electron/latest-mac.yml
+
+      - name: Validate runtime backend included in app bundle
+        run: |
+          if ! find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/server.js" -print -quit | grep -q .; then
+            echo "runtime/backend/server.js not found inside .app bundle"
+            exit 1
+          fi
+          find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/server.js" -print
+
+      - name: Upload macOS artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClinicaElectron-macOS-release-${{ env.RELEASE_TAG }}
+          path: |
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/*.dmg.blockmap
+            dist-electron/*.zip.blockmap
+            dist-electron/latest-mac.yml
+          if-no-files-found: error
+
+      - name: Publish assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/*.dmg.blockmap
+            dist-electron/*.zip.blockmap
+            dist-electron/latest-mac.yml
+          fail_on_unmatched_files: false
+          generate_release_notes: true

@@ -1,0 +1,54 @@
+/* Transiciones SPA suaves para cambio de vistas */
+:root {
+  --spa-ease-apple: cubic-bezier(0.22, 1, 0.36, 1);
+  --spa-view-out-ms: 220ms;
+  --spa-view-in-ms: 320ms;
+}
+
+.content.spa-animating {
+  pointer-events: none;
+  will-change: opacity, transform, filter;
+}
+
+.content.spa-view-out {
+  animation: spaViewOut var(--spa-view-out-ms) var(--spa-ease-apple) both;
+}
+
+.content.spa-view-in {
+  animation: spaViewIn var(--spa-view-in-ms) var(--spa-ease-apple) both;
+}
+
+@keyframes spaViewOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(16px) scale(0.992);
+    filter: blur(2.8px);
+  }
+}
+
+@keyframes spaViewIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.99);
+    filter: blur(3.8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content.spa-animating,
+  .content.spa-view-out,
+  .content.spa-view-in {
+    animation: none !important;
+    transition: none !important;
+  }
+}

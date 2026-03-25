@@ -1,0 +1,11 @@
+{
+  "name": "clinica-electron-runtime",
+  "version": "1.0.6",
+  "private": true,
+  "main": "main.js",
+  "description": "Runtime app",
+  "author": "Clinica",
+  "dependencies": {
+    "electron-updater": "^6.8.3"
+  }
+}

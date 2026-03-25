@@ -1,0 +1,302 @@
+/* encola.css - vista En Cola */
+
+:root {
+  --cola-surface: #ffffff;
+  --cola-border: #e2e8f0;
+  --cola-text: #0f172a;
+  --cola-text-muted: #64748b;
+
+  --cola-kpi-total-bg: #eef2ff;
+  --cola-kpi-total-text: #1e3a8a;
+  --cola-kpi-wait-bg: #ffedd5;
+  --cola-kpi-wait-text: #9a3412;
+  --cola-kpi-done-bg: #dcfce7;
+  --cola-kpi-done-text: #166534;
+
+  --cola-input-bg: #ffffff;
+  --cola-input-border: #cbd5e1;
+  --cola-input-text: #0f172a;
+
+  --cola-table-head-bg: #f8fafc;
+  --cola-table-head-text: #475569;
+  --cola-row-border: #f1f5f9;
+  --cola-row-text: #0f172a;
+  --cola-row-atendido-text: #64748b;
+  --cola-row-hover: rgba(37, 99, 235, 0.04);
+  --cola-empty-text: #64748b;
+
+  --cola-status-wait-bg: #ffedd5;
+  --cola-status-wait-text: #9a3412;
+  --cola-status-wait-border: #fdba74;
+  --cola-status-done-bg: #dcfce7;
+  --cola-status-done-text: #166534;
+  --cola-status-done-border: #86efac;
+
+  --cola-doctor-all-bg: #eef2ff;
+  --cola-doctor-all-text: #3730a3;
+  --cola-doctor-all-border: #c7d2fe;
+  --cola-doctor-none-bg: #f8fafc;
+  --cola-doctor-none-text: #475569;
+  --cola-doctor-none-border: #cbd5e1;
+}
+
+.dark-mode {
+  --cola-surface: #0f172a;
+  --cola-border: #253246;
+  --cola-text: #e2e8f0;
+  --cola-text-muted: #94a3b8;
+
+  --cola-kpi-total-bg: #1e293b;
+  --cola-kpi-total-text: #93c5fd;
+  --cola-kpi-wait-bg: #3d2c1c;
+  --cola-kpi-wait-text: #fdba74;
+  --cola-kpi-done-bg: #183428;
+  --cola-kpi-done-text: #86efac;
+
+  --cola-input-bg: #0b1220;
+  --cola-input-border: #334155;
+  --cola-input-text: #e2e8f0;
+
+  --cola-table-head-bg: #111b2d;
+  --cola-table-head-text: #9fb0c5;
+  --cola-row-border: #202d40;
+  --cola-row-text: #d8e2f0;
+  --cola-row-atendido-text: #95a5bb;
+  --cola-row-hover: rgba(59, 130, 246, 0.11);
+  --cola-empty-text: #95a5bb;
+
+  --cola-status-wait-bg: #4a3118;
+  --cola-status-wait-text: #fdba74;
+  --cola-status-wait-border: #9a5b20;
+  --cola-status-done-bg: #173928;
+  --cola-status-done-text: #86efac;
+  --cola-status-done-border: #2d7a57;
+
+  --cola-doctor-all-bg: #1f2f53;
+  --cola-doctor-all-text: #bfdbfe;
+  --cola-doctor-all-border: #3b5ca8;
+  --cola-doctor-none-bg: #1e293b;
+  --cola-doctor-none-text: #cbd5e1;
+  --cola-doctor-none-border: #475569;
+}
+
+.cola-container {
+  font-family: var(--font-family-base);
+  width: 98%;
+  max-width: 100%;
+  margin: 20px auto;
+  background: var(--cola-surface);
+  border: 1px solid var(--cola-border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.cola-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cola-title-wrap {
+  min-width: 220px;
+}
+
+.cola-title {
+  margin: 0;
+  font-size: 18px;
+  color: var(--cola-text);
+  font-weight: 700;
+}
+
+.cola-subtitle {
+  margin: 4px 0 0;
+  color: var(--cola-text-muted);
+  font-size: 13px;
+}
+
+.cola-kpis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cola-kpi {
+  background: var(--cola-kpi-total-bg);
+  color: var(--cola-kpi-total-text);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cola-kpi.is-waiting {
+  background: var(--cola-kpi-wait-bg);
+  color: var(--cola-kpi-wait-text);
+}
+
+.cola-kpi.is-done {
+  background: var(--cola-kpi-done-bg);
+  color: var(--cola-kpi-done-text);
+}
+
+.cola-toolbar {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cola-toolbar .ui-control {
+  border: 1px solid var(--cola-input-border);
+  border-radius: 8px;
+  background: var(--cola-input-bg);
+  color: var(--cola-input-text);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.cola-toolbar .ui-control.ui-control-search {
+  min-width: 280px;
+}
+
+.cola-toolbar .ui-toolbar-btn {
+  min-height: 34px;
+}
+
+.cola-table-wrap {
+  margin-top: 12px;
+  border-top: 1px solid var(--cola-border);
+  border-bottom: 1px solid var(--cola-border);
+  overflow-x: auto;
+}
+
+.cola-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.cola-table th,
+.cola-table td {
+  padding: 3px 6px;
+  line-height: 1.1;
+  text-align: left;
+  border-bottom: 1px solid var(--cola-row-border);
+  font-size: 12px;
+  color: var(--cola-row-text);
+}
+
+.cola-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--cola-table-head-bg);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--cola-table-head-text);
+}
+
+.cola-table tbody tr:hover td {
+  background: var(--cola-row-hover);
+}
+
+.cola-table tr.is-atendido td {
+  color: var(--cola-row-atendido-text);
+}
+
+.cola-estado-select {
+  border: 1px solid var(--cola-input-border);
+  border-radius: 8px;
+  background: var(--cola-input-bg);
+  color: var(--cola-input-text);
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cola-estado-select.is-espera {
+  background: var(--cola-status-wait-bg);
+  color: var(--cola-status-wait-text);
+  border-color: var(--cola-status-wait-border);
+}
+
+.cola-estado-select.is-atendido {
+  background: var(--cola-status-done-bg);
+  color: var(--cola-status-done-text);
+  border-color: var(--cola-status-done-border);
+}
+
+.cola-doctor-select {
+  border: 1px solid var(--cola-input-border);
+  border-radius: 8px;
+  background: var(--cola-input-bg);
+  color: var(--cola-input-text);
+  min-height: 30px;
+  min-width: 150px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.cola-doctor-select.is-all-doctors {
+  background: var(--cola-doctor-all-bg);
+  border-color: var(--cola-doctor-all-border);
+  color: var(--cola-doctor-all-text);
+}
+
+.cola-doctor-select.is-no-doctor {
+  background: var(--cola-doctor-none-bg);
+  border-color: var(--cola-doctor-none-border);
+  color: var(--cola-doctor-none-text);
+}
+
+.cola-doctor-select.is-doctor {
+  background: var(--doctor-bg, #dbeafe);
+  border-color: var(--doctor-border, #93c5fd);
+  color: var(--doctor-text, #1e3a8a);
+}
+
+.cola-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.cola-actions .ui-action-btn {
+  box-shadow: none;
+}
+
+.cola-empty {
+  text-align: center;
+  color: var(--cola-empty-text);
+  padding: 14px;
+}
+
+.dark-mode .cola-toolbar select option,
+.dark-mode .cola-doctor-select option,
+.dark-mode .cola-estado-select option {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+@media (max-width: 900px) {
+  .cola-container {
+    width: 100%;
+    margin: 12px 0;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+  }
+
+  .cola-toolbar .ui-control.ui-control-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+}

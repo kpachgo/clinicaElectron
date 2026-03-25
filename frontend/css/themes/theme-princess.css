@@ -1,0 +1,926 @@
+﻿/* theme-princess.css - paleta pastel rosado (descanso visual) */
+
+body[data-theme="princess"] {
+  --bg-gray: #fbe7f3;
+  --sidebar-bg: #ffdeef;
+  --topbar-bg: #ffdeef;
+  --bg-white: #ffe8f4;
+  --text-color: #4a2340;
+  --text-muted: #845872;
+  --border-color: #ff9cce;
+  --sidebar-hover: #ffc2df;
+  --blue: #ff69b4;
+  --danger: #f43f5e;
+  --danger-hover: #e11d48;
+  --success: #22c55e;
+  --success-hover: #16a34a;
+  --table-row-border: rgba(214, 51, 154, 0.16);
+  --table-row-hover: rgba(214, 51, 154, 0.12);
+  color-scheme: light;
+}
+
+/* =====================================================
+   TOPBAR / CROMA
+===================================================== */
+body[data-theme="princess"] .topbar .sidebar-menu .accordion:hover {
+  background: #ffc2df;
+}
+
+body[data-theme="princess"] .topbar .sidebar-menu .accordion.active {
+  background: #ffcbe5;
+  color: #cd0067;
+  box-shadow: inset 0 -2px 0 #ff69b4;
+}
+
+body[data-theme="princess"] .top-right > .icon:hover,
+body[data-theme="princess"] .theme-btn:hover {
+  background: #ffc2df;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .form-control:focus,
+body[data-theme="princess"] textarea.form-control:focus,
+body[data-theme="princess"] select.form-control:focus {
+  border-color: #ff69b4;
+  box-shadow: 0 0 0 2px rgba(214, 51, 154, 0.2);
+}
+
+body[data-theme="princess"] .modal-content {
+  background: #ffe8f4;
+  border: 1px solid #ff9cce;
+}
+
+body[data-theme="princess"] .modal-content h2 {
+  color: #631f50;
+}
+
+body[data-theme="princess"] .modal-content label {
+  color: #845872;
+}
+
+body[data-theme="princess"] .modal-content input,
+body[data-theme="princess"] .modal-content select {
+  background: #ffd8ec;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .modal-content input:focus,
+body[data-theme="princess"] .modal-content select:focus {
+  border-color: #ff69b4;
+}
+
+/* =====================================================
+   LOGIN - PRINCESS
+===================================================== */
+body[data-theme="princess"] {
+  --login-overlay: rgba(126, 58, 99, 0.36);
+  --login-panel-bg: #fff5fb;
+  --login-panel-border: #ff9cce;
+  --login-panel-shadow: rgba(126, 58, 99, 0.24) 0px 12px 30px;
+  --login-input-bg: #ffd8ec;
+  --login-input-border: #ff9cce;
+  --login-input-text: #4a2340;
+  --login-placeholder: #a16b8e;
+  --login-focus-ring: rgba(214, 51, 154, 0.24);
+  --login-register-separator: #ff9cce;
+  --login-register-title: #631f50;
+  --login-notice-bg: #ecfff3;
+  --login-notice-border: #bceacb;
+  --login-notice-text: #166534;
+  --login-muted-btn: #bf7ea4;
+  --login-muted-btn-hover: #a95f8d;
+}
+
+body[data-theme="princess"] .btn-login {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] .btn-login:hover {
+  background: #cd0067;
+}
+
+body[data-theme="princess"] .login-error {
+  color: #be123c;
+}
+
+/* =====================================================
+   AGENDA - PRINCESS
+===================================================== */
+body[data-theme="princess"] .agenda-table tbody tr:hover td {
+  background: #ffc5e2;
+}
+
+body[data-theme="princess"] .agenda-hora-cell {
+  color: #5e2f4f;
+  border-left-color: rgba(214, 51, 154, 0.28);
+}
+
+/* Hora: solo gama rosa para que no aparezcan tonos frios/amarillos */
+body[data-theme="princess"] .agenda-hora-slot-0 { background: #ffd4ea; }
+body[data-theme="princess"] .agenda-hora-slot-1 { background: #ffd8ec; }
+body[data-theme="princess"] .agenda-hora-slot-2 { background: #ffdbee; }
+body[data-theme="princess"] .agenda-hora-slot-3 { background: #ffdff0; }
+body[data-theme="princess"] .agenda-hora-slot-4 { background: #ffe2f1; }
+body[data-theme="princess"] .agenda-hora-slot-5 { background: #ffe6f3; }
+body[data-theme="princess"] .agenda-hora-slot-6 { background: #ffe9f5; }
+body[data-theme="princess"] .agenda-hora-slot-7 { background: #ffecf6; }
+body[data-theme="princess"] .agenda-hora-slot-default { background: #ffeff8; }
+
+body[data-theme="princess"] .agenda-nombre-estado-confirmado {
+  background: #ffe8f4;
+  border-left-color: #34d399;
+  color: #0f6a42;
+}
+
+body[data-theme="princess"] .agenda-nombre-estado-cancelado {
+  background: #ffe6f1;
+  border-left-color: #fb7185;
+  color: #9f1239;
+}
+
+body[data-theme="princess"] .agenda-nombre-estado-reprogramado {
+  background: #ffeaf2;
+  border-left-color: #fb923c;
+  color: #9a3412;
+}
+
+body[data-theme="princess"] .agenda-nombre-estado-no-contesta {
+  background: #ffeef6;
+  border-left-color: #c084fc;
+  color: #6b21a8;
+}
+
+body[data-theme="princess"] .agenda-nombre-estado-igs {
+  background: #ffe9f1;
+  border-left-color: #fb923c;
+  color: #9a3412;
+}
+
+body[data-theme="princess"] .agenda-nombre-estado-pendiente {
+  background: #fff0f8;
+  border-left-color: #f472b6;
+  color: #831843;
+}
+
+body[data-theme="princess"] .btn-cobrar,
+body[data-theme="princess"] #modal-guardar,
+body[data-theme="princess"] .agenda-action-btn.is-cobrar {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] .btn-cobrar:hover,
+body[data-theme="princess"] #modal-guardar:hover,
+body[data-theme="princess"] .agenda-action-btn.is-cobrar:hover {
+  background: #cd0067;
+}
+
+/* =====================================================
+   SERVICIOS - PRINCESS
+===================================================== */
+body[data-theme="princess"] {
+  --servicios-row-hover: #ffcae3;
+  --servicios-cell-hover: #ffd4ea;
+  --servicios-edit-bg: #ffdded;
+  --servicios-edit-text: #4a2340;
+  --servicios-edit-border: #ff9cce;
+}
+
+/* =====================================================
+   DOCTORES - PRINCESS
+===================================================== */
+body[data-theme="princess"] .doctor-controls input[type="text"],
+body[data-theme="princess"] .doctor-controls input[type="search"] {
+  background: #ffdded;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .doctor-table-wrap {
+  border-top-color: #ff9cce;
+  border-bottom-color: #ff9cce;
+}
+
+body[data-theme="princess"] .doctor-table thead th {
+  color: #845872;
+}
+
+body[data-theme="princess"] .doctor-table tbody td {
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .doctor-table tbody tr:hover {
+  background: #ffe1f1;
+}
+
+body[data-theme="princess"] .btn-add-doctor {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] .btn-add-doctor:hover {
+  background: #cd0067;
+}
+
+body[data-theme="princess"] .row-btn.view-firma {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] .row-btn.view-firma:hover {
+  background: #cd0067;
+}
+
+body[data-theme="princess"] .row-btn.view-sello {
+  background: #a855f7;
+}
+
+body[data-theme="princess"] .row-btn.view-sello:hover {
+  background: #9333ea;
+}
+
+body[data-theme="princess"] .signature-canvas,
+body[data-theme="princess"] #signature-canvas {
+  border-color: #ff9cce;
+  background: #ffdded;
+}
+
+/* =====================================================
+   EN COLA - PRINCESS
+===================================================== */
+body[data-theme="princess"] {
+  --cola-surface: #ffe8f4;
+  --cola-border: #ff9cce;
+  --cola-text: #4a2340;
+  --cola-text-muted: #845872;
+
+  --cola-kpi-total-bg: #ffb8da;
+  --cola-kpi-total-text: #cd0067;
+  --cola-kpi-wait-bg: #fff1e8;
+  --cola-kpi-wait-text: #9a3412;
+  --cola-kpi-done-bg: #ecfff3;
+  --cola-kpi-done-text: #166534;
+
+  --cola-input-bg: #ffdded;
+  --cola-input-border: #ff9cce;
+  --cola-input-text: #4a2340;
+
+  --cola-table-head-bg: #ffe8f4;
+  --cola-table-head-text: #845872;
+  --cola-row-border: #ff9cce;
+  --cola-row-text: #4a2340;
+  --cola-row-atendido-text: #87677c;
+  --cola-row-hover: rgba(214, 51, 154, 0.14);
+  --cola-empty-text: #845872;
+
+  --cola-status-wait-bg: #fff1e8;
+  --cola-status-wait-text: #9a3412;
+  --cola-status-wait-border: #fdba74;
+  /* Atendido: mantener semantica verde, pero menos saturado en princesa */
+  --cola-status-done-bg: #e8f7ef;
+  --cola-status-done-text: #1f6a45;
+  --cola-status-done-border: #9ed5b8;
+
+  --cola-doctor-all-bg: #ffb8da;
+  --cola-doctor-all-text: #cd0067;
+  --cola-doctor-all-border: #ff9cce;
+  --cola-doctor-none-bg: #ffd8ec;
+  --cola-doctor-none-text: #6f4a64;
+  --cola-doctor-none-border: #ff9cce;
+}
+
+body[data-theme="princess"] #cola-clear-atendidos {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] #cola-clear-atendidos:hover {
+  background: #cd0067;
+}
+
+body[data-theme="princess"] #cola-clear-all {
+  background: #f43f5e;
+}
+
+body[data-theme="princess"] #cola-clear-all:hover {
+  background: #e11d48;
+}
+
+body[data-theme="princess"] .cola-toolbar select option,
+body[data-theme="princess"] .cola-doctor-select option,
+body[data-theme="princess"] .cola-estado-select option {
+  background: #ffdded;
+  color: #4a2340;
+}
+
+/* =====================================================
+   PACIENTE - PRINCESS
+===================================================== */
+body[data-theme="princess"] .paciente-card,
+body[data-theme="princess"] .paciente-busqueda {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+  box-shadow: rgba(170, 86, 131, 0.16) 0px 6px 16px;
+}
+
+body[data-theme="princess"] .paciente-titulo {
+  color: #631f50;
+}
+
+body[data-theme="princess"] .paciente-card label,
+body[data-theme="princess"] .paciente-busqueda label,
+body[data-theme="princess"] .paciente-container .form-label {
+  color: #845872;
+}
+
+body[data-theme="princess"] .paciente-card button:not(.btn-ver-doctor):not(.btn-cita-paciente):not(.btn-firma):not(.btn-autorizar-cita),
+body[data-theme="princess"] .paciente-busqueda button {
+  background: #ffdbee;
+  border-color: #ff9cce;
+  color: #631f50;
+}
+
+body[data-theme="princess"] .paciente-card button:not(.btn-ver-doctor):not(.btn-cita-paciente):not(.btn-firma):not(.btn-autorizar-cita):hover,
+body[data-theme="princess"] .paciente-busqueda button:hover {
+  background: #ffc5e2;
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] .paciente-card .btn-ver-doctor {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] .paciente-card .btn-ver-doctor:hover {
+  background: #cd0067;
+  opacity: 1;
+}
+
+body[data-theme="princess"] .paciente-card .btn-ver-doctor:disabled {
+  background: #d9a5c4;
+  color: #fff5fb;
+}
+
+body[data-theme="princess"] .paciente-card .btn-cita-paciente {
+  background: #ff0381;
+}
+
+body[data-theme="princess"] .paciente-card .btn-cita-paciente:hover {
+  background: #cd0067;
+}
+
+body[data-theme="princess"] #btn-ver-firma-paciente {
+  background: #ff4fa6;
+  border-color: #ff3e9b;
+  color: #ffffff;
+}
+
+body[data-theme="princess"] #btn-ver-firma-paciente:hover:not(:disabled) {
+  background: #cd0067;
+  border-color: #b10059;
+}
+
+body[data-theme="princess"] #btn-ver-firma-paciente:focus-visible {
+  outline: 2px solid rgba(205, 0, 103, 0.35);
+  outline-offset: 1px;
+}
+
+body[data-theme="princess"] #btn-ver-firma-paciente:disabled {
+  background: #f3a3cd;
+  border-color: #eb92c3;
+  color: #fff6fb;
+  opacity: 1;
+}
+
+body[data-theme="princess"] .paciente-busqueda .btn-action-new {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] .paciente-busqueda .btn-action-new:hover {
+  background: #cd0067;
+  opacity: 1;
+}
+
+body[data-theme="princess"] .paciente-container .form-control,
+body[data-theme="princess"] .paciente-container select.form-control,
+body[data-theme="princess"] .paciente-container textarea.form-control,
+body[data-theme="princess"] .paciente-container .p-textarea {
+  background: #ffd8ec;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .paciente-container .form-control::placeholder,
+body[data-theme="princess"] .paciente-container .p-textarea::placeholder {
+  color: #a16b8e;
+}
+
+body[data-theme="princess"] .paciente-container .form-control:focus,
+body[data-theme="princess"] .paciente-container .p-textarea:focus {
+  border-color: #ff69b4;
+  box-shadow: 0 0 0 2px rgba(214, 51, 154, 0.2);
+}
+
+body[data-theme="princess"] .paciente-container select.form-control option {
+  background: #ffdbee;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .citas-table-wrap {
+  border-top-color: #ff9cce;
+  border-bottom-color: #ff9cce;
+}
+
+body[data-theme="princess"] .citas-table th {
+  color: #845872;
+  border-bottom-color: #ff9cce;
+}
+
+body[data-theme="princess"] .citas-table td {
+  color: #4a2340;
+  border-bottom-color: #ff9cce;
+}
+
+body[data-theme="princess"] .citas-table .cita-inline-editor {
+  border-color: #ff9cce;
+  background: #ffdbee;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .citas-table tbody tr:hover {
+  background: rgba(214, 51, 154, 0.14);
+}
+
+body[data-theme="princess"] .paciente-foto-resumen {
+  background: linear-gradient(180deg, #ffe2f1 0%, #ffd0e6 100%);
+}
+
+body[data-theme="princess"] .paciente-foto-avatar {
+  border-color: #ff9cce;
+  background: #ffd0e6;
+  box-shadow: 0 8px 20px rgba(170, 86, 131, 0.2);
+}
+
+body[data-theme="princess"] #paciente-foto-principal-estado {
+  background: #ffb8da;
+  color: #cd0067;
+}
+
+body[data-theme="princess"] #paciente-foto-principal-ayuda,
+body[data-theme="princess"] .foto-fecha,
+body[data-theme="princess"] .autorizar-cita-subtitle {
+  color: #845872;
+}
+
+body[data-theme="princess"] .foto-principal-badge {
+  background: #ff0381;
+}
+
+body[data-theme="princess"] .foto-item img {
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .foto-item img:hover,
+body[data-theme="princess"] .paciente-card .foto-principal-btn.is-active,
+body[data-theme="princess"] .paciente-card .foto-principal-btn.is-active:hover {
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] .paciente-card .foto-principal-btn {
+  background: #ffd2e8;
+  border-color: #ff9cce;
+  color: #631f50;
+}
+
+body[data-theme="princess"] .paciente-card .foto-principal-btn:hover {
+  background: #ffc5e2;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .paciente-busqueda .autocomplete-list {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .paciente-busqueda .autocomplete-item {
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .paciente-busqueda .autocomplete-item:hover {
+  background: #ffc5e2;
+}
+
+body[data-theme="princess"] .modal-firma {
+  background: rgba(126, 58, 99, 0.28);
+}
+
+body[data-theme="princess"] .modal-content-firma,
+body[data-theme="princess"] #modal-cita-paciente .modal-content,
+body[data-theme="princess"] #modal-autorizar-cita .modal-content,
+body[data-theme="princess"] #modal-ver-firma .modal-content,
+body[data-theme="princess"] #modal-doctor-info .modal-content {
+  background: #ffe2f1;
+  border: 1px solid #ff9cce;
+}
+
+body[data-theme="princess"] .canvas-firma {
+  border-color: #ff9cce;
+  background: #ffdbee;
+}
+
+body[data-theme="princess"] .btn-firma.cerrar {
+  background: #eecfe0;
+  color: #631f50;
+}
+
+body[data-theme="princess"] .btn-firma.guardar,
+body[data-theme="princess"] .btn-foto-agregar {
+  background: #ff69b4;
+}
+
+body[data-theme="princess"] .btn-firma.guardar:hover,
+body[data-theme="princess"] .btn-foto-agregar:hover {
+  background: #cd0067;
+  opacity: 1;
+}
+
+body[data-theme="princess"] .modal-info-doctor .doctor-img-box {
+  border-color: #ff9cce;
+  background: #ffdbee;
+}
+
+body[data-theme="princess"] .paciente-card input.form-control:disabled,
+body[data-theme="princess"] .paciente-card select.form-control:disabled,
+body[data-theme="princess"] .paciente-card textarea.form-control:disabled,
+body[data-theme="princess"] .paciente-card .p-textarea:disabled {
+  background: #ffdbee;
+  color: #a16b8e;
+  border-color: #ff9cce;
+  opacity: 1;
+  -webkit-text-fill-color: #a16b8e;
+}
+
+body[data-theme="princess"] .paciente-container.paciente-sin-seleccion .paciente-card input.form-control:disabled,
+body[data-theme="princess"] .paciente-container.paciente-sin-seleccion .paciente-card select.form-control:disabled,
+body[data-theme="princess"] .paciente-container.paciente-sin-seleccion .paciente-card textarea:disabled,
+body[data-theme="princess"] .paciente-container.paciente-sin-seleccion .paciente-card .p-textarea:disabled {
+  background: #ffdbee;
+  border-color: #ff9cce;
+  color: #a16b8e;
+  opacity: 1;
+  -webkit-text-fill-color: #a16b8e;
+}
+
+body[data-theme="princess"] .paciente-container.paciente-sin-seleccion .paciente-card input.form-control:disabled::placeholder,
+body[data-theme="princess"] .paciente-container.paciente-sin-seleccion .paciente-card textarea:disabled::placeholder,
+body[data-theme="princess"] .paciente-container.paciente-sin-seleccion .paciente-card .p-textarea:disabled::placeholder {
+  color: #b985a3;
+  -webkit-text-fill-color: #b985a3;
+}
+
+/* =====================================================
+   ODONTOGRAMA - PRINCESS
+===================================================== */
+body[data-theme="princess"] .tooth svg [stroke="#444"] {
+  stroke: #aa3e7a !important;
+}
+
+body[data-theme="princess"] .paciente-container .toolbar button,
+body[data-theme="princess"] .paciente-container #btn-guardarOdontograma,
+body[data-theme="princess"] .paciente-container #btn-cargarOdontograma,
+body[data-theme="princess"] .odonto-piece-close,
+body[data-theme="princess"] .odonto-piece-nav,
+body[data-theme="princess"] .odonto-piece-treatments button {
+  background: #ffd2e8;
+  border-color: #ff9cce;
+  color: #631f50;
+}
+
+body[data-theme="princess"] .paciente-container .toolbar button:hover,
+body[data-theme="princess"] .paciente-container #btn-guardarOdontograma:hover,
+body[data-theme="princess"] .paciente-container #btn-cargarOdontograma:hover,
+body[data-theme="princess"] .odonto-piece-close:hover,
+body[data-theme="princess"] .odonto-piece-nav:hover,
+body[data-theme="princess"] .odonto-piece-treatments button:hover {
+  background: #ffc5e2;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .paciente-container .toolbar button:focus-visible,
+body[data-theme="princess"] .paciente-container #btn-guardarOdontograma:focus-visible,
+body[data-theme="princess"] .paciente-container #btn-cargarOdontograma:focus-visible,
+body[data-theme="princess"] .odonto-piece-close:focus-visible,
+body[data-theme="princess"] .odonto-piece-nav:focus-visible,
+body[data-theme="princess"] .odonto-piece-treatments button:focus-visible,
+body[data-theme="princess"] .paciente-container #fechaO:focus-visible,
+body[data-theme="princess"] #odontograma-wrapper .tooth-note:focus-visible,
+body[data-theme="princess"] .odonto-piece-input:focus-visible {
+  outline: 2px solid #ff69b4;
+  outline-offset: 1px;
+}
+
+body[data-theme="princess"] .paciente-container #fechaO,
+body[data-theme="princess"] .odonto-piece-input,
+body[data-theme="princess"] #odonto-piece-arcada,
+body[data-theme="princess"] #odonto-piece-select,
+body[data-theme="princess"] #odontograma-wrapper .tooth-note {
+  background: #ffdbee;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] #odontograma-wrapper .tooth-note::placeholder,
+body[data-theme="princess"] .odonto-piece-input::placeholder {
+  color: #a16b8e;
+}
+
+body[data-theme="princess"] .tooth-note.is-odontograma-locked,
+body[data-theme="princess"] .odonto-piece-input.is-odontograma-locked {
+  background: #f5e0ec;
+  border-color: #ff9cce;
+  color: #9f7892;
+}
+
+body[data-theme="princess"] #menu {
+  background: #ffe2f1;
+  border: 1px solid #ff9cce;
+  box-shadow: 0 8px 24px rgba(170, 86, 131, 0.24);
+}
+
+body[data-theme="princess"] #menu-options button {
+  background: #ffd2e8;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] #menu-options button:hover {
+  background: #ffc5e2;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .odonto-piece-modal-card {
+  background: #ffdded;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .odonto-piece-left,
+body[data-theme="princess"] .odonto-piece-right {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .odonto-piece-touch-zone {
+  border-color: #ff9cce;
+  background: #ffd8ec;
+}
+
+body[data-theme="princess"] .odonto-piece-modal-header h6,
+body[data-theme="princess"] .odonto-piece-label,
+body[data-theme="princess"] .odonto-piece-menu-title,
+body[data-theme="princess"] .odonto-piece-tooth-wrap .tooth-label {
+  color: #631f50;
+}
+
+body[data-theme="princess"] .odonto-piece-nav:disabled,
+body[data-theme="princess"] #odonto-piece-modal .odonto-piece-treatments button:disabled {
+  background: #f5e0ec;
+  border-color: #ff9cce;
+  color: #9f7892;
+  opacity: 1;
+}
+
+body[data-theme="princess"] #odonto-piece-modal .odonto-piece-treatments button {
+  background: #ffd2e8;
+  border-color: #ff9cce;
+  color: #631f50;
+}
+
+body[data-theme="princess"] #odonto-piece-modal .odonto-piece-treatments button:hover {
+  background: #ffc5e2;
+  border-color: #ff9cce;
+}
+
+/* =====================================================
+   COBRO - PRINCESS
+===================================================== */
+body[data-theme="princess"] {
+  --cobro-ring-empty: #e8bfd7;
+  --cobro-cash-panel-bg: #ffdced;
+  --cobro-cash-panel-border: #ff9cce;
+  --cobro-cash-title: #7b3f66;
+  --cobro-cash-head-bg: #ffc7e1;
+  --cobro-cash-head-text: #6b2d52;
+  --cobro-cash-cell-border: #ff9cce;
+  --cobro-cash-cell-bg: #ffeaf5;
+  --cobro-cash-cell-text: #4a2340;
+  --cobro-cash-input-bg: #ffd8ec;
+  --cobro-cash-input-border: #ff9cce;
+  --cobro-cash-focus: #ff69b4;
+  --cobro-cash-focus-ring: rgba(255, 105, 180, 0.25);
+  --cobro-cash-total-bg: #ffb8da;
+  --cobro-cash-total-text: #7a0f4d;
+}
+
+body[data-theme="princess"] .cobro-kpi {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+  box-shadow: 0 3px 10px rgba(170, 86, 131, 0.16);
+}
+
+body[data-theme="princess"] .cobro-kpi .kpi-label {
+  color: #845872;
+}
+
+body[data-theme="princess"] .cobro-kpi strong {
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia {
+  background: linear-gradient(135deg, #ff69b4 0%, #ff0381 100%);
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] .cobro-kpi.kpi-descuento strong {
+  color: #be123c;
+}
+
+body[data-theme="princess"] .cobro-kpi.is-kpi-active,
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) {
+  background: linear-gradient(135deg, #ff69b4 0%, #ff0381 100%);
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] .cobro-kpi.is-kpi-active .kpi-label,
+body[data-theme="princess"] .cobro-kpi.is-kpi-active strong,
+body[data-theme="princess"] .cobro-kpi.is-kpi-active .kpi-icon,
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) .kpi-label,
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) strong,
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia:not(.kpi-total-dia-suspended) .kpi-icon {
+  color: #ffffff;
+}
+
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-label {
+  color: #845872;
+}
+
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended strong {
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .cobro-kpi.kpi-total-dia.kpi-total-dia-suspended .kpi-icon {
+  color: #ff69b4;
+}
+
+body[data-theme="princess"] .cobro-chart-card {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .cobro-chart-ring {
+  --ring-gradient: conic-gradient(#e8bfd7 0deg 360deg);
+}
+
+body[data-theme="princess"] .cobro-chart-ring::after {
+  background: #ffe2f1;
+  box-shadow: inset 0 0 0 1px #ff9cce;
+}
+
+body[data-theme="princess"] .cobro-chart-title,
+body[data-theme="princess"] .cobro-chart-center strong,
+body[data-theme="princess"] .cobro-legend-item strong,
+body[data-theme="princess"] .paciente-seleccionado,
+body[data-theme="princess"] .cobro-summary-title,
+body[data-theme="princess"] .cobro-summary-patient strong,
+body[data-theme="princess"] .cobro-summary-line strong {
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .icon-chart,
+body[data-theme="princess"] .cobro-chart-center span,
+body[data-theme="princess"] .cobro-legend-label,
+body[data-theme="princess"] .cobro-empty-state {
+  color: #845872;
+}
+
+body[data-theme="princess"] .cobro-legend-item {
+  background: #ffd2e8;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .cobro-container,
+body[data-theme="princess"] .cuenta-container,
+body[data-theme="princess"] .descuento-container,
+body[data-theme="princess"] .cobro-pos-summary {
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .cobro-pos-summary {
+  background: #ffe2f1;
+  box-shadow: 0 3px 10px rgba(170, 86, 131, 0.16);
+}
+
+body[data-theme="princess"] .cobro-step {
+  border-color: #ff9cce;
+  color: #845872;
+  background: #ffd8ec;
+}
+
+body[data-theme="princess"] .cobro-step.is-active {
+  border-color: #ff69b4;
+  color: #cd0067;
+  background: #ffb8da;
+}
+
+body[data-theme="princess"] .cobro-step.is-done {
+  border-color: #86efac;
+  color: #166534;
+  background: #ecfff3;
+}
+
+body[data-theme="princess"] .cobro-buscador input,
+body[data-theme="princess"] .cobro-forma-pago,
+body[data-theme="princess"] .cuenta-controls input,
+body[data-theme="princess"] .descuento-form input,
+body[data-theme="princess"] .cobro-cantidad-input,
+body[data-theme="princess"] .cobro-precio-input,
+body[data-theme="princess"] .cobro-qty-btn,
+body[data-theme="princess"] .btn-cobro-secondary {
+  background: #ffd8ec;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .cobro-buscador input::placeholder,
+body[data-theme="princess"] .cuenta-controls input::placeholder,
+body[data-theme="princess"] .descuento-form input::placeholder {
+  color: #a16b8e;
+}
+
+body[data-theme="princess"] .cobro-buscador input:focus,
+body[data-theme="princess"] .cobro-forma-pago:focus,
+body[data-theme="princess"] .cuenta-controls input:focus,
+body[data-theme="princess"] .descuento-form input:focus,
+body[data-theme="princess"] .cobro-precio-input:focus {
+  border-color: #ff69b4;
+  box-shadow: 0 0 0 2px rgba(214, 51, 154, 0.2);
+}
+
+body[data-theme="princess"] .autocomplete-list {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .autocomplete-item {
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .autocomplete-item:hover {
+  background: #ffc5e2;
+}
+
+body[data-theme="princess"] .cobro-table-wrap {
+  background: #ffe2f1;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .cobro-table th,
+body[data-theme="princess"] .cuenta-table thead th,
+body[data-theme="princess"] .descuento-table thead th {
+  background: #ffe4f2;
+  color: #845872;
+}
+
+body[data-theme="princess"] .cobro-table td,
+body[data-theme="princess"] .cuenta-table tbody td,
+body[data-theme="princess"] .descuento-table tbody td {
+  border-bottom-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .cobro-summary-patient,
+body[data-theme="princess"] .cobro-summary-line {
+  color: #845872;
+  border-bottom-color: #ff9cce;
+}
+
+body[data-theme="princess"] .cuenta-total-line {
+  background: #ffd2e8;
+  color: #631f50;
+}
+
+body[data-theme="princess"] .cuenta-total-line.total-final {
+  background: #ffb8da;
+  color: #cd0067;
+}
+
+body[data-theme="princess"] .descuento-total-line {
+  background: #fff0f3;
+  color: #be123c;
+}
+
+body[data-theme="princess"] .cobro-forma-pago option {
+  background: #ffdbee;
+  color: #4a2340;
+}
+

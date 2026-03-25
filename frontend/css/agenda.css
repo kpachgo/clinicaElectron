@@ -1,0 +1,530 @@
+/* agenda.css - reglas especificas de Agenda */
+
+/* controles (fecha, buscador, boton registrar) */
+.agenda-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.agenda-controls input[type="date"],
+.agenda-controls input[type="text"],
+.agenda-controls input[type="search"] {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  background: var(--bg-white, #fff);
+}
+
+.agenda-toggle-numeracion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted, #64748b);
+  user-select: none;
+}
+
+.agenda-toggle-numeracion input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #2563eb;
+}
+
+.agenda-controls .autofill-trap {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agenda-btn-reprogramar-pegar {
+  background: #0f766e;
+}
+
+.agenda-btn-reprogramar-cancelar {
+  background: #b91c1c;
+}
+
+.agenda-controls .btn-cobrar:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.1);
+}
+
+.agenda-reprograma-status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+}
+
+/* area de tabla con scroll interno */
+.agenda-table-wrap {
+  overflow-y: auto;
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  margin-top: 12px;
+}
+
+/* tabla */
+.agenda-table {
+  min-width: 820px;
+  font-size: 12px;
+}
+
+.agenda-table thead th,
+.agenda-table tbody td {
+  padding: 3px 6px;
+  line-height: 1.1;
+}
+
+.agenda-table tbody tr {
+  height: 26px;
+}
+
+.agenda-col-num {
+  width: 52px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+}
+
+.agenda-table.hide-numeracion .agenda-col-num {
+  display: none;
+}
+
+/* Hover de fila completo (incluye Nombre/Hora con color propio) */
+.agenda-table tbody tr:hover td {
+  background: #cfe8ff;
+  transition: background-color 0.12s ease;
+}
+
+.agenda-table thead th {
+  position: sticky;
+  top: 0;
+  background: transparent;
+  z-index: 2;
+}
+
+/* Refuerzo visual por hora */
+.agenda-hora-cell {
+  text-align: center;
+  font-weight: 700;
+  color: #1f2937;
+  border-left: 3px solid rgba(15, 23, 42, 0.08);
+}
+
+.agenda-hora-slot-0 { background: #ffe4e6; }
+.agenda-hora-slot-1 { background: #dcfce7; }
+.agenda-hora-slot-2 { background: #dbeafe; }
+.agenda-hora-slot-3 { background: #fef3c7; }
+.agenda-hora-slot-4 { background: #ffedd5; }
+.agenda-hora-slot-5 { background: #fde68a; }
+.agenda-hora-slot-6 { background: #cffafe; }
+.agenda-hora-slot-7 { background: #ede9fe; }
+.agenda-hora-slot-default { background: #f3f4f6; }
+
+/* Refuerzo visual por estado en Nombre */
+.agenda-nombre-cell {
+  font-weight: 600;
+  border-left: 3px solid transparent;
+}
+
+.agenda-nombre-estado-confirmado {
+  background: #ecfdf3;
+  border-left-color: #16a34a;
+  color: #14532d;
+}
+
+.agenda-nombre-estado-cancelado {
+  background: #fef2f2;
+  border-left-color: #dc2626;
+  color: #7f1d1d;
+}
+
+.agenda-nombre-estado-reprogramado {
+  background: #fff7ed;
+  border-left-color: #ea580c;
+  color: #9a3412;
+}
+
+.agenda-nombre-estado-no-contesta {
+  background: #f8fafc;
+  border-left-color: #64748b;
+  color: #334155;
+}
+
+.agenda-nombre-estado-igs {
+  background: #ffedd5;
+  border-left-color: #ea580c;
+  color: #9a3412;
+}
+
+.agenda-nombre-estado-pendiente {
+  background: #f9fafb;
+  border-left-color: #9ca3af;
+  color: #374151;
+}
+
+/* columna cobrar -> boton */
+.btn-cobrar {
+  background: #0879e9;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.14s var(--btn-ease-standard), box-shadow 0.2s var(--btn-ease-standard), filter 0.18s ease, opacity 0.18s ease;
+}
+
+.btn-cobrar:hover {
+  opacity: 0.95;
+}
+
+.agenda-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.agenda-action-btn {
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 11px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: transform 0.14s var(--btn-ease-standard), box-shadow 0.2s var(--btn-ease-standard), filter 0.18s ease;
+}
+.agenda-action-btn .agenda-action-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.agenda-action-btn.is-cobrar {
+  background: #0879e9;
+}
+
+.agenda-action-btn.is-open {
+  background: #2563eb;
+}
+
+.agenda-action-btn.is-cola {
+  background: #7c3aed;
+}
+
+.agenda-action-btn.is-eliminar {
+  background: #dc2626;
+}
+
+.agenda-action-btn.is-crear {
+  background: #16a34a;
+}
+
+.agenda-action-btn.is-reprogramar {
+  background: #0f766e;
+}
+
+.agenda-action-btn:hover {
+  filter: brightness(0.95);
+}
+
+.btn-cobrar:focus-visible,
+.agenda-action-btn:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* estado select estilizado */
+.select-estado {
+  padding: 0 22px 0 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.06);
+  font-weight: 600;
+  min-height: 22px;
+  height: 22px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.estado-confirmado {
+  background: #dff7e6;
+  color: #0a7a2a;
+}
+
+.estado-cancelado {
+  background: #ffe5e5;
+  color: #b91c1c;
+}
+
+.estado-reprogramado {
+  background: #fff7d6;
+  color: #a34f00;
+}
+
+.estado-no-contesta {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.estado-igs {
+  background: #ffedd5;
+  color: #c2410c;
+  border-color: #fdba74;
+}
+
+.estado-pendiente {
+  background: #f1f1f1;
+  color: #555;
+}
+
+/* comentario editable */
+.comment-text {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.comment-edit {
+  width: 100%;
+  padding: 2px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.agenda-col-comentario {
+  width: 22%;
+  max-width: 280px;
+}
+
+.agenda-container {
+  width: 98%;
+  max-width: 100%;
+  margin: 20px auto;
+}
+
+.filter-estado {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-white);
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.agenda-modal-buscador {
+  position: relative;
+}
+
+.agenda-modal-buscador input {
+  margin-bottom: 8px;
+}
+
+.agenda-modal-buscador .autocomplete-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 4px);
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+  display: none;
+  z-index: 4500;
+}
+
+.agenda-modal-comentario-wrap {
+  position: relative;
+}
+
+.agenda-modal-comentario-wrap input {
+  margin-bottom: 8px;
+}
+
+.agenda-modal-comentario-wrap .autocomplete-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% - 4px);
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+  display: none;
+  z-index: 4500;
+}
+
+/* boton guardar en modal agenda */
+#modal-guardar {
+  background: #16a34a;
+  border: none;
+  padding: 10px 22px;
+  color: #fff;
+  font-size: 14px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#modal-guardar:hover {
+  background: #15803d;
+}
+
+/* =====================================================
+   AGENDA - AJUSTE FINO TABLET / ESCRITORIO BAJO
+===================================================== */
+@media (max-width: 1400px) and (min-width: 1024px) {
+  .agenda-container {
+    padding: 20px;
+  }
+
+  .agenda-title {
+    font-size: 16px;
+  }
+
+  .agenda-controls {
+    gap: 8px;
+  }
+
+  .agenda-controls input,
+  .agenda-controls select {
+    max-width: 220px;
+  }
+
+  .agenda-controls button {
+    font-size: 13px;
+    padding: 6px 10px;
+  }
+
+  .agenda-table thead th,
+  .agenda-table tbody td {
+    padding: 3px 6px;
+    font-size: 12px;
+  }
+}
+
+/* =====================================================
+   AGENDA - COMPACTACION REAL DE TEXTO
+===================================================== */
+@media (max-width: 1366px) {
+  .agenda-container {
+    padding: 16px;
+  }
+
+  .agenda-container .agenda-title {
+    font-size: 15px;
+  }
+
+  .agenda-container .agenda-controls input,
+  .agenda-container .agenda-controls select,
+  .agenda-container .agenda-controls button {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+
+  .agenda-container .agenda-table {
+    font-size: 12px;
+  }
+
+  .agenda-container .agenda-table thead th {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+
+  .agenda-container .agenda-table tbody td {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+
+  .agenda-container .btn-cobrar {
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+
+  .agenda-container .agenda-action-btn {
+    width: 23px;
+    height: 23px;
+    font-size: 11px;
+    border-radius: 5px;
+  }
+
+  .agenda-container .select-estado {
+    font-size: 11px;
+    padding: 0 20px 0 6px;
+    min-height: 22px;
+    height: 22px;
+  }
+
+  .agenda-container .comment-text,
+  .agenda-container .comment-edit {
+    font-size: 11px;
+  }
+}
+
+/* =====================================================
+   AGENDA - DARK MODE (ajuste Nombre/Hora sin fondos de color)
+===================================================== */
+.dark-mode .agenda-table tbody tr:hover td {
+  background: rgba(59, 130, 246, 0.14);
+}
+
+.dark-mode .agenda-hora-cell {
+  color: #dbeafe;
+  border-left-color: rgba(148, 163, 184, 0.32);
+}
+
+.dark-mode .agenda-hora-slot-0,
+.dark-mode .agenda-hora-slot-1,
+.dark-mode .agenda-hora-slot-2,
+.dark-mode .agenda-hora-slot-3,
+.dark-mode .agenda-hora-slot-4,
+.dark-mode .agenda-hora-slot-5,
+.dark-mode .agenda-hora-slot-6,
+.dark-mode .agenda-hora-slot-7,
+.dark-mode .agenda-hora-slot-default {
+  background: transparent;
+}
+
+.dark-mode .agenda-nombre-cell {
+  color: #e2e8f0;
+}
+
+.dark-mode .agenda-nombre-estado-confirmado,
+.dark-mode .agenda-nombre-estado-cancelado,
+.dark-mode .agenda-nombre-estado-reprogramado,
+.dark-mode .agenda-nombre-estado-no-contesta,
+.dark-mode .agenda-nombre-estado-igs,
+.dark-mode .agenda-nombre-estado-pendiente {
+  background: transparent;
+  color: #e2e8f0;
+}
+
+.dark-mode .agenda-toggle-numeracion {
+  color: #cbd5e1;
+}
