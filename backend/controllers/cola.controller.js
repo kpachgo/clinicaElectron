@@ -69,6 +69,11 @@ function validarDoctorId(value) {
   return id;
 }
 
+function normalizarTratamiento(value) {
+  const txt = String(value ?? "").trim();
+  return txt || null;
+}
+
 async function existeDoctorPorId(idDoctor) {
   const [rows] = await pool.query(
     "SELECT idDoctor FROM doctor WHERE idDoctor = ? LIMIT 1",
@@ -294,6 +299,78 @@ exports.actualizarDoctor = async (req, res) => {
     });
   } catch (err) {
     return serverError(res, err, "Error al actualizar doctor de cola");
+  }
+};
+
+exports.actualizarTratamiento = async (req, res) => {
+  const idColaPaciente = Number(req.params?.id || 0);
+  if (!Number.isInteger(idColaPaciente) || idColaPaciente <= 0) {
+    return badRequest(res, "ID invalido");
+  }
+
+  const tratamientoAgenda = String(req.body?.tratamiento ?? "").trim();
+  const tratamiento = normalizarTratamiento(req.body?.tratamiento);
+  let conn = null;
+
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT idColaPaciente, agendaId
+       FROM cola_paciente
+       WHERE idColaPaciente = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [idColaPaciente]
+    );
+
+    const row = rows?.[0] || null;
+    if (!row) {
+      await conn.rollback();
+      return notFound(res, "Registro de cola no encontrado");
+    }
+
+    const agendaId = Number(row.agendaId || 0) || null;
+    if (agendaId) {
+      await conn.query(
+        `UPDATE cola_paciente
+         SET tratamiento = ?, actualizadoEn = NOW()
+         WHERE agendaId = ?`,
+        [tratamiento, agendaId]
+      );
+
+      await conn.query(
+        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?)",
+        [agendaId, null, null, null, null, null, tratamientoAgenda]
+      );
+    } else {
+      await conn.query(
+        `UPDATE cola_paciente
+         SET tratamiento = ?, actualizadoEn = NOW()
+         WHERE idColaPaciente = ?`,
+        [tratamiento, idColaPaciente]
+      );
+    }
+
+    await conn.commit();
+
+    const updated = await obtenerPorId(idColaPaciente);
+    return res.json({
+      ok: true,
+      data: updated
+    });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch {
+        // noop
+      }
+    }
+    return serverError(res, err, "Error al actualizar tratamiento de cola");
+  } finally {
+    if (conn) conn.release();
   }
 };
 

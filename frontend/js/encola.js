@@ -156,6 +156,20 @@
     return json.data ? normalizarItem(json.data) : null;
   }
 
+  async function apiSetTratamiento(idColaPaciente, tratamiento) {
+    const id = Number(idColaPaciente || 0);
+    if (!id) throw new Error("ID de cola invalido");
+
+    const json = await fetchJson(`/api/cola/${id}/tratamiento`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tratamiento: String(tratamiento ?? "")
+      })
+    });
+    return json.data ? normalizarItem(json.data) : null;
+  }
+
   async function apiRemove(idColaPaciente) {
     const id = Number(idColaPaciente || 0);
     if (!id) throw new Error("ID de cola invalido");
@@ -515,7 +529,87 @@
         tr.appendChild(tdNombre);
 
         const tdTratamiento = document.createElement("td");
-        tdTratamiento.innerHTML = renderTratamientoVisual(item.tratamiento);
+        const tratamientoText = document.createElement("div");
+        tratamientoText.className = "cola-tratamiento-text";
+
+        const pintarTratamiento = (value) => {
+          const txt = String(value || "").trim();
+          tratamientoText.innerHTML = renderTratamientoVisual(txt);
+          if (txt) {
+            tratamientoText.title = txt;
+          } else {
+            tratamientoText.removeAttribute("title");
+          }
+        };
+
+        pintarTratamiento(item.tratamiento);
+        tratamientoText.addEventListener("dblclick", () => {
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "cola-tratamiento-edit";
+          input.value = String(item.tratamiento || "");
+          const valorOriginal = String(item.tratamiento || "").trim();
+
+          tdTratamiento.replaceChild(input, tratamientoText);
+          input.focus();
+          input.select();
+
+          let isSavingTratamiento = false;
+          let isClosedTratamiento = false;
+
+          function closeTratamientoEditor(value) {
+            if (isClosedTratamiento) return;
+            isClosedTratamiento = true;
+            pintarTratamiento(value);
+            if (input.isConnected) {
+              tdTratamiento.replaceChild(tratamientoText, input);
+            }
+          }
+
+          async function saveTratamiento() {
+            if (isSavingTratamiento || isClosedTratamiento) return;
+            isSavingTratamiento = true;
+
+            const nuevoTratamiento = input.value.trim();
+            if (nuevoTratamiento === valorOriginal) {
+              closeTratamientoEditor(valorOriginal);
+              isSavingTratamiento = false;
+              return;
+            }
+
+            item.tratamiento = nuevoTratamiento;
+            closeTratamientoEditor(nuevoTratamiento);
+
+            try {
+              await apiSetTratamiento(item.idColaPaciente, nuevoTratamiento);
+              await recargar();
+            } catch (err) {
+              item.tratamiento = valorOriginal;
+              pintarTratamiento(valorOriginal);
+              alert(err.message || "No se pudo guardar el tratamiento");
+            } finally {
+              isSavingTratamiento = false;
+            }
+          }
+
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              saveTratamiento();
+              return;
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              if (isClosedTratamiento) return;
+              item.tratamiento = valorOriginal;
+              closeTratamientoEditor(valorOriginal);
+            }
+          });
+
+          input.addEventListener("blur", saveTratamiento);
+        });
+
+        tdTratamiento.appendChild(tratamientoText);
         tr.appendChild(tdTratamiento);
 
         const tdHora = document.createElement("td");

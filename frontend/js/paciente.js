@@ -506,6 +506,16 @@ function actualizarColorTipoTratamiento() {
   if (tratamiento.value === "Ortodoncia") tratamiento.classList.add("tratamiento-ortodoncia");
   if (tratamiento.value === "Odontologia") tratamiento.classList.add("tratamiento-odontologia");
 }
+function actualizarColorTipoMordida() {
+  const mordida = document.getElementById("tipoMordidaP");
+  if (!mordida) return;
+
+  mordida.classList.remove("mordida-clase");
+  const valor = String(mordida.value || "").trim().toLowerCase();
+  if (valor.startsWith("clase")) {
+    mordida.classList.add("mordida-clase");
+  }
+}
 function setPacienteCambiosPendientes(valor) {
   pacienteTieneCambiosPendientes = Boolean(valor);
 }
@@ -661,6 +671,7 @@ function aplicarPrefillDesdeAgendaEnPaciente() {
 
   actualizarColorEstadoPaciente();
   actualizarColorTipoTratamiento();
+  actualizarColorTipoMordida();
   setPacienteCambiosPendientes(true);
 
   if (nombreEl) nombreEl.focus();
@@ -1980,6 +1991,7 @@ async function cargarPaciente(idPaciente) {
       historiaMedicaP.value         = p.historiaMedicaP || "";
       historiaOdontologicaP.value   = p.historiaOdontologicaP || "";
       tipoMordidaP.value = p.tipomordidaP || "Sin registrar";
+      actualizarColorTipoMordida();
 
       // ================= EXAMENES =================
       examenClinicoP.value          = p.examenClinicoP || "";
@@ -2073,10 +2085,12 @@ function calcularEdad(fechaNacimiento) {
 // ============= PARTE DE ODONTOGRAMA ==============================
 function actualizarOdontogramaActual(idOdontograma) {
   const lbl = document.getElementById("odontogramaActualP");
+  const idActivo = Number(idOdontograma || 0) || null;
+  window.ultimoOdontogramaId = idActivo;
   if (!lbl) return;
 
-  lbl.textContent = idOdontograma
-    ? `Odontograma activo (ID ${idOdontograma})`
+  lbl.textContent = idActivo
+    ? `Odontograma activo (ID ${idActivo})`
     : "Sin odontograma";
 }
 function limpiarOdontogramaActivoEnVista(options = {}) {
@@ -2428,6 +2442,7 @@ async function guardarFirmaPaciente() {
 }
 async function guardarPaciente() {
   if (isSavingPaciente) return;
+  const debeGuardarOdontograma = odontogramaTieneCambiosPendientes();
     
   const payload = {
     idPaciente: window.pacienteActual?.idPaciente || null,
@@ -2484,6 +2499,9 @@ async function guardarPaciente() {
     setPacienteCambiosPendientes(false);
 
     alert(" Paciente guardado correctamente");
+    if (debeGuardarOdontograma) {
+      await guardarOdontogramaEnBD();
+    }
 
   } catch (err) {
     console.error(err);
@@ -2897,6 +2915,7 @@ function limpiarVistaPaciente() {
   actualizarEstadoFirmaPaciente("");
   actualizarColorEstadoPaciente();
   actualizarColorTipoTratamiento();
+  actualizarColorTipoMordida();
   setPacienteEdicionHabilitada(false);
   actualizarAccionesPaciente();
 
@@ -3031,9 +3050,12 @@ window.__mountPaciente = function () {
       ?.addEventListener("change", actualizarColorEstadoPaciente);
     document.getElementById("tipoTratamientoP")
       ?.addEventListener("change", actualizarColorTipoTratamiento);
+    document.getElementById("tipoMordidaP")
+      ?.addEventListener("change", actualizarColorTipoMordida);
     actualizarEstadoFirmaPaciente("");
     actualizarColorEstadoPaciente();
     actualizarColorTipoTratamiento();
+    actualizarColorTipoMordida();
     actualizarAccionesPaciente();
     // 8a Listener de "Ver doctor" y "Autorizar cita"
     registrarEventoVerDoctor();
@@ -3045,12 +3067,15 @@ window.__mountPaciente = function () {
 }
     const btnGuardarOdt = document.getElementById("btn-guardarOdontograma");
     const btnCargarOdt  = document.getElementById("btn-cargarOdontograma");
+    const selectFechaOdt = document.getElementById("fechaO");
 
     if (btnGuardarOdt) {
     btnGuardarOdt.addEventListener("click", guardarOdontogramaEnBD);
     }
 
     if (btnCargarOdt) {
+    btnCargarOdt.hidden = true;
+    btnCargarOdt.style.display = "none";
     btnCargarOdt.addEventListener("click", async () => {
       const selectFecha = document.getElementById("fechaO");
       const idSeleccionado = Number(selectFecha?.value || 0);
@@ -3067,6 +3092,31 @@ window.__mountPaciente = function () {
       });
     });
     }
+
+    if (selectFechaOdt) {
+      selectFechaOdt.addEventListener("change", async () => {
+        const idSeleccionado = Number(selectFechaOdt.value || 0);
+        if (idSeleccionado <= 0) return;
+
+        if (odontogramaTieneCambiosPendientes()) {
+          const okCambio = await Promise.resolve(
+            confirmarCambioPacienteSinGuardar("cargar otra fecha de odontograma sin guardar?")
+          );
+          if (!okCambio) {
+            selectFechaOdt.value = window.ultimoOdontogramaId
+              ? String(window.ultimoOdontogramaId)
+              : "";
+            return;
+          }
+        }
+
+        await cargarOdontogramaPorId(idSeleccionado, {
+          silentNoData: false,
+          silentSuccess: false
+        });
+      });
+    }
+
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
         pacienteViewDisposed = true;

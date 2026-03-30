@@ -321,6 +321,11 @@
     border-color: #ec4899;
     color: #9d174d;
 }
+.paciente-card select.mordida-clase {
+    background: #dbeafe;
+    border-color: #3b82f6;
+    color: #1d4ed8;
+}
 /* =======================================================
    CITAS PACIENTE — HEADER
 ======================================================= */

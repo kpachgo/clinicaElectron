@@ -209,6 +209,21 @@
   color: var(--cola-row-atendido-text);
 }
 
+.cola-tratamiento-text {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.cola-tratamiento-edit {
+  width: 100%;
+  padding: 2px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--cola-input-border);
+  background: var(--cola-input-bg);
+  color: var(--cola-input-text);
+}
+
 .cola-estado-select {
   border: 1px solid var(--cola-input-border);
   border-radius: 8px;

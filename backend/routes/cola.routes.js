@@ -34,6 +34,13 @@ router.put(
   controller.actualizarDoctor
 );
 
+router.put(
+  "/:id/tratamiento",
+  auth,
+  role(ROLES_COLA),
+  controller.actualizarTratamiento
+);
+
 router.delete(
   "/atendidos",
   auth,

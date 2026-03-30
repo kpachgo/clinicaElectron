@@ -75,28 +75,59 @@ exports.buscarPorMes = async (req, res) => {
 };
 
 exports.actualizar = async (req, res) => {
-  try {
-    const { id } = req.params;
+  const { id } = req.params;
 
-    const {
-      nombre,
-      hora,
-      fecha,
-      contacto,
-      estado,
-      comentario
-    } = req.body;
+  const {
+    nombre,
+    hora,
+    fecha,
+    contacto,
+    estado,
+    comentario
+  } = req.body;
 
-    if (!id) {
-      return badRequest(res, "ID de agenda requerido");
+  if (!id) {
+    return badRequest(res, "ID de agenda requerido");
+  }
+
+  const idAgenda = Number(id);
+  if (!Number.isInteger(idAgenda) || idAgenda <= 0) {
+    return badRequest(res, "ID de agenda invalido");
+  }
+
+  const toDbValue = (v) => (v === undefined ? null : v);
+  const hasComentario = Object.prototype.hasOwnProperty.call(req.body || {}, "comentario");
+
+  if (!hasComentario) {
+    try {
+      await pool.query(
+        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?)",
+        [
+          idAgenda,
+          toDbValue(nombre),
+          toDbValue(hora),
+          toDbValue(fecha),
+          toDbValue(contacto),
+          toDbValue(estado),
+          toDbValue(comentario)
+        ]
+      );
+
+      return res.json({ ok: true });
+    } catch (error) {
+      return serverError(res, error, "Error al actualizar agenda");
     }
+  }
 
-    const toDbValue = (v) => (v === undefined ? null : v);
+  let conn = null;
+  try {
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
 
-    await pool.query(
+    await conn.query(
       "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?)",
       [
-        id,
+        idAgenda,
         toDbValue(nombre),
         toDbValue(hora),
         toDbValue(fecha),
@@ -106,10 +137,27 @@ exports.actualizar = async (req, res) => {
       ]
     );
 
-    res.json({ ok: true });
+    const tratamientoSync = String(comentario ?? "").trim() || null;
+    await conn.query(
+      `UPDATE cola_paciente
+       SET tratamiento = ?, actualizadoEn = NOW()
+       WHERE agendaId = ?`,
+      [tratamientoSync, idAgenda]
+    );
 
+    await conn.commit();
+    return res.json({ ok: true });
   } catch (error) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch {
+        // noop
+      }
+    }
     return serverError(res, error, "Error al actualizar agenda");
+  } finally {
+    if (conn) conn.release();
   }
 };
 
