@@ -6,7 +6,7 @@
   - Tabla: `ui-table-wrap-compact` + `ui-table-compact`.
   - Acciones por fila: `ui-action-group` + `ui-action-btn` (icon-only).
 - Iconos (Heroicons inline) se obtienen desde `window.__uiIcons` (`frontend/js/uiIcons.js`), sin CDN.
-- No cambia la logica de negocio ni contratos de backend.
+- Incluye logica de reordenamiento manual persistente para pacientes en `En espera`.
 
 ## Frontend
 - Archivos:
@@ -25,7 +25,9 @@
 ## Flujo principal
 1. Al montar, carga datos del dia actual local (`YYYY-MM-DD`) via `GET /api/cola?fecha=...`.
 2. Auto refresh cada `15000 ms` (15s) con recarga silenciosa.
-3. Ordena mostrando primero `En espera` y luego `Atendido`, por `creadoEn` ascendente.
+3. Ordena mostrando primero `En espera` y luego `Atendido`:
+   - `En espera`: por `ordenCola` ascendente (fallback `creadoEn`).
+   - `Atendido`: por `creadoEn` ascendente.
 4. Permite filtrar por texto (nombre/tratamiento) y estado.
 5. Permite asignar doctor por fila (select) con datos cargados desde `/api/doctor/select`.
 6. Permite filtrar por doctor desde la barra superior.
@@ -35,12 +37,16 @@
    - Boton rapido icon-only:
      - `Atender` -> icono `check`
      - `Reabrir` -> icono `arrow-path`
-9. Permite eliminar fila individual y limpiezas masivas.
-10. Acciones icon-only por fila:
+9. Permite mover posicion de pacientes `En espera` con acciones por fila:
+   - `Subir en cola` -> icono `arrow-up`
+   - `Bajar en cola` -> icono `arrow-down`
+   - El movimiento aplica a la cola completa del dia (aunque haya filtros activos en UI).
+10. Permite eliminar fila individual y limpiezas masivas.
+11. Acciones icon-only por fila:
    - `Buscar` -> `magnifying-glass`
    - `Eliminar` -> `trash`
    - Todos los botones mantienen `title` y `aria-label`.
-11. Sonido de ingreso nuevo:
+12. Sonido de ingreso nuevo:
    - cuando `recargar()` detecta `idColaPaciente` nuevo respecto a la ultima carga, reproduce `bell.ogg`.
    - no suena en la primera carga de la vista (evita ruido inicial).
    - usa `window.playUiSound("bell", { minIntervalMs: 450 })`.
@@ -75,6 +81,9 @@
   - Controller: `cola.controller.actualizarEstado`
 - `PUT /api/cola/:id/doctor`
   - Controller: `cola.controller.actualizarDoctor`
+- `PUT /api/cola/:id/mover`
+  - Body: `{ "direccion": "up" | "down" }`
+  - Controller: `cola.controller.mover`
 - `DELETE /api/cola/:id`
   - Controller: `cola.controller.eliminar`
 - `DELETE /api/cola/atendidos?fecha=YYYY-MM-DD`
@@ -91,6 +100,11 @@
 - Normalizacion de estado:
   - Solo se persisten `En espera` o `Atendido`.
   - `actualizarEstado` rechaza valores fuera de esos estados (400).
+  - Al pasar `Atendido -> En espera`, intenta reinsertar en su `ordenCola` anterior.
+- Reordenamiento manual:
+  - `mover` permite solo registros con estado `En espera`.
+  - Movimiento es por vecinos inmediatos (swap) en la fecha del registro.
+  - En bordes (primero/ultimo) responde `ok` sin cambio (no-op).
 - Doctor en cola:
   - Campo `doctorId` nullable en `cola_paciente`.
   - Asignacion editable desde la vista En Cola.
@@ -107,11 +121,13 @@
 ## Base de datos
 - Script: `backend/sql/create_cola_paciente_table.sql`.
 - Migracion para instalaciones existentes: `backend/sql/alter_cola_paciente_add_doctor.sql`.
+- Migracion de orden manual: `backend/sql/alter_cola_paciente_add_orden_cola.sql`.
 - Tabla: `cola_paciente`.
 - Campos clave:
   - `idColaPaciente` (PK)
   - `agendaId` (nullable)
   - `doctorId` (nullable)
+  - `ordenCola` (INT, persistente)
   - `nombrePaciente`
   - `tratamiento`
   - `horaAgenda`
@@ -122,6 +138,7 @@
   - `creadoEn`, `actualizadoEn`
 - Indices:
   - `(fechaAgenda, estado)`
+  - `(fechaAgenda, estado, ordenCola)`
   - `(agendaId, estado)`
   - `(doctorId, estado)`
   - `(creadoEn)`

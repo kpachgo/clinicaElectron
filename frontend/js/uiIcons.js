@@ -14,6 +14,10 @@
         return svg('<path d="m5 13 4 4L19 7"></path>', className);
       case "arrow-path":
         return svg('<path d="M16 3h5v5"></path><path d="M21 8a9 9 0 1 0 2.64 6.36"></path>', className);
+      case "arrow-up":
+        return svg('<path d="m12 5-5 5"></path><path d="m12 5 5 5"></path><path d="M12 5v14"></path>', className);
+      case "arrow-down":
+        return svg('<path d="m12 19-5-5"></path><path d="m12 19 5-5"></path><path d="M12 19V5"></path>', className);
       case "trash":
         return svg('<path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m8 6 1 14h6l1-14"></path><path d="M10 10v7M14 10v7"></path>', className);
       case "plus":

@@ -41,6 +41,13 @@ router.put(
   controller.actualizarTratamiento
 );
 
+router.put(
+  "/:id/mover",
+  auth,
+  role(ROLES_COLA),
+  controller.mover
+);
+
 router.delete(
   "/atendidos",
   auth,

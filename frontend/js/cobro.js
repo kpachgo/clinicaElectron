@@ -6,6 +6,7 @@
   let totalDescuentoActual = 0;
   let reporteMensualActual = [];
   let reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+  let reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
   let reporteMensualFiltroActual = null;
   let reporteMensualFormaPagoActual = "";
   let faltantesCobroActual = [];
@@ -65,6 +66,39 @@
     const mm = String(ahora.getMonth() + 1).padStart(2, "0");
     const dd = String(ahora.getDate()).padStart(2, "0");
     return `${yyyy}-${mm}-${dd}`;
+  }
+  function shiftISODateByDays(iso, deltaDays) {
+    const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return "";
+    const yyyy = Number(match[1]);
+    const mm = Number(match[2]) - 1;
+    const dd = Number(match[3]);
+    const movedDate = new Date(Date.UTC(yyyy, mm, dd + Number(deltaDays || 0)));
+    const nextY = movedDate.getUTCFullYear();
+    const nextM = String(movedDate.getUTCMonth() + 1).padStart(2, "0");
+    const nextD = String(movedDate.getUTCDate()).padStart(2, "0");
+    return `${nextY}-${nextM}-${nextD}`;
+  }
+  function isEditingFocusableControl(el) {
+    if (!el || !(el instanceof HTMLElement)) return false;
+    if (el.isContentEditable) return true;
+
+    const tag = String(el.tagName || "").toUpperCase();
+    if (tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (tag !== "INPUT") return false;
+
+    const type = String(el.getAttribute("type") || "text").toLowerCase();
+    const nonTextTypes = new Set([
+      "button",
+      "checkbox",
+      "radio",
+      "submit",
+      "reset",
+      "range",
+      "file",
+      "color"
+    ]);
+    return !nonTextTypes.has(type);
   }
 
   function calcularMetricasDia(cuentas, totalDescuento) {
@@ -498,14 +532,14 @@
       <div class="cobro-modal-backdrop" data-cobro-modal-close="1"></div>
       <div class="cobro-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reporte-mensual-modal-title">
         <div class="cobro-modal-header">
-          <h3 id="reporte-mensual-modal-title">Reporte mensual por tratamiento</h3>
+          <h3 id="reporte-mensual-modal-title">Reporte mensual por pacientes</h3>
           <button id="btn-cerrar-reporte-mensual" class="btn-cobro-secondary" type="button">Cerrar</button>
         </div>
 
         <div class="cuenta-controls cobro-modal-controls">
           <input type="month" id="reporte-mensual-mes">
           <select id="reporte-mensual-servicio" class="cobro-forma-pago">
-            <option value="">Seleccione tratamiento</option>
+            <option value="">Todos los tratamientos</option>
           </select>
           <select id="reporte-mensual-forma-pago" class="cobro-forma-pago" aria-label="Filtrar por metodo de pago mensual">
             <option value="">Todos los metodos de pago</option>
@@ -540,6 +574,10 @@
             </div>
             <div id="reporte-mensual-total" class="cuenta-total-line total-final">
               <span>MONTO TOTAL MES:</span>
+              <strong>$0.00</strong>
+            </div>
+            <div id="reporte-mensual-total-global" class="cuenta-total-line total-final">
+              <span>MONTO GLOBAL MES (SIN FILTROS):</span>
               <strong>$0.00</strong>
             </div>
           </div>
@@ -633,6 +671,7 @@
     const reporteMensualPacientesBox = document.getElementById("reporte-mensual-pacientes");
     const reporteMensualCantidadBox = document.getElementById("reporte-mensual-cantidad");
     const reporteMensualTotalBox = document.getElementById("reporte-mensual-total");
+    const reporteMensualTotalGlobalBox = document.getElementById("reporte-mensual-total-global");
     const faltantesCobroModal = document.getElementById("faltantes-cobro-modal");
     const btnCerrarFaltantesCobro = document.getElementById("btn-cerrar-faltantes-cobro");
     const faltantesCobroFecha = document.getElementById("faltantes-cobro-fecha");
@@ -1609,7 +1648,7 @@
         selectReporteMensualServicio.innerHTML = "";
         const optTodos = document.createElement("option");
         optTodos.value = "";
-        optTodos.textContent = "Seleccione tratamiento";
+        optTodos.textContent = "Todos los tratamientos";
         selectReporteMensualServicio.appendChild(optTodos);
 
         json.data.forEach((s) => {
@@ -1637,7 +1676,7 @@
       }
     }
 
-    function renderReporteMensual(lista, totales) {
+    function renderReporteMensual(lista, totales, totalesGlobalMes) {
       tbodyReporteMensual.innerHTML = "";
       const rows = Array.isArray(lista) ? lista : [];
       const safeTotales = {
@@ -1645,11 +1684,16 @@
         cantidadTotalMes: Number(totales?.cantidadTotalMes || 0),
         montoTotalMes: Number(totales?.montoTotalMes || 0)
       };
+      const safeTotalesGlobal = {
+        pacientesUnicos: Number(totalesGlobalMes?.pacientesUnicos || 0),
+        cantidadTotalMes: Number(totalesGlobalMes?.cantidadTotalMes || 0),
+        montoTotalMes: Number(totalesGlobalMes?.montoTotalMes || 0)
+      };
 
       if (rows.length === 0) {
         tbodyReporteMensual.innerHTML = `
           <tr>
-            <td colspan="3" style="text-align:center;color:#64748b">No hay pacientes para el tratamiento y mes seleccionado</td>
+            <td colspan="3" style="text-align:center;color:#64748b">No hay pacientes para el filtro y mes seleccionado</td>
           </tr>
         `;
       } else {
@@ -1676,6 +1720,10 @@
       if (strongTotal) {
         strongTotal.textContent = precioUSD(safeTotales.montoTotalMes);
       }
+      const strongTotalGlobal = reporteMensualTotalGlobalBox?.querySelector("strong");
+      if (strongTotalGlobal) {
+        strongTotalGlobal.textContent = precioUSD(safeTotalesGlobal.montoTotalMes);
+      }
     }
 
     async function cargarReporteMensual() {
@@ -1684,20 +1732,26 @@
       const idServicio = String(selectReporteMensualServicio?.value || "").trim();
       const formaPago = String(selectReporteMensualFormaPago?.value || "").trim();
 
-      if (!mes || !idServicio) {
+      if (!mes) {
         invalidateRequest("reporteMensual");
         reporteMensualActual = [];
         reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+        reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
         reporteMensualFiltroActual = null;
         reporteMensualFormaPagoActual = "";
-        renderReporteMensual(reporteMensualActual, reporteMensualTotalesActual);
+        renderReporteMensual(
+          reporteMensualActual,
+          reporteMensualTotalesActual,
+          reporteMensualTotalesGlobalActual
+        );
         return;
       }
       const req = beginRequest("reporteMensual");
       const localSeq = req.seq;
 
       try {
-        const query = new URLSearchParams({ mes, idServicio });
+        const query = new URLSearchParams({ mes });
+        if (idServicio) query.set("idServicio", idServicio);
         if (formaPago) query.set("formaPago", formaPago);
 
         const res = await fetch(
@@ -1719,6 +1773,11 @@
           cantidadTotalMes: Number(json.totales?.cantidadTotalMes || 0),
           montoTotalMes: Number(json.totales?.montoTotalMes || 0)
         };
+        reporteMensualTotalesGlobalActual = {
+          pacientesUnicos: Number(json.totalesGlobalMes?.pacientesUnicos || 0),
+          cantidadTotalMes: Number(json.totalesGlobalMes?.cantidadTotalMes || 0),
+          montoTotalMes: Number(json.totalesGlobalMes?.montoTotalMes || 0)
+        };
 
         if (
           String(inputReporteMensualMes?.value || "").trim() !== mes ||
@@ -1727,7 +1786,11 @@
         ) {
           return;
         }
-        renderReporteMensual(reporteMensualActual, reporteMensualTotalesActual);
+        renderReporteMensual(
+          reporteMensualActual,
+          reporteMensualTotalesActual,
+          reporteMensualTotalesGlobalActual
+        );
       } catch (err) {
         if (isAbortError(err) || isStaleRequest("reporteMensual", localSeq)) return;
         console.error(err);
@@ -1951,8 +2014,10 @@
       try {
         const usuario = textoSeguro(document.getElementById("top-user-name")?.textContent) || "Usuario";
         const tratamientoFiltro = reporteMensualFiltroActual?.nombre
-          || selectReporteMensualServicio?.selectedOptions?.[0]?.textContent
-          || "Tratamiento no definido";
+          || (selectReporteMensualServicio?.value
+            ? (selectReporteMensualServicio?.selectedOptions?.[0]?.textContent || "")
+            : "Todos los tratamientos")
+          || "Todos los tratamientos";
         const metodoPagoFiltro = reporteMensualFormaPagoActual
           || (selectReporteMensualFormaPago?.value
             ? (selectReporteMensualFormaPago?.selectedOptions?.[0]?.textContent || "")
@@ -1975,7 +2040,7 @@
         y += 16;
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
-        doc.text("Reporte mensual por pacientes y tratamiento", marginX, y);
+        doc.text("Reporte mensual por pacientes", marginX, y);
         doc.text(`Mes: ${formatearMesCorto(mes)}`, marginX, y + 13);
         doc.text(`Tratamiento: ${textoSeguro(tratamientoFiltro)}`, marginX, y + 26);
         doc.text(`Metodo de pago: ${textoSeguro(metodoPagoFiltro || "Todos")}`, marginX, y + 39);
@@ -1997,7 +2062,8 @@
           body: [
             ["Pacientes unicos", String(Number(reporteMensualTotalesActual.pacientesUnicos || 0))],
             ["Cantidad total", String(Number(reporteMensualTotalesActual.cantidadTotalMes || 0))],
-            ["Monto total", precioUSD(Number(reporteMensualTotalesActual.montoTotalMes || 0))]
+            ["Monto total", precioUSD(Number(reporteMensualTotalesActual.montoTotalMes || 0))],
+            ["Monto global mes (sin filtros)", precioUSD(Number(reporteMensualTotalesGlobalActual.montoTotalMes || 0))]
           ],
           styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, overflow: "linebreak" },
           headStyles: { fillColor: [14, 165, 233], textColor: 255, fontStyle: "bold", fontSize: 8.2 }
@@ -2140,10 +2206,15 @@
               throw new Error(json.message || "No se pudo actualizar doctor");
             }
 
-            const fecha = document.getElementById("cuenta-date").value;
-            if (fecha) {
-              await cargarCuentasPorFecha(fecha);
+            c.idDoctorCuenta = idDoctor;
+            if (idDoctor === null) {
+              c.nombreDoctorCuenta = "";
+            } else {
+              const doc = doctoresCuentaData.find((d) => Number(d.idDoctor) === Number(idDoctor));
+              c.nombreDoctorCuenta = String(doc?.nombreD || "");
             }
+            selectDoctor.dataset.prevValue = seleccionado;
+            aplicarFiltroCuenta();
           } catch (err) {
             alert(err.message || "Error al asignar doctor");
             selectDoctor.value = previo;
@@ -2325,6 +2396,37 @@
       }
     });
 
+    const hayModalCobroAbierto = () => {
+      const hayMensualAbierto = !!(reporteMensualModal && !reporteMensualModal.hidden);
+      const hayFaltantesAbierto = !!(faltantesCobroModal && !faltantesCobroModal.hidden);
+      return hayMensualAbierto || hayFaltantesAbierto;
+    };
+    const moverFechaCobro = (deltaDays) => {
+      if (!isCobroViewActive()) return;
+      const fechaActual = String(inputFecha?.value || "").trim() || obtenerHoyLocalISO();
+      const fechaNueva = shiftISODateByDays(fechaActual, deltaDays);
+      if (!fechaNueva || fechaNueva === fechaActual) return;
+      inputFecha.value = fechaNueva;
+      inputFecha.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const onCobroDateShortcut = (e) => {
+      if (!isCobroViewActive()) return;
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (hayModalCobroAbierto()) return;
+
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl !== inputFecha && isEditingFocusableControl(activeEl)) return;
+
+      e.preventDefault();
+      moverFechaCobro(e.key === "ArrowLeft" ? -1 : 1);
+    };
+    if (window.__cobroDateNavKeydownHandler) {
+      document.removeEventListener("keydown", window.__cobroDateNavKeydownHandler);
+    }
+    window.__cobroDateNavKeydownHandler = onCobroDateShortcut;
+    document.addEventListener("keydown", onCobroDateShortcut);
+
     inputFecha.addEventListener("change", () => {
       if (!inputFecha.value) return;
       cargarCuentasPorFecha(inputFecha.value);
@@ -2430,6 +2532,7 @@
     totalDescuentoActual = 0;
     reporteMensualActual = [];
     reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+    reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
     reporteMensualFiltroActual = null;
     reporteMensualFormaPagoActual = "";
     faltantesCobroActual = [];
@@ -2441,6 +2544,11 @@
 
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
+        if (window.__cobroDateNavKeydownHandler) {
+          document.removeEventListener("keydown", window.__cobroDateNavKeydownHandler);
+          window.__cobroDateNavKeydownHandler = null;
+        }
+
         isDisposed = true;
         Object.keys(requestState).forEach((key) => invalidateRequest(key));
         isSavingCuenta = false;
@@ -2451,6 +2559,7 @@
         totalDescuentoActual = 0;
         reporteMensualActual = [];
         reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
+        reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
         reporteMensualFiltroActual = null;
         reporteMensualFormaPagoActual = "";
         faltantesCobroActual = [];
@@ -2519,6 +2628,7 @@
         const reporteMensualPacientes = document.getElementById("reporte-mensual-pacientes");
         const reporteMensualCantidad = document.getElementById("reporte-mensual-cantidad");
         const reporteMensualTotal = document.getElementById("reporte-mensual-total");
+        const reporteMensualTotalGlobal = document.getElementById("reporte-mensual-total-global");
         const faltantesCobroAtendidos = document.getElementById("faltantes-cobro-atendidos");
         const faltantesCobroCobrados = document.getElementById("faltantes-cobro-cobrados");
         const faltantesCobroTotal = document.getElementById("faltantes-cobro-total");
@@ -2561,6 +2671,10 @@
         }
         if (reporteMensualTotal) {
           const strong = reporteMensualTotal.querySelector("strong");
+          if (strong) strong.textContent = "$0.00";
+        }
+        if (reporteMensualTotalGlobal) {
+          const strong = reporteMensualTotalGlobal.querySelector("strong");
           if (strong) strong.textContent = "$0.00";
         }
         if (faltantesCobroAtendidos) faltantesCobroAtendidos.textContent = "0";

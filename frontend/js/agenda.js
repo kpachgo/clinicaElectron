@@ -26,6 +26,39 @@
     const d = String(now.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
+  function shiftISODateByDays(iso, deltaDays) {
+    const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return "";
+    const yyyy = Number(match[1]);
+    const mm = Number(match[2]) - 1;
+    const dd = Number(match[3]);
+    const movedDate = new Date(Date.UTC(yyyy, mm, dd + Number(deltaDays || 0)));
+    const nextY = movedDate.getUTCFullYear();
+    const nextM = String(movedDate.getUTCMonth() + 1).padStart(2, "0");
+    const nextD = String(movedDate.getUTCDate()).padStart(2, "0");
+    return `${nextY}-${nextM}-${nextD}`;
+  }
+  function isEditingFocusableControl(el) {
+    if (!el || !(el instanceof HTMLElement)) return false;
+    if (el.isContentEditable) return true;
+
+    const tag = String(el.tagName || "").toUpperCase();
+    if (tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (tag !== "INPUT") return false;
+
+    const type = String(el.getAttribute("type") || "text").toLowerCase();
+    const nonTextTypes = new Set([
+      "button",
+      "checkbox",
+      "radio",
+      "submit",
+      "reset",
+      "range",
+      "file",
+      "color"
+    ]);
+    return !nonTextTypes.has(type);
+  }
   function debounce(fn, delay = 350) {
     let timer;
     return (...args) => {
@@ -1118,6 +1151,34 @@
       }
     });
     // =============FECHA ACTUAL (FILTRO)===========
+    const isAgendaViewActive = () => !!container?.isConnected && window.currentView === "Agenda";
+    const isAgendaModalOpen = () => !!modal?.classList.contains("show");
+    const moverFechaAgenda = (deltaDays) => {
+      if (!isAgendaViewActive()) return;
+      const fechaActual = String(dateInput?.value || "").trim() || getLocalTodayISO();
+      const fechaNueva = shiftISODateByDays(fechaActual, deltaDays);
+      if (!fechaNueva || fechaNueva === fechaActual) return;
+      dateInput.value = fechaNueva;
+      dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const onAgendaDateShortcut = (e) => {
+      if (!isAgendaViewActive()) return;
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (isAgendaModalOpen()) return;
+
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl !== dateInput && isEditingFocusableControl(activeEl)) return;
+
+      e.preventDefault();
+      moverFechaAgenda(e.key === "ArrowLeft" ? -1 : 1);
+    };
+    if (window.__agendaDateNavKeydownHandler) {
+      document.removeEventListener("keydown", window.__agendaDateNavKeydownHandler);
+    }
+    window.__agendaDateNavKeydownHandler = onAgendaDateShortcut;
+    document.addEventListener("keydown", onAgendaDateShortcut);
+
     dateInput.value = getLocalTodayISO();
     actualizarUiReprogramacion();
     cargarAgendaPorFecha(dateInput.value);
@@ -1915,6 +1976,11 @@
 
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
+        if (window.__agendaDateNavKeydownHandler) {
+          document.removeEventListener("keydown", window.__agendaDateNavKeydownHandler);
+          window.__agendaDateNavKeydownHandler = null;
+        }
+
         if (agendaFetchController) {
           try {
             agendaFetchController.abort();

@@ -69,32 +69,31 @@
   - si no hay faltantes, muestra mensaje de lista vacia.
   - maneja error de red sin romper flujo de Cobro.
 
-## Reporte mensual por tratamiento (modal)
+## Reporte mensual por pacientes (modal)
 - El bloque mensual ya no se muestra directo en la vista principal de Cobro.
 - Se abre desde boton junto al reporte diario: `#btn-abrir-reporte-mensual`.
 - Contenedor modal: `#reporte-mensual-modal`.
 - Filtros en modal:
   - mes (`#reporte-mensual-mes`)
-  - tratamiento exacto (`#reporte-mensual-servicio`)
+  - tratamiento (`#reporte-mensual-servicio`) opcional; vacio = todos los tratamientos
   - metodo de pago (`#reporte-mensual-forma-pago`) opcional: `Efectivo`, `Tarjeta`, `IGS`, `Transferencia`
-  - `idServicio` es obligatorio para cargar datos.
 - Exportacion PDF mensual desde modal: `#btn-reporte-mensual-pdf`.
 
 ### Endpoints de reporte mensual
 - Resumen agregado por tratamiento:
   - `GET /api/cuenta/reporte-mensual?mes=YYYY-MM&idServicio=<opcional>`
 - Detalle por pacientes (endpoint usado por el modal):
-  - `GET /api/cuenta/reporte-mensual-pacientes?mes=YYYY-MM&idServicio=ID&formaPago=<opcional>`
+  - `GET /api/cuenta/reporte-mensual-pacientes?mes=YYYY-MM&idServicio=<opcional>&formaPago=<opcional>`
 
 ### Contrato de `GET /api/cuenta/reporte-mensual-pacientes`
 - Query requerida:
   - `mes` con formato `YYYY-MM`
-  - `idServicio` entero positivo
 - Query opcional:
+  - `idServicio` entero positivo
   - `formaPago` (`efectivo`, `tarjeta`, `igs`, `transferencia`)
 - Respuesta (`ok: true`):
   - `mes`
-  - `filtroServicio` (`idServicio`, `nombre`)
+  - `filtroServicio` (`idServicio`, `nombre`) o `null` (todos los tratamientos)
   - `filtroFormaPago` (`valor`) o `null`
   - `data`: lista por paciente con:
     - `idPaciente`
@@ -102,6 +101,10 @@
     - `cantidadPaciente` (suma de `detallecuenta.cantidadDC`)
     - `montoPaciente` (suma de `detallecuenta.subTotalDC`)
   - `totales`:
+    - `pacientesUnicos`
+    - `cantidadTotalMes`
+    - `montoTotalMes`
+  - `totalesGlobalMes` (sin filtros de tratamiento/forma de pago):
     - `pacientesUnicos`
     - `cantidadTotalMes`
     - `montoTotalMes`

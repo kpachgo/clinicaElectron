@@ -61,11 +61,14 @@
   function normalizarItem(raw) {
     const estadoRaw = String(raw?.estado || "");
     const estado = estadoRaw === ESTADO_ATENDIDO ? ESTADO_ATENDIDO : ESTADO_ESPERA;
+    const ordenRaw = Number(raw?.ordenCola || 0);
+    const ordenCola = Number.isInteger(ordenRaw) && ordenRaw > 0 ? ordenRaw : null;
     return {
       idColaPaciente: Number(raw?.idColaPaciente || 0),
       idPaciente: Number(raw?.idPaciente || 0) || null,
       agendaId: Number(raw?.agendaId || 0) || null,
       doctorId: Number(raw?.doctorId || 0) || null,
+      ordenCola,
       nombreDoctor: String(raw?.nombreDoctor || "").trim(),
       nombrePaciente: String(raw?.nombrePaciente || "").trim(),
       tratamiento: String(raw?.tratamiento || "").trim(),
@@ -76,6 +79,34 @@
       creadoEn: String(raw?.creadoEn || ""),
       actualizadoEn: String(raw?.actualizadoEn || "")
     };
+  }
+
+  function getDateTime(value) {
+    const ms = new Date(String(value || "")).getTime();
+    if (!Number.isFinite(ms)) return Number.MAX_SAFE_INTEGER;
+    return ms;
+  }
+
+  function compareColaItems(a, b) {
+    if (a.estado !== b.estado) {
+      return a.estado === ESTADO_ESPERA ? -1 : 1;
+    }
+
+    if (a.estado === ESTADO_ESPERA) {
+      const ordenA = Number.isInteger(a.ordenCola) && a.ordenCola > 0
+        ? a.ordenCola
+        : Number.MAX_SAFE_INTEGER;
+      const ordenB = Number.isInteger(b.ordenCola) && b.ordenCola > 0
+        ? b.ordenCola
+        : Number.MAX_SAFE_INTEGER;
+      if (ordenA !== ordenB) return ordenA - ordenB;
+    }
+
+    const createdA = getDateTime(a.creadoEn);
+    const createdB = getDateTime(b.creadoEn);
+    if (createdA !== createdB) return createdA - createdB;
+
+    return Number(a.idColaPaciente || 0) - Number(b.idColaPaciente || 0);
   }
 
   async function fetchJson(url, options = {}) {
@@ -174,6 +205,21 @@
     const id = Number(idColaPaciente || 0);
     if (!id) throw new Error("ID de cola invalido");
     await fetchJson(`/api/cola/${id}`, { method: "DELETE" });
+  }
+
+  async function apiMover(idColaPaciente, direccion) {
+    const id = Number(idColaPaciente || 0);
+    if (!id) throw new Error("ID de cola invalido");
+    const dir = String(direccion || "").trim().toLowerCase();
+    if (dir !== "up" && dir !== "down") {
+      throw new Error("Direccion invalida");
+    }
+    const json = await fetchJson(`/api/cola/${id}/mover`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direccion: dir })
+    });
+    return json.data ? normalizarItem(json.data) : null;
   }
 
   async function apiClearAtendidos(fechaISO) {
@@ -479,12 +525,17 @@
 
       const ordenada = colaData
         .slice()
-        .sort((a, b) => {
-          if (a.estado !== b.estado) {
-            return a.estado === ESTADO_ESPERA ? -1 : 1;
-          }
-          return new Date(a.creadoEn) - new Date(b.creadoEn);
-        });
+        .sort(compareColaItems);
+
+      const esperaIdsOrden = ordenada
+        .filter((item) => item.estado === ESTADO_ESPERA)
+        .map((item) => Number(item.idColaPaciente || 0))
+        .filter((id) => id > 0);
+      const posicionEsperaById = new Map();
+      esperaIdsOrden.forEach((id, idx) => {
+        posicionEsperaById.set(id, idx + 1);
+      });
+      const totalEnEsperaOrden = esperaIdsOrden.length;
 
       const filtrada = ordenada.filter((item) => {
         if (estadoSel && item.estado !== estadoSel) return false;
@@ -641,8 +692,10 @@
           aplicarColorDoctorSelect(selDoctor, selDoctor.value, false);
           selDoctor.disabled = true;
           try {
-            await apiSetDoctor(item.idColaPaciente, doctorId);
-            await recargar();
+            const updated = await apiSetDoctor(item.idColaPaciente, doctorId);
+            item.doctorId = updated?.doctorId ?? doctorId;
+            item.nombreDoctor = String(updated?.nombreDoctor || "").trim();
+            draw();
           } catch (err) {
             alert(err.message || "No se pudo asignar doctor");
             buildDoctorOptions(selDoctor, doctorPrevio);
@@ -694,6 +747,62 @@
         const tdAcciones = document.createElement("td");
         const actions = document.createElement("div");
         actions.className = "cola-actions ui-action-group";
+        const isEnEspera = item.estado === ESTADO_ESPERA;
+        const posicionEnEspera = Number(posicionEsperaById.get(item.idColaPaciente) || 0);
+        const puedeSubir = isEnEspera && posicionEnEspera > 1;
+        const puedeBajar = isEnEspera && posicionEnEspera > 0 && posicionEnEspera < totalEnEsperaOrden;
+
+        let isMovingPosicion = false;
+        const btnMoveUp = document.createElement("button");
+        const btnMoveDown = document.createElement("button");
+
+        function setMoveButtonsDisabled(disabled) {
+          btnMoveUp.disabled = !!disabled || !puedeSubir;
+          btnMoveDown.disabled = !!disabled || !puedeBajar;
+        }
+
+        if (isEnEspera) {
+          btnMoveUp.type = "button";
+          btnMoveUp.className = "ui-action-btn is-info cola-btn-move-up";
+          btnMoveUp.innerHTML = renderIcon("arrow-up");
+          btnMoveUp.title = "Subir en cola";
+          btnMoveUp.setAttribute("aria-label", "Subir en cola");
+
+          btnMoveDown.type = "button";
+          btnMoveDown.className = "ui-action-btn is-info cola-btn-move-down";
+          btnMoveDown.innerHTML = renderIcon("arrow-down");
+          btnMoveDown.title = "Bajar en cola";
+          btnMoveDown.setAttribute("aria-label", "Bajar en cola");
+
+          setMoveButtonsDisabled(false);
+
+          const moverPosicion = async (direccion) => {
+            if (isMovingPosicion || isDisposed) return;
+            isMovingPosicion = true;
+            setMoveButtonsDisabled(true);
+            try {
+              await apiMover(item.idColaPaciente, direccion);
+              await recargar();
+            } catch (err) {
+              alert(err.message || "No se pudo mover el paciente en la cola");
+            } finally {
+              isMovingPosicion = false;
+              if (btnMoveUp.isConnected && btnMoveDown.isConnected) {
+                setMoveButtonsDisabled(false);
+              }
+            }
+          };
+
+          btnMoveUp.addEventListener("click", () => {
+            if (!puedeSubir) return;
+            moverPosicion("up");
+          });
+
+          btnMoveDown.addEventListener("click", () => {
+            if (!puedeBajar) return;
+            moverPosicion("down");
+          });
+        }
 
         const btnToggle = document.createElement("button");
         btnToggle.type = "button";
@@ -787,6 +896,10 @@
           }
         });
 
+        if (isEnEspera) {
+          actions.appendChild(btnMoveUp);
+          actions.appendChild(btnMoveDown);
+        }
         actions.appendChild(btnBuscar);
         actions.appendChild(btnToggle);
         actions.appendChild(btnRemove);

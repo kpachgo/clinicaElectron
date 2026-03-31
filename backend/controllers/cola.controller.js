@@ -8,6 +8,7 @@ const SELECT_COLA_FIELDS = `
   c.agendaId,
   c.doctorId,
   d.nombreD AS nombreDoctor,
+  c.ordenCola,
   c.nombrePaciente,
   c.tratamiento,
   DATE_FORMAT(c.horaAgenda, '%H:%i') AS horaAgenda,
@@ -27,6 +28,19 @@ function normalizarEstado(value) {
   if (raw === "atendido") return ESTADO_ATENDIDO;
   if (raw === "en espera" || raw === "espera") return ESTADO_ESPERA;
   return "__INVALID__";
+}
+
+function normalizarDireccion(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "up") return "up";
+  if (raw === "down") return "down";
+  return "__INVALID__";
+}
+
+function normalizarOrdenCola(value) {
+  const num = Number(value);
+  if (!Number.isInteger(num) || num <= 0) return null;
+  return num;
 }
 
 function esFechaIsoReal(fechaIso) {
@@ -82,8 +96,8 @@ async function existeDoctorPorId(idDoctor) {
   return !!rows?.[0];
 }
 
-async function obtenerPorId(idColaPaciente) {
-  const [rows] = await pool.query(
+async function obtenerPorId(idColaPaciente, db = pool) {
+  const [rows] = await db.query(
     `SELECT
       ${SELECT_COLA_FIELDS}
      ${FROM_COLA_JOIN_DOCTOR}
@@ -92,6 +106,55 @@ async function obtenerPorId(idColaPaciente) {
     [idColaPaciente]
   );
   return rows?.[0] || null;
+}
+
+async function listarEnEsperaPorFechaForUpdate(conn, fechaAgenda, options = {}) {
+  const excludeId = Number(options?.excludeId || 0) || null;
+  const params = [ESTADO_ESPERA, fechaAgenda];
+  let whereExtra = "";
+  if (excludeId) {
+    whereExtra = " AND c.idColaPaciente <> ?";
+    params.push(excludeId);
+  }
+
+  const [rows] = await conn.query(
+    `SELECT
+      c.idColaPaciente,
+      c.ordenCola
+     FROM cola_paciente c
+     WHERE c.estado = ?
+       AND (c.fechaAgenda <=> ?)
+       ${whereExtra}
+     ORDER BY
+       COALESCE(c.ordenCola, 2147483647) ASC,
+       c.creadoEn ASC,
+       c.idColaPaciente ASC
+     FOR UPDATE`,
+    params
+  );
+
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function reindexarEnEsperaPorFecha(conn, fechaAgenda, options = {}) {
+  const rows = await listarEnEsperaPorFechaForUpdate(conn, fechaAgenda, options);
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const ordenEsperada = i + 1;
+    const ordenActual = normalizarOrdenCola(row?.ordenCola);
+    if (ordenActual === ordenEsperada) continue;
+    await conn.query(
+      `UPDATE cola_paciente
+       SET ordenCola = ?, actualizadoEn = NOW()
+       WHERE idColaPaciente = ?`,
+      [ordenEsperada, row.idColaPaciente]
+    );
+    row.ordenCola = ordenEsperada;
+  }
+  return rows.map((row, idx) => ({
+    idColaPaciente: Number(row.idColaPaciente || 0),
+    ordenCola: idx + 1
+  }));
 }
 
 exports.listar = async (req, res) => {
@@ -115,7 +178,9 @@ exports.listar = async (req, res) => {
        ${where}
        ORDER BY
          CASE WHEN c.estado = '${ESTADO_ESPERA}' THEN 0 ELSE 1 END,
-         c.creadoEn ASC`,
+         CASE WHEN c.estado = '${ESTADO_ESPERA}' THEN COALESCE(c.ordenCola, 2147483647) ELSE NULL END ASC,
+         c.creadoEn ASC,
+         c.idColaPaciente ASC`,
       params
     );
 
@@ -129,6 +194,7 @@ exports.listar = async (req, res) => {
 };
 
 exports.crear = async (req, res) => {
+  let conn = null;
   try {
     const nombrePaciente = String(req.body?.nombrePaciente || "").trim();
     if (!nombrePaciente) {
@@ -158,9 +224,12 @@ exports.crear = async (req, res) => {
       return badRequest(res, "Doctor no encontrado");
     }
 
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
     let duplicado = null;
     if (agendaId) {
-      const [rowsDup] = await pool.query(
+      const [rowsDup] = await conn.query(
         `SELECT
           ${SELECT_COLA_FIELDS}
          ${FROM_COLA_JOIN_DOCTOR}
@@ -172,7 +241,7 @@ exports.crear = async (req, res) => {
       );
       duplicado = rowsDup?.[0] || null;
     } else if (fechaAgendaISO) {
-      const [rowsDup] = await pool.query(
+      const [rowsDup] = await conn.query(
         `SELECT
           ${SELECT_COLA_FIELDS}
          ${FROM_COLA_JOIN_DOCTOR}
@@ -186,6 +255,7 @@ exports.crear = async (req, res) => {
     }
 
     if (duplicado) {
+      await conn.rollback();
       return res.json({
         ok: true,
         duplicated: true,
@@ -193,11 +263,23 @@ exports.crear = async (req, res) => {
       });
     }
 
+    const [rowsOrden] = await conn.query(
+      `SELECT COALESCE(MAX(c.ordenCola), 0) AS maxOrden
+       FROM cola_paciente c
+       WHERE c.estado = ?
+         AND (c.fechaAgenda <=> ?)
+       FOR UPDATE`,
+      [ESTADO_ESPERA, fechaAgendaISO]
+    );
+    const maxOrden = Number(rowsOrden?.[0]?.maxOrden || 0);
+    const siguienteOrden = maxOrden + 1;
+
     const creadoPorUsuarioId = Number(req.user?.idUsuario || 0) || null;
-    const [result] = await pool.query(
+    const [result] = await conn.query(
       `INSERT INTO cola_paciente (
         agendaId,
         doctorId,
+        ordenCola,
         nombrePaciente,
         tratamiento,
         horaAgenda,
@@ -205,10 +287,11 @@ exports.crear = async (req, res) => {
         contacto,
         estado,
         creadoPorUsuarioId
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         agendaId,
         doctorId,
+        siguienteOrden,
         nombrePaciente,
         tratamiento,
         horaAgenda,
@@ -218,6 +301,7 @@ exports.crear = async (req, res) => {
         creadoPorUsuarioId
       ]
     );
+    await conn.commit();
 
     const idColaPaciente = Number(result?.insertId || 0);
     const creado = idColaPaciente ? await obtenerPorId(idColaPaciente) : null;
@@ -228,11 +312,21 @@ exports.crear = async (req, res) => {
       data: creado
     });
   } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch {
+        // noop
+      }
+    }
     return serverError(res, err, "Error al crear registro en cola");
+  } finally {
+    if (conn) conn.release();
   }
 };
 
 exports.actualizarEstado = async (req, res) => {
+  let conn = null;
   try {
     const idColaPaciente = Number(req.params?.id || 0);
     if (!Number.isInteger(idColaPaciente) || idColaPaciente <= 0) {
@@ -244,16 +338,73 @@ exports.actualizarEstado = async (req, res) => {
       return badRequest(res, "Estado invalido. Use 'En espera' o 'Atendido'");
     }
 
-    const [result] = await pool.query(
-      `UPDATE cola_paciente
-       SET estado = ?, actualizadoEn = NOW()
-       WHERE idColaPaciente = ?`,
-      [estado, idColaPaciente]
-    );
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
 
-    if (!result?.affectedRows) {
+    const [rows] = await conn.query(
+      `SELECT
+        idColaPaciente,
+        estado,
+        fechaAgenda,
+        ordenCola
+       FROM cola_paciente
+       WHERE idColaPaciente = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [idColaPaciente]
+    );
+    const row = rows?.[0] || null;
+    if (!row) {
+      await conn.rollback();
       return notFound(res, "Registro de cola no encontrado");
     }
+
+    const estadoActual = normalizarEstado(row.estado);
+    if (estadoActual === estado) {
+      await conn.commit();
+      const same = await obtenerPorId(idColaPaciente);
+      return res.json({ ok: true, data: same });
+    }
+
+    if (estado === ESTADO_ATENDIDO) {
+      await conn.query(
+        `UPDATE cola_paciente
+         SET estado = ?, actualizadoEn = NOW()
+         WHERE idColaPaciente = ?`,
+        [ESTADO_ATENDIDO, idColaPaciente]
+      );
+    } else {
+      const fechaAgenda = row.fechaAgenda ?? null;
+      const esperaReindexada = await reindexarEnEsperaPorFecha(conn, fechaAgenda, {
+        excludeId: idColaPaciente
+      });
+      const maxOrden = esperaReindexada.length;
+      const ordenAnterior = normalizarOrdenCola(row.ordenCola);
+      const ordenObjetivo = ordenAnterior
+        ? Math.min(Math.max(ordenAnterior, 1), maxOrden + 1)
+        : maxOrden + 1;
+
+      await conn.query(
+        `UPDATE cola_paciente
+         SET ordenCola = ordenCola + 1,
+             actualizadoEn = NOW()
+         WHERE estado = ?
+           AND (fechaAgenda <=> ?)
+           AND idColaPaciente <> ?
+           AND ordenCola >= ?`,
+        [ESTADO_ESPERA, fechaAgenda, idColaPaciente, ordenObjetivo]
+      );
+
+      await conn.query(
+        `UPDATE cola_paciente
+         SET estado = ?,
+             ordenCola = ?,
+             actualizadoEn = NOW()
+         WHERE idColaPaciente = ?`,
+        [ESTADO_ESPERA, ordenObjetivo, idColaPaciente]
+      );
+    }
+    await conn.commit();
 
     const updated = await obtenerPorId(idColaPaciente);
     return res.json({
@@ -261,7 +412,107 @@ exports.actualizarEstado = async (req, res) => {
       data: updated
     });
   } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch {
+        // noop
+      }
+    }
     return serverError(res, err, "Error al actualizar estado de cola");
+  } finally {
+    if (conn) conn.release();
+  }
+};
+
+exports.mover = async (req, res) => {
+  let conn = null;
+  try {
+    const idColaPaciente = Number(req.params?.id || 0);
+    if (!Number.isInteger(idColaPaciente) || idColaPaciente <= 0) {
+      return badRequest(res, "ID invalido");
+    }
+
+    const direccion = normalizarDireccion(req.body?.direccion);
+    if (direccion === "__INVALID__") {
+      return badRequest(res, "Direccion invalida. Use 'up' o 'down'");
+    }
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT
+        idColaPaciente,
+        estado,
+        fechaAgenda
+       FROM cola_paciente
+       WHERE idColaPaciente = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [idColaPaciente]
+    );
+    const row = rows?.[0] || null;
+    if (!row) {
+      await conn.rollback();
+      return notFound(res, "Registro de cola no encontrado");
+    }
+
+    if (normalizarEstado(row.estado) !== ESTADO_ESPERA) {
+      await conn.rollback();
+      return badRequest(res, "Solo se pueden mover pacientes en espera");
+    }
+
+    const fechaAgenda = row.fechaAgenda ?? null;
+    const espera = await reindexarEnEsperaPorFecha(conn, fechaAgenda);
+    const idxActual = espera.findIndex((item) => item.idColaPaciente === idColaPaciente);
+    if (idxActual < 0) {
+      await conn.rollback();
+      return notFound(res, "Registro de cola no encontrado");
+    }
+
+    const idxVecino = direccion === "up" ? idxActual - 1 : idxActual + 1;
+    if (idxVecino < 0 || idxVecino >= espera.length) {
+      await conn.commit();
+      const same = await obtenerPorId(idColaPaciente);
+      return res.json({ ok: true, data: same });
+    }
+
+    const actual = espera[idxActual];
+    const vecino = espera[idxVecino];
+
+    await conn.query(
+      `UPDATE cola_paciente
+       SET ordenCola = ?, actualizadoEn = NOW()
+       WHERE idColaPaciente = ?`,
+      [vecino.ordenCola, actual.idColaPaciente]
+    );
+
+    await conn.query(
+      `UPDATE cola_paciente
+       SET ordenCola = ?, actualizadoEn = NOW()
+       WHERE idColaPaciente = ?`,
+      [actual.ordenCola, vecino.idColaPaciente]
+    );
+
+    await conn.commit();
+
+    const updated = await obtenerPorId(idColaPaciente);
+    return res.json({
+      ok: true,
+      data: updated
+    });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch {
+        // noop
+      }
+    }
+    return serverError(res, err, "Error al mover posicion en cola");
+  } finally {
+    if (conn) conn.release();
   }
 };
 

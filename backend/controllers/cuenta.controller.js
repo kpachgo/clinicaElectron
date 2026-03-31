@@ -36,6 +36,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const DETALLE_CUENTA_DOCTOR_COL_CACHE_TTL_MS = 5 * 60 * 1000;
+let detalleCuentaDoctorColCache = {
+  value: null,
+  checkedAt: 0
+};
+
 async function queryReadWithRetry(sql, params = [], options = {}) {
   const attempts = Number.isInteger(Number(options.attempts)) && Number(options.attempts) > 0
     ? Number(options.attempts)
@@ -59,6 +65,31 @@ async function queryReadWithRetry(sql, params = [], options = {}) {
   }
 
   throw lastError || new Error("Error desconocido en consulta de lectura");
+}
+
+async function hasDetalleCuentaDoctorCol(force = false) {
+  const now = Date.now();
+  if (!force && detalleCuentaDoctorColCache.value !== null) {
+    const age = now - Number(detalleCuentaDoctorColCache.checkedAt || 0);
+    if (age >= 0 && age < DETALLE_CUENTA_DOCTOR_COL_CACHE_TTL_MS) {
+      return !!detalleCuentaDoctorColCache.value;
+    }
+  }
+
+  const [colRows] = await queryReadWithRetry(
+    `SELECT COUNT(*) AS total
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'detallecuenta'
+       AND COLUMN_NAME = 'idDoctor'`
+  );
+
+  const hasCol = Number(colRows?.[0]?.total || 0) > 0;
+  detalleCuentaDoctorColCache = {
+    value: hasCol,
+    checkedAt: now
+  };
+  return hasCol;
 }
 
 function handleCuentaError(res, err, fallbackMessage) {
@@ -209,14 +240,7 @@ const actualizarDoctorCuenta = async (req, res) => {
       }
     }
 
-    const [colRows] = await queryReadWithRetry(
-      `SELECT COUNT(*) AS total
-       FROM INFORMATION_SCHEMA.COLUMNS
-       WHERE TABLE_SCHEMA = DATABASE()
-         AND TABLE_NAME = 'detallecuenta'
-         AND COLUMN_NAME = 'idDoctor'`
-    );
-    const hasDoctorCol = Number(colRows?.[0]?.total || 0) > 0;
+    const hasDoctorCol = await hasDetalleCuentaDoctorCol();
     if (!hasDoctorCol) {
       return badRequest(
         res,
@@ -318,18 +342,22 @@ const listarReporteMensualPacientes = async (req, res) => {
       return badRequest(res, "mes invalido (formato requerido: YYYY-MM)");
     }
 
-    const idServicio = Number(idServicioRaw);
-    if (!Number.isInteger(idServicio) || idServicio <= 0) {
-      return badRequest(res, "idServicio es requerido y debe ser entero positivo");
-    }
+    let idServicio = null;
+    let servicio = null;
+    if (idServicioRaw) {
+      idServicio = Number(idServicioRaw);
+      if (!Number.isInteger(idServicio) || idServicio <= 0) {
+        return badRequest(res, "idServicio invalido");
+      }
 
-    const [servicioRows] = await queryReadWithRetry(
-      "SELECT idServicio, nombreS FROM servicio WHERE idServicio = ? LIMIT 1",
-      [idServicio]
-    );
-    const servicio = Array.isArray(servicioRows) ? servicioRows[0] : null;
-    if (!servicio) {
-      return badRequest(res, "Servicio no encontrado");
+      const [servicioRows] = await queryReadWithRetry(
+        "SELECT idServicio, nombreS FROM servicio WHERE idServicio = ? LIMIT 1",
+        [idServicio]
+      );
+      servicio = Array.isArray(servicioRows) ? servicioRows[0] : null;
+      if (!servicio) {
+        return badRequest(res, "Servicio no encontrado");
+      }
     }
 
     const anio = Number(mesMatch[1]);
@@ -357,6 +385,17 @@ const listarReporteMensualPacientes = async (req, res) => {
       montoPaciente: Number(row.montoPaciente || 0)
     }));
 
+    const [rowsGlobal] = await queryReadWithRetry(
+      "CALL sp_cuenta_reporte_mensual_pacientes(?, ?, ?, ?)",
+      [anio, mesNumero, null, null]
+    );
+
+    const dataGlobal = firstResultSet(rowsGlobal).map((row) => ({
+      idPaciente: Number(row.idPaciente),
+      cantidadPaciente: Number(row.cantidadPaciente || 0),
+      montoPaciente: Number(row.montoPaciente || 0)
+    }));
+
     const totales = data.reduce(
       (acc, row) => {
         acc.cantidadTotalMes += Number(row.cantidadPaciente || 0);
@@ -366,18 +405,30 @@ const listarReporteMensualPacientes = async (req, res) => {
       { pacientesUnicos: data.length, cantidadTotalMes: 0, montoTotalMes: 0 }
     );
 
+    const totalesGlobalMes = dataGlobal.reduce(
+      (acc, row) => {
+        acc.cantidadTotalMes += Number(row.cantidadPaciente || 0);
+        acc.montoTotalMes += Number(row.montoPaciente || 0);
+        return acc;
+      },
+      { pacientesUnicos: dataGlobal.length, cantidadTotalMes: 0, montoTotalMes: 0 }
+    );
+
     res.json({
       ok: true,
       mes,
-      filtroServicio: {
-        idServicio: Number(servicio.idServicio),
-        nombre: String(servicio.nombreS || "")
-      },
+      filtroServicio: servicio
+        ? {
+            idServicio: Number(servicio.idServicio),
+            nombre: String(servicio.nombreS || "")
+          }
+        : null,
       filtroFormaPago: formaPago
         ? { valor: formaPago }
         : null,
       data,
-      totales
+      totales,
+      totalesGlobalMes
     });
   } catch (err) {
     return handleCuentaError(res, err, "Error al listar reporte mensual por pacientes");
