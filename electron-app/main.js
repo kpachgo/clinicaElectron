@@ -101,6 +101,22 @@ function getRuntimeDir() {
   return path.resolve(__dirname, "..");
 }
 
+function resolveWindowIconPath() {
+  if (process.platform !== "win32" && process.platform !== "linux") return null;
+
+  const candidates = [
+    path.join(__dirname, "incisoft.ico"),
+    path.join(path.resolve(__dirname, ".."), "incisoft.ico"),
+    path.join(process.resourcesPath || "", "incisoft.ico"),
+    path.join(process.resourcesPath || "", "runtime", "incisoft.ico")
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 function getNpmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
@@ -623,6 +639,11 @@ function createWindow() {
       nodeIntegration: false
     }
   };
+
+  const windowIcon = resolveWindowIconPath();
+  if (windowIcon) {
+    windowOptions.icon = windowIcon;
+  }
 
   if (process.platform === "win32" && ENABLE_CUSTOM_WINDOWS_TITLEBAR) {
     const palette = getTitleBarPalette("light");

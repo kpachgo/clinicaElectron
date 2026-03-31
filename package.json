@@ -68,11 +68,13 @@
       "output": "dist-electron"
     },
     "win": {
+      "icon": "incisoft.ico",
       "target": [
         "nsis"
       ]
     },
     "mac": {
+      "icon": "build/icons/incisoft.icns",
       "target": [
         "dmg",
         "zip"
@@ -88,7 +90,10 @@
     ],
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "installerIcon": "incisoft.ico",
+      "uninstallerIcon": "incisoft.ico"
     },
     "disableDefaultIgnoredFiles": true
   }
