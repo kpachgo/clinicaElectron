@@ -18,7 +18,9 @@
   background: var(--bg-white, #fff);
 }
 
-.agenda-toggle-numeracion {
+.agenda-toggle-numeracion,
+.agenda-toggle-sms,
+.agenda-toggle-llamada {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -30,7 +32,9 @@
   user-select: none;
 }
 
-.agenda-toggle-numeracion input[type="checkbox"] {
+.agenda-toggle-numeracion input[type="checkbox"],
+.agenda-toggle-sms input[type="checkbox"],
+.agenda-toggle-llamada input[type="checkbox"] {
   width: 14px;
   height: 14px;
   accent-color: #2563eb;
@@ -76,7 +80,7 @@
 
 /* tabla */
 .agenda-table {
-  min-width: 820px;
+  min-width: 940px;
   font-size: 12px;
 }
 
@@ -97,7 +101,85 @@
   color: var(--text-muted, #64748b);
 }
 
+.agenda-col-contacto {
+  width: 96px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.agenda-contacto-flags {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.agenda-contacto-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+  transition: filter 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.agenda-contacto-flag:hover {
+  filter: brightness(0.98);
+}
+
+.agenda-contacto-flag input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
+.agenda-contacto-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agenda-contacto-icon .agenda-action-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
+.agenda-contacto-flag.is-sms {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.agenda-contacto-flag.is-llamada {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+
+.agenda-contacto-flag input[type="checkbox"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .agenda-table.hide-numeracion .agenda-col-num {
+  display: none;
+}
+
+.agenda-table.hide-contactado .agenda-col-contacto {
+  display: none;
+}
+
+.agenda-table.hide-contacto-sms .agenda-contacto-flag.is-sms {
+  display: none;
+}
+
+.agenda-table.hide-contacto-llamada .agenda-contacto-flag.is-llamada {
   display: none;
 }
 
@@ -525,6 +607,26 @@
   color: #e2e8f0;
 }
 
-.dark-mode .agenda-toggle-numeracion {
+.dark-mode .agenda-toggle-numeracion,
+.dark-mode .agenda-toggle-sms,
+.dark-mode .agenda-toggle-llamada {
   color: #cbd5e1;
+}
+
+.dark-mode .agenda-contacto-flag {
+  background: rgba(15, 23, 42, 0.4);
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #e2e8f0;
+}
+
+.dark-mode .agenda-contacto-flag.is-sms {
+  background: rgba(30, 64, 175, 0.24);
+  border-color: rgba(96, 165, 250, 0.55);
+  color: #bfdbfe;
+}
+
+.dark-mode .agenda-contacto-flag.is-llamada {
+  background: rgba(21, 128, 61, 0.22);
+  border-color: rgba(74, 222, 128, 0.5);
+  color: #bbf7d0;
 }

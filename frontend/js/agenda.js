@@ -66,8 +66,58 @@
       timer = setTimeout(() => fn(...args), delay);
     };
   }
+  function getUiStateUserId() {
+    try {
+      const raw = sessionStorage.getItem("user");
+      if (!raw) return "anon";
+      const user = JSON.parse(raw);
+      const candidates = [
+        user?.idUsuario,
+        user?.idusuario,
+        user?.IDUsuario,
+        user?.IdUsuario,
+        user?.idUser,
+        user?.id
+      ];
+      for (const candidate of candidates) {
+        const num = Number(candidate);
+        if (Number.isInteger(num) && num > 0) return String(num);
+        const text = String(candidate ?? "").trim();
+        if (text) return text;
+      }
+    } catch {
+      // ignore invalid session payload
+    }
+    return "anon";
+  }
+  function loadSessionUiState(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  function saveSessionUiState(key, state) {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(state || {}));
+    } catch {
+      // ignore storage write errors
+    }
+  }
   function normalizarTexto(value) {
     return String(value || "").trim().toLowerCase();
+  }
+  function normalizarBanderaContacto(value) {
+    if (value === true) return true;
+    if (value === false) return false;
+    const num = Number(value);
+    if (num === 1) return true;
+    if (num === 0) return false;
+    const raw = String(value || "").trim().toLowerCase();
+    return raw === "1" || raw === "true" || raw === "si" || raw === "sí";
   }
   function isTokenChar(ch) {
     return /[A-Za-z0-9\u00C1\u00C9\u00CD\u00D3\u00DA\u00E1\u00E9\u00ED\u00F3\u00FA\u00D1\u00F1\u00DC\u00FC]/.test(String(ch || ""));
@@ -128,6 +178,10 @@
         return `<svg ${base}><path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0V4.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201V5.393m7.5 0a48.667 48.667 0 0 0-7.5 0"></path></svg>`;
       case "plus":
         return `<svg ${base}><path d="M12 4.5v15m7.5-7.5h-15"></path></svg>`;
+      case "chat-bubble-left-right":
+        return `<svg ${base}><path d="M2.25 12c0-4.97 4.03-9 9-9h1.5c4.97 0 9 4.03 9 9s-4.03 9-9 9h-3.25l-3.5 2v-2.7A8.95 8.95 0 0 1 2.25 12Z"></path><path d="M8.25 12h.008v.008H8.25V12Zm3.75 0h.008v.008H12V12Zm3.75 0h.008v.008H15.75V12Z"></path></svg>`;
+      case "phone":
+        return `<svg ${base}><path d="M2.25 4.5a1.5 1.5 0 0 1 1.5-1.5h2.6a1.5 1.5 0 0 1 1.48 1.26l.41 2.46a1.5 1.5 0 0 1-.43 1.31l-1.2 1.2a13.5 13.5 0 0 0 6.16 6.16l1.2-1.2a1.5 1.5 0 0 1 1.31-.43l2.46.41A1.5 1.5 0 0 1 21 17.65v2.6a1.5 1.5 0 0 1-1.5 1.5h-.75C9.94 21.75 2.25 14.06 2.25 4.5v0Z"></path></svg>`;
       default:
         return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path></svg>`;
     }
@@ -420,7 +474,9 @@
       _fechaISO: anclarFechaSeleccionada ? String(fechaFallbackISO || "") : fechaRenderISO,
       contacto: item.contactoAP,
       estado: item.estadoAP || "Pendiente",
-      comentario: item.comentarioAP
+      comentario: item.comentarioAP,
+      sms: normalizarBanderaContacto(item.smsAP),
+      llamada: normalizarBanderaContacto(item.llamadaAP)
     };
   }
   // =======CARGAR AGENDA DESDE BACKEND (FASE 1)================
@@ -442,8 +498,18 @@
             <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
 
             <label class="agenda-toggle-numeracion" for="agenda-toggle-numeracion">
-              <input type="checkbox" id="agenda-toggle-numeracion" checked>
+              <input type="checkbox" id="agenda-toggle-numeracion">
               Numeracion
+            </label>
+
+            <label class="agenda-toggle-sms" for="agenda-toggle-sms">
+              <input type="checkbox" id="agenda-toggle-sms">
+              SMS
+            </label>
+
+            <label class="agenda-toggle-llamada" for="agenda-toggle-llamada">
+              <input type="checkbox" id="agenda-toggle-llamada">
+              Llamada
             </label>
 
             <input type="date" id="agenda-date">
@@ -472,6 +538,14 @@
               <option value="No contesta">No contesta</option>
               <option value="IGS">IGS</option>
             </select>
+
+            <select id="agenda-filter-contacto" class="filter-estado">
+              <option value="">Contacto: Todos</option>
+              <option value="none">Sin contacto</option>
+              <option value="sms">Con SMS</option>
+              <option value="llamada">Con Llamada</option>
+              <option value="both">Con ambos</option>
+            </select>
           </div>
         </div>
 
@@ -480,6 +554,7 @@
             <thead>
               <tr>
                 <th hidden>IdAgendaAP</th>
+                <th class="agenda-col-contacto">Contactado</th>
                 <th class="agenda-col-num">#</th>
                 <th>Nombre</th>
                 <th>Hora</th>
@@ -578,7 +653,10 @@
     const dateInput = container.querySelector("#agenda-date");
     const searchInput = container.querySelector("#agenda-search");
     const estadoFilter = container.querySelector("#agenda-filter-estado");
+    const contactoFilter = container.querySelector("#agenda-filter-contacto");
     const toggleNumeracionAgenda = container.querySelector("#agenda-toggle-numeracion");
+    const toggleSmsAgenda = container.querySelector("#agenda-toggle-sms");
+    const toggleLlamadaAgenda = container.querySelector("#agenda-toggle-llamada");
     let pasteCitaBtn = container.querySelector("#agenda-paste-cita");
     let clearReprogramaBtn = container.querySelector("#agenda-clear-reprograma");
     const reprogramaStatusEl = container.querySelector("#agenda-reprograma-status");
@@ -586,23 +664,78 @@
     let agendaModalDesdeReprogramacion = false;
     let agendaMesResultados = null;
     let agendaMesBusquedaToken = 0;
+    const agendaContactoSaveInFlight = new Set();
+    const agendaUiStateKey = `ui_state_agenda_${getUiStateUserId()}`;
+    const agendaUiState = {
+      numeracion: false,
+      sms: false,
+      llamada: false,
+      search: "",
+      estado: "",
+      contacto: "",
+      ...loadSessionUiState(agendaUiStateKey)
+    };
+    const getSelectSafeValue = (selectEl, value) => {
+      if (!selectEl) return "";
+      const target = String(value || "").trim();
+      const exists = Array.from(selectEl.options || []).some((opt) => opt.value === target);
+      return exists ? target : "";
+    };
+    const getAgendaUiStateSnapshot = () => ({
+      numeracion: !!toggleNumeracionAgenda?.checked,
+      sms: !!toggleSmsAgenda?.checked,
+      llamada: !!toggleLlamadaAgenda?.checked,
+      search: String(searchInput?.value || ""),
+      estado: String(estadoFilter?.value || ""),
+      contacto: String(contactoFilter?.value || "")
+    });
+    const persistAgendaUiState = () => {
+      saveSessionUiState(agendaUiStateKey, getAgendaUiStateSnapshot());
+    };
+    if (toggleNumeracionAgenda) {
+      toggleNumeracionAgenda.checked = !!agendaUiState.numeracion;
+    }
+    if (toggleSmsAgenda) {
+      toggleSmsAgenda.checked = !!agendaUiState.sms;
+    }
+    if (toggleLlamadaAgenda) {
+      toggleLlamadaAgenda.checked = !!agendaUiState.llamada;
+    }
+    if (searchInput) {
+      searchInput.value = String(agendaUiState.search || "");
+    }
+    if (estadoFilter) {
+      estadoFilter.value = getSelectSafeValue(estadoFilter, agendaUiState.estado);
+    }
+    if (contactoFilter) {
+      contactoFilter.value = getSelectSafeValue(contactoFilter, agendaUiState.contacto);
+    }
+    const shouldPreserveAgendaSearch = String(searchInput?.value || "").trim() !== "";
     if (searchInput) {
       searchInput.setAttribute("name", `agenda-search-${Date.now()}`);
-      searchInput.value = "";
+      if (!shouldPreserveAgendaSearch) {
+        searchInput.value = "";
+      }
       // Evita autofill agresivo del navegador al recargar (F5).
       searchInput.readOnly = true;
       setTimeout(() => {
         if (!searchInput.isConnected) return;
         searchInput.readOnly = false;
-        searchInput.value = "";
+        if (!shouldPreserveAgendaSearch) {
+          searchInput.value = "";
+        }
       }, 80);
       setTimeout(() => {
         if (!searchInput.isConnected) return;
-        searchInput.value = "";
+        if (!shouldPreserveAgendaSearch) {
+          searchInput.value = "";
+        }
       }, 350);
       setTimeout(() => {
         if (!searchInput.isConnected) return;
-        searchInput.value = "";
+        if (!shouldPreserveAgendaSearch) {
+          searchInput.value = "";
+        }
       }, 1200);
     }
     function numeracionAgendaActiva() {
@@ -612,6 +745,23 @@
     function aplicarVisibilidadNumeracionAgenda() {
       if (!agendaTable) return;
       agendaTable.classList.toggle("hide-numeracion", !numeracionAgendaActiva());
+    }
+
+    function smsAgendaActivo() {
+      return !!toggleSmsAgenda?.checked;
+    }
+
+    function llamadaAgendaActiva() {
+      return !!toggleLlamadaAgenda?.checked;
+    }
+
+    function aplicarVisibilidadContactadoAgenda() {
+      if (!agendaTable) return;
+      const smsVisible = smsAgendaActivo();
+      const llamadaVisible = llamadaAgendaActiva();
+      agendaTable.classList.toggle("hide-contacto-sms", !smsVisible);
+      agendaTable.classList.toggle("hide-contacto-llamada", !llamadaVisible);
+      agendaTable.classList.toggle("hide-contactado", !smsVisible && !llamadaVisible);
     }
     let regBtn = container.querySelector("#agenda-register");
     const regBtnSafe = regBtn.cloneNode(true);
@@ -1112,7 +1262,9 @@
             fecha: fechaISO,
             contacto,
             estado: estadoValue,
-            comentario
+            comentario,
+            sms: 0,
+            llamada: 0
           })
         });
 
@@ -1131,7 +1283,9 @@
           _fechaISO: fechaISO,
           contacto,
           estado: estadoValue,
-          comentario
+          comentario,
+          sms: false,
+          llamada: false
         });
 
         aplicarFiltros();
@@ -1338,15 +1492,117 @@
 
       input.addEventListener("blur", save);
     }
+
+    async function guardarMarcasContacto(item, patch = {}) {
+      const idAgenda = Number(item?.idAgendaAP || 0);
+      if (!Number.isInteger(idAgenda) || idAgenda <= 0) {
+        alert("No se pudo identificar la cita para guardar contacto");
+        aplicarFiltros({ dispararFallback: false });
+        return;
+      }
+      if (agendaContactoSaveInFlight.has(idAgenda)) {
+        aplicarFiltros({ dispararFallback: false });
+        return;
+      }
+
+      const prevSms = !!item.sms;
+      const prevLlamada = !!item.llamada;
+      const nextSms = patch.sms === undefined ? prevSms : !!patch.sms;
+      const nextLlamada = patch.llamada === undefined ? prevLlamada : !!patch.llamada;
+
+      item.sms = nextSms;
+      item.llamada = nextLlamada;
+      agendaContactoSaveInFlight.add(idAgenda);
+      aplicarFiltros({ dispararFallback: false });
+
+      try {
+        const res = await fetch(`/api/agenda/${idAgenda}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sms: nextSms ? 1 : 0,
+            llamada: nextLlamada ? 1 : 0
+          })
+        });
+
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "No se pudo guardar el contacto");
+        }
+      } catch (err) {
+        item.sms = prevSms;
+        item.llamada = prevLlamada;
+        alert(err?.message || "No se pudo guardar el contacto");
+      } finally {
+        agendaContactoSaveInFlight.delete(idAgenda);
+        aplicarFiltros({ dispararFallback: false });
+      }
+    }
     // =========================================
     // DIBUJAR TABLA
     // =========================================
     function drawRows(list) {
       tbody.innerHTML = "";
       aplicarVisibilidadNumeracionAgenda();
+      aplicarVisibilidadContactadoAgenda();
 
       list.forEach((item, index) => {
         const tr = document.createElement("tr");
+
+        // Contacto (SMS / Llamada)
+        const tdContactoMarcadores = document.createElement("td");
+        tdContactoMarcadores.className = "agenda-col-contacto";
+
+        const contactoWrap = document.createElement("div");
+        contactoWrap.className = "agenda-contacto-flags";
+
+        const flagSms = document.createElement("label");
+        flagSms.className = "agenda-contacto-flag is-sms";
+        flagSms.title = "SMS";
+
+        const smsInput = document.createElement("input");
+        smsInput.type = "checkbox";
+        smsInput.checked = !!item.sms;
+        smsInput.setAttribute("aria-label", "Marcar SMS enviado");
+
+        const smsIcon = document.createElement("span");
+        smsIcon.className = "agenda-contacto-icon";
+        smsIcon.innerHTML = getAgendaHeroIcon("chat-bubble-left-right");
+
+        flagSms.appendChild(smsInput);
+        flagSms.appendChild(smsIcon);
+
+        const flagLlamada = document.createElement("label");
+        flagLlamada.className = "agenda-contacto-flag is-llamada";
+        flagLlamada.title = "Llamada";
+
+        const llamadaInput = document.createElement("input");
+        llamadaInput.type = "checkbox";
+        llamadaInput.checked = !!item.llamada;
+        llamadaInput.setAttribute("aria-label", "Marcar llamada realizada");
+
+        const llamadaIcon = document.createElement("span");
+        llamadaIcon.className = "agenda-contacto-icon";
+        llamadaIcon.innerHTML = getAgendaHeroIcon("phone");
+
+        flagLlamada.appendChild(llamadaInput);
+        flagLlamada.appendChild(llamadaIcon);
+
+        const savingContacto = agendaContactoSaveInFlight.has(Number(item.idAgendaAP || 0));
+        smsInput.disabled = savingContacto;
+        llamadaInput.disabled = savingContacto;
+
+        smsInput.addEventListener("change", () => {
+          guardarMarcasContacto(item, { sms: smsInput.checked });
+        });
+        llamadaInput.addEventListener("change", () => {
+          guardarMarcasContacto(item, { llamada: llamadaInput.checked });
+        });
+
+        contactoWrap.appendChild(flagSms);
+        contactoWrap.appendChild(flagLlamada);
+        tdContactoMarcadores.appendChild(contactoWrap);
+        tr.appendChild(tdContactoMarcadores);
 
         // Numeracion
         const tdNum = document.createElement("td");
@@ -1556,7 +1812,9 @@
                   fecha: fechaHoyISO,
                   contacto: contactoAgenda,
                   estado: estadoAgenda,
-                  comentario: comentarioAgenda
+                  comentario: comentarioAgenda,
+                  sms: item.sms ? 1 : 0,
+                  llamada: item.llamada ? 1 : 0
                 })
               });
               const jsonCrearAgendaHoy = await resCrearAgendaHoy.json();
@@ -1585,7 +1843,9 @@
                   _fechaISO: fechaHoyISO,
                   contacto: contactoAgenda,
                   estado: estadoAgenda,
-                  comentario: comentarioAgenda
+                  comentario: comentarioAgenda,
+                  sms: !!item.sms,
+                  llamada: !!item.llamada
                 });
               }
               aplicarFiltros();
@@ -1871,6 +2131,7 @@
       let lista = listaBase.slice();
       const texto = (searchInput.value || "").trim().toLowerCase();
       const estadoSel = estadoFilter.value;
+      const contactoSel = String(contactoFilter?.value || "").trim().toLowerCase();
       const fechaISO = dateInput.value;
 
       if (usarFechaExacta && fechaISO !== "") {
@@ -1889,6 +2150,19 @@
         lista = lista.filter(item =>
           String(item.estado || "").toLowerCase() === estadoSel.toLowerCase()
         );
+      }
+
+      if (contactoSel !== "") {
+        lista = lista.filter((item) => {
+          const hasSms = !!item.sms;
+          const hasLlamada = !!item.llamada;
+
+          if (contactoSel === "none") return !hasSms && !hasLlamada;
+          if (contactoSel === "sms") return hasSms && !hasLlamada;
+          if (contactoSel === "llamada") return hasLlamada && !hasSms;
+          if (contactoSel === "both") return hasSms && hasLlamada;
+          return true;
+        });
       }
 
       lista.sort((a, b) => {
@@ -1968,10 +2242,31 @@
       agendaMesResultados = null;
       agendaMesBusquedaToken++;
       aplicarFiltros();
+      persistAgendaUiState();
     });
-    estadoFilter.addEventListener("change", aplicarFiltros);
-    toggleNumeracionAgenda?.addEventListener("change", aplicarVisibilidadNumeracionAgenda);
+    estadoFilter.addEventListener("change", () => {
+      aplicarFiltros();
+      persistAgendaUiState();
+    });
+    contactoFilter?.addEventListener("change", () => {
+      aplicarFiltros();
+      persistAgendaUiState();
+    });
+    toggleNumeracionAgenda?.addEventListener("change", () => {
+      aplicarVisibilidadNumeracionAgenda();
+      persistAgendaUiState();
+    });
+    toggleSmsAgenda?.addEventListener("change", () => {
+      aplicarVisibilidadContactadoAgenda();
+      persistAgendaUiState();
+    });
+    toggleLlamadaAgenda?.addEventListener("change", () => {
+      aplicarVisibilidadContactadoAgenda();
+      persistAgendaUiState();
+    });
     aplicarVisibilidadNumeracionAgenda();
+    aplicarVisibilidadContactadoAgenda();
+    persistAgendaUiState();
     drawRows(agendaData);
 
     if (window.__setViewCleanup) {

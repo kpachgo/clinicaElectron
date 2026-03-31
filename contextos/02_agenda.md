@@ -4,8 +4,9 @@
 - Archivo: `frontend/js/agenda.js`.
 - Estilos clave: `frontend/css/agenda.css`.
 - Render principal: tabla de agenda con filtros por fecha, texto y estado.
-- Columnas: `#` (numeracion), Nombre, Hora, Fecha, Contacto, Estado, Comentario, Acciones.
-- Control adicional: toggle `Numeracion` para mostrar/ocultar la columna `#`.
+- Columnas: `Contactado` (SMS/Llamada), `#` (numeracion), Nombre, Hora, Fecha, Contacto (telefono), Estado, Comentario, Acciones.
+- Control adicional: toggle `Numeracion` para mostrar/ocultar la columna `#` (inicia desmarcado).
+- Filtro adicional: `Contacto` (`Todos`, `Sin contacto`, `Con SMS`, `Con Llamada`, `Con ambos`).
 - Modal `Registrar Cita`:
   - campos: `Nombre`, `Hora`, `Fecha`, `Contacto`, `Estado`, `Comentario`.
   - autocomplete de pacientes en `Nombre`.
@@ -23,14 +24,16 @@
 3. Si texto no encuentra resultados locales del dia, hace fallback a busqueda mensual backend.
 4. Soporta crear cita desde modal.
 5. Soporta editar inline (nombre, hora, fecha, contacto, estado, comentario).
-6. En modal de Agenda, `Comentario` permite texto libre + sugerencias de servicios (`nombreS`) via autocomplete.
-7. La sugerencia se inserta/reemplaza solo en el token actual (cursor o seleccion), permitiendo mezclar texto libre en cualquier parte.
-8. El autocomplete de comentario usa debounce (`250ms`) y token de busqueda para descartar respuestas viejas.
-9. Al hacer click en una sugerencia se usa snapshot de rango (`start/end`) para evitar inserciones en posicion incorrecta.
-10. Reprogramacion asistida: desde accion `Copiar para reprogramar` (`document-duplicate`) copia nombre/contacto/comentario/hora a un buffer temporal.
-11. Boton `Pegar Cita` abre modal con datos copiados y fecha destino tomada del datepicker actual.
-12. Boton `Cancelar` limpia el buffer de reprogramacion.
-13. Al salir de la vista Agenda (`__setViewCleanup`) se limpia buffer y estado del modal para evitar residuos entre vistas.
+6. Soporta marcar por fila contacto `SMS` y `Llamada` con checkboxes persistidos en BD.
+7. Al cambiar marca de contacto, aplica UI optimista + rollback si falla `PUT /api/agenda/:id`.
+8. En modal de Agenda, `Comentario` permite texto libre + sugerencias de servicios (`nombreS`) via autocomplete.
+9. La sugerencia se inserta/reemplaza solo en el token actual (cursor o seleccion), permitiendo mezclar texto libre en cualquier parte.
+10. El autocomplete de comentario usa debounce (`250ms`) y token de busqueda para descartar respuestas viejas.
+11. Al hacer click en una sugerencia se usa snapshot de rango (`start/end`) para evitar inserciones en posicion incorrecta.
+12. Reprogramacion asistida: desde accion `Copiar para reprogramar` (`document-duplicate`) copia nombre/contacto/comentario/hora a un buffer temporal.
+13. Boton `Pegar Cita` abre modal con datos copiados y fecha destino tomada del datepicker actual.
+14. Boton `Cancelar` limpia el buffer de reprogramacion.
+15. Al salir de la vista Agenda (`__setViewCleanup`) se limpia buffer y estado del modal para evitar residuos entre vistas.
 
 ## Integraciones entre vistas
 - Agenda -> Cobro:
@@ -81,6 +84,8 @@
 - `PUT /api/agenda/:id`
   - Controller: `agenda.controller.actualizar`
   - SP: `sp_agenda_update`
+- Contrato adicional en `POST/PUT`: banderas `sms` y `llamada` (0/1 o boolean).
+- `GET` de agenda retorna `smsAP` y `llamadaAP` para render/filtros en frontend.
 - `DELETE /api/agenda/:id`
   - Controller: `agenda.controller.eliminar`
   - SP: `sp_agenda_delete`

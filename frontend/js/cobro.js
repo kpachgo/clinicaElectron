@@ -151,6 +151,47 @@
       timer = setTimeout(() => fn(...args), delay);
     };
   }
+  function getUiStateUserId() {
+    try {
+      const raw = sessionStorage.getItem("user");
+      if (!raw) return "anon";
+      const user = JSON.parse(raw);
+      const candidates = [
+        user?.idUsuario,
+        user?.idusuario,
+        user?.IDUsuario,
+        user?.IdUsuario,
+        user?.idUser,
+        user?.id
+      ];
+      for (const candidate of candidates) {
+        const num = Number(candidate);
+        if (Number.isInteger(num) && num > 0) return String(num);
+        const text = String(candidate ?? "").trim();
+        if (text) return text;
+      }
+    } catch {
+      // ignore invalid session payload
+    }
+    return "anon";
+  }
+  function loadSessionUiState(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  function saveSessionUiState(key, state) {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(state || {}));
+    } catch {
+      // ignore storage write errors
+    }
+  }
 
   function claseFormaPago(formaPago) {
     const f = String(formaPago || "").trim().toLowerCase();
@@ -710,6 +751,52 @@
       reporteMensual: { seq: 0, controller: null },
       faltantes: { seq: 0, controller: null }
     };
+    const cobroUiStateKey = `ui_state_cobro_${getUiStateUserId()}`;
+    const cobroUiState = {
+      numeracion: false,
+      doctor: false,
+      search: "",
+      doctorFilter: "",
+      formaPagoFilter: "",
+      ...loadSessionUiState(cobroUiStateKey)
+    };
+    const getSelectSafeValue = (selectEl, value) => {
+      if (!selectEl) return "";
+      const target = String(value || "").trim();
+      const exists = Array.from(selectEl.options || []).some((opt) => opt.value === target);
+      return exists ? target : "";
+    };
+    const getCobroUiStateSnapshot = () => ({
+      numeracion: !!toggleNumeracionCuentas?.checked,
+      doctor: !!toggleDoctorCuentas?.checked,
+      search: String(cuentaSearch?.value || ""),
+      doctorFilter: String(cuentaDoctorFilter?.dataset?.persistedValue || cuentaDoctorFilter?.value || ""),
+      formaPagoFilter: String(cuentaFormaPagoFilter?.value || "")
+    });
+    const persistCobroUiState = () => {
+      saveSessionUiState(cobroUiStateKey, getCobroUiStateSnapshot());
+    };
+    if (toggleNumeracionCuentas) {
+      toggleNumeracionCuentas.checked = !!cobroUiState.numeracion;
+    }
+    if (toggleDoctorCuentas) {
+      toggleDoctorCuentas.checked = !!cobroUiState.doctor;
+    }
+    if (cuentaSearch) {
+      cuentaSearch.value = String(cobroUiState.search || "");
+    }
+    if (cuentaFormaPagoFilter) {
+      cuentaFormaPagoFilter.value = getSelectSafeValue(cuentaFormaPagoFilter, cobroUiState.formaPagoFilter);
+    }
+    if (cuentaDoctorFilter) {
+      const doctorFilterSaved = String(cobroUiState.doctorFilter || "").trim();
+      const doctorFilterNow = getSelectSafeValue(cuentaDoctorFilter, doctorFilterSaved);
+      cuentaDoctorFilter.value = doctorFilterNow;
+      if (doctorFilterSaved && !doctorFilterNow) {
+        cuentaDoctorFilter.dataset.persistedValue = doctorFilterSaved;
+      }
+    }
+    const shouldPreserveCuentaSearch = String(cuentaSearch?.value || "").trim() !== "";
 
     function isAbortError(err) {
       return String(err?.name || "") === "AbortError";
@@ -1011,30 +1098,39 @@
       }
     }
 
-    function blindarInputAutofill(inputEl, nameBase) {
+    function blindarInputAutofill(inputEl, nameBase, options = {}) {
       if (!inputEl) return;
+      const preserveValue = options?.preserveValue === true;
       inputEl.setAttribute("name", `${nameBase}-${Date.now()}`);
-      inputEl.value = "";
+      if (!preserveValue) {
+        inputEl.value = "";
+      }
       // Evita autofill agresivo del navegador al recargar (F5).
       inputEl.readOnly = true;
       setTimeout(() => {
         if (!inputEl.isConnected) return;
         inputEl.readOnly = false;
-        inputEl.value = "";
+        if (!preserveValue) {
+          inputEl.value = "";
+        }
       }, 80);
       setTimeout(() => {
         if (!inputEl.isConnected) return;
-        inputEl.value = "";
+        if (!preserveValue) {
+          inputEl.value = "";
+        }
       }, 350);
       setTimeout(() => {
         if (!inputEl.isConnected) return;
-        inputEl.value = "";
+        if (!preserveValue) {
+          inputEl.value = "";
+        }
       }, 1200);
     }
 
     blindarInputAutofill(inputPaciente, "cobro-paciente-search");
     blindarInputAutofill(inputServicio, "cobro-servicio-search");
-    blindarInputAutofill(cuentaSearch, "cobro-cuenta-search");
+    blindarInputAutofill(cuentaSearch, "cobro-cuenta-search", { preserveValue: shouldPreserveCuentaSearch });
     blindarInputAutofill(inputDescuentoNombre, "cobro-descuento-nombre");
 
     function normalizarCantidadConteo(input, { aplicar = false } = {}) {
@@ -1567,6 +1663,7 @@
     function construirOpcionesFiltroDoctorCuenta() {
       if (!cuentaDoctorFilter) return;
       const selectedRaw = String(cuentaDoctorFilter.value || "");
+      const persistedRaw = String(cuentaDoctorFilter.dataset.persistedValue || "");
       cuentaDoctorFilter.innerHTML = "";
 
       const optTodos = document.createElement("option");
@@ -1586,8 +1683,14 @@
         cuentaDoctorFilter.appendChild(opt);
       });
 
-      const optionExists = Array.from(cuentaDoctorFilter.options).some((o) => o.value === selectedRaw);
-      cuentaDoctorFilter.value = optionExists ? selectedRaw : "";
+      const targetValue = persistedRaw || selectedRaw;
+      const optionExists = Array.from(cuentaDoctorFilter.options).some((o) => o.value === targetValue);
+      cuentaDoctorFilter.value = optionExists ? targetValue : "";
+
+      if (optionExists && persistedRaw) {
+        delete cuentaDoctorFilter.dataset.persistedValue;
+        persistCobroUiState();
+      }
     }
 
     async function cargarDoctoresCuenta(force = false) {
@@ -2474,21 +2577,36 @@
     selectReporteMensualServicio?.addEventListener("change", cargarReporteMensual);
     selectReporteMensualFormaPago?.addEventListener("change", cargarReporteMensual);
 
-    cuentaSearch.addEventListener("input", aplicarFiltroCuenta);
-    cuentaDoctorFilter?.addEventListener("change", aplicarFiltroCuenta);
-    cuentaFormaPagoFilter?.addEventListener("change", aplicarFiltroCuenta);
+    cuentaSearch.addEventListener("input", () => {
+      aplicarFiltroCuenta();
+      persistCobroUiState();
+    });
+    cuentaDoctorFilter?.addEventListener("change", () => {
+      if (cuentaDoctorFilter?.dataset) {
+        delete cuentaDoctorFilter.dataset.persistedValue;
+      }
+      aplicarFiltroCuenta();
+      persistCobroUiState();
+    });
+    cuentaFormaPagoFilter?.addEventListener("change", () => {
+      aplicarFiltroCuenta();
+      persistCobroUiState();
+    });
     toggleNumeracionCuentas?.addEventListener("change", () => {
       aplicarVisibilidadColumnasCuenta();
       aplicarFiltroCuenta();
+      persistCobroUiState();
     });
     toggleDoctorCuentas?.addEventListener("change", () => {
       aplicarVisibilidadColumnasCuenta();
       aplicarFiltroCuenta();
+      persistCobroUiState();
     });
     btnReporteCobro?.addEventListener("click", generarReporteCobroPdf);
     btnReporteMensualPdf?.addEventListener("click", generarReporteMensualPdf);
     aplicarVisibilidadColumnasCuenta();
     construirOpcionesFiltroDoctorCuenta();
+    persistCobroUiState();
     configurarHoverTotalesKpi();
 
     const hoy = obtenerHoyLocalISO();

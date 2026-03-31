@@ -2,6 +2,23 @@ const pool = require("../config/db");
 const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet } = require("../utils/dbResult");
 
+const BINARY_TRUE_VALUES = new Set(["1", "true", "yes", "on", "si", "sí"]);
+const BINARY_FALSE_VALUES = new Set(["0", "false", "no", "off"]);
+
+function normalizeBinaryFlag(value, fieldName) {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") {
+    if (value === 1 || value === 0) return value;
+    throw new Error(`${fieldName} debe ser 0 o 1`);
+  }
+
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (BINARY_TRUE_VALUES.has(raw)) return 1;
+  if (BINARY_FALSE_VALUES.has(raw)) return 0;
+
+  throw new Error(`${fieldName} invalido. Use 0/1 o true/false`);
+}
+
 // =================================================
 // LISTAR AGENDA POR FECHA (FASE 1)
 // =================================================
@@ -83,7 +100,9 @@ exports.actualizar = async (req, res) => {
     fecha,
     contacto,
     estado,
-    comentario
+    comentario,
+    sms,
+    llamada
   } = req.body;
 
   if (!id) {
@@ -95,13 +114,25 @@ exports.actualizar = async (req, res) => {
     return badRequest(res, "ID de agenda invalido");
   }
 
-  const toDbValue = (v) => (v === undefined ? null : v);
+  const hasSms = Object.prototype.hasOwnProperty.call(req.body || {}, "sms");
+  const hasLlamada = Object.prototype.hasOwnProperty.call(req.body || {}, "llamada");
   const hasComentario = Object.prototype.hasOwnProperty.call(req.body || {}, "comentario");
+
+  let smsDbValue = null;
+  let llamadaDbValue = null;
+  try {
+    if (hasSms) smsDbValue = normalizeBinaryFlag(sms, "sms");
+    if (hasLlamada) llamadaDbValue = normalizeBinaryFlag(llamada, "llamada");
+  } catch (err) {
+    return badRequest(res, err?.message || "Valor invalido para sms/llamada");
+  }
+
+  const toDbValue = (v) => (v === undefined ? null : v);
 
   if (!hasComentario) {
     try {
       await pool.query(
-        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?)",
+        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           idAgenda,
           toDbValue(nombre),
@@ -109,7 +140,9 @@ exports.actualizar = async (req, res) => {
           toDbValue(fecha),
           toDbValue(contacto),
           toDbValue(estado),
-          toDbValue(comentario)
+          toDbValue(comentario),
+          smsDbValue,
+          llamadaDbValue
         ]
       );
 
@@ -125,7 +158,7 @@ exports.actualizar = async (req, res) => {
     await conn.beginTransaction();
 
     await conn.query(
-      "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?)",
+      "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         idAgenda,
         toDbValue(nombre),
@@ -133,7 +166,9 @@ exports.actualizar = async (req, res) => {
         toDbValue(fecha),
         toDbValue(contacto),
         toDbValue(estado),
-        toDbValue(comentario)
+        toDbValue(comentario),
+        smsDbValue,
+        llamadaDbValue
       ]
     );
 
@@ -196,22 +231,35 @@ exports.crear = async (req, res) => {
       fecha,
       contacto,
       estado,
-      comentario
+      comentario,
+      sms,
+      llamada
     } = req.body;
 
     if (!nombre || !hora || !fecha || !contacto) {
       return badRequest(res, "Datos incompletos");
     }
 
+    let smsFlag = 0;
+    let llamadaFlag = 0;
+    try {
+      if (sms !== undefined) smsFlag = normalizeBinaryFlag(sms, "sms");
+      if (llamada !== undefined) llamadaFlag = normalizeBinaryFlag(llamada, "llamada");
+    } catch (err) {
+      return badRequest(res, err?.message || "Valor invalido para sms/llamada");
+    }
+
     const [rows] = await pool.query(
-      "CALL sp_agenda_create(?, ?, ?, ?, ?, ?)",
+      "CALL sp_agenda_create(?, ?, ?, ?, ?, ?, ?, ?)",
       [
         nombre,
         hora,
         fecha,
         contacto,
         estado || null,
-        comentario || null
+        comentario || null,
+        smsFlag,
+        llamadaFlag
       ]
     );
 

@@ -592,8 +592,8 @@ exports.actualizarTratamiento = async (req, res) => {
       );
 
       await conn.query(
-        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?)",
-        [agendaId, null, null, null, null, null, tratamientoAgenda]
+        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [agendaId, null, null, null, null, null, tratamientoAgenda, null, null]
       );
     } else {
       await conn.query(
