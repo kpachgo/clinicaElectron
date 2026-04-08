@@ -70,7 +70,7 @@ router.get(
 router.delete(
   "/:idFotoPaciente",
   auth,
-  role(["Administrador", "Asistente"]),
+  role(["Administrador", "Asistente", "Doctor"]),
   controller.eliminarFotoPaciente
 );
 

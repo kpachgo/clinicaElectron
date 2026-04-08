@@ -382,6 +382,77 @@
       openModalCompat(modalVerSello);
     }
 
+    async function subirSelloDoctor(idDoctor, selloFile) {
+      const id = Number(idDoctor || 0);
+      if (!Number.isInteger(id) || id <= 0) {
+        throw new Error("Doctor invalido para subir sello");
+      }
+      if (!selloFile) {
+        throw new Error("Archivo de sello requerido");
+      }
+
+      const fd = new FormData();
+      fd.append("sello", selloFile);
+
+      const resSello = await fetch(`/api/doctor/${id}/sello`, {
+        method: "POST",
+        body: fd
+      });
+
+      let jsonSello = null;
+      try {
+        jsonSello = await resSello.json();
+      } catch {
+        jsonSello = null;
+      }
+
+      if (!resSello.ok || !jsonSello?.ok) {
+        throw new Error(jsonSello?.message || "No se pudo subir el sello");
+      }
+
+      const ruta = normalizarRutaMedia(jsonSello.sello);
+      if (!ruta) {
+        throw new Error("El servidor no retorno ruta de sello");
+      }
+      return ruta;
+    }
+
+    function onUploadSello(e) {
+      const id = Number(e.currentTarget?.dataset?.id || 0);
+      if (!id) return;
+
+      const picker = document.createElement("input");
+      picker.type = "file";
+      picker.accept = "image/png,image/jpeg,image/jpg";
+      picker.style.display = "none";
+      document.body.appendChild(picker);
+
+      picker.addEventListener("change", async () => {
+        const file = picker.files?.[0] || null;
+        picker.remove();
+        if (!file) return;
+
+        const fileType = String(file.type || "").toLowerCase();
+        if (!["image/png", "image/jpeg", "image/jpg"].includes(fileType)) {
+          alert("Formato de sello invalido. Use PNG o JPG.");
+          return;
+        }
+
+        try {
+          const rutaSello = await subirSelloDoctor(id, file);
+          const local = doctorData.find((d) => Number(d.id || 0) === id);
+          if (local) local.sello = rutaSello;
+          aplicarFiltroTexto();
+          alert("Sello subido correctamente.");
+        } catch (err) {
+          console.error("No se pudo subir sello de doctor", err);
+          alert(err?.message || "No se pudo subir el sello.");
+        }
+      }, { once: true });
+
+      picker.click();
+    }
+
     async function cambiarEstadoDoctorConPassword() {
       if (!doctorEstadoTarget?.id || isUpdatingEstado) return;
 
@@ -484,10 +555,24 @@
           btnSello.addEventListener("click", onViewSello);
           tdSello.appendChild(btnSello);
         } else {
+          const noSelloWrap = document.createElement("div");
+          noSelloWrap.className = "doctor-sello-missing";
+
           const noSello = document.createElement("em");
           noSello.style.color = "#64748b";
           noSello.textContent = "Sin sello";
-          tdSello.appendChild(noSello);
+          noSelloWrap.appendChild(noSello);
+
+          const btnSubirSello = document.createElement("button");
+          btnSubirSello.className = "ui-action-btn is-success row-btn upload-sello";
+          btnSubirSello.dataset.id = String(doctor.id);
+          btnSubirSello.title = "Subir sello";
+          btnSubirSello.setAttribute("aria-label", "Subir sello de doctor");
+          btnSubirSello.innerHTML = renderIcon("arrow-up");
+          btnSubirSello.addEventListener("click", onUploadSello);
+          noSelloWrap.appendChild(btnSubirSello);
+
+          tdSello.appendChild(noSelloWrap);
         }
         tr.appendChild(tdSello);
 
@@ -704,20 +789,13 @@
           }
 
           let selloRuta = "";
+          let selloError = "";
           if (selloFile) {
             try {
-              const fd = new FormData();
-              fd.append("sello", selloFile);
-              const resSello = await fetch(`/api/doctor/${json.idDoctor}/sello`, {
-                method: "POST",
-                body: fd
-              });
-              const jsonSello = await resSello.json();
-              if (resSello.ok && jsonSello?.ok) {
-                selloRuta = jsonSello.sello;
-              }
+              selloRuta = await subirSelloDoctor(json.idDoctor, selloFile);
             } catch (selloErr) {
               console.error("No se pudo subir sello", selloErr);
+              selloError = String(selloErr?.message || "No se pudo subir el sello");
             }
           }
 
@@ -733,6 +811,10 @@
           aplicarFiltroTexto();
           resetDoctorModalState();
           closeModalCompat(modal);
+
+          if (selloError) {
+            alert(`Doctor creado, pero hubo un problema al subir el sello: ${selloError}`);
+          }
         } catch (err) {
           console.error(err);
           alert(err?.message || "Error al registrar doctor");

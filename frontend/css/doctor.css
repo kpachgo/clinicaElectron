@@ -56,6 +56,12 @@
   vertical-align: middle;
 }
 
+.doctor-sello-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .doctor-estado-chip {
   display: inline-flex;
   align-items: center;

@@ -1277,9 +1277,18 @@ async function eliminarFotosSeleccionadas() {
       const res = await fetch(`/api/foto-paciente/${fotoId}`, {
         method: "DELETE"
       });
-
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.message);
+      let json = null;
+      try {
+        json = await res.json();
+      } catch {
+        json = null;
+      }
+      if (!res.ok || !json?.ok) {
+        if (res.status === 403) {
+          throw new Error("No tiene acceso para borrar la fotografia");
+        }
+        throw new Error(json?.message || "No se pudo eliminar una fotografia");
+      }
     }
 
     if (idsEliminados.has(Number(window.pacienteFotoPrincipalId || 0))) {
@@ -1297,7 +1306,8 @@ async function eliminarFotosSeleccionadas() {
 
   } catch (err) {
     console.error("Error eliminando fotografias", err);
-    alert("Error al eliminar una o mas fotografias");
+    const msg = String(err?.message || "").trim();
+    alert(msg || "Error al eliminar una o mas fotografias");
   } finally {
     isDeletingFotosPaciente = false;
   }
