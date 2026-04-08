@@ -30,7 +30,7 @@
    - `Atendido`: por `creadoEn` ascendente.
 4. Permite filtrar por texto (nombre/tratamiento) y estado.
 5. Permite asignar doctor por fila (select) con datos cargados desde `/api/doctor/select`.
-6. Permite filtrar por doctor desde la barra superior.
+6. Permite filtrar por doctor desde la barra superior (`Todos`, `Sin doctor`, o doctor especifico).
 7. Los selects de doctor (fila y filtro) usan color por `doctorId` para diferenciacion visual rapida.
 8. Permite cambiar estado:
    - Select por fila (`En espera` / `Atendido`).
@@ -41,12 +41,16 @@
    - `Subir en cola` -> icono `arrow-up`
    - `Bajar en cola` -> icono `arrow-down`
    - El movimiento aplica a la cola completa del dia (aunque haya filtros activos en UI).
-10. Permite eliminar fila individual y limpiezas masivas.
-11. Acciones icon-only por fila:
+10. Permite editar `Tratamiento` por fila con doble clic:
+   - guarda con `Enter` o `blur`.
+   - cancela con `Escape`.
+   - al guardar, sincroniza backend de Cola y, si aplica, Agenda.
+11. Permite eliminar fila individual y limpiezas masivas.
+12. Acciones icon-only por fila:
    - `Buscar` -> `magnifying-glass`
    - `Eliminar` -> `trash`
    - Todos los botones mantienen `title` y `aria-label`.
-12. Sonido de ingreso nuevo:
+13. Sonido de ingreso nuevo:
    - cuando `recargar()` detecta `idColaPaciente` nuevo respecto a la ultima carga, reproduce `bell.ogg`.
    - no suena en la primera carga de la vista (evita ruido inicial).
    - usa `window.playUiSound("bell", { minIntervalMs: 450 })`.
@@ -71,6 +75,10 @@
   - APIs frontend usadas:
     - `window.__pacienteViewAPI.openById(idPaciente)`
     - `window.__pacienteViewAPI.openManualSearch({ query, contacto, message })`
+- En Cola -> Agenda (sincronizacion de tratamiento):
+  - Si el registro en cola tiene `agendaId`, al editar tratamiento en En Cola:
+    - se actualizan todos los registros de cola que compartan ese `agendaId`.
+    - se sincroniza `comentario` de Agenda via `sp_agenda_update`.
 
 ## Backend API usada por En Cola
 - `GET /api/cola?fecha=YYYY-MM-DD`
@@ -81,6 +89,9 @@
   - Controller: `cola.controller.actualizarEstado`
 - `PUT /api/cola/:id/doctor`
   - Controller: `cola.controller.actualizarDoctor`
+- `PUT /api/cola/:id/tratamiento`
+  - Body: `{ "tratamiento": "texto" }`
+  - Controller: `cola.controller.actualizarTratamiento`
 - `PUT /api/cola/:id/mover`
   - Body: `{ "direccion": "up" | "down" }`
   - Controller: `cola.controller.mover`
@@ -109,6 +120,10 @@
   - Campo `doctorId` nullable en `cola_paciente`.
   - Asignacion editable desde la vista En Cola.
   - `actualizarDoctor` valida que el doctor exista cuando se envia `doctorId`.
+- Tratamiento en cola:
+  - `actualizarTratamiento` permite guardar texto vacio (se persiste como `NULL`).
+  - Si hay `agendaId`, sincroniza tratamiento en todos los registros de cola con ese `agendaId`.
+  - Si hay `agendaId`, sincroniza tambien `comentario` de Agenda via `sp_agenda_update`.
 - Validaciones de fecha/hora:
   - `fecha` exige fecha ISO real (`YYYY-MM-DD`) valida.
   - `horaAgenda` exige `HH:mm` en rango `00:00..23:59`.
@@ -119,9 +134,8 @@
 - `borrarTodo` borra toda la cola (o solo una fecha si se envia query `fecha`).
 
 ## Base de datos
-- Script: `backend/sql/create_cola_paciente_table.sql`.
-- Migracion para instalaciones existentes: `backend/sql/alter_cola_paciente_add_doctor.sql`.
-- Migracion de orden manual: `backend/sql/alter_cola_paciente_add_orden_cola.sql`.
+- Migracion de orden manual versionada: `backend/sql/alter_cola_paciente_add_orden_cola.sql`.
+- La estructura base de `cola_paciente` y columna `doctorId` se asumen existentes en la BD activa (no hay script `create_cola_paciente_table.sql` ni `alter_cola_paciente_add_doctor.sql` dentro del repo actual).
 - Tabla: `cola_paciente`.
 - Campos clave:
   - `idColaPaciente` (PK)

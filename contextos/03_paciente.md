@@ -140,6 +140,13 @@
   - se aplica antes de cargar otro paciente desde autocomplete
   - tambien se aplica en `window.__pacienteViewAPI.openById(...)` si ya estas en vista Paciente
   - mensaje: `Desea cargar otro paciente sin guardar?`
+- API publica de navegacion usada por otras vistas:
+  - `window.__pacienteViewAPI.openById(idPaciente)`:
+    - si no estas en vista Paciente, deja `window.__pacienteAbrirPendienteId` y navega.
+    - si ya estas en Paciente, respeta guard de cambios antes de cargar.
+  - `window.__pacienteViewAPI.openManualSearch({ query, contacto, message })`:
+    - precarga buscador de Paciente para seleccion manual.
+    - permite mostrar mensaje contextual (usado por Agenda/En Cola cuando no se puede resolver paciente unico).
 
 ### Estado visual sin paciente seleccionado
 - Cuando no hay paciente cargado (`!pacienteActual.idPaciente`), `actualizarAccionesPaciente()` marca `.paciente-container` con `paciente-sin-seleccion`.
@@ -152,8 +159,19 @@
 - Editar cita inline: `PUT /api/paciente/cita/:id`.
 - Listar citas: `GET /api/paciente/:id/citas`.
 - Autorizar cita: `POST /api/paciente/cita/:id/autorizar`.
+- Reglas UI relevantes:
+  - `Procedimiento` en cita tiene limite de `500` caracteres (validado frontend/backend).
+  - Select de doctor se llena con `GET /api/doctor/select?soloActivos=1`.
+  - Si usuario logueado es `Doctor` y tiene doctor vinculado unico, el select queda preseleccionado y bloqueado.
+  - La columna `Accion` muestra estado:
+    - `Sin doctor`
+    - `Autorizado en fisico`
+    - `Autorizado`
+    - `Pendiente` + boton `Autorizar`
+  - Boton `Ver` (firma/sello del doctor) queda deshabilitado mientras la cita no este autorizada.
 
 ## Regla de autorizacion (backend)
+- Si la cita se crea sin doctor asignado, queda autorizada automaticamente (`SIN_DOCTOR`).
 - Si doctor es "registro fisico", queda autorizada automaticamente.
 - Si usuario logueado es Doctor y coincide con doctor asignado, autoriza directo.
 - Si no, solicita password del doctor para validar.
@@ -163,10 +181,16 @@
 - Listar fotos: `GET /api/foto-paciente/:pacienteId`.
 - Eliminar foto: `DELETE /api/foto-paciente/:idFotoPaciente`.
 - Guardar foto principal: `POST /api/foto-paciente/principal`.
+- Permisos de borrado (`DELETE /api/foto-paciente/:idFotoPaciente`):
+  - permitido para `Administrador`, `Asistente`, `Doctor`.
+  - `Recepcion` no tiene permiso de borrado.
+- UX de borrado:
+  - frontend captura `403` y muestra mensaje claro (`No tiene acceso para borrar la fotografia`).
+  - si se elimina la foto principal actual, se limpia `fotoPrincipalId` en estado local/UI.
 
 ## Firma de paciente
 - Guardado: `POST /api/paciente/firma`.
-- Backend escribe archivo en `frontend/firmas` y guarda ruta en BD.
+- Backend escribe el archivo en `firmasDir` (`storagePaths`, compatible con persistencia externa de Electron) y guarda ruta publica `/firmas/...` en BD.
 - UI:
   - la ruta de firma ya no se muestra al usuario.
   - se guarda en input oculto `#firmaP`.
@@ -244,7 +268,12 @@
 - `PUT /api/paciente/cita/:id`
 - `POST /api/paciente/cita/:id/autorizar`
 - `GET /api/paciente/:id/citas`
-- `GET/POST/DELETE /api/foto-paciente/*`
+- `POST /api/foto-paciente`
+- `GET /api/foto-paciente/:pacienteId`
+- `DELETE /api/foto-paciente/:idFotoPaciente`
+- `POST /api/foto-paciente/principal`
+- `GET /api/doctor/select?soloActivos=1` (soporte para modal de cita)
+- `GET /api/doctor/:id` (modal "Ver doctor" en tabla de citas)
 - `POST /api/odontograma`
 - `GET /api/odontograma/ultimo/:idPaciente`
 - `GET /api/odontograma/historial/:idPaciente`

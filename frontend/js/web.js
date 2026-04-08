@@ -113,8 +113,8 @@ themeBtn?.addEventListener("click", () => {
    AUTENTICACION
 ========================================================= */
 const ROLE_VIEWS = {
-    Administrador: ["Agenda", "Paciente", "En Cola", "Doctores", "Servicios", "Cobro"],
-    Recepcion: ["Agenda", "Paciente", "En Cola", "Servicios", "Cobro"],
+    Administrador: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro"],
+    Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Servicios", "Cobro"],
     Doctor: ["Paciente", "En Cola", "Doctores"],
     Asistente: ["Paciente", "En Cola"]
 };
@@ -742,6 +742,9 @@ async function loadView(name) {
                 break;
             case "Paciente":
                 window.__mountPaciente && window.__mountPaciente();
+                break;
+            case "Monitor de Seguimiento":
+                window.__mountMonitorSeguimiento && window.__mountMonitorSeguimiento();
                 break;
             case "En Cola":
                 window.__mountEnCola && window.__mountEnCola();

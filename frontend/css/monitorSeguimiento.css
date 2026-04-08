@@ -1,0 +1,340 @@
+﻿/* monitorSeguimiento.css - vista Monitor de Seguimiento (v1 mock) */
+
+:root {
+  --ms-surface: #ffffff;
+  --ms-border: #e2e8f0;
+  --ms-text: #0f172a;
+  --ms-muted: #64748b;
+  --ms-row-hover: rgba(37, 99, 235, 0.05);
+
+  --ms-total-bg: #eff6ff;
+  --ms-total-border: #bfdbfe;
+  --ms-total-text: #1d4ed8;
+
+  --ms-retrasado-bg: #fff7ed;
+  --ms-retrasado-border: #fdba74;
+  --ms-retrasado-text: #9a3412;
+
+  --ms-m2-bg: #fef3c7;
+  --ms-m2-border: #fcd34d;
+  --ms-m2-text: #92400e;
+
+  --ms-m3-bg: #fee2e2;
+  --ms-m3-border: #fecaca;
+  --ms-m3-text: #991b1b;
+
+  --ms-activo-bg: #dcfce7;
+  --ms-activo-border: #86efac;
+  --ms-activo-text: #166534;
+
+  --ms-inactivo-bg: #f1f5f9;
+  --ms-inactivo-border: #cbd5e1;
+  --ms-inactivo-text: #334155;
+}
+
+.dark-mode {
+  --ms-surface: #0f172a;
+  --ms-border: #253246;
+  --ms-text: #e2e8f0;
+  --ms-muted: #94a3b8;
+  --ms-row-hover: rgba(96, 165, 250, 0.13);
+
+  --ms-total-bg: #1f355f;
+  --ms-total-border: #4f75b8;
+  --ms-total-text: #bfdbfe;
+
+  --ms-retrasado-bg: #4a3118;
+  --ms-retrasado-border: #9a5b20;
+  --ms-retrasado-text: #fdba74;
+
+  --ms-m2-bg: #4b3817;
+  --ms-m2-border: #9a6f21;
+  --ms-m2-text: #fcd34d;
+
+  --ms-m3-bg: #4b1f2a;
+  --ms-m3-border: #8f3a4a;
+  --ms-m3-text: #fecaca;
+
+  --ms-activo-bg: #183428;
+  --ms-activo-border: #2d7a57;
+  --ms-activo-text: #86efac;
+
+  --ms-inactivo-bg: #1e293b;
+  --ms-inactivo-border: #475569;
+  --ms-inactivo-text: #cbd5e1;
+}
+
+.ms-container {
+  font-family: var(--font-family-base);
+  width: 98%;
+  max-width: 100%;
+  margin: 20px auto;
+  border: 1px solid var(--ms-border);
+  border-radius: 12px;
+  background: var(--ms-surface);
+  color: var(--ms-text);
+  padding: 14px;
+}
+
+.ms-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ms-title-wrap {
+  min-width: 260px;
+}
+
+.ms-title {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.15;
+}
+
+.ms-subtitle {
+  margin: 5px 0 0;
+  color: var(--ms-muted);
+  font-size: 13px;
+}
+
+.ms-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ms-control-field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ms-muted);
+  font-weight: 700;
+}
+
+.ms-controls .ui-control.ui-control-search {
+  min-width: 280px;
+}
+
+.ms-kpi-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.ms-kpi-card {
+  border-radius: 10px;
+  border: 1px solid var(--ms-border);
+  background: #f8fafc;
+  padding: 10px;
+  min-height: 78px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.ms-kpi-card:hover {
+  filter: brightness(0.98);
+}
+
+.ms-kpi-card.is-active {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.28);
+}
+
+.ms-kpi-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ms-kpi-value {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.ms-kpi-card.tone-total {
+  background: var(--ms-total-bg);
+  border-color: var(--ms-total-border);
+  color: var(--ms-total-text);
+}
+
+.ms-kpi-card.tone-retrasado {
+  background: var(--ms-retrasado-bg);
+  border-color: var(--ms-retrasado-border);
+  color: var(--ms-retrasado-text);
+}
+
+.ms-kpi-card.tone-m2 {
+  background: var(--ms-m2-bg);
+  border-color: var(--ms-m2-border);
+  color: var(--ms-m2-text);
+}
+
+.ms-kpi-card.tone-m3 {
+  background: var(--ms-m3-bg);
+  border-color: var(--ms-m3-border);
+  color: var(--ms-m3-text);
+}
+
+.ms-kpi-card.tone-activo {
+  background: var(--ms-activo-bg);
+  border-color: var(--ms-activo-border);
+  color: var(--ms-activo-text);
+}
+
+.ms-kpi-card.tone-inactivo {
+  background: var(--ms-inactivo-bg);
+  border-color: var(--ms-inactivo-border);
+  color: var(--ms-inactivo-text);
+}
+
+.ms-active-filters-wrap {
+  margin-top: 10px;
+}
+
+.ms-active-filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--ms-muted);
+  font-weight: 600;
+}
+
+.ms-table-wrap {
+  margin-top: 10px;
+}
+
+.ms-table {
+  width: 100%;
+  min-width: 880px;
+}
+
+.ms-table th,
+.ms-table td {
+  color: var(--ms-text);
+}
+
+.ms-table tbody tr:hover td {
+  background: var(--ms-row-hover);
+}
+
+.ms-empty {
+  text-align: center;
+  color: var(--ms-muted);
+  padding: 16px;
+}
+
+.ms-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.ms-chip.is-activo {
+  background: var(--ms-activo-bg);
+  border-color: var(--ms-activo-border);
+  color: var(--ms-activo-text);
+}
+
+.ms-chip.is-inactivo {
+  background: var(--ms-inactivo-bg);
+  border-color: var(--ms-inactivo-border);
+  color: var(--ms-inactivo-text);
+}
+
+.ms-chip.is-al-dia {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #3730a3;
+}
+
+.ms-chip.is-retrasado {
+  background: var(--ms-retrasado-bg);
+  border-color: var(--ms-retrasado-border);
+  color: var(--ms-retrasado-text);
+}
+
+.ms-chip.is-m2 {
+  background: var(--ms-m2-bg);
+  border-color: var(--ms-m2-border);
+  color: var(--ms-m2-text);
+}
+
+.ms-chip.is-m3 {
+  background: var(--ms-m3-bg);
+  border-color: var(--ms-m3-border);
+  color: var(--ms-m3-text);
+}
+
+.ms-pagination {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ms-page-summary {
+  font-size: 12px;
+  color: var(--ms-muted);
+  font-weight: 600;
+}
+
+.ms-page-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ms-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ms-muted);
+  font-weight: 700;
+}
+
+.ms-page-size .ui-control {
+  min-width: 76px;
+}
+
+.ms-page-indicator {
+  min-width: 125px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ms-muted);
+  font-weight: 700;
+}
+
+@media (max-width: 980px) {
+  .ms-container {
+    width: 100%;
+    margin: 12px 0;
+    border-left: none;
+    border-right: none;
+    border-radius: 0;
+  }
+
+  .ms-controls .ui-control.ui-control-search {
+    min-width: 0;
+    width: 100%;
+  }
+}

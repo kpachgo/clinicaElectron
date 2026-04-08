@@ -1,177 +1,239 @@
 # Vista Cobro
 
 ## Frontend
-- Archivo: `frontend/js/cobro.js`.
-- Modo POS con 3 pasos:
-  1. Seleccionar paciente
-  2. Agregar servicios
-  3. Confirmar pago
+- Archivos:
+  - `frontend/js/cobro.js`
+  - `frontend/css/cobro.css`
+- Montaje SPA:
+  - `loadView("Cobro")` llama `window.__mountCobro`.
+- Flujo POS de 3 pasos:
+  1. Seleccionar paciente.
+  2. Agregar servicios.
+  3. Confirmar pago.
 
-## Flujo de cobro
-1. Buscar paciente (`/api/paciente/search`).
-2. Buscar servicio (`/api/servicio/search`).
-3. Agregar items al carrito (cantidad y precio editables).
-4. Elegir forma de pago.
-5. Guardar cuenta (`POST /api/cuenta`).
+## Flujo principal de cobro
+1. Buscar paciente por autocomplete (`GET /api/paciente/search?q=...`).
+2. Buscar servicio por autocomplete (`GET /api/servicio/search?q=...`).
+3. Agregar al carrito (cantidad y precio unitario editables).
+4. Elegir forma de pago (`Efectivo`, `Tarjeta`, `IGS`, `Transferencia`).
+5. Guardar cuenta (`POST /api/cuenta` con fecha explicita del selector `#cuenta-date`).
+6. Al guardar correctamente, la vista se re-renderiza y conserva la fecha activa para recargar cuentas/descuentos del mismo dia.
 
 ## Integracion con Agenda
-- Al abrir Cobro, consume prefill `window.__agendaCobroPrefillPatient`.
-- Si viene prefill valido, deja paciente seleccionado automaticamente.
+- Al abrir Cobro, consume `window.__agendaCobroPrefillPatient`.
+- Si el prefill trae `idPaciente` valido:
+  - selecciona paciente automaticamente,
+  - limpia el buscador,
+  - deja lista la captura de servicios.
+- Despues de usarlo, limpia el puente: `window.__agendaCobroPrefillPatient = null`.
+
+## Dashboard, KPIs y caja
+- Dashboard superior unificado en 3 bloques:
+  - grafico anillo de distribucion de ingresos del dia,
+  - tarjetas KPI de totales,
+  - conteo de billetes.
+- KPIs mostrados:
+  - `Total del dia` (neto),
+  - `Bruto del dia`,
+  - `Efectivo`,
+  - `Efectivo en caja` (`efectivo - descuentos`),
+  - `Tarjeta`,
+  - `IGS`,
+  - `Transferencia`,
+  - `Descuentos`.
+- Anillo de distribucion (conic-gradient):
+  - `Efectivo` verde,
+  - `Tarjeta` rojo,
+  - `IGS` naranja,
+  - `Transferencia` azul.
+- Interaccion KPI:
+  - `Total del dia` queda como estado visual base.
+  - hover/focus en otra tarjeta usa `is-kpi-active` y suspende temporalmente `Total del dia` con `kpi-total-dia-suspended`.
+- Conteo de billetes (`Q1`, `Q5`, `Q10`, `Q20`, `Q50`, `Q100`):
+  - `Q1` permite decimal (`step=0.01`),
+  - resto de denominaciones se normalizan a entero,
+  - el total de caja se calcula solo en frontend (no persiste en backend).
 
 ## Cuentas del dia
 - Fecha de trabajo en `#cuenta-date`.
-- Lista de cuentas por fecha:
+- Lista por fecha:
   - `GET /api/cuenta?fecha=YYYY-MM-DD`.
-- Orden actual de columnas: `#`, `Nombre`, `Total`, `Forma de Pago`, `Cantidad`, `Tratamiento`, `Doctor`, `Quitar`.
-- `Cantidad` se muestra antes de `Tratamiento` y usa `cantidadTotal`.
-- La columna `Doctor` se asigna por cuenta y aplica a todos los detalles de la cuenta.
+- Columnas actuales:
+  - `#`, `Nombre`, `Total`, `Forma de Pago`, `Cantidad`, `Tratamiento`, `Doctor`, `Quitar`.
 - Toggles visuales en cabecera:
-  - `#toggle-numeracion-cuentas` (oculto por defecto)
-  - `#toggle-doctor-cuentas` (oculto por defecto)
-- Eliminar cuenta:
-  - `DELETE /api/cuenta/:id`.
-- Asignar/limpiar doctor por cuenta (guardado inmediato):
-  - `PUT /api/cuenta/:id/doctor` con `idDoctor` nullable.
-- Filtros locales:
-  - texto (`#cuenta-search`) por nombre/procedimiento/doctor
-  - filtro por doctor (`#cuenta-doctor-filter`): `Todos los doctores`, `Sin doctor` y doctores disponibles.
-  - filtro por tipo de pago (`#cuenta-forma-pago-filter`): `Efectivo`, `Tarjeta`, `IGS`, `Transferencia`.
-  - combinacion en frontend con logica AND entre texto + doctor + tipo de pago.
-  - responsive de cabecera en 2 bloques:
-    - `cuenta-controls-main` (toggles + fecha + busqueda + selects)
-    - `cuenta-controls-actions` (botones de reporte/faltantes)
-- Tarjetas KPI de `Totales del dia`:
-  - `TOTAL DEL DIA` queda activo por defecto.
-  - Al pasar mouse/focus por otra tarjeta KPI, esa tarjeta toma estado activo y `TOTAL DEL DIA` se suspende temporalmente.
-  - Estado activo por tema:
-    - `light/dark`: azul.
-    - `princess`: rosado fuerte.
-    - `vampire`: tono oscuro.
-  - Clases de estado usadas en UI: `is-kpi-active` y `kpi-total-dia-suspended`.
-- Reporte PDF de cobro incluye tambien la columna `Cantidad`.
+  - `#toggle-numeracion-cuentas` (numeracion),
+  - `#toggle-doctor-cuentas` (columna doctor).
+- Filtros locales (logica AND):
+  - texto `#cuenta-search` (nombre, tratamiento, doctor),
+  - doctor `#cuenta-doctor-filter` (`Todos`, `Sin doctor`, doctor especifico),
+  - forma de pago `#cuenta-forma-pago-filter` (`Efectivo`, `Tarjeta`, `IGS`, `Transferencia`).
+- Asignacion de doctor por cuenta:
+  - `PUT /api/cuenta/:id/doctor` con `idDoctor` nullable,
+  - selector por fila con opcion `Sin doctor`,
+  - catalogo de doctores via `GET /api/doctor/select`.
+- Eliminacion de cuenta:
+  - `DELETE /api/cuenta/:id` (con confirmacion previa).
+- Si el modal de faltantes esta abierto y se recargan cuentas, Cobro recalcula faltantes automaticamente.
+
+## Persistencia de estado UI (sesion)
+- Cobro guarda preferencias/filtros en `sessionStorage` por usuario:
+  - key: `ui_state_cobro_<userId>`.
+- Estado persistido:
+  - toggle numeracion,
+  - toggle doctor,
+  - texto de busqueda,
+  - filtro de doctor,
+  - filtro de forma de pago.
+
+## Atajos de teclado
+- Navegacion de fecha en Cobro:
+  - `Alt + ArrowLeft`: dia anterior.
+  - `Alt + ArrowRight`: dia siguiente.
+- Guardas:
+  - no aplica si hay modal abierto (mensual/faltantes),
+  - no aplica mientras se edita otro control de entrada.
 
 ## Faltantes de cobro (modal En Cola)
-- Boton en cabecera de Cuentas del dia: `#btn-abrir-faltantes-cobro`.
-- Contenedor modal: `#faltantes-cobro-modal`.
-- Fuente de comparacion:
-  - Cuentas del dia (`cuentasActuales`) para la fecha activa.
-  - En Cola por fecha con `GET /api/cola?fecha=YYYY-MM-DD`.
-- Regla de inclusion de En Cola:
-  - solo registros con estado `Atendido`.
-- Regla de comparacion:
-  - por paciente unico.
-  - match por nombre normalizado (minusculas, trim y sin acentos).
-- Salida en modal:
-  - resumen: `Atendidos en cola`, `Cobrados`, `Faltantes`.
-  - tabla de faltantes con columnas: `Paciente`, `Hora`, `Contacto`.
+- Apertura: `#btn-abrir-faltantes-cobro`.
+- Contenedor: `#faltantes-cobro-modal`.
+- Fuente de datos:
+  - cuentas actuales del dia (`cuentasActuales`),
+  - `GET /api/cola?fecha=YYYY-MM-DD`.
+- Regla:
+  - toma solo cola en estado `Atendido`,
+  - compara por nombre normalizado (minusculas, trim, sin acentos),
+  - faltante = atendido en cola que no aparece en cuentas cobradas.
+- Salida:
+  - resumen `Atendidos en cola`, `Cobrados`, `Faltantes`,
+  - tabla con `Paciente`, `Hora`, `Contacto`.
 - UX:
-  - cierra por boton, backdrop y tecla `Escape`.
-  - si no hay faltantes, muestra mensaje de lista vacia.
-  - maneja error de red sin romper flujo de Cobro.
+  - cierre por boton, backdrop y `Escape`,
+  - mensajes explicitos para vacio/cargando/error de red.
 
 ## Reporte mensual por pacientes (modal)
-- El bloque mensual ya no se muestra directo en la vista principal de Cobro.
-- Se abre desde boton junto al reporte diario: `#btn-abrir-reporte-mensual`.
-- Contenedor modal: `#reporte-mensual-modal`.
-- Filtros en modal:
-  - mes (`#reporte-mensual-mes`)
-  - tratamiento (`#reporte-mensual-servicio`) opcional; vacio = todos los tratamientos
-  - metodo de pago (`#reporte-mensual-forma-pago`) opcional: `Efectivo`, `Tarjeta`, `IGS`, `Transferencia`
-- Exportacion PDF mensual desde modal: `#btn-reporte-mensual-pdf`.
-
-### Endpoints de reporte mensual
-- Resumen agregado por tratamiento:
-  - `GET /api/cuenta/reporte-mensual?mes=YYYY-MM&idServicio=<opcional>`
-- Detalle por pacientes (endpoint usado por el modal):
-  - `GET /api/cuenta/reporte-mensual-pacientes?mes=YYYY-MM&idServicio=<opcional>&formaPago=<opcional>`
+- Apertura: `#btn-abrir-reporte-mensual`.
+- Contenedor: `#reporte-mensual-modal`.
+- Filtros:
+  - `mes` (`#reporte-mensual-mes`),
+  - `tratamiento` (`#reporte-mensual-servicio`, opcional),
+  - `formaPago` (`#reporte-mensual-forma-pago`, opcional).
+- Catalogo de tratamientos mensual:
+  - `GET /api/servicio` (no usa endpoint search).
+- Datos del reporte mensual:
+  - `GET /api/cuenta/reporte-mensual-pacientes?mes=YYYY-MM&idServicio=<opcional>&formaPago=<opcional>`.
+- Tabla mensual:
+  - `Paciente`, `Cantidad`, `Monto`.
+- Totales renderizados:
+  - pacientes unicos,
+  - cantidad total mes,
+  - monto total mes,
+  - monto global mes (sin filtros).
 
 ### Contrato de `GET /api/cuenta/reporte-mensual-pacientes`
 - Query requerida:
-  - `mes` con formato `YYYY-MM`
+  - `mes` (`YYYY-MM`).
 - Query opcional:
-  - `idServicio` entero positivo
-  - `formaPago` (`efectivo`, `tarjeta`, `igs`, `transferencia`)
-- Respuesta (`ok: true`):
-  - `mes`
-  - `filtroServicio` (`idServicio`, `nombre`) o `null` (todos los tratamientos)
-  - `filtroFormaPago` (`valor`) o `null`
-  - `data`: lista por paciente con:
-    - `idPaciente`
-    - `nombrePaciente`
-    - `cantidadPaciente` (suma de `detallecuenta.cantidadDC`)
-    - `montoPaciente` (suma de `detallecuenta.subTotalDC`)
-  - `totales`:
-    - `pacientesUnicos`
-    - `cantidadTotalMes`
-    - `montoTotalMes`
-  - `totalesGlobalMes` (sin filtros de tratamiento/forma de pago):
-    - `pacientesUnicos`
-    - `cantidadTotalMes`
-    - `montoTotalMes`
-- Render en tabla mensual:
-  - columnas: `Paciente`, `Cantidad`, `Monto`.
+  - `idServicio` entero positivo,
+  - `formaPago` (`efectivo`, `tarjeta`, `igs`, `transferencia`).
+- Respuesta:
+  - `ok`, `mes`,
+  - `filtroServicio` o `null`,
+  - `filtroFormaPago` o `null`,
+  - `data` por paciente (`idPaciente`, `nombrePaciente`, `cantidadPaciente`, `montoPaciente`),
+  - `totales`,
+  - `totalesGlobalMes`.
 
-### Nota de regresion funcional
-- El reporte diario/mensual, listado diario de cuentas, flujo de doctor por cuenta y descuentos/cobro no cambian.
+## Exportacion PDF
+- Diario:
+  - boton `#btn-reporte-cobro`,
+  - usa `jsPDF + autoTable`,
+  - incluye resumen diario y tabla de cuentas con columna `Cantidad`.
+- Mensual:
+  - boton `#btn-reporte-mensual-pdf`,
+  - usa `jsPDF + autoTable`,
+  - incluye filtros aplicados y resumen mensual + detalle por paciente.
 
 ## Compras y descuentos
-- Crear descuento:
+- Crear:
   - `POST /api/cuenta/descuento`.
-- Listar descuentos por fecha:
-  - `GET /api/cuenta/descuento?fecha=...`.
-- Eliminar descuento:
+- Listar por fecha:
+  - `GET /api/cuenta/descuento?fecha=YYYY-MM-DD`.
+- Eliminar:
   - `DELETE /api/cuenta/descuento/:id`.
-- Total final = subtotal cuentas - total descuentos.
+- Regla de total final:
+  - `TOTAL = subtotal cuentas - total descuentos`.
 
-## Backend API usada
-- `/api/cuenta` (crear, listar, eliminar)
-- `/api/cuenta/reporte-mensual` (resumen mensual por tratamiento)
-- `/api/cuenta/reporte-mensual-pacientes` (detalle mensual por paciente y tratamiento)
-- `/api/cuenta/descuento` (crear, listar, eliminar)
-- `/api/cola` (listar por fecha para modal de faltantes de cobro)
+## Backend API usada por Cobro
+- `GET /api/paciente/search`
+- `GET /api/servicio/search`
+- `GET /api/servicio` (catalogo mensual)
+- `GET /api/doctor/select`
+- `POST /api/cuenta`
+- `GET /api/cuenta?fecha=YYYY-MM-DD`
+- `PUT /api/cuenta/:id/doctor`
+- `DELETE /api/cuenta/:id`
+- `GET /api/cuenta/reporte-mensual-pacientes`
+- `POST /api/cuenta/descuento`
+- `GET /api/cuenta/descuento?fecha=YYYY-MM-DD`
+- `DELETE /api/cuenta/descuento/:id`
+- `GET /api/cola?fecha=YYYY-MM-DD`
+- `GET /api/cuenta/reporte-mensual` (disponible en backend para resumen por tratamiento)
 
-## Backend/SP
-- Controller: `backend/controllers/cuenta.controller.js`.
-- Creacion de cuenta usa transaccion:
+## Backend/SP y reglas
+- Controller principal: `backend/controllers/cuenta.controller.js`.
+- Creacion de cuenta en transaccion:
   - `sp_cuenta_create`
-  - `sp_detallecuenta_create` (por cada item)
-- Listado: `sp_cuenta_listar_por_fecha`
-  - devuelve `cantidadTotal` como `SUM(dc.cantidadDC)` por cuenta.
-- Reporte mensual (resumen): `sp_cuenta_reporte_mensual`
-- Reporte mensual (pacientes): `sp_cuenta_reporte_mensual_pacientes`
-- Eliminacion: `sp_cuenta_eliminar`
+  - `sp_detallecuenta_create` (por item)
+  - update de `fechaC` en cuenta.
+- Listado por fecha:
+  - `sp_cuenta_listar_por_fecha`
+  - retorna `cantidadTotal` y consolidado de tratamiento,
+  - contempla `idDoctorCuenta`, `nombreDoctorCuenta` y bandera `doctorMixto`.
+- Asignacion de doctor:
+  - valida cuenta y doctor,
+  - exige migracion `detallecuenta.idDoctor`,
+  - persiste con `sp_cuenta_asignar_doctor_por_cuenta`.
+- Reportes:
+  - `sp_cuenta_reporte_mensual`
+  - `sp_cuenta_reporte_mensual_pacientes`
+- Eliminacion:
+  - `sp_cuenta_eliminar`.
 - Descuentos:
   - `sp_descuento_crear`
   - `sp_descuento_listar_por_fecha`
-  - `sp_descuento_eliminar`
+  - `sp_descuento_eliminar`.
 
 ## Roles
-- Crear/listar cuenta y descuentos: `Administrador`, `Recepcion`.
+- Cuenta y descuentos (crear/listar) y reportes: `Administrador`, `Recepcion`.
+- Asignar doctor en cuenta: `Administrador`, `Recepcion`.
 - Eliminar cuenta: solo `Administrador`.
-- Modal de faltantes (consulta `/api/cola`): disponible para `Administrador` y `Recepcion` en Cobro.
+- Endpoints auxiliares consumidos por Cobro:
+  - `/api/doctor/select`: `Administrador`, `Recepcion`, `Doctor`, `Asistente`.
+  - `/api/paciente/search`: `Administrador`, `Recepcion`, `Doctor`, `Asistente`.
+  - `/api/servicio/search`: `Administrador`, `Recepcion`, `Doctor`, `Asistente`.
+  - `/api/servicio`: `Administrador`, `Recepcion`.
+  - `/api/cola`: `Administrador`, `Recepcion`, `Doctor`, `Asistente`.
 
-## Endurecimiento tecnico aplicado (2026-03-20)
+## Endurecimiento tecnico aplicado
 - Frontend (`frontend/js/cobro.js`)
-  - Cargas criticas con control `abort + seq`:
-    - cuentas por fecha
-    - descuentos por fecha
-    - faltantes de cobro (cola)
-    - reporte mensual
-    - catalogo de servicios mensual
-    - autocompletes de paciente/servicio
-  - Guardas anti-duplicado:
-    - `Guardar cobro`
-    - asignacion de doctor por cuenta
-    - eliminar cuenta
-    - crear/eliminar descuento
-  - Cleanup de vista fortalece navegacion rapida:
-    - invalida y aborta requests en vuelo para evitar respuestas tardias fuera de Cobro.
+  - control `abort + seq` para:
+    - autocomplete paciente/servicio,
+    - cuentas por fecha,
+    - descuentos por fecha,
+    - doctores para cuenta,
+    - servicios del reporte mensual,
+    - reporte mensual,
+    - faltantes de cobro.
+  - guardas anti-duplicado en:
+    - guardar cobro,
+    - asignar doctor por cuenta,
+    - eliminar cuenta,
+    - crear/eliminar descuento.
+  - cleanup de vista con `window.__setViewCleanup`:
+    - invalida/aborta requests en vuelo,
+    - limpia handlers (`keydown` de atajos) y estado temporal.
 - Backend (`backend/controllers/cuenta.controller.js`)
-  - Validaciones adicionales:
-    - `fecha` valida en listados de cuentas/descuentos y creacion de descuento.
-    - IDs validos en eliminar cuenta/descuento.
-  - Consistencia de respuesta:
-    - `404` para cuenta/descuento no encontrado.
-  - Tolerancia a DB transitoria:
-    - lecturas con reintento corto (`queryReadWithRetry`).
-    - errores de conexion (`ETIMEDOUT`/`ECONN*`) responden `503` en lugar de `500`.
+  - validaciones de fecha/IDs y parametros de reporte.
+  - `404` para cuenta/descuento no encontrado.
+  - retry corto para lecturas (`queryReadWithRetry`).
+  - errores transitorios DB (`ETIMEDOUT`, `ECONNRESET`, `ECONNREFUSED`, `PROTOCOL_CONNECTION_LOST`) retornan `503`.
