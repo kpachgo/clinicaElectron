@@ -6,7 +6,7 @@ const role = require("../middlewares/role.middleware");
 const controller = require("../controllers/paciente.controller");
 
 // ============================
-// 🔍 BUSCAR PACIENTES (AUTOCOMPLETE)
+// BUSCAR PACIENTES (AUTOCOMPLETE)
 // ============================
 router.get(
   "/search",
@@ -22,7 +22,24 @@ router.get(
 );
 
 // ============================
-// 🧍 OBTENER PACIENTE POR ID
+// MONITOR DE SEGUIMIENTO
+// Debe declararse antes de "/:id" para evitar colision de rutas.
+// ============================
+router.get(
+  "/monitor-seguimiento",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.monitorSeguimiento
+);
+router.put(
+  "/monitor-seguimiento/contacto",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.guardarMonitorContacto
+);
+
+// ============================
+// OBTENER PACIENTE POR ID
 // ============================
 router.get(
   "/:id",
@@ -30,8 +47,9 @@ router.get(
   role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
   controller.obtenerPorId
 );
+
 // ============================
-// ✍️ GUARDAR FIRMA PACIENTE
+// GUARDAR FIRMA PACIENTE
 // ============================
 router.post(
   "/firma",
@@ -39,8 +57,9 @@ router.post(
   role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
   controller.guardarFirma
 );
+
 // ============================
-// 💾 GUARDAR PACIENTE
+// GUARDAR PACIENTE
 // ============================
 router.post(
   "/guardar",

@@ -13,6 +13,10 @@ const METODO_AUTORIZACION_VALIDACION = "VALIDACION_CREDENCIAL";
 const METODO_AUTORIZACION_SIN_DOCTOR = "SIN_DOCTOR";
 const DOCTOR_REGISTRO_FISICO = "registro fisico";
 const MAX_PROCEDIMIENTO_CITA = 500;
+const MONITOR_SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3"]);
+const MONITOR_ESTADO_VALUES = new Set(["all", "activo", "inactivo"]);
+const MONITOR_TRATAMIENTO_VALUES = new Set(["all", "odontologia", "ortodoncia", "sin_registrar"]);
+const MONITOR_PAGE_SIZE_VALUES = new Set([10, 25, 50]);
 
 function isTransientDbError(err) {
   const code = String(err?.code || "").toUpperCase();
@@ -76,6 +80,85 @@ function esFechaISOValida(fecha) {
     date.getMonth() === mes - 1 &&
     date.getDate() === dia
   );
+}
+
+function getTodayLocalISO() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getResultSet(rows, index = 0) {
+  if (!Array.isArray(rows)) return [];
+  const resultSet = rows[index];
+  return Array.isArray(resultSet) ? resultSet : [];
+}
+
+function normalizeMonitorEnum(rawValue, allowedValues, fallback) {
+  const value = String(rawValue || "").trim().toLowerCase();
+  if (!value) return fallback;
+  return allowedValues.has(value) ? value : "__INVALID__";
+}
+
+function normalizeMonitorPage(rawValue) {
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed <= 0) return 1;
+  return parsed;
+}
+
+function normalizeMonitorPageSize(rawValue) {
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed)) return 25;
+  return MONITOR_PAGE_SIZE_VALUES.has(parsed) ? parsed : 25;
+}
+
+function normalizeMonitorQuery(rawValue) {
+  return String(rawValue || "").trim();
+}
+
+function normalizeBitValue(rawValue, fallback = "__INVALID__") {
+  if (rawValue === undefined || rawValue === null || rawValue === "") return fallback;
+  if (rawValue === true || rawValue === 1 || rawValue === "1") return 1;
+  if (rawValue === false || rawValue === 0 || rawValue === "0") return 0;
+  const txt = String(rawValue).trim().toLowerCase();
+  if (txt === "true" || txt === "yes" || txt === "on") return 1;
+  if (txt === "false" || txt === "no" || txt === "off") return 0;
+  return fallback;
+}
+
+function getMonitorSegmentLabel(segmentKey) {
+  if (segmentKey === "retrasado") return "Retrasado";
+  if (segmentKey === "m2") return "+2 meses";
+  if (segmentKey === "m3") return "+3 meses";
+  return "Al dia";
+}
+
+function inferSegmentKeyByMonths(months) {
+  const safeMonths = Number(months || 0);
+  if (safeMonths >= 3) return "m3";
+  if (safeMonths === 2) return "m2";
+  if (safeMonths === 1) return "retrasado";
+  return "al_dia";
+}
+
+function normalizeTratamientoLabel(rawValue) {
+  const raw = String(rawValue || "").trim();
+  if (!raw) return "Sin registrar";
+
+  const normalized = raw.toLowerCase();
+  if (normalized === "odontologia") return "Odontologia";
+  if (normalized === "ortodoncia") return "Ortodoncia";
+  if (normalized === "sin registrar") return "Sin registrar";
+  return raw;
+}
+
+function getTratamientoKeyFromLabel(label) {
+  const normalized = String(label || "").trim().toLowerCase();
+  if (normalized === "odontologia") return "odontologia";
+  if (normalized === "ortodoncia") return "ortodoncia";
+  return "sin_registrar";
 }
 
 function validarLongitudProcedimientoCita(procedimientoTxt) {
@@ -215,6 +298,186 @@ const obtenerPorId = async (req, res) => {
 
   } catch (err) {
     return handlePacienteError(res, err, "Error al obtener paciente");
+  }
+};
+
+async function consultarMonitorSeguimientoListado({
+  fechaCorte,
+  segmento,
+  estado,
+  tratamiento,
+  q,
+  page,
+  pageSize
+}) {
+  const [rows] = await queryReadWithRetry(
+    "CALL sp_paciente_monitor_seguimiento_listar(?,?,?,?,?,?,?)",
+    [fechaCorte, segmento, estado, tratamiento, q, page, pageSize]
+  );
+
+  const dataRows = getResultSet(rows, 0);
+  const countRow = getResultSet(rows, 1)[0] || {};
+  const totalRows = Number(countRow.totalRows || 0);
+
+  return {
+    dataRows: Array.isArray(dataRows) ? dataRows : [],
+    totalRows: Number.isFinite(totalRows) && totalRows >= 0 ? totalRows : 0
+  };
+}
+
+const monitorSeguimiento = async (req, res) => {
+  try {
+    const fechaCorteRaw = String(req.query?.fechaCorte || "").trim();
+    const fechaCorte = fechaCorteRaw || getTodayLocalISO();
+    if (!esFechaISOValida(fechaCorte)) {
+      return badRequest(res, "fechaCorte invalida, use YYYY-MM-DD");
+    }
+
+    const segmento = normalizeMonitorEnum(req.query?.segmento, MONITOR_SEGMENT_VALUES, "all");
+    if (segmento === "__INVALID__") {
+      return badRequest(res, "segmento invalido. Use all|retrasado|m2|m3");
+    }
+
+    const estado = normalizeMonitorEnum(req.query?.estado, MONITOR_ESTADO_VALUES, "all");
+    if (estado === "__INVALID__") {
+      return badRequest(res, "estado invalido. Use all|activo|inactivo");
+    }
+
+    const tratamiento = normalizeMonitorEnum(req.query?.tratamiento, MONITOR_TRATAMIENTO_VALUES, "all");
+    if (tratamiento === "__INVALID__") {
+      return badRequest(res, "tratamiento invalido. Use all|odontologia|ortodoncia|sin_registrar");
+    }
+
+    const q = normalizeMonitorQuery(req.query?.q);
+    let page = normalizeMonitorPage(req.query?.page);
+    const pageSize = normalizeMonitorPageSize(req.query?.pageSize);
+
+    let listado = await consultarMonitorSeguimientoListado({
+      fechaCorte,
+      segmento,
+      estado,
+      tratamiento,
+      q,
+      page,
+      pageSize
+    });
+
+    let total = Number(listado.totalRows || 0);
+    let totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (total > 0 && page > totalPages) {
+      page = totalPages;
+      listado = await consultarMonitorSeguimientoListado({
+        fechaCorte,
+        segmento,
+        estado,
+        tratamiento,
+        q,
+        page,
+        pageSize
+      });
+      total = Number(listado.totalRows || 0);
+      totalPages = Math.max(1, Math.ceil(total / pageSize));
+    }
+
+    const rows = listado.dataRows.map((row) => {
+      const idPaciente = Number(row.idPaciente || 0);
+      const mesesAusencia = Number(row.mesesAusencia || 0);
+      const segmentKeyRaw = String(row.segmentoKey || "").trim().toLowerCase();
+      const segmentoKey = MONITOR_SEGMENT_VALUES.has(segmentKeyRaw)
+        ? segmentKeyRaw
+        : inferSegmentKeyByMonths(mesesAusencia);
+      const estadoKeyRaw = String(row.estadoKey || "").trim().toLowerCase();
+      const estadoKey = estadoKeyRaw === "inactivo" ? "inactivo" : "activo";
+
+      const tratamientoLabel = normalizeTratamientoLabel(row.tipoTratamientoP || row.tratamientoLabel);
+      const tratamientoKey = getTratamientoKeyFromLabel(tratamientoLabel);
+
+      return {
+        idPaciente: Number.isInteger(idPaciente) ? idPaciente : 0,
+        NombreP: String(row.NombreP || "").trim(),
+        telefonoP: String(row.telefonoP || "").trim(),
+        ultimaVisitaP: row.ultimaVisitaP ? String(row.ultimaVisitaP).trim() : null,
+        mesesAusencia: Number.isFinite(mesesAusencia) && mesesAusencia >= 0 ? mesesAusencia : 0,
+        segmentoKey,
+        segmentoLabel: getMonitorSegmentLabel(segmentoKey),
+        estadoKey,
+        estadoLabel: estadoKey === "activo" ? "Activo" : "Inactivo",
+        tipoTratamientoP: tratamientoLabel,
+        tratamientoKey,
+        sms: normalizeBitValue(row.sms, 0),
+        llamada: normalizeBitValue(row.llamada, 0)
+      };
+    });
+
+    const [rowsTotales] = await queryReadWithRetry(
+      "CALL sp_paciente_monitor_seguimiento_totales(?,?,?,?)",
+      [fechaCorte, estado, tratamiento, q]
+    );
+    const totalesRow = firstRow(rowsTotales) || {};
+
+    totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+    const to = total === 0 ? 0 : Math.min((page - 1) * pageSize + rows.length, total);
+
+    return res.json({
+      ok: true,
+      rows,
+      totales: {
+        total,
+        retrasado: Number(totalesRow.retrasado || 0),
+        m2: Number(totalesRow.m2 || 0),
+        m3: Number(totalesRow.m3 || 0)
+      },
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages,
+        from,
+        to
+      }
+    });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al listar monitor de seguimiento");
+  }
+};
+
+const guardarMonitorContacto = async (req, res) => {
+  try {
+    const idPaciente = Number(req.body?.idPaciente || 0);
+    const fechaCorte = String(req.body?.fechaCorte || "").trim();
+    const sms = normalizeBitValue(req.body?.sms);
+    const llamada = normalizeBitValue(req.body?.llamada);
+    const actualizadoPorUsuarioId = Number(req.user?.idUsuario || 0) || null;
+
+    if (!Number.isInteger(idPaciente) || idPaciente <= 0) {
+      return badRequest(res, "idPaciente invalido");
+    }
+    if (!esFechaISOValida(fechaCorte)) {
+      return badRequest(res, "fechaCorte invalida, use YYYY-MM-DD");
+    }
+    if (sms === "__INVALID__" || llamada === "__INVALID__") {
+      return badRequest(res, "sms/llamada invalidos. Use 0|1 o boolean");
+    }
+
+    const [rows] = await pool.query(
+      "CALL sp_paciente_monitor_contacto_guardar(?,?,?,?,?)",
+      [idPaciente, fechaCorte, sms, llamada, actualizadoPorUsuarioId]
+    );
+
+    const saved = firstRow(rows) || {};
+
+    return res.json({
+      ok: true,
+      data: {
+        idPaciente,
+        fechaCorte: String(saved.fechaCorte || fechaCorte),
+        sms: normalizeBitValue(saved.sms, sms),
+        llamada: normalizeBitValue(saved.llamada, llamada)
+      }
+    });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al guardar contacto de monitor");
   }
 };
 // ============================
@@ -729,6 +992,8 @@ const existePaciente = async (req, res) => {
 module.exports = {
   buscar,
   existePaciente,
+  monitorSeguimiento,
+  guardarMonitorContacto,
   obtenerPorId,
   guardarFirma,
   guardarPaciente,

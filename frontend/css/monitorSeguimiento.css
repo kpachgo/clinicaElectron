@@ -116,8 +116,36 @@
   font-weight: 700;
 }
 
+.ms-toggle-numeracion,
+.ms-toggle-sms,
+.ms-toggle-llamada {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--ms-muted);
+  user-select: none;
+}
+
+.ms-toggle-numeracion input[type="checkbox"],
+.ms-toggle-sms input[type="checkbox"],
+.ms-toggle-llamada input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
 .ms-controls .ui-control.ui-control-search {
   min-width: 280px;
+}
+
+.ms-controls #ms-tratamiento.ui-control,
+.ms-controls #ms-estado.ui-control {
+  min-width: 170px;
 }
 
 .ms-kpi-grid {
@@ -145,9 +173,14 @@
   filter: brightness(0.98);
 }
 
+.ms-kpi-card:not(.is-active) {
+  opacity: 0.9;
+}
+
 .ms-kpi-card.is-active {
   transform: translateY(-1px);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.28);
+  opacity: 1;
 }
 
 .ms-kpi-label {
@@ -158,6 +191,13 @@
 .ms-kpi-value {
   font-size: 24px;
   line-height: 1;
+}
+
+.ms-kpi-state {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.85;
 }
 
 .ms-kpi-card.tone-total {
@@ -196,17 +236,121 @@
   color: var(--ms-inactivo-text);
 }
 
+.ms-kpi-status {
+  margin-top: 0;
+  min-height: 0;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.ms-kpi-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 11px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.ms-kpi-status-pill.is-neutral {
+  color: var(--ms-muted);
+  border-color: var(--ms-border);
+  background: #f8fafc;
+}
+
+.ms-kpi-status-pill.is-active {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.dark-mode .ms-kpi-status-pill.is-neutral {
+  background: #1e293b;
+}
+
+.dark-mode .ms-kpi-status-pill.is-active {
+  color: #bfdbfe;
+  border-color: #4f75b8;
+  background: #1f355f;
+}
+
 .ms-active-filters-wrap {
   margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.ms-active-filters-meta {
+  display: inline-flex;
+  font-size: 12px;
+  color: var(--ms-muted);
+  font-weight: 700;
+  margin-bottom: 0;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .ms-active-filters {
   display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ms-filter-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--ms-border);
+  background: #f8fafc;
+  padding: 5px 10px;
   font-size: 12px;
+  color: var(--ms-text);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.ms-filter-pill-label {
   color: var(--ms-muted);
   font-weight: 600;
+}
+
+.ms-filter-pill-value {
+  font-weight: 700;
+}
+
+.ms-filter-pill.tone-segment {
+  background: var(--ms-retrasado-bg);
+  border-color: var(--ms-retrasado-border);
+}
+
+.ms-filter-pill.tone-estado {
+  background: var(--ms-activo-bg);
+  border-color: var(--ms-activo-border);
+}
+
+.ms-filter-pill.tone-tratamiento {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+}
+
+.ms-filter-pill.tone-search {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.dark-mode .ms-filter-pill.tone-tratamiento {
+  background: #1f3144;
+  border-color: #365a7f;
 }
 
 .ms-table-wrap {
@@ -215,7 +359,91 @@
 
 .ms-table {
   width: 100%;
-  min-width: 880px;
+  min-width: 1180px;
+}
+
+.ms-col-num {
+  width: 52px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ms-muted);
+}
+
+.ms-col-contacto {
+  width: 96px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ms-contacto-flags {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ms-contacto-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+  transition: filter 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.ms-contacto-flag:hover {
+  filter: brightness(0.98);
+}
+
+.ms-contacto-flag input[type="checkbox"] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
+.ms-contacto-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ms-contact-icon-svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
+.ms-contacto-flag.is-sms {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.ms-contacto-flag.is-llamada {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+
+.ms-table.hide-numeracion .ms-col-num {
+  display: none;
+}
+
+.ms-table.hide-contactado .ms-col-contacto {
+  display: none;
+}
+
+.ms-table.hide-contacto-sms .ms-contacto-flag.is-sms {
+  display: none;
+}
+
+.ms-table.hide-contacto-llamada .ms-contacto-flag.is-llamada {
+  display: none;
 }
 
 .ms-table th,
@@ -281,6 +509,42 @@
   color: var(--ms-m3-text);
 }
 
+.ms-chip.is-tratamiento {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #0c4a6e;
+}
+
+.dark-mode .ms-chip.is-tratamiento {
+  background: #1f3144;
+  border-color: #365a7f;
+  color: #bae6fd;
+}
+
+.dark-mode .ms-toggle-numeracion,
+.dark-mode .ms-toggle-sms,
+.dark-mode .ms-toggle-llamada {
+  color: #cbd5e1;
+}
+
+.dark-mode .ms-contacto-flag {
+  background: rgba(15, 23, 42, 0.4);
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #e2e8f0;
+}
+
+.dark-mode .ms-contacto-flag.is-sms {
+  background: rgba(30, 64, 175, 0.24);
+  border-color: rgba(96, 165, 250, 0.55);
+  color: #bfdbfe;
+}
+
+.dark-mode .ms-contacto-flag.is-llamada {
+  background: rgba(21, 128, 61, 0.22);
+  border-color: rgba(74, 222, 128, 0.5);
+  color: #bbf7d0;
+}
+
 .ms-pagination {
   margin-top: 12px;
   display: flex;
@@ -334,6 +598,12 @@
   }
 
   .ms-controls .ui-control.ui-control-search {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .ms-controls #ms-tratamiento.ui-control,
+  .ms-controls #ms-estado.ui-control {
     min-width: 0;
     width: 100%;
   }
