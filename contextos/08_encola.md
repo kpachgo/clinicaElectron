@@ -162,5 +162,6 @@
 - El boton `Borrar todo` en la UI llama `DELETE /api/cola/todo?fecha=YYYY-MM-DD` con la fecha local de la vista, por lo que borra solo el dia activo.
 - `encola.js` registra cleanup con `window.__setViewCleanup` para limpiar el `setInterval` al salir de la vista.
 - `encola.js` tambien aborta requests en vuelo (`AbortController`) y usa secuencia para ignorar respuestas obsoletas.
+- En cambios de `Doctor` y `Estado`, la UI aplica actualizacion optimista por fila (cambio visible inmediato) y luego sincroniza en segundo plano con `recargar({ silent: true })` para mantener orden/consistencia sin bloquear la interaccion.
 - Las acciones criticas de fila/toolbar tienen guardas anti-duplicado para evitar doble envio por doble click/cambios rapidos.
 - El sonido de campana requiere que el sistema de sonidos este cargado (`frontend/js/uiSounds.js`).

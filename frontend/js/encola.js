@@ -451,6 +451,8 @@
     let doctorFetchController = null;
     let isClearingAtendidos = false;
     let isClearingAll = false;
+    const pendingDoctorIds = new Set();
+    const pendingEstadoIds = new Set();
 
     function abortControllerSafe(controller) {
       if (!controller) return;
@@ -465,6 +467,73 @@
       if (!cargaInicialCompleta || nuevos <= 0) return;
       if (typeof window.playUiSound === "function") {
         window.playUiSound("bell", { minIntervalMs: 450 });
+      }
+    }
+
+    function getDoctorNombreById(doctorId) {
+      const id = Number(doctorId || 0);
+      if (!Number.isInteger(id) || id <= 0) return "";
+      const encontrado = doctoresData.find((d) => Number(d.idDoctor || 0) === id);
+      return String(encontrado?.nombreD || `Doctor ${id}`).trim();
+    }
+
+    async function cambiarDoctorItem(item, doctorId) {
+      const rowId = Number(item?.idColaPaciente || 0);
+      if (!rowId || isDisposed || pendingDoctorIds.has(rowId)) return false;
+
+      const prevDoctorId = item.doctorId;
+      const prevNombreDoctor = item.nombreDoctor;
+
+      pendingDoctorIds.add(rowId);
+      item.doctorId = doctorId;
+      item.nombreDoctor = doctorId ? getDoctorNombreById(doctorId) : "";
+      draw();
+
+      try {
+        const updated = await apiSetDoctor(rowId, doctorId);
+        if (updated) Object.assign(item, updated);
+        return true;
+      } catch (err) {
+        item.doctorId = prevDoctorId;
+        item.nombreDoctor = prevNombreDoctor;
+        throw err;
+      } finally {
+        pendingDoctorIds.delete(rowId);
+        draw();
+      }
+    }
+
+    async function cambiarEstadoItem(item, estadoObjetivo) {
+      const rowId = Number(item?.idColaPaciente || 0);
+      if (!rowId || isDisposed || pendingEstadoIds.has(rowId)) return false;
+
+      const nextEstado = estadoObjetivo === ESTADO_ATENDIDO ? ESTADO_ATENDIDO : ESTADO_ESPERA;
+      if (item.estado === nextEstado) return true;
+
+      const prevEstado = item.estado;
+      const prevOrden = item.ordenCola;
+      const prevActualizadoEn = item.actualizadoEn;
+
+      pendingEstadoIds.add(rowId);
+      item.estado = nextEstado;
+      if (nextEstado === ESTADO_ATENDIDO) {
+        item.ordenCola = null;
+      }
+      draw();
+
+      try {
+        const updated = await apiSetEstado(rowId, nextEstado);
+        if (updated) Object.assign(item, updated);
+        return true;
+      } catch (err) {
+        item.estado = prevEstado;
+        item.ordenCola = prevOrden;
+        item.actualizadoEn = prevActualizadoEn;
+        throw err;
+      } finally {
+        pendingEstadoIds.delete(rowId);
+        draw();
+        void recargar({ silent: true });
       }
     }
 
@@ -675,35 +744,24 @@
         const selDoctor = document.createElement("select");
         selDoctor.className = "cola-doctor-select";
         buildDoctorOptions(selDoctor, item.doctorId);
-        let isSavingDoctor = false;
+        if (pendingDoctorIds.has(item.idColaPaciente)) {
+          selDoctor.disabled = true;
+        }
         selDoctor.addEventListener("change", async () => {
-          if (isSavingDoctor || isDisposed) return;
-          isSavingDoctor = true;
-          const doctorPrevio = item.doctorId;
+          if (pendingDoctorIds.has(item.idColaPaciente) || isDisposed) return;
           const doctorRaw = String(selDoctor.value || "");
           const doctorId = doctorRaw === "" ? null : Number(doctorRaw);
           if (doctorId !== null && (!Number.isInteger(doctorId) || doctorId <= 0)) {
             alert("Doctor invalido");
-            buildDoctorOptions(selDoctor, doctorPrevio);
-            isSavingDoctor = false;
+            draw();
             return;
           }
 
-          aplicarColorDoctorSelect(selDoctor, selDoctor.value, false);
-          selDoctor.disabled = true;
           try {
-            const updated = await apiSetDoctor(item.idColaPaciente, doctorId);
-            item.doctorId = updated?.doctorId ?? doctorId;
-            item.nombreDoctor = String(updated?.nombreDoctor || "").trim();
-            draw();
+            await cambiarDoctorItem(item, doctorId);
           } catch (err) {
             alert(err.message || "No se pudo asignar doctor");
-            buildDoctorOptions(selDoctor, doctorPrevio);
-          } finally {
-            isSavingDoctor = false;
-            if (selDoctor.isConnected) {
-              selDoctor.disabled = false;
-            }
+            draw();
           }
         });
         tdDoctor.appendChild(selDoctor);
@@ -720,25 +778,17 @@
           selEstado.appendChild(opt);
         });
         aplicarColorEstadoSelect(selEstado, item.estado);
-        let isSavingEstado = false;
-        selEstado.addEventListener("change", async () => {
-          if (isSavingEstado || isDisposed) return;
-          isSavingEstado = true;
-          const estadoPrevio = item.estado;
-          aplicarColorEstadoSelect(selEstado, selEstado.value);
+        if (pendingEstadoIds.has(item.idColaPaciente)) {
           selEstado.disabled = true;
+        }
+        selEstado.addEventListener("change", async () => {
+          if (pendingEstadoIds.has(item.idColaPaciente) || isDisposed) return;
+          const estadoObjetivo = selEstado.value === ESTADO_ATENDIDO ? ESTADO_ATENDIDO : ESTADO_ESPERA;
           try {
-            await apiSetEstado(item.idColaPaciente, selEstado.value);
-            await recargar();
+            await cambiarEstadoItem(item, estadoObjetivo);
           } catch (err) {
             alert(err.message || "No se pudo actualizar el estado");
-            selEstado.value = estadoPrevio;
-            aplicarColorEstadoSelect(selEstado, estadoPrevio);
-          } finally {
-            isSavingEstado = false;
-            if (selEstado.isConnected) {
-              selEstado.disabled = false;
-            }
+            draw();
           }
         });
         tdEstado.appendChild(selEstado);
@@ -813,22 +863,17 @@
           : renderIcon("check");
         btnToggle.title = isAtendido ? "Reabrir" : "Atender";
         btnToggle.setAttribute("aria-label", isAtendido ? "Reabrir paciente" : "Marcar como atendido");
-        let isTogglingEstado = false;
-        btnToggle.addEventListener("click", async () => {
-          if (isTogglingEstado || isDisposed) return;
-          isTogglingEstado = true;
+        if (pendingEstadoIds.has(item.idColaPaciente)) {
           btnToggle.disabled = true;
+        }
+        btnToggle.addEventListener("click", async () => {
+          if (pendingEstadoIds.has(item.idColaPaciente) || isDisposed) return;
           try {
             const siguienteEstado = item.estado === ESTADO_ATENDIDO ? ESTADO_ESPERA : ESTADO_ATENDIDO;
-            await apiSetEstado(item.idColaPaciente, siguienteEstado);
-            await recargar();
+            await cambiarEstadoItem(item, siguienteEstado);
           } catch (err) {
             alert(err.message || "No se pudo cambiar el estado");
-          } finally {
-            isTogglingEstado = false;
-            if (btnToggle.isConnected) {
-              btnToggle.disabled = false;
-            }
+            draw();
           }
         });
 
