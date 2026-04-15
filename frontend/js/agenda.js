@@ -1462,31 +1462,71 @@
       td.appendChild(input);
       input.focus();
 
-      let alreadySaving = false;
+      const valorOriginal = String(item.hora || "").trim();
+      let isSaving = false;
+      let isClosed = false;
 
-      function save() {
-        if (alreadySaving) return;
-        alreadySaving = true;
+      function closeEditor(hora24) {
+        if (isClosed) return;
+        isClosed = true;
+        td.textContent = formatTime12(hora24);
+        aplicarRefuerzoVisualHora(td, hora24);
+      }
 
-        let v = autoFormatearBasico(input.value.trim().toLowerCase());
+      async function save() {
+        if (isSaving || isClosed) return;
+        isSaving = true;
 
+        const v = autoFormatearBasico(input.value.trim().toLowerCase());
         if (!validarHora(v)) {
           alert("Hora invalida.\nEjemplos validos:\n 8:00 am\n 1:30 pm");
-          td.textContent = formatTime12(item.hora);
-          aplicarRefuerzoVisualHora(td, item.hora);
+          closeEditor(valorOriginal);
+          isSaving = false;
           return;
         }
 
-        item.hora = to24(v);
-        td.textContent = formatTime12(item.hora);
-        aplicarRefuerzoVisualHora(td, item.hora);
+        const nuevaHora24 = to24(v);
+        if (nuevaHora24 === valorOriginal) {
+          closeEditor(valorOriginal);
+          isSaving = false;
+          return;
+        }
+
+        item.hora = nuevaHora24;
+        closeEditor(nuevaHora24);
+
+        try {
+          const res = await fetch(`/api/agenda/${item.idAgendaAP}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hora: nuevaHora24 })
+          });
+
+          const json = await res.json();
+          if (!res.ok || !json?.ok) {
+            throw new Error(json?.message || "Error al actualizar hora");
+          }
+        } catch (err) {
+          item.hora = valorOriginal;
+          td.textContent = formatTime12(valorOriginal);
+          aplicarRefuerzoVisualHora(td, valorOriginal);
+          alert("No se pudo guardar el cambio de hora");
+          console.error(err);
+        } finally {
+          isSaving = false;
+        }
       }
 
       input.addEventListener("keydown", e => {
-        if (e.key === "Enter") save();
+        if (e.key === "Enter") {
+          e.preventDefault();
+          save();
+        }
         if (e.key === "Escape") {
-          td.textContent = formatTime12(item.hora);
-          aplicarRefuerzoVisualHora(td, item.hora);
+          e.preventDefault();
+          if (isClosed) return;
+          item.hora = valorOriginal;
+          closeEditor(valorOriginal);
         }
       });
 

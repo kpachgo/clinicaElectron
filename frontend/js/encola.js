@@ -340,7 +340,9 @@
   function getDoctorColorById(doctorId) {
     const id = Number(doctorId || 0);
     if (!Number.isInteger(id) || id <= 0) return null;
-    return DOCTOR_COLOR_PALETTE[id % DOCTOR_COLOR_PALETTE.length];
+    // Hash multiplicativo para evitar colisiones obvias (ej. 1 y 11) con modulo directo.
+    const hashed = (id * 2654435761) >>> 0;
+    return DOCTOR_COLOR_PALETTE[hashed % DOCTOR_COLOR_PALETTE.length];
   }
 
   function aplicarColorDoctorSelect(selectEl, selectedValue, includeTodos = false) {

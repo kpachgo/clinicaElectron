@@ -121,6 +121,27 @@
     margin-top: 16px;
 }
 
+.login-helper-row {
+    margin-top: 8px;
+    display: flex;
+    justify-content: center;
+}
+
+.login-link-btn {
+    border: none;
+    background: transparent;
+    color: var(--blue);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: underline;
+    padding: 0;
+}
+
+.login-link-btn:hover {
+    opacity: 0.88;
+}
+
 .btn-login.ui-toolbar-btn {
     width: 100%;
     min-height: 42px;
@@ -264,6 +285,28 @@
     border-top: 1px solid var(--login-register-separator);
 }
 
+.password-recovery-box {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--login-register-separator);
+}
+
+.password-recovery-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 12px;
+    margin-bottom: 10px;
+}
+
+.password-recovery-actions.password-recovery-actions-single {
+    grid-template-columns: 1fr;
+}
+
+.recovery-setup-copy {
+    margin-top: 2px;
+}
+
 .hidden-register-title {
     margin: 0 0 12px 0;
     font-size: 18px;
@@ -364,6 +407,10 @@
     }
 
     .license-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .password-recovery-actions {
         grid-template-columns: 1fr;
     }
 }

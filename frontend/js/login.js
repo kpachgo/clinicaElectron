@@ -273,6 +273,94 @@
             </button>
           </div>
 
+          <div class="login-helper-row">
+            <button id="btn-open-recovery" class="login-link-btn" type="button">
+              Olvide mi contrasena
+            </button>
+          </div>
+
+          <div id="password-recovery-box" class="password-recovery-box" hidden>
+            <h3 class="hidden-register-title">Recuperar contrasena</h3>
+
+            <div class="login-field">
+              <label for="recovery-correo">Correo</label>
+              <input class="ui-control" type="email" id="recovery-correo" placeholder="correo@dominio.com">
+            </div>
+
+            <div class="password-recovery-actions">
+              <button id="btn-recovery-question" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+                ${renderIcon("question-mark-circle", "ui-toolbar-icon")}
+                <span>Ver pregunta</span>
+              </button>
+              <button id="btn-recovery-close" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+                ${renderIcon("x-mark", "ui-toolbar-icon")}
+                <span>Cerrar</span>
+              </button>
+            </div>
+
+            <div id="recovery-question-wrap" hidden>
+              <div class="login-field">
+                <label for="recovery-question">Pregunta de seguridad</label>
+                <input class="ui-control" type="text" id="recovery-question" readonly>
+              </div>
+              <div class="login-field">
+                <label for="recovery-answer">Respuesta</label>
+                <input class="ui-control" type="text" id="recovery-answer" placeholder="Su respuesta">
+              </div>
+              <div class="login-field">
+                <label for="recovery-new-pass">Nueva contrasena</label>
+                <input class="ui-control" type="password" id="recovery-new-pass" placeholder="Minimo 6 caracteres">
+              </div>
+              <div class="login-field">
+                <label for="recovery-new-pass-confirm">Confirmar nueva contrasena</label>
+                <input class="ui-control" type="password" id="recovery-new-pass-confirm" placeholder="Repita contrasena">
+              </div>
+
+              <div class="password-recovery-actions password-recovery-actions-single">
+                <button id="btn-recovery-reset" class="btn-login ui-toolbar-btn is-primary" type="button">
+                  ${renderIcon("key", "ui-toolbar-icon")}
+                  <span>Cambiar contrasena</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="recovery-setup-wrap" hidden>
+              <p class="license-subtitle recovery-setup-copy">
+                Este usuario aun no tiene pregunta de seguridad. Configurela con su contrasena actual.
+              </p>
+              <div class="login-field">
+                <label for="recovery-current-pass">Contrasena actual</label>
+                <input class="ui-control" type="password" id="recovery-current-pass" placeholder="Contrasena actual">
+              </div>
+              <div class="login-field">
+                <label for="recovery-setup-question">Nueva pregunta de seguridad</label>
+                <input class="ui-control" type="text" id="recovery-setup-question" placeholder="Ej: Nombre de mi primera mascota">
+              </div>
+              <div class="login-field">
+                <label for="recovery-setup-answer">Nueva respuesta</label>
+                <input class="ui-control" type="text" id="recovery-setup-answer" placeholder="Respuesta">
+              </div>
+              <div class="login-field">
+                <label for="recovery-setup-new-pass">Nueva contrasena (opcional)</label>
+                <input class="ui-control" type="password" id="recovery-setup-new-pass" placeholder="Dejar vacio para no cambiarla">
+              </div>
+              <div class="login-field">
+                <label for="recovery-setup-new-pass-confirm">Confirmar nueva contrasena</label>
+                <input class="ui-control" type="password" id="recovery-setup-new-pass-confirm" placeholder="Solo si cambio contrasena">
+              </div>
+
+              <div class="password-recovery-actions password-recovery-actions-single">
+                <button id="btn-recovery-setup" class="btn-login ui-toolbar-btn is-primary" type="button">
+                  ${renderIcon("shield-check", "ui-toolbar-icon")}
+                  <span>Configurar seguridad</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="recovery-msg" class="login-error" hidden></div>
+            <div id="recovery-ok" class="login-notice" hidden></div>
+          </div>
+
           <div id="login-error" class="login-error" hidden></div>
           <div id="login-notice" class="login-notice" hidden></div>
 
@@ -298,6 +386,16 @@
               <div class="hidden-register-field">
                 <label for="reg-nombre">Nombre</label>
                 <input class="ui-control" type="text" id="reg-nombre" placeholder="Nombre completo">
+              </div>
+
+              <div class="hidden-register-field hidden-register-field-full">
+                <label for="reg-pregunta-seguridad">Pregunta de seguridad (opcional)</label>
+                <input class="ui-control" type="text" id="reg-pregunta-seguridad" placeholder="Ej: Nombre de mi primera mascota">
+              </div>
+
+              <div class="hidden-register-field hidden-register-field-full">
+                <label for="reg-respuesta-seguridad">Respuesta de seguridad (opcional)</label>
+                <input class="ui-control" type="text" id="reg-respuesta-seguridad" placeholder="Respuesta">
               </div>
 
               <div class="hidden-register-field">
@@ -337,6 +435,26 @@
     const btnLogin = container.querySelector("#btn-login");
     const errorBox = container.querySelector("#login-error");
     const noticeBox = container.querySelector("#login-notice");
+    const btnOpenRecovery = container.querySelector("#btn-open-recovery");
+    const recoveryBox = container.querySelector("#password-recovery-box");
+    const recoveryCorreo = container.querySelector("#recovery-correo");
+    const btnRecoveryQuestion = container.querySelector("#btn-recovery-question");
+    const btnRecoveryClose = container.querySelector("#btn-recovery-close");
+    const recoveryQuestionWrap = container.querySelector("#recovery-question-wrap");
+    const recoveryQuestionInput = container.querySelector("#recovery-question");
+    const recoveryAnswerInput = container.querySelector("#recovery-answer");
+    const recoveryNewPassInput = container.querySelector("#recovery-new-pass");
+    const recoveryNewPassConfirmInput = container.querySelector("#recovery-new-pass-confirm");
+    const btnRecoveryReset = container.querySelector("#btn-recovery-reset");
+    const recoverySetupWrap = container.querySelector("#recovery-setup-wrap");
+    const recoveryCurrentPassInput = container.querySelector("#recovery-current-pass");
+    const recoverySetupQuestionInput = container.querySelector("#recovery-setup-question");
+    const recoverySetupAnswerInput = container.querySelector("#recovery-setup-answer");
+    const recoverySetupNewPassInput = container.querySelector("#recovery-setup-new-pass");
+    const recoverySetupNewPassConfirmInput = container.querySelector("#recovery-setup-new-pass-confirm");
+    const btnRecoverySetup = container.querySelector("#btn-recovery-setup");
+    const recoveryMsg = container.querySelector("#recovery-msg");
+    const recoveryOk = container.querySelector("#recovery-ok");
 
     const hiddenBox = container.querySelector("#hidden-register-box");
     const registroMsg = container.querySelector("#registro-msg");
@@ -347,12 +465,17 @@
     const regPassword = container.querySelector("#reg-password");
     const regPasswordConfirm = container.querySelector("#reg-password-confirm");
     const regNombre = container.querySelector("#reg-nombre");
+    const regPreguntaSeguridad = container.querySelector("#reg-pregunta-seguridad");
+    const regRespuestaSeguridad = container.querySelector("#reg-respuesta-seguridad");
     const regIdRol = container.querySelector("#reg-idrol");
     const regIdDoctor = container.querySelector("#reg-iddoctor");
     let registroCatalogosCargados = false;
     let registroCatalogosPromise = null;
     let loginInFlight = false;
     let registroInFlight = false;
+    let recoveryLookupInFlight = false;
+    let recoveryResetInFlight = false;
+    let recoverySetupInFlight = false;
     let noticeTimer = null;
 
     setTimeout(() => userInput.focus(), 50);
@@ -430,6 +553,8 @@
       regPassword.value = "";
       regPasswordConfirm.value = "";
       regNombre.value = "";
+      if (regPreguntaSeguridad) regPreguntaSeguridad.value = "";
+      if (regRespuestaSeguridad) regRespuestaSeguridad.value = "";
       regIdRol.value = "";
       regIdDoctor.value = "";
     }
@@ -448,7 +573,81 @@
       }, 2600);
     }
 
+    function clearRecoveryFeedback() {
+      if (recoveryMsg) {
+        recoveryMsg.hidden = true;
+        recoveryMsg.textContent = "";
+      }
+      if (recoveryOk) {
+        recoveryOk.hidden = true;
+        recoveryOk.textContent = "";
+      }
+    }
+
+    function showRecoveryError(msg) {
+      if (!recoveryMsg) return;
+      recoveryMsg.textContent = msg;
+      recoveryMsg.hidden = false;
+      if (recoveryOk) {
+        recoveryOk.hidden = true;
+        recoveryOk.textContent = "";
+      }
+    }
+
+    function showRecoveryNotice(msg) {
+      if (!recoveryOk) return;
+      recoveryOk.textContent = msg;
+      recoveryOk.hidden = false;
+      if (recoveryMsg) {
+        recoveryMsg.hidden = true;
+        recoveryMsg.textContent = "";
+      }
+    }
+
+    function resetRecoveryStepPanels() {
+      if (recoveryQuestionWrap) recoveryQuestionWrap.hidden = true;
+      if (recoverySetupWrap) recoverySetupWrap.hidden = true;
+      if (recoveryQuestionInput) recoveryQuestionInput.value = "";
+      if (recoveryAnswerInput) recoveryAnswerInput.value = "";
+      if (recoveryNewPassInput) recoveryNewPassInput.value = "";
+      if (recoveryNewPassConfirmInput) recoveryNewPassConfirmInput.value = "";
+      if (recoveryCurrentPassInput) recoveryCurrentPassInput.value = "";
+      if (recoverySetupQuestionInput) recoverySetupQuestionInput.value = "";
+      if (recoverySetupAnswerInput) recoverySetupAnswerInput.value = "";
+      if (recoverySetupNewPassInput) recoverySetupNewPassInput.value = "";
+      if (recoverySetupNewPassConfirmInput) recoverySetupNewPassConfirmInput.value = "";
+    }
+
+    function openRecoveryBox() {
+      if (!recoveryBox) return;
+      recoveryBox.hidden = false;
+      clearRecoveryFeedback();
+      resetRecoveryStepPanels();
+
+      const correoLogin = String(userInput?.value || "").trim();
+      if (correoLogin && recoveryCorreo && !recoveryCorreo.value.trim()) {
+        recoveryCorreo.value = correoLogin;
+      }
+
+      setTimeout(() => recoveryCorreo?.focus(), 50);
+    }
+
+    function closeRecoveryBox() {
+      if (!recoveryBox) return;
+      recoveryBox.hidden = true;
+      clearRecoveryFeedback();
+      resetRecoveryStepPanels();
+    }
+
     btnRegistroCancelar.addEventListener("click", ocultarRegistro);
+    btnOpenRecovery?.addEventListener("click", () => {
+      if (recoveryBox?.hidden) {
+        openRecoveryBox();
+      } else {
+        closeRecoveryBox();
+      }
+    });
+    btnRecoveryClose?.addEventListener("click", closeRecoveryBox);
 
     btnLogin.addEventListener("click", async () => {
       if (loginInFlight) return;
@@ -528,6 +727,215 @@
       }
     });
 
+    btnRecoveryQuestion?.addEventListener("click", async () => {
+      if (recoveryLookupInFlight) return;
+      clearRecoveryFeedback();
+      if (recoveryQuestionWrap) recoveryQuestionWrap.hidden = true;
+      if (recoverySetupWrap) recoverySetupWrap.hidden = true;
+
+      const correo = String(recoveryCorreo?.value || "").trim().toLowerCase();
+      if (!correo) {
+        showRecoveryError("Ingrese el correo para continuar");
+        recoveryCorreo?.focus();
+        return;
+      }
+
+      recoveryLookupInFlight = true;
+      btnRecoveryQuestion.disabled = true;
+      try {
+        const res = await fetch("/api/auth/password-recovery/question", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ correo })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          showRecoveryError(data?.message || "No se pudo consultar recuperacion");
+          return;
+        }
+
+        if (data.mode === "question") {
+          if (recoveryQuestionInput) {
+            recoveryQuestionInput.value = String(data.preguntaSeguridad || "");
+          }
+          if (recoveryQuestionWrap) recoveryQuestionWrap.hidden = false;
+          if (recoverySetupWrap) recoverySetupWrap.hidden = true;
+          recoveryAnswerInput?.focus();
+          return;
+        }
+
+        if (data.mode === "setup_required") {
+          if (recoverySetupWrap) recoverySetupWrap.hidden = false;
+          if (recoveryQuestionWrap) recoveryQuestionWrap.hidden = true;
+          showRecoveryNotice(
+            data?.message ||
+            "Este usuario no tiene pregunta configurada. Debe configurarla con su contrasena actual."
+          );
+          recoveryCurrentPassInput?.focus();
+          return;
+        }
+
+        showRecoveryNotice(
+          data?.message ||
+          "Si el correo existe y tiene pregunta configurada, podra recuperar su contrasena."
+        );
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error(err);
+        showRecoveryError("Opps ocurrio un error de conexion");
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        }
+      } finally {
+        recoveryLookupInFlight = false;
+        if (btnRecoveryQuestion?.isConnected) {
+          btnRecoveryQuestion.disabled = false;
+        }
+      }
+    });
+
+    btnRecoveryReset?.addEventListener("click", async () => {
+      if (recoveryResetInFlight) return;
+      clearRecoveryFeedback();
+
+      const correo = String(recoveryCorreo?.value || "").trim().toLowerCase();
+      const respuestaSeguridad = String(recoveryAnswerInput?.value || "").trim();
+      const nuevaPassword = String(recoveryNewPassInput?.value || "");
+      const nuevaPasswordConfirm = String(recoveryNewPassConfirmInput?.value || "");
+
+      if (!correo || !respuestaSeguridad || !nuevaPassword || !nuevaPasswordConfirm) {
+        showRecoveryError("Complete correo, respuesta y nueva contrasena");
+        return;
+      }
+
+      if (nuevaPassword !== nuevaPasswordConfirm) {
+        showRecoveryError("La confirmacion de contrasena no coincide");
+        return;
+      }
+
+      if (nuevaPassword.length < 6) {
+        showRecoveryError("La nueva contrasena debe tener al menos 6 caracteres");
+        return;
+      }
+
+      recoveryResetInFlight = true;
+      btnRecoveryReset.disabled = true;
+      try {
+        const res = await fetch("/api/auth/password-recovery/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            correo,
+            respuestaSeguridad,
+            nuevaPassword
+          })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          showRecoveryError(data?.message || "No se pudo restablecer contrasena");
+          return;
+        }
+
+        closeRecoveryBox();
+        if (userInput) userInput.value = correo;
+        if (passInput) {
+          passInput.value = "";
+          passInput.focus();
+        }
+        mostrarNotificacionExito(data?.message || "Contrasena actualizada. Inicie sesion.");
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error(err);
+        showRecoveryError("Opps ocurrio un error de conexion");
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        }
+      } finally {
+        recoveryResetInFlight = false;
+        if (btnRecoveryReset?.isConnected) {
+          btnRecoveryReset.disabled = false;
+        }
+      }
+    });
+
+    btnRecoverySetup?.addEventListener("click", async () => {
+      if (recoverySetupInFlight) return;
+      clearRecoveryFeedback();
+
+      const correo = String(recoveryCorreo?.value || "").trim().toLowerCase();
+      const passwordActual = String(recoveryCurrentPassInput?.value || "");
+      const preguntaSeguridad = String(recoverySetupQuestionInput?.value || "").trim();
+      const respuestaSeguridad = String(recoverySetupAnswerInput?.value || "").trim();
+      const nuevaPassword = String(recoverySetupNewPassInput?.value || "");
+      const nuevaPasswordConfirm = String(recoverySetupNewPassConfirmInput?.value || "");
+
+      if (!correo || !passwordActual || !preguntaSeguridad || !respuestaSeguridad) {
+        showRecoveryError("Complete correo, contrasena actual, pregunta y respuesta");
+        return;
+      }
+
+      if ((nuevaPassword || nuevaPasswordConfirm) && nuevaPassword !== nuevaPasswordConfirm) {
+        showRecoveryError("La confirmacion de nueva contrasena no coincide");
+        return;
+      }
+
+      if (nuevaPassword && nuevaPassword.length < 6) {
+        showRecoveryError("La nueva contrasena debe tener al menos 6 caracteres");
+        return;
+      }
+
+      recoverySetupInFlight = true;
+      btnRecoverySetup.disabled = true;
+      try {
+        const res = await fetch("/api/auth/password-recovery/setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            correo,
+            passwordActual,
+            preguntaSeguridad,
+            respuestaSeguridad,
+            nuevaPassword: nuevaPassword || null
+          })
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          showRecoveryError(data?.message || "No se pudo configurar seguridad");
+          return;
+        }
+
+        showRecoveryNotice(data?.message || "Pregunta de seguridad configurada");
+        if (nuevaPassword) {
+          closeRecoveryBox();
+          if (userInput) userInput.value = correo;
+          if (passInput) {
+            passInput.value = "";
+            passInput.focus();
+          }
+          mostrarNotificacionExito("Seguridad configurada y contrasena actualizada.");
+          return;
+        }
+
+        if (recoverySetupWrap) recoverySetupWrap.hidden = true;
+        if (recoveryQuestionWrap) recoveryQuestionWrap.hidden = true;
+      } catch (err) {
+        if (isAbortError(err)) return;
+        console.error(err);
+        showRecoveryError("Opps ocurrio un error de conexion");
+        if (window.notifyConnectionError) {
+          window.notifyConnectionError("Opps ocurrio un error de conexion");
+        }
+      } finally {
+        recoverySetupInFlight = false;
+        if (btnRecoverySetup?.isConnected) {
+          btnRecoverySetup.disabled = false;
+        }
+      }
+    });
+
     btnRegistroGuardar.addEventListener("click", async () => {
       if (registroInFlight) return;
       registroMsg.hidden = true;
@@ -536,6 +944,8 @@
       const password = regPassword.value;
       const passwordConfirm = regPasswordConfirm.value;
       const nombre = regNombre.value.trim();
+      const preguntaSeguridad = String(regPreguntaSeguridad?.value || "").trim();
+      const respuestaSeguridad = String(regRespuestaSeguridad?.value || "").trim();
       const idRol = Number(regIdRol.value);
       const idDoctorRaw = regIdDoctor.value;
       const idDoctor = idDoctorRaw === "" ? null : Number(idDoctorRaw);
@@ -558,6 +968,14 @@
         return;
       }
 
+      const hasPreguntaSeguridad = !!preguntaSeguridad;
+      const hasRespuestaSeguridad = !!respuestaSeguridad;
+      if (hasPreguntaSeguridad !== hasRespuestaSeguridad) {
+        registroMsg.textContent = "Si define seguridad, complete pregunta y respuesta";
+        registroMsg.hidden = false;
+        return;
+      }
+
       registroInFlight = true;
       btnRegistroGuardar.disabled = true;
       try {
@@ -569,7 +987,9 @@
             password,
             nombre,
             idRol,
-            idDoctor
+            idDoctor,
+            preguntaSeguridad: hasPreguntaSeguridad ? preguntaSeguridad : null,
+            respuestaSeguridad: hasRespuestaSeguridad ? respuestaSeguridad : null
           })
         });
 
@@ -610,6 +1030,10 @@
 
       if (e.key === "Escape" && hiddenBox.style.display !== "none") {
         ocultarRegistro();
+        return;
+      }
+      if (e.key === "Escape" && recoveryBox && !recoveryBox.hidden) {
+        closeRecoveryBox();
         return;
       }
 

@@ -13,6 +13,18 @@
   let faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
   let doctoresCuentaData = [];
   let cargarDoctoresCuentaPromise = null;
+  const DOCTOR_COLOR_PALETTE = [
+    { bg: "#dbeafe", border: "#93c5fd", text: "#1e3a8a" },
+    { bg: "#dcfce7", border: "#86efac", text: "#166534" },
+    { bg: "#ffedd5", border: "#fdba74", text: "#9a3412" },
+    { bg: "#fce7f3", border: "#f9a8d4", text: "#9d174d" },
+    { bg: "#ede9fe", border: "#c4b5fd", text: "#5b21b6" },
+    { bg: "#cffafe", border: "#67e8f9", text: "#155e75" },
+    { bg: "#fef3c7", border: "#fcd34d", text: "#92400e" },
+    { bg: "#e0f2fe", border: "#7dd3fc", text: "#0c4a6e" },
+    { bg: "#f3e8ff", border: "#d8b4fe", text: "#6b21a8" },
+    { bg: "#fae8ff", border: "#f0abfc", text: "#86198f" }
+  ];
 
   function precioUSD(num) {
     return `$${Number(num || 0).toFixed(2)}`;
@@ -481,7 +493,7 @@
               </label>
               <input type="date" id="cuenta-date">
               <input type="search" id="cuenta-search" name="cuenta-search-cobro" placeholder="Buscar paciente o tratamiento" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-              <select id="cuenta-doctor-filter" class="cobro-forma-pago" aria-label="Filtrar por doctor">
+              <select id="cuenta-doctor-filter" class="cobro-forma-pago cuenta-doctor-select" aria-label="Filtrar por doctor">
                 <option value="">Todos los doctores</option>
                 <option value="__none__">Sin doctor</option>
               </select>
@@ -1620,14 +1632,45 @@
       return { idDoctor, nombreD };
     }
 
-    function aplicarColorDoctorCuentaSelect(selectEl, selectedValue) {
+    function getDoctorColorById(doctorId) {
+      const id = Number(doctorId || 0);
+      if (!Number.isInteger(id) || id <= 0) return null;
+      const hashed = (id * 2654435761) >>> 0;
+      return DOCTOR_COLOR_PALETTE[hashed % DOCTOR_COLOR_PALETTE.length];
+    }
+
+    function aplicarColorDoctorCuentaSelect(selectEl, selectedValue, includeTodos = false) {
       if (!selectEl) return;
-      selectEl.classList.remove("is-doctor", "is-no-doctor");
+      selectEl.classList.remove("is-doctor", "is-no-doctor", "is-all-doctors");
+      selectEl.style.removeProperty("--doctor-bg");
+      selectEl.style.removeProperty("--doctor-border");
+      selectEl.style.removeProperty("--doctor-text");
+
       const raw = String(selectedValue ?? "").trim();
+      if (includeTodos && raw === "") {
+        selectEl.classList.add("is-all-doctors");
+        return;
+      }
+
+      if (raw === "__none__") {
+        selectEl.classList.add("is-no-doctor");
+        return;
+      }
+
       if (!raw) {
         selectEl.classList.add("is-no-doctor");
         return;
       }
+
+      const color = getDoctorColorById(Number(raw));
+      if (!color) {
+        selectEl.classList.add("is-no-doctor");
+        return;
+      }
+
+      selectEl.style.setProperty("--doctor-bg", color.bg);
+      selectEl.style.setProperty("--doctor-border", color.border);
+      selectEl.style.setProperty("--doctor-text", color.text);
       selectEl.classList.add("is-doctor");
     }
 
@@ -1657,7 +1700,7 @@
 
       selectEl.value = selected ? String(selected) : "";
       selectEl.dataset.prevValue = selectEl.value;
-      aplicarColorDoctorCuentaSelect(selectEl, selectEl.value);
+      aplicarColorDoctorCuentaSelect(selectEl, selectEl.value, false);
     }
 
     function construirOpcionesFiltroDoctorCuenta() {
@@ -1691,6 +1734,8 @@
         delete cuentaDoctorFilter.dataset.persistedValue;
         persistCobroUiState();
       }
+
+      aplicarColorDoctorCuentaSelect(cuentaDoctorFilter, cuentaDoctorFilter.value, true);
     }
 
     async function cargarDoctoresCuenta(force = false) {
@@ -2585,6 +2630,7 @@
       if (cuentaDoctorFilter?.dataset) {
         delete cuentaDoctorFilter.dataset.persistedValue;
       }
+      aplicarColorDoctorCuentaSelect(cuentaDoctorFilter, cuentaDoctorFilter.value, true);
       aplicarFiltroCuenta();
       persistCobroUiState();
     });

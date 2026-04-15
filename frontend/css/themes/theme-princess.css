@@ -715,6 +715,12 @@ body[data-theme="princess"] {
   --cobro-cash-focus-ring: rgba(255, 105, 180, 0.25);
   --cobro-cash-total-bg: #ffb8da;
   --cobro-cash-total-text: #7a0f4d;
+  --cuenta-doctor-all-bg: #ffb8da;
+  --cuenta-doctor-all-border: #ff9cce;
+  --cuenta-doctor-all-text: #cd0067;
+  --cuenta-doctor-none-bg: #ffd8ec;
+  --cuenta-doctor-none-border: #ff9cce;
+  --cuenta-doctor-none-text: #6f4a64;
 }
 
 body[data-theme="princess"] .cobro-kpi {

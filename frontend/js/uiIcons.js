@@ -26,6 +26,10 @@
         return svg('<path d="M8 3h6l4 4v14H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path><path d="M14 3v5h5"></path><path d="M10 12h6M10 16h6"></path>', className);
       case "shield-check":
         return svg('<path d="M12 3 5 6v6c0 5 3.5 8 7 9 3.5-1 7-4 7-9V6l-7-3Z"></path><path d="m9 12 2 2 4-4"></path>', className);
+      case "question-mark-circle":
+        return svg('<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-.7.7-1.3 1-1.3 2"></path><path d="M12 16h.01"></path>', className);
+      case "key":
+        return svg('<circle cx="8.5" cy="12" r="3.5"></circle><path d="M12 12h8"></path><path d="M18 12v3"></path><path d="M21 12v2"></path>', className);
       case "check-circle":
         return svg('<circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.2 2.2 4.8-4.8"></path>', className);
       case "arrow-right-on-rectangle":

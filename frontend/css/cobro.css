@@ -16,6 +16,12 @@
   --cobro-cash-focus-ring: rgba(96, 165, 250, 0.18);
   --cobro-cash-total-bg: #eff6ff;
   --cobro-cash-total-text: #1d4ed8;
+  --cuenta-doctor-all-bg: #dbeafe;
+  --cuenta-doctor-all-border: #93c5fd;
+  --cuenta-doctor-all-text: #1e3a8a;
+  --cuenta-doctor-none-bg: #f8fafc;
+  --cuenta-doctor-none-border: #cbd5e1;
+  --cuenta-doctor-none-text: #475569;
 }
 
 .dark-mode {
@@ -34,6 +40,12 @@
   --cobro-cash-focus-ring: rgba(59, 130, 246, 0.22);
   --cobro-cash-total-bg: #1f2f53;
   --cobro-cash-total-text: #bfdbfe;
+  --cuenta-doctor-all-bg: #1f2f53;
+  --cuenta-doctor-all-border: #3b82f6;
+  --cuenta-doctor-all-text: #bfdbfe;
+  --cuenta-doctor-none-bg: #111c2f;
+  --cuenta-doctor-none-border: #334155;
+  --cuenta-doctor-none-text: #cbd5e1;
 }
 
 .cobro-view {
@@ -997,6 +1009,7 @@
   padding: 4px 8px;
   font-size: 12px;
   font-weight: 600;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .cuenta-doctor-select:focus {
@@ -1005,16 +1018,22 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
 }
 
-.cuenta-doctor-select.is-doctor {
-  background: #dcfce7;
-  border-color: #22c55e;
-  color: #166534;
+.cobro-view .cobro-forma-pago.cuenta-doctor-select.is-all-doctors {
+  background: var(--cuenta-doctor-all-bg);
+  border-color: var(--cuenta-doctor-all-border);
+  color: var(--cuenta-doctor-all-text);
 }
 
-.cuenta-doctor-select.is-no-doctor {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #475569;
+.cobro-view .cobro-forma-pago.cuenta-doctor-select.is-no-doctor {
+  background: var(--cuenta-doctor-none-bg);
+  border-color: var(--cuenta-doctor-none-border);
+  color: var(--cuenta-doctor-none-text);
+}
+
+.cobro-view .cobro-forma-pago.cuenta-doctor-select.is-doctor {
+  background: var(--doctor-bg, #dbeafe);
+  border-color: var(--doctor-border, #93c5fd);
+  color: var(--doctor-text, #1e3a8a);
 }
 
 .cuenta-table .cobro-btn-remove,
@@ -1501,18 +1520,6 @@ body.cobro-modal-open {
 .dark-mode .cuenta-doctor-select {
   border-color: #334155;
   background: #111c2f;
-  color: #cbd5e1;
-}
-
-.dark-mode .cuenta-doctor-select.is-doctor {
-  background: #183428;
-  border-color: #2d7a57;
-  color: #86efac;
-}
-
-.dark-mode .cuenta-doctor-select.is-no-doctor {
-  background: #111c2f;
-  border-color: #334155;
   color: #cbd5e1;
 }
 

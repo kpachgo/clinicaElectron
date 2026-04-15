@@ -6,6 +6,20 @@ const authService = require("../services/auth.service");
 const licenciaService = require("../services/licencia.service");
 const { badRequest, serverError } = require("../utils/http");
 
+const EMAIL_MAX_LEN = 60;
+const SECURITY_QUESTION_MAX_LEN = 120;
+const SECURITY_ANSWER_MAX_LEN = 120;
+const PASSWORD_MIN_LEN = 6;
+const PASSWORD_MAX_LEN = 72;
+
+function normalizeEmail(value) {
+    return String(value || "").trim().toLowerCase();
+}
+
+function normalizeText(value) {
+    return String(value || "").trim().replace(/\s+/g, " ");
+}
+
 function isHiddenRegisterEnabled() {
     const raw = String(process.env.AUTH_HIDDEN_REGISTER_ENABLED || "").trim().toLowerCase();
     return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
@@ -23,6 +37,14 @@ function isTransientDbError(err) {
 }
 
 function handleAuthError(res, err, fallbackMessage) {
+    if (authService.isMissingSecurityColumnsError?.(err)) {
+        return res.status(503).json({
+            ok: false,
+            code: "security_columns_missing",
+            message: "Falta migracion de pregunta de seguridad en BD"
+        });
+    }
+
     if (isTransientDbError(err)) {
         return res.status(503).json({
             ok: false,
@@ -41,13 +63,13 @@ function getHttpStatusByLicenseCode(code) {
 
 async function login(req, res) {
     try {
-        const correo = String(req.body?.correo || "").trim().toLowerCase();
+        const correo = normalizeEmail(req.body?.correo);
         const password = String(req.body?.password || "");
 
         if (!correo || !password) {
             return badRequest(res, "Correo y contrasena requeridos");
         }
-        if (correo.length > 60) {
+        if (correo.length > EMAIL_MAX_LEN) {
             return badRequest(res, "Correo invalido");
         }
 
@@ -120,21 +142,28 @@ async function registroOculto(req, res) {
             password,
             nombre,
             idRol,
-            idDoctor
+            idDoctor,
+            preguntaSeguridad,
+            respuestaSeguridad
         } = req.body || {};
 
         if (!correo || !password || !nombre || !idRol) {
             return badRequest(res, "Datos incompletos para registro");
         }
 
-        const correoLimpio = String(correo).trim().toLowerCase();
-        const nombreLimpio = String(nombre).trim();
+        const correoLimpio = normalizeEmail(correo);
+        const nombreLimpio = normalizeText(nombre);
         const idRolNum = Number(idRol);
         const idDoctorNum = idDoctor === "" || idDoctor == null
             ? null
             : Number(idDoctor);
 
-        if (!correoLimpio || correoLimpio.length > 60) {
+        const preguntaSeguridadNorm = authService.normalizeSecurityQuestion(preguntaSeguridad);
+        const respuestaSeguridadNorm = authService.normalizeSecurityAnswer(respuestaSeguridad);
+        const hasPreguntaSeguridad = !!preguntaSeguridadNorm;
+        const hasRespuestaSeguridad = !!respuestaSeguridadNorm;
+
+        if (!correoLimpio || correoLimpio.length > EMAIL_MAX_LEN) {
             return badRequest(res, "Correo invalido o demasiado largo");
         }
 
@@ -144,6 +173,18 @@ async function registroOculto(req, res) {
 
         if (!Number.isInteger(idRolNum) || idRolNum <= 0) {
             return badRequest(res, "idRol invalido");
+        }
+
+        if (hasPreguntaSeguridad !== hasRespuestaSeguridad) {
+            return badRequest(res, "Para seguridad debe enviar pregunta y respuesta juntas");
+        }
+
+        if (hasPreguntaSeguridad && preguntaSeguridadNorm.length > SECURITY_QUESTION_MAX_LEN) {
+            return badRequest(res, "Pregunta de seguridad demasiado larga");
+        }
+
+        if (hasRespuestaSeguridad && respuestaSeguridadNorm.length > SECURITY_ANSWER_MAX_LEN) {
+            return badRequest(res, "Respuesta de seguridad demasiado larga");
         }
 
         const rolRegistro = await authService.obtenerRolPorId(idRolNum);
@@ -160,7 +201,7 @@ async function registroOculto(req, res) {
             return badRequest(res, "idDoctor invalido");
         }
 
-        if (String(password).length < 6) {
+        if (String(password).length < PASSWORD_MIN_LEN) {
             return badRequest(res, "La contrasena debe tener al menos 6 caracteres");
         }
 
@@ -175,9 +216,20 @@ async function registroOculto(req, res) {
             idDoctor: idDoctorNum
         });
 
+        let securityQuestionStored = null;
+        if (hasPreguntaSeguridad && hasRespuestaSeguridad && idUsuario) {
+            securityQuestionStored = await authService.configurarPreguntaSeguridadPorIdUsuario(
+                idUsuario,
+                preguntaSeguridadNorm,
+                respuestaSeguridadNorm,
+                { ignoreMissingColumns: true }
+            );
+        }
+
         return res.status(201).json({
             ok: true,
-            idUsuario
+            idUsuario,
+            securityQuestionStored
         });
 
     } catch (error) {
@@ -218,8 +270,164 @@ async function registroCatalogos(req, res) {
     }
 }
 
+async function passwordRecoveryQuestion(req, res) {
+    try {
+        const correo = normalizeEmail(req.body?.correo);
+        if (!correo) {
+            return badRequest(res, "Correo requerido");
+        }
+        if (correo.length > EMAIL_MAX_LEN) {
+            return badRequest(res, "Correo invalido");
+        }
+
+        const usuario = await authService.obtenerUsuarioRecuperacionPorCorreo(correo);
+        if (!usuario) {
+            return res.json({
+                ok: true,
+                mode: "not_found",
+                message: "Si el correo existe y tiene pregunta configurada podra recuperarse"
+            });
+        }
+
+        if (!usuario.hasSecurityQuestion) {
+            return res.json({
+                ok: true,
+                mode: "setup_required",
+                message: "Este usuario no tiene pregunta configurada"
+            });
+        }
+
+        return res.json({
+            ok: true,
+            mode: "question",
+            preguntaSeguridad: usuario.preguntaSeguridad
+        });
+    } catch (error) {
+        return handleAuthError(res, error, "Error consultando recuperacion de contrasena");
+    }
+}
+
+async function passwordRecoveryReset(req, res) {
+    try {
+        const correo = normalizeEmail(req.body?.correo);
+        const respuestaSeguridad = authService.normalizeSecurityAnswer(req.body?.respuestaSeguridad);
+        const nuevaPassword = String(req.body?.nuevaPassword || "");
+
+        if (!correo || !respuestaSeguridad || !nuevaPassword) {
+            return badRequest(res, "Correo, respuesta y nueva contrasena son obligatorios");
+        }
+        if (correo.length > EMAIL_MAX_LEN) {
+            return badRequest(res, "Correo invalido");
+        }
+        if (respuestaSeguridad.length > SECURITY_ANSWER_MAX_LEN) {
+            return badRequest(res, "Respuesta de seguridad demasiado larga");
+        }
+        if (nuevaPassword.length < PASSWORD_MIN_LEN) {
+            return badRequest(res, "La nueva contrasena debe tener al menos 6 caracteres");
+        }
+        if (nuevaPassword.length > PASSWORD_MAX_LEN) {
+            return badRequest(res, "La nueva contrasena es demasiado larga");
+        }
+
+        const result = await authService.validarRespuestaSeguridad({
+            correo,
+            respuestaSeguridad
+        });
+
+        if (!result.ok) {
+            if (result.code === "NOT_FOUND") {
+                return res.status(404).json({ ok: false, message: "Usuario no encontrado" });
+            }
+            if (result.code === "SECURITY_NOT_CONFIGURED") {
+                return res.status(409).json({ ok: false, message: "Este usuario no tiene pregunta configurada" });
+            }
+            if (result.code === "ANSWER_INVALID") {
+                return res.status(401).json({ ok: false, message: "Respuesta de seguridad incorrecta" });
+            }
+            return res.status(400).json({ ok: false, message: "No se pudo validar la recuperacion" });
+        }
+
+        const nuevaPasswordHash = await bcrypt.hash(nuevaPassword, 10);
+        await authService.cambiarPasswordPorIdUsuario(result.idUsuario, nuevaPasswordHash);
+
+        return res.json({
+            ok: true,
+            message: "Contrasena actualizada correctamente"
+        });
+    } catch (error) {
+        return handleAuthError(res, error, "Error al restablecer contrasena");
+    }
+}
+
+async function passwordRecoverySetup(req, res) {
+    try {
+        const correo = normalizeEmail(req.body?.correo);
+        const passwordActual = String(req.body?.passwordActual || "");
+        const preguntaSeguridad = authService.normalizeSecurityQuestion(req.body?.preguntaSeguridad);
+        const respuestaSeguridad = authService.normalizeSecurityAnswer(req.body?.respuestaSeguridad);
+        const nuevaPassword = String(req.body?.nuevaPassword || "");
+
+        if (!correo || !passwordActual || !preguntaSeguridad || !respuestaSeguridad) {
+            return badRequest(res, "Correo, contrasena actual, pregunta y respuesta son obligatorios");
+        }
+        if (correo.length > EMAIL_MAX_LEN) {
+            return badRequest(res, "Correo invalido");
+        }
+        if (preguntaSeguridad.length > SECURITY_QUESTION_MAX_LEN) {
+            return badRequest(res, "Pregunta de seguridad demasiado larga");
+        }
+        if (respuestaSeguridad.length > SECURITY_ANSWER_MAX_LEN) {
+            return badRequest(res, "Respuesta de seguridad demasiado larga");
+        }
+        if (nuevaPassword && nuevaPassword.length < PASSWORD_MIN_LEN) {
+            return badRequest(res, "La nueva contrasena debe tener al menos 6 caracteres");
+        }
+        if (nuevaPassword && nuevaPassword.length > PASSWORD_MAX_LEN) {
+            return badRequest(res, "La nueva contrasena es demasiado larga");
+        }
+
+        const nuevaPasswordHash = nuevaPassword
+            ? await bcrypt.hash(nuevaPassword, 10)
+            : null;
+
+        const result = await authService.configurarPreguntaConPasswordActual({
+            correo,
+            passwordActual,
+            preguntaSeguridad,
+            respuestaSeguridad,
+            nuevaPasswordHash
+        });
+
+        if (!result.ok) {
+            if (result.code === "PASSWORD_INVALID") {
+                return res.status(401).json({
+                    ok: false,
+                    message: "Correo o contrasena actual incorrectos"
+                });
+            }
+
+            return res.status(400).json({
+                ok: false,
+                message: "No se pudo configurar seguridad"
+            });
+        }
+
+        return res.json({
+            ok: true,
+            message: nuevaPassword
+                ? "Pregunta configurada y contrasena actualizada"
+                : "Pregunta configurada correctamente"
+        });
+    } catch (error) {
+        return handleAuthError(res, error, "Error configurando recuperacion de contrasena");
+    }
+}
+
 module.exports = {
     login,
     registroOculto,
-    registroCatalogos
+    registroCatalogos,
+    passwordRecoveryQuestion,
+    passwordRecoveryReset,
+    passwordRecoverySetup
 };

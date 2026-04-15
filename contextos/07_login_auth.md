@@ -7,7 +7,7 @@
 - Endpoints y validaciones backend de auth/licencia.
 
 ## Frontend involucrado
-- `frontend/js/login.js`: flujo visual de licencia + login + registro oculto.
+- `frontend/js/login.js`: flujo visual de licencia + login + registro oculto + recuperacion de contrasena.
 - `frontend/js/web.js`: estado de sesion, permisos por rol, navegacion inicial y logout.
 - `frontend/css/login.css`: estilos de login, activacion y bloqueos por licencia.
 
@@ -69,16 +69,36 @@
 - Crear usuario:
   - `POST /api/auth/registro-oculto`.
 - Campos enviados:
-  - `correo`, `password`, `nombre`, `idRol`, `idDoctor` (nullable).
+  - `correo`, `password`, `nombre`, `idRol`, `idDoctor` (nullable),
+  - opcional: `preguntaSeguridad`, `respuestaSeguridad`.
 - Reglas UI:
   - exige campos obligatorios,
   - valida confirmacion de password,
-  - minimo 6 caracteres.
+  - minimo 6 caracteres,
+  - si se define seguridad, exige pregunta+respuesta juntas.
+
+## Recuperacion de contrasena (frontend)
+- Entrada:
+  - enlace `Olvide mi contrasena` en login.
+- Paso 1:
+  - `POST /api/auth/password-recovery/question` con `correo`.
+  - modos posibles:
+    - `mode = question`: muestra pregunta y habilita reset por respuesta.
+    - `mode = setup_required`: muestra setup para configurar seguridad con contrasena actual.
+    - `mode = not_found`: respuesta neutra para no filtrar existencia de correo.
+- Paso 2A (usuario con pregunta):
+  - respuesta + nueva contrasena + confirmacion.
+  - `POST /api/auth/password-recovery/reset`.
+- Paso 2B (usuario sin pregunta):
+  - correo + contrasena actual + pregunta + respuesta (+ nueva contrasena opcional).
+  - `POST /api/auth/password-recovery/setup`.
+- Mensaje funcional para usuario sin pregunta:
+  - `"Este usuario no tiene pregunta configurada"` (mas claro en UI/backend).
 
 ## Sesion y permisos (web.js)
 - Mapa de vistas por rol:
-  - `Administrador`: `Agenda`, `Paciente`, `En Cola`, `Doctores`, `Servicios`, `Cobro`.
-  - `Recepcion`: `Agenda`, `Paciente`, `En Cola`, `Servicios`, `Cobro`.
+  - `Administrador`: `Agenda`, `Paciente`, `Monitor de Seguimiento`, `En Cola`, `Doctores`, `Servicios`, `Cobro`.
+  - `Recepcion`: `Agenda`, `Paciente`, `Monitor de Seguimiento`, `En Cola`, `Servicios`, `Cobro`.
   - `Doctor`: `Paciente`, `En Cola`, `Doctores`.
   - `Asistente`: `Paciente`, `En Cola`.
 - Vista default:
@@ -97,6 +117,9 @@
   - `POST /api/auth/login`
   - `POST /api/auth/registro-oculto`
   - `GET /api/auth/registro-oculto/catalogos`
+  - `POST /api/auth/password-recovery/question`
+  - `POST /api/auth/password-recovery/reset`
+  - `POST /api/auth/password-recovery/setup`
 - Controller: `backend/controllers/auth.controller.js`.
 - Service: `backend/services/auth.service.js`.
 
@@ -118,10 +141,39 @@
   - `correo`, `nombre`, `idRol` validos,
   - `password` minimo 6,
   - `idDoctor` opcional valido.
+- Seguridad opcional:
+  - acepta `preguntaSeguridad` + `respuestaSeguridad`.
+  - si vienen, se guardan hasheadas para recuperacion (si columnas existen).
 - `cargo` no se captura desde frontend:
   - se deriva de `rol.nombreR` via `idRol`.
 - Conflicto de correo:
   - responde `409` cuando SP devuelve `EL_CORREO_YA_EXISTE`.
+
+### Recuperacion de contrasena con pregunta de seguridad
+- Flujo login frontend:
+  - boton `Olvide mi contrasena` en `frontend/js/login.js`.
+  - consulta pregunta: `POST /api/auth/password-recovery/question` con `correo`.
+  - reset por respuesta: `POST /api/auth/password-recovery/reset` con `correo`, `respuestaSeguridad`, `nuevaPassword`.
+  - setup inicial (si no tiene pregunta): `POST /api/auth/password-recovery/setup` con `correo`, `passwordActual`, `preguntaSeguridad`, `respuestaSeguridad`, opcional `nuevaPassword`.
+- Backend usa hash bcrypt para la respuesta de seguridad (`respuestaSeguridadHashU`).
+- Normalizacion:
+  - correo: `trim + lowercase`.
+  - pregunta: `trim + colapso de espacios`.
+  - respuesta: `trim + colapso de espacios + lowercase`, luego hash bcrypt.
+- Usuarios existentes sin pregunta no se rompen:
+  - pueden configurar pregunta con su contrasena actual via endpoint de setup.
+  - mientras no configuren pregunta, no pueden usar reset por respuesta.
+- Respuestas backend relevantes:
+  - `question`: `{ mode: "question", preguntaSeguridad }`.
+  - `setup_required`: `{ mode: "setup_required", message: "Este usuario no tiene pregunta configurada" }`.
+  - `reset` con respuesta incorrecta: `401`.
+  - `reset` sin pregunta configurada: `409`.
+- Registro oculto acepta pregunta/respuesta opcionales al crear usuario.
+- Requiere migracion de BD para columnas en `usuario`:
+  - `backend/sql/2026-04-13_auth_password_recovery_security_question.sql`.
+- Si la migracion no esta aplicada, backend devuelve `503` con:
+  - `code: "security_columns_missing"`
+  - `message: "Falta migracion de pregunta de seguridad en BD"`.
 
 ## Backend Licencia relacionado al login
 - Rutas publicas:
@@ -163,6 +215,9 @@
   - guardas anti-duplicado:
     - login (`loginInFlight`),
     - registro oculto (`registroInFlight`).
+    - recovery question (`recoveryLookupInFlight`),
+    - recovery reset (`recoveryResetInFlight`),
+    - recovery setup (`recoverySetupInFlight`).
   - estado de licencia robusto:
     - `loginMountSeq` para ignorar respuestas viejas,
     - `AbortController` para cancelar consulta previa.
@@ -170,4 +225,5 @@
     - deduplicacion de request en vuelo (`registroCatalogosPromise`).
 - Backend (`backend/controllers/auth.controller.js`)
   - manejo uniforme de errores DB transitorios con `503`.
+  - manejo explicito de `security_columns_missing` con `503`.
   - validaciones estrictas de correo/rol/cargo derivado.
