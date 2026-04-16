@@ -33,6 +33,7 @@ app.get("/health", (req, res) => {
 app.use("/api/licencia", require("./routes/licencia.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/agenda", licenciaMiddleware.requireLicensedAccess, require("./routes/agenda.routes"));
+app.use("/api/seguridad-protocolo", licenciaMiddleware.requireLicensedAccess, require("./routes/seguridadProtocolo.routes"));
 app.use("/api/doctor", licenciaMiddleware.requireLicensedAccess, require("./routes/doctor.routes"));
 app.use("/api/servicio", licenciaMiddleware.requireLicensedAccess, require("./routes/servicio.routes"));
 app.use("/api/paciente", licenciaMiddleware.requireLicensedAccess, require("./routes/paciente.routes"));

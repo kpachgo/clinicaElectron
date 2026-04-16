@@ -253,6 +253,250 @@ function canAccessView(viewName) {
 }
 
 /* =========================================================
+   PROTOCOLO DE SEGURIDAD (GLOBAL)
+========================================================= */
+const SECURITY_PROTOCOL_SHORTCUT_KEY = "p";
+const SECURITY_PROTOCOL_TOGGLE_ROLES = new Set(["Administrador", "Recepcion"]);
+let securityProtocolState = {
+    loaded: false,
+    available: true,
+    enabled: 0,
+    inFlight: false,
+    updatedByUsuarioId: null,
+    updatedAt: null
+};
+let securityProtocolShortcutBound = false;
+
+function canToggleSecurityProtocol() {
+    const role = String(getCurrentUser()?.rol || "").trim();
+    return SECURITY_PROTOCOL_TOGGLE_ROLES.has(role);
+}
+
+function isEditableTarget(target) {
+    if (!target) return false;
+    if (target.isContentEditable) return true;
+    const tagName = String(target.tagName || "").toLowerCase();
+    return tagName === "input" || tagName === "textarea" || tagName === "select";
+}
+
+function getSecurityProtocolRefs() {
+    return {
+        wrap: document.getElementById("security-protocol-wrap"),
+        chip: document.getElementById("security-protocol-chip")
+    };
+}
+
+function resetSecurityProtocolState() {
+    securityProtocolState = {
+        loaded: false,
+        available: true,
+        enabled: 0,
+        inFlight: false,
+        updatedByUsuarioId: null,
+        updatedAt: null
+    };
+    renderSecurityProtocolIndicator();
+}
+
+function renderSecurityProtocolIndicator() {
+    const { wrap, chip } = getSecurityProtocolRefs();
+    if (!wrap || !chip) return;
+    chip.removeAttribute("title");
+
+    if (!isAuthenticated()) {
+        wrap.hidden = true;
+        chip.classList.remove("is-enabled");
+        chip.textContent = "OFF";
+        return;
+    }
+
+    if (!securityProtocolState.available) {
+        wrap.hidden = true;
+        chip.classList.remove("is-enabled");
+        chip.textContent = "OFF";
+        return;
+    }
+
+    if (!securityProtocolState.loaded) {
+        wrap.hidden = true;
+        chip.classList.remove("is-enabled");
+        chip.textContent = "OFF";
+        return;
+    }
+
+    const enabled = Number(securityProtocolState.enabled) === 1;
+    wrap.hidden = !enabled;
+    chip.classList.toggle("is-enabled", enabled);
+    chip.textContent = enabled ? "ON" : "OFF";
+}
+
+function normalizeProtocolRow(raw) {
+    return {
+        enabled: Number(raw?.enabled) === 1 ? 1 : 0,
+        updatedByUsuarioId: raw?.updatedByUsuarioId ?? null,
+        updatedAt: raw?.updatedAt ?? null
+    };
+}
+
+async function refreshSecurityProtocolStatus(options = {}) {
+    const { silent = false } = options;
+
+    if (!isAuthenticated()) {
+        resetSecurityProtocolState();
+        return null;
+    }
+
+    try {
+        const res = await fetch(`/api/seguridad-protocolo?_ts=${Date.now()}`, {
+            cache: "no-store"
+        });
+        let data = null;
+        try {
+            data = await res.json();
+        } catch {
+            data = null;
+        }
+
+        if (!res.ok || data?.ok !== true) {
+            if (String(data?.code || "") === "security_protocol_migration_missing") {
+                securityProtocolState.available = false;
+                securityProtocolState.loaded = true;
+                renderSecurityProtocolIndicator();
+                if (!silent && typeof window.showSystemMessage === "function") {
+                    window.showSystemMessage(
+                        "Falta migracion del protocolo de seguridad en BD.",
+                        { title: "Protocolo de seguridad", type: "warning" }
+                    );
+                }
+                return null;
+            }
+            throw new Error(data?.message || "No se pudo cargar estado de protocolo");
+        }
+
+        securityProtocolState = {
+            ...securityProtocolState,
+            ...normalizeProtocolRow(data?.data || {}),
+            available: true,
+            loaded: true
+        };
+        renderSecurityProtocolIndicator();
+        return securityProtocolState;
+    } catch (err) {
+        console.error(err);
+        if (!silent && typeof window.showSystemMessage === "function") {
+            window.showSystemMessage(
+                "No se pudo consultar protocolo de seguridad.",
+                { title: "Protocolo de seguridad", type: "warning" }
+            );
+        }
+        renderSecurityProtocolIndicator();
+        return null;
+    }
+}
+
+async function setSecurityProtocolStatus(enabled) {
+    const res = await fetch("/api/seguridad-protocolo", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled })
+    });
+    const data = await res.json();
+    if (!res.ok || data?.ok !== true) {
+        throw new Error(data?.message || "No se pudo actualizar protocolo de seguridad");
+    }
+    securityProtocolState = {
+        ...securityProtocolState,
+        ...normalizeProtocolRow(data?.data || {}),
+        enabled: Number(enabled) === 1 ? 1 : 0,
+        available: true,
+        loaded: true
+    };
+    renderSecurityProtocolIndicator();
+    return data;
+}
+
+async function reloadCurrentView(options = {}) {
+    const currentViewName = String(window.currentView || "").trim();
+    if (!currentViewName) return;
+    await loadView(currentViewName, { force: true, ...options });
+}
+
+function isSecurityProtocolShortcut(e) {
+    if (!e || e.repeat) return false;
+    const key = String(e.key || "").trim().toLowerCase();
+    return (
+        e.ctrlKey === true &&
+        e.shiftKey === true &&
+        e.altKey === false &&
+        e.metaKey === false &&
+        key === SECURITY_PROTOCOL_SHORTCUT_KEY
+    );
+}
+
+async function onSecurityProtocolShortcut(e) {
+    if (!isSecurityProtocolShortcut(e)) return;
+    if (!isAuthenticated()) return;
+    if (isEditableTarget(e.target)) return;
+    if (!canToggleSecurityProtocol()) return;
+
+    e.preventDefault();
+
+    if (securityProtocolState.inFlight) return;
+    securityProtocolState.inFlight = true;
+    try {
+        if (!securityProtocolState.loaded || !securityProtocolState.available) {
+            await refreshSecurityProtocolStatus({ silent: true });
+        }
+
+        if (!securityProtocolState.available) {
+            if (typeof window.showSystemMessage === "function") {
+                window.showSystemMessage(
+                    "No disponible: falta migracion de protocolo en BD.",
+                    { title: "Protocolo de seguridad", type: "warning" }
+                );
+            }
+            return;
+        }
+
+        const nextEnabled = Number(securityProtocolState.enabled) === 1 ? 0 : 1;
+        const question = nextEnabled === 1
+            ? "Activar protocolo de seguridad? (oculta Ortodoncia en busqueda, agenda y monitor)"
+            : "Desactivar protocolo de seguridad y mostrar todo?";
+        const confirmed = typeof window.showSystemConfirm === "function"
+            ? await window.showSystemConfirm(question)
+            : confirm(question);
+
+        if (!confirmed) return;
+
+        const result = await setSecurityProtocolStatus(nextEnabled);
+        await reloadCurrentView();
+
+        if (typeof window.showSystemMessage === "function") {
+            window.showSystemMessage(
+                result?.message || "Protocolo actualizado",
+                { title: "Protocolo de seguridad", type: "success" }
+            );
+        }
+    } catch (err) {
+        console.error(err);
+        if (typeof window.showSystemMessage === "function") {
+            window.showSystemMessage(
+                String(err?.message || "No se pudo actualizar protocolo"),
+                { title: "Protocolo de seguridad", type: "error" }
+            );
+        }
+    } finally {
+        securityProtocolState.inFlight = false;
+    }
+}
+
+function bindSecurityProtocolShortcut() {
+    if (securityProtocolShortcutBound) return;
+    securityProtocolShortcutBound = true;
+    document.addEventListener("keydown", onSecurityProtocolShortcut, true);
+}
+
+/* =========================================================
    ALERTA SUSCRIPCION (TOPBAR)
 ========================================================= */
 const LICENSE_WARNING_STORAGE_PREFIX = "license_warning_seen::";
@@ -640,6 +884,7 @@ function logout() {
     setAppChromeVisible(false);
     clearTopUser();
     resetLicenseWarningUi();
+    resetSecurityProtocolState();
     mountLogin();
 }
 
@@ -717,8 +962,9 @@ function initTopbarEnhancements() {
     syncTopbarShadow();
 }
 
-async function loadView(name) {
-    if (window.currentView === name) return;
+async function loadView(name, options = {}) {
+    const force = options?.force === true;
+    if (!force && window.currentView === name) return;
     if (!isAuthenticated()) {
         mountLogin();
         return;
@@ -844,17 +1090,20 @@ window.applyMenuPermissions = applyMenuPermissions;
 window.__setAppChromeVisible = setAppChromeVisible;
 window.__applyTheme = applyTheme;
 window.refreshLicenseWarning = refreshLicenseWarning;
+window.refreshSecurityProtocolStatus = refreshSecurityProtocolStatus;
 
 
 document.addEventListener("DOMContentLoaded", () => {
     initTopbarEnhancements();
     bindLicenseBellEvents();
+    bindSecurityProtocolShortcut();
     if (isAuthenticated()) {
         setAppChromeVisible(true);
 
         applyMenuPermissions(); // FALTA ESTA LINEA
 
         void refreshLicenseWarning({ force: false, showPopup: true });
+        void refreshSecurityProtocolStatus({ silent: true });
 
         
         const defaultView = getDefaultViewByRole();
@@ -867,6 +1116,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (getToken() && !getCurrentUser()) {
             clearToken();
         }
+        resetSecurityProtocolState();
         mountLogin();
     }
 });

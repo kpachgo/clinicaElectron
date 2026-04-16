@@ -90,3 +90,13 @@
 - Mantiene permisos de vista por rol (`Administrador`, `Recepcion`).
 - Vista aislada con cleanup via `window.__setViewCleanup`.
 - No altera flujos existentes de Agenda/Paciente/En Cola/Doctores/Servicios/Cobro/Login.
+
+## Protocolo de seguridad global (2026-04-16)
+- El monitor queda integrado al modo global ON/OFF.
+- Cuando el protocolo esta ON:
+  - backend fuerza `v_tratamiento = 'odontologia'` en:
+    - `sp_paciente_monitor_seguimiento_listar`
+    - `sp_paciente_monitor_seguimiento_totales`
+  - aunque frontend envie `tratamiento=all`, el resultado llega solo de `Odontologia`.
+- Referencia completa:
+  - `contextos/15_protocolo_seguridad.md`.

@@ -278,3 +278,14 @@
 - `GET /api/odontograma/ultimo/:idPaciente`
 - `GET /api/odontograma/historial/:idPaciente`
 - `GET /api/odontograma/version/:idOdontograma`
+
+## Protocolo de seguridad global (2026-04-16)
+- Esta vista queda afectada en los endpoints de lectura de paciente.
+- Cuando el protocolo esta ON:
+  - `GET /api/paciente/search` (SP `sp_paciente_buscar_ligero`) solo retorna `Odontologia`.
+  - `GET /api/paciente/:id` (SP `sp_paciente_get_by_id`) no devuelve fila para pacientes fuera de `Odontologia`.
+- Impacto UX:
+  - pacientes de `Ortodoncia` dejan de aparecer en busquedas/carga durante el modo ON.
+  - al volver OFF, reaparecen sin perder datos.
+- Referencia completa:
+  - `contextos/15_protocolo_seguridad.md`.

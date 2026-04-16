@@ -17,8 +17,10 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `12_release_github_actions.md`
 - `13_agenda_contacto_bd.md`
 - `14_monitor_seguimiento.md`
+- `15_protocolo_seguridad.md`
 
 ## Nota
 - El contexto de Paciente (`03_paciente.md`) incluye la parte de odontograma.
 - `13_agenda_contacto_bd.md` documenta la migracion de BD/SP para las marcas `SMS/Llamada` de Agenda.
 - `14_monitor_seguimiento.md` documenta la vista nueva en construccion (v1 visual con mock).
+- `15_protocolo_seguridad.md` documenta el modo global ON/OFF para ocultar Ortodoncia en SPs/vistas afectadas.

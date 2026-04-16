@@ -11,6 +11,20 @@
 - `frontend/js/web.js`: estado de sesion, permisos por rol, navegacion inicial y logout.
 - `frontend/css/login.css`: estilos de login, activacion y bloqueos por licencia.
 
+## Actualizacion transversal: Protocolo de seguridad global (2026-04-16)
+- `frontend/js/web.js` agrega estado global de protocolo:
+  - lectura por API al iniciar app con sesion activa.
+  - atajo `Ctrl + Shift + P` para alternar ON/OFF (solo `Administrador` y `Recepcion`).
+  - recarga de vista actual tras alternar.
+  - chip visual en topbar: `ON`/`OFF` (oculto cuando esta OFF, sin tooltip).
+- `frontend/js/login.js`:
+  - despues de login exitoso tambien refresca estado de protocolo para no depender de recarga manual.
+- Backend expone:
+  - `GET /api/seguridad-protocolo`
+  - `PUT /api/seguridad-protocolo`
+- Referencia completa:
+  - `contextos/15_protocolo_seguridad.md`.
+
 ## Flujo real de entrada al sistema
 1. En `DOMContentLoaded`, `web.js` valida sesion:
   - si hay `token` y `user`, aplica permisos y abre vista default por rol.

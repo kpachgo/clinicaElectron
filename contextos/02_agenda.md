@@ -135,3 +135,14 @@
 - Persistencia de estado UI de Agenda por sesion/usuario (filtros y toggles).
 - Se consolido `Contactado` con toggles independientes de visibilidad (`SMS`/`Llamada`).
 - `PUT /api/agenda/:id` agrega sincronizacion de comentario hacia `cola_paciente.tratamiento`.
+
+## Protocolo de seguridad global (2026-04-16)
+- Esta vista queda afectada por el modo global ON/OFF.
+- Cuando esta ON:
+  - `GET /api/agenda?fecha=...` (SP `sp_agenda_por_fecha`) filtra y oculta registros asociados a `Ortodoncia`.
+  - `GET /api/agenda/buscar-mes?...` (SP `sp_agenda_buscar_mes`) tambien aplica el mismo filtro.
+- Control operativo (frontend):
+  - atajo `Ctrl + Shift + P` desde `frontend/js/web.js`.
+  - recarga la vista actual despues de cambiar estado.
+- Referencia completa:
+  - `contextos/15_protocolo_seguridad.md`.

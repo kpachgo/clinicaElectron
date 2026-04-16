@@ -703,6 +703,14 @@
           }
         }
 
+        if (window.refreshSecurityProtocolStatus) {
+          try {
+            await window.refreshSecurityProtocolStatus({ silent: true });
+          } catch (refreshErr) {
+            console.error(refreshErr);
+          }
+        }
+
         if (window.loadView) {
           detachShortcut();
           const defaultView = window.getDefaultViewByRole

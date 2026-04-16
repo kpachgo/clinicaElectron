@@ -449,6 +449,45 @@ body {
     align-items: center;
     gap: 16px;
 }
+
+.security-protocol-wrap[hidden] {
+    display: none !important;
+}
+
+.security-protocol-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid #fecaca;
+    background: rgba(254, 226, 226, 0.8);
+    color: #991b1b;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+
+.security-protocol-chip.is-enabled {
+    border-color: #bbf7d0;
+    background: rgba(220, 252, 231, 0.85);
+    color: #166534;
+}
+
+.dark-mode .security-protocol-chip {
+    border-color: #7f1d1d;
+    background: rgba(127, 29, 29, 0.35);
+    color: #fecaca;
+}
+
+.dark-mode .security-protocol-chip.is-enabled {
+    border-color: #166534;
+    background: rgba(22, 101, 52, 0.35);
+    color: #bbf7d0;
+}
 .top-icon-btn,
 .theme-btn {
     width: 38px;
