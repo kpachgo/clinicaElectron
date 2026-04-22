@@ -152,6 +152,24 @@
   flex-wrap: wrap;
 }
 
+.cola-toggle-numeracion {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--cola-text-muted);
+  user-select: none;
+}
+
+.cola-toggle-numeracion input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #2563eb;
+}
+
 .cola-toolbar .ui-control {
   border: 1px solid var(--cola-input-border);
   border-radius: 8px;
@@ -180,6 +198,22 @@
   width: 100%;
   min-width: 980px;
   border-collapse: collapse;
+}
+
+.cola-col-num {
+  width: 52px;
+  text-align: center !important;
+  font-weight: 700;
+  color: var(--cola-text-muted);
+}
+
+.cola-table.hide-numeracion .cola-col-num {
+  display: none;
+}
+
+.cola-col-acciones {
+  padding-left: 10px !important;
+  padding-right: 10px !important;
 }
 
 .cola-table th,
@@ -286,11 +320,44 @@
 
 .cola-actions {
   display: inline-flex;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px;
 }
 
 .cola-actions .ui-action-btn {
   box-shadow: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.cola-actions .ui-action-btn .ui-action-icon {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 1280px) {
+  .cola-actions {
+    gap: 11px;
+    padding: 5px 3px;
+  }
+
+  .cola-actions .ui-action-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+  }
+
+  .cola-actions .ui-action-btn .ui-action-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .cola-col-acciones {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
 }
 
 .cola-empty {
@@ -318,6 +385,27 @@
   .cola-toolbar .ui-control.ui-control-search {
     min-width: 0;
     width: 100%;
+  }
+
+  .cola-actions {
+    gap: 12px;
+    padding: 6px 4px;
+  }
+
+  .cola-actions .ui-action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  .cola-actions .ui-action-btn .ui-action-icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  .cola-col-acciones {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
   }
 
 }

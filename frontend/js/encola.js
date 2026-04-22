@@ -57,6 +57,47 @@
     const d = String(now.getDate()).padStart(2, "0");
     return `${y}-${m}-${d}`;
   }
+  function getUiStateUserId() {
+    try {
+      const raw = sessionStorage.getItem("user");
+      if (!raw) return "anon";
+      const user = JSON.parse(raw);
+      const candidates = [
+        user?.idUsuario,
+        user?.idusuario,
+        user?.IDUsuario,
+        user?.IdUsuario,
+        user?.idUser,
+        user?.id
+      ];
+      for (const candidate of candidates) {
+        const num = Number(candidate);
+        if (Number.isInteger(num) && num > 0) return String(num);
+        const text = String(candidate ?? "").trim();
+        if (text) return text;
+      }
+    } catch {
+      // ignore invalid session payload
+    }
+    return "anon";
+  }
+  function loadSessionUiState(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  function saveSessionUiState(key, state) {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(state || {}));
+    } catch {
+      // ignore storage write errors
+    }
+  }
 
   function normalizarItem(raw) {
     const estadoRaw = String(raw?.estado || "");
@@ -392,6 +433,10 @@
         </div>
 
         <div class="cola-toolbar ui-toolbar">
+          <label class="cola-toggle-numeracion" for="cola-toggle-numeracion">
+            <input type="checkbox" id="cola-toggle-numeracion">
+            Numeracion
+          </label>
           <input class="ui-control ui-control-search" type="search" id="cola-search" placeholder="Buscar paciente o tratamiento">
           <select class="ui-control" id="cola-filter-estado">
             <option value="">Todos</option>
@@ -415,6 +460,7 @@
           <table class="cola-table ui-table-compact">
             <thead>
               <tr>
+                <th class="cola-col-num">#</th>
                 <th>Paciente</th>
                 <th>Tratamiento</th>
                 <th>Hora</th>
@@ -431,8 +477,10 @@
     `;
 
     const searchInput = container.querySelector("#cola-search");
+    const toggleNumeracion = container.querySelector("#cola-toggle-numeracion");
     const filterEstado = container.querySelector("#cola-filter-estado");
     const filterDoctor = container.querySelector("#cola-filter-doctor");
+    const colaTable = container.querySelector(".cola-table");
     const tbody = container.querySelector("#cola-tbody");
     const kpiTotal = container.querySelector("#cola-kpi-total");
     const kpiEspera = container.querySelector("#cola-kpi-espera");
@@ -443,6 +491,7 @@
     let colaData = [];
     let doctoresData = [];
     let refreshTimer = null;
+    let visibilityHandlerBound = false;
     const fechaVista = getLocalTodayISO();
     let idsVistos = new Set();
     let cargaInicialCompleta = false;
@@ -455,6 +504,20 @@
     let isClearingAll = false;
     const pendingDoctorIds = new Set();
     const pendingEstadoIds = new Set();
+    const colaUiStateKey = `ui_state_encola_${getUiStateUserId()}`;
+    const colaUiState = {
+      numeracion: false,
+      ...loadSessionUiState(colaUiStateKey)
+    };
+
+    const persistColaUiState = () => {
+      saveSessionUiState(colaUiStateKey, {
+        numeracion: !!toggleNumeracion?.checked
+      });
+    };
+    if (toggleNumeracion) {
+      toggleNumeracion.checked = !!colaUiState.numeracion;
+    }
 
     function abortControllerSafe(controller) {
       if (!controller) return;
@@ -470,6 +533,16 @@
       if (typeof window.playUiSound === "function") {
         window.playUiSound("bell", { minIntervalMs: 450 });
       }
+    }
+    function numeracionActiva() {
+      return !!toggleNumeracion?.checked;
+    }
+    function getColaColspan() {
+      return numeracionActiva() ? 8 : 7;
+    }
+    function aplicarVisibilidadNumeracion() {
+      if (!colaTable) return;
+      colaTable.classList.toggle("hide-numeracion", !numeracionActiva());
     }
 
     function getDoctorNombreById(doctorId) {
@@ -590,6 +663,7 @@
     }
 
     function draw() {
+      aplicarVisibilidadNumeracion();
       const texto = normalizarTexto(searchInput?.value);
       const estadoSel = String(filterEstado?.value || "");
       const doctorSel = String(filterDoctor?.value || "");
@@ -634,7 +708,7 @@
       if (!filtrada.length) {
         const tr = document.createElement("tr");
         const td = document.createElement("td");
-        td.colSpan = 7;
+        td.colSpan = getColaColspan();
         td.className = "cola-empty";
         td.textContent = "Sin pacientes en cola";
         tr.appendChild(td);
@@ -642,13 +716,18 @@
         return;
       }
 
-      filtrada.forEach((item) => {
+      filtrada.forEach((item, index) => {
         const tr = document.createElement("tr");
         if (item.estado === ESTADO_ATENDIDO) {
           tr.className = "cola-row cola-row-atendido is-atendido";
         } else {
           tr.className = "cola-row cola-row-espera";
         }
+
+        const tdNum = document.createElement("td");
+        tdNum.className = "cola-col-num";
+        tdNum.textContent = String(index + 1);
+        tr.appendChild(tdNum);
 
         const tdNombre = document.createElement("td");
         tdNombre.textContent = item.nombrePaciente || "-";
@@ -801,6 +880,7 @@
         tr.appendChild(tdEstado);
 
         const tdAcciones = document.createElement("td");
+        tdAcciones.className = "cola-col-acciones";
         const actions = document.createElement("div");
         actions.className = "cola-actions ui-action-group";
         const isEnEspera = item.estado === ESTADO_ESPERA;
@@ -964,17 +1044,22 @@
     async function recargar(options = {}) {
       if (isDisposed) return;
       const silent = !!options.silent;
+      const networkMode = options.background === true ? "background" : "foreground";
       abortControllerSafe(colaFetchController);
       const localSeq = ++colaFetchSeq;
       const controller = typeof AbortController !== "undefined"
         ? new AbortController()
         : null;
       colaFetchController = controller;
+      const requestOptions = controller ? { signal: controller.signal } : {};
+      if (networkMode === "background") {
+        requestOptions.__networkMode = "background";
+      }
       let dataNueva = null;
       try {
         dataNueva = await apiList(
           fechaVista,
-          controller ? { signal: controller.signal } : undefined
+          requestOptions
         );
       } catch (err) {
         if (err?.name === "AbortError") return;
@@ -1008,6 +1093,12 @@
       idsVistos = idsNuevos;
       cargaInicialCompleta = true;
       draw();
+    }
+
+    function runBackgroundRefresh() {
+      if (isDisposed) return;
+      if (document.visibilityState === "hidden") return;
+      void recargar({ silent: true, background: true });
     }
 
     async function recargarDoctores() {
@@ -1052,6 +1143,11 @@
     }
 
     searchInput?.addEventListener("input", draw);
+    toggleNumeracion?.addEventListener("change", () => {
+      aplicarVisibilidadNumeracion();
+      draw();
+      persistColaUiState();
+    });
     filterEstado?.addEventListener("change", draw);
     filterDoctor?.addEventListener("change", () => {
       aplicarColorDoctorSelect(filterDoctor, filterDoctor.value, true);
@@ -1110,10 +1206,19 @@
       }
     });
 
-    refreshTimer = window.setInterval(() => {
-      recargar({ silent: true });
-    }, AUTO_REFRESH_MS);
+    const onVisibilityChange = () => {
+      if (isDisposed) return;
+      if (document.visibilityState === "visible") {
+        runBackgroundRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    visibilityHandlerBound = true;
 
+    refreshTimer = window.setInterval(runBackgroundRefresh, AUTO_REFRESH_MS);
+
+    aplicarVisibilidadNumeracion();
+    persistColaUiState();
     recargarDoctores().finally(() => {
       recargar();
     });
@@ -1123,6 +1228,10 @@
       if (refreshTimer) {
         clearInterval(refreshTimer);
         refreshTimer = null;
+      }
+      if (visibilityHandlerBound) {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        visibilityHandlerBound = false;
       }
       abortControllerSafe(colaFetchController);
       abortControllerSafe(doctorFetchController);

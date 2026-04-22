@@ -958,6 +958,549 @@ body.odonto-piece-modal-open {
     color: #8ea0b7;
 }
 
+body.odonto-print-modal-open {
+    overflow: hidden;
+}
+
+.odonto-summary-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.odonto-summary-header .odonto-summary-title {
+    margin: 0;
+}
+
+.odonto-summary-print-btn {
+    border: 1px solid #b4c7e6;
+    background: #ffffff;
+    color: #1e3a8a;
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.odonto-summary-print-btn:hover {
+    background: #edf4ff;
+    border-color: #94b4e2;
+}
+
+.odonto-summary-print-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.odonto-print-modal[hidden] {
+    display: none !important;
+}
+
+.odonto-print-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100070;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.odonto-print-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(3, 11, 24, 0.54);
+}
+
+.odonto-print-modal-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(1200px, 96vw);
+    max-height: 92vh;
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid #d6deeb;
+    background: #f8fafd;
+    box-shadow: 0 22px 44px rgba(15, 23, 42, 0.28);
+    display: flex;
+    flex-direction: column;
+}
+
+.odonto-print-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid #d6deeb;
+    background: #ffffff;
+}
+
+.odonto-print-modal-header h6 {
+    margin: 0;
+    font-size: 15px;
+    color: #0f172a;
+}
+
+.odonto-print-close-btn {
+    border: 1px solid #d0d8e6;
+    background: #ffffff;
+    color: #334155;
+    border-radius: 9px;
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.odonto-print-close-btn:hover {
+    background: #eef2f8;
+}
+
+.odonto-print-modal-body {
+    padding: 12px;
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(340px, 1fr);
+    gap: 12px;
+    overflow: auto;
+}
+
+.odonto-print-editor,
+.odonto-print-preview-pane {
+    border: 1px solid #d6deeb;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 12px;
+}
+
+.odonto-print-editor h6,
+.odonto-print-preview-pane h6,
+.odonto-print-promos h6 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    color: #1f2937;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.odonto-print-editor-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.odonto-print-editor-row button,
+.odonto-print-preset-btn,
+.odonto-print-editor-remove,
+.odonto-print-run-btn {
+    border: 1px solid #c4d1e7;
+    background: #f6f9ff;
+    color: #1e3a8a;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.odonto-print-editor-row button:hover,
+.odonto-print-preset-btn:hover,
+.odonto-print-editor-remove:hover,
+.odonto-print-run-btn:hover {
+    background: #e6efff;
+}
+
+.odonto-print-items-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 230px;
+    overflow: auto;
+    margin-bottom: 10px;
+    padding-right: 2px;
+}
+
+.odonto-print-editor-empty {
+    font-size: 12px;
+    color: #64748b;
+    font-style: italic;
+}
+
+.odonto-print-editor-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border-radius: 10px;
+    border: 1px solid #deebff;
+    background: #f8fbff;
+}
+
+.odonto-print-editor-item.is-promo {
+    border-color: #f8d0d0;
+    background: #fff5f5;
+}
+
+.odonto-print-editor-badge {
+    border-radius: 999px;
+    padding: 3px 8px;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    color: #1d4ed8;
+    background: #dbeafe;
+}
+
+.odonto-print-editor-item.is-promo .odonto-print-editor-badge {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.odonto-print-editor-input {
+    min-width: 0;
+    width: 100%;
+    border: 1px solid #d5deea;
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 12px;
+    color: #0f172a;
+    background: #ffffff;
+}
+
+.odonto-print-editor-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.17);
+}
+
+.odonto-print-editor-remove {
+    background: #fff1f2;
+    border-color: #fecdd3;
+    color: #be123c;
+}
+
+.odonto-print-editor-remove:hover {
+    background: #ffe4e6;
+}
+
+.odonto-print-preset-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.odonto-print-preview-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.odonto-print-preview-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#odonto-print-meta-count {
+    font-size: 12px;
+    font-weight: 700;
+    color: #334155;
+}
+
+.odonto-print-run-btn {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #ffffff;
+}
+
+.odonto-print-run-btn:hover {
+    background: #1e40af;
+    border-color: #1e40af;
+}
+
+.odonto-print-run-btn:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+.odonto-print-preview {
+    border: 1px solid #d7e1f0;
+    border-radius: 10px;
+    background: #eef2f8;
+    padding: 10px;
+    overflow: auto;
+}
+
+.odonto-print-sheet {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 420px;
+    max-height: 420px;
+    margin: 0 auto;
+    background: #ffffff;
+    border: 2px solid #2f4ca0;
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.odonto-print-sheet-header {
+    border: 2px solid #2f4ca0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.odonto-print-company-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.odonto-print-company-left {
+    display: block;
+    flex: 1;
+    color: #233f95;
+    min-width: 0;
+}
+
+.odonto-print-company-left strong {
+    display: block;
+    font-size: 14px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.odonto-print-company-right {
+    color: #233f95;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.odonto-print-paciente-row {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    color: #233f95;
+    font-weight: 700;
+    font-size: 13px;
+    min-width: 0;
+}
+
+.odonto-print-paciente-row span {
+    flex-shrink: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.odonto-print-paciente-row span:first-child {
+    flex: 1;
+    min-width: 0;
+}
+
+.odonto-print-sheet-body {
+    flex: 1;
+    border: 2px solid #2f4ca0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    overflow: hidden;
+    display: flex;
+}
+
+.odonto-print-preview-list {
+    margin: 0;
+    padding: 0 0 0 18px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    list-style: disc;
+}
+
+.odonto-print-preview-item {
+    color: #1f2937;
+    font-size: 13px;
+    line-height: 1.2;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.odonto-print-preview-item.is-promo {
+    color: #b91c1c;
+    font-weight: 800;
+}
+
+.odonto-print-preview-item.is-empty {
+    color: #64748b;
+    font-style: italic;
+    font-weight: 500;
+}
+
+.odonto-print-sheet.is-compact .odonto-print-preview-list {
+    gap: 4px;
+}
+
+.odonto-print-sheet.is-compact .odonto-print-preview-item {
+    font-size: 12px;
+}
+
+.odonto-print-sheet.is-ultra-compact .odonto-print-preview-list {
+    gap: 3px;
+}
+
+.odonto-print-sheet.is-ultra-compact .odonto-print-preview-item {
+    font-size: 11px;
+    line-height: 1.1;
+}
+
+.odonto-print-sheet.is-ultra-compact .odonto-print-company-left strong,
+.odonto-print-sheet.is-ultra-compact .odonto-print-company-right,
+.odonto-print-sheet.is-ultra-compact .odonto-print-paciente-row {
+    font-size: 12px;
+}
+
+.odonto-print-iframe {
+    position: fixed;
+    width: 0;
+    height: 0;
+    border: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.odonto-print-document {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.odonto-print-doc-page {
+    width: 8.5in;
+    min-height: 11in;
+    margin: 0 auto;
+    padding: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.odonto-print-document .odonto-print-sheet {
+    width: 8.5in;
+    height: 5.5in;
+    min-height: 5.5in;
+    max-height: 5.5in;
+    border-radius: 0;
+    border-width: 1px;
+    padding: 0.16in 0.2in;
+}
+
+@media print {
+    @page {
+        size: letter portrait;
+        margin: 0;
+    }
+
+    .odonto-print-document {
+        width: 8.5in;
+        min-height: 11in;
+    }
+}
+
+.dark-mode .odonto-summary-print-btn {
+    background: #14233a;
+    border-color: #365172;
+    color: #dbeafe;
+}
+
+.dark-mode .odonto-summary-print-btn:hover {
+    background: #1b2f4d;
+    border-color: #4e76ab;
+}
+
+.dark-mode .odonto-print-modal-dialog {
+    border-color: #304660;
+    background: #0f1c2f;
+}
+
+.dark-mode .odonto-print-modal-header {
+    background: #101f35;
+    border-color: #304660;
+}
+
+.dark-mode .odonto-print-modal-header h6 {
+    color: #dbe7f5;
+}
+
+.dark-mode .odonto-print-close-btn {
+    background: #14253d;
+    border-color: #385274;
+    color: #d7e5f6;
+}
+
+.dark-mode .odonto-print-close-btn:hover {
+    background: #1a2f4d;
+}
+
+.dark-mode .odonto-print-editor,
+.dark-mode .odonto-print-preview-pane {
+    background: #101f34;
+    border-color: #304660;
+}
+
+.dark-mode .odonto-print-editor h6,
+.dark-mode .odonto-print-preview-pane h6,
+.dark-mode .odonto-print-promos h6,
+.dark-mode #odonto-print-meta-count {
+    color: #bfd1e8;
+}
+
+.dark-mode .odonto-print-editor-item {
+    background: #12253d;
+    border-color: #304660;
+}
+
+.dark-mode .odonto-print-editor-item.is-promo {
+    background: #2a1820;
+    border-color: #6a3241;
+}
+
+.dark-mode .odonto-print-editor-input {
+    background: #0d1a2b;
+    border-color: #2c4059;
+    color: #e2e8f0;
+}
+
+.dark-mode .odonto-print-editor-empty {
+    color: #8ea0b7;
+}
+
+.dark-mode .odonto-print-preview {
+    background: #0c1729;
+    border-color: #304660;
+}
+
 @media (max-width: 980px) {
     .odonto-piece-body {
         grid-template-columns: 1fr;
@@ -969,6 +1512,15 @@ body.odonto-piece-modal-open {
 
     .odonto-summary-grid {
         grid-template-columns: 1fr;
+    }
+
+    .odonto-print-modal-body {
+        grid-template-columns: 1fr;
+    }
+
+    .odonto-print-sheet {
+        min-height: 390px;
+        max-height: 390px;
     }
 }
 
@@ -998,5 +1550,23 @@ body.odonto-piece-modal-open {
     .odonto-piece-input {
         font-size: 17px;
         width: 190px;
+    }
+
+    .odonto-summary-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .odonto-print-company-left strong {
+        font-size: 12px;
+    }
+
+    .odonto-print-paciente-row {
+        font-size: 12px;
+        gap: 12px;
+    }
+
+    .odonto-print-editor-row {
+        grid-template-columns: 1fr;
     }
 }

@@ -41,6 +41,11 @@
   let isDeletingFotosPaciente = false;
   let isSettingFotoPrincipalPaciente = false;
   let isAuthorizingCitaPaciente = false;
+  let odontoPrintDraft = null;
+  let odontoPrintActiveIframe = null;
+  let odontoPrintIsPrinting = false;
+  let odontoPrintServicePriceCache = null;
+  let odontoPrintServicePricePromise = null;
   const MAX_PROCEDIMIENTO_CITA = 500;
 
 function isAbortError(err) {
@@ -132,6 +137,14 @@ function actualizarEstadoFirmaPaciente(rutaFirma) {
 }
 function normalizarTextoSimple(value) {
   return String(value ?? "").trim().toLowerCase();
+}
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 function esDoctorRegistroFisicoCita(cita) {
   if (Number(cita?.esRegistroFisico || 0) === 1) return true;
@@ -924,7 +937,10 @@ function renderPaciente(container) {
         <button id="btn-guardarOdontograma">Guardar ODT</button>
         <button id="btn-cargarOdontograma">Cargar ODT</button>
         <div id="odontograma-summary-panel" class="odonto-summary-panel">
-          <h6 class="odonto-summary-title">Resumen de tratamientos</h6>
+          <div class="odonto-summary-header">
+            <h6 class="odonto-summary-title">Resumen de tratamientos</h6>
+            <button id="odonto-summary-print-btn" class="odonto-summary-print-btn" type="button">Imprimir pendiente</button>
+          </div>
           <div class="odonto-summary-grid">
             <section class="odonto-summary-block">
               <div class="odonto-summary-block-title">Pendientes</div>
@@ -934,6 +950,63 @@ function renderPaciente(container) {
               <div class="odonto-summary-block-title">Ya realizados</div>
               <div id="odonto-summary-realizados" class="odonto-summary-list"></div>
             </section>
+          </div>
+        </div>
+
+        <div id="odonto-print-modal" class="odonto-print-modal" hidden>
+          <div class="odonto-print-modal-backdrop" data-odonto-print-close="1"></div>
+          <div class="odonto-print-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="odonto-print-modal-title">
+            <div class="odonto-print-modal-header">
+              <h6 id="odonto-print-modal-title">Hoja de tratamientos pendientes</h6>
+              <button id="odonto-print-close-btn" class="odonto-print-close-btn" type="button">Cerrar</button>
+            </div>
+
+            <div class="odonto-print-modal-body">
+              <section class="odonto-print-editor">
+                <h6>Edicion rapida</h6>
+                <div class="odonto-print-editor-row">
+                  <input id="odonto-print-item-input" type="text" class="form-control" placeholder="Agregar tratamiento o nota">
+                  <button id="odonto-print-item-add-btn" type="button">Agregar linea</button>
+                </div>
+                <div id="odonto-print-items-editor" class="odonto-print-items-editor"></div>
+
+                <div class="odonto-print-promos">
+                  <h6>Promociones del mes</h6>
+                  <div id="odonto-print-preset-list" class="odonto-print-preset-list"></div>
+                  <div class="odonto-print-editor-row">
+                    <input id="odonto-print-promo-input" type="text" class="form-control" placeholder="Promocion personalizada">
+                    <button id="odonto-print-promo-add-btn" type="button">Agregar promocion</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="odonto-print-preview-pane">
+                <div class="odonto-print-preview-actions">
+                  <span id="odonto-print-meta-count">Lineas: 0</span>
+                  <button id="odonto-print-run-btn" class="odonto-print-run-btn" type="button">Imprimir</button>
+                </div>
+                <div class="odonto-print-preview">
+                  <div class="odonto-print-sheet" id="odonto-print-preview-sheet">
+                    <div class="odonto-print-sheet-header">
+                      <div class="odonto-print-company-row">
+                        <div class="odonto-print-company-left">
+                          <strong id="odonto-print-company-sucursal"></strong>
+                        </div>
+                        <div class="odonto-print-company-right" id="odonto-print-company-telefono"></div>
+                      </div>
+                      <div class="odonto-print-paciente-row">
+                        <span id="odonto-print-paciente-nombre"></span>
+                        <span id="odonto-print-paciente-edad"></span>
+                        <span id="odonto-print-paciente-fecha"></span>
+                      </div>
+                    </div>
+                    <div class="odonto-print-sheet-body">
+                      <ul id="odonto-print-preview-list" class="odonto-print-preview-list"></ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
           </div>
         </div>
 
@@ -2148,6 +2221,17 @@ const ODONTO_SUMMARY_LABELS = {
   CR: "Cambio de relleno",
   F: "Fractura"
 };
+const ODONTO_PRINT_COMPANY_CONFIG = {
+  sucursal: "Sucursal Sonsonate, Centro comercial el encuentro local 22",
+  telefono: "Tel. 6061-3992"
+};
+const ODONTO_PRINT_PROMO_PRESETS = [
+  "Promocion Limpieza Profunda $20",
+  "Promocion 3 Rellenos Pequenos x $40",
+  "Promocion 2 Rellenos y Limpieza x $50",
+  "Promocion 3 Rellenos x $50"
+];
+const ODONTO_PRINT_MAX_LINE_LENGTH = 128;
 function normalizeOdontoTreatmentId(rawId) {
   const token = String(rawId ?? "").trim().toUpperCase();
   if (!token) return "";
@@ -2309,6 +2393,522 @@ function renderOdontogramaTreatmentSummary() {
 
   renderOdontoSummaryList(pendientesEl, summary.pendientes);
   renderOdontoSummaryList(realizadosEl, summary.realizados);
+}
+function toDdMmYyyy(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return raw;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+function getOdontoSummarySnapshot() {
+  const data = window.odontogramaAPI && typeof window.odontogramaAPI.getData === "function"
+    ? window.odontogramaAPI.getData()
+    : null;
+  return buildOdontogramaTreatmentSummary(data);
+}
+function getPacienteNombreForPrint() {
+  const fromInput = String(document.getElementById("NombreP")?.value || "").trim();
+  if (fromInput) return fromInput;
+  const fromState = String(window.pacienteActual?.NombreP || "").trim();
+  return fromState || "Paciente";
+}
+function getPacienteEdadForPrint() {
+  const edadInput = String(document.getElementById("edadP")?.value || "").trim();
+  if (edadInput) return edadInput;
+  const fechaNacimiento = String(document.getElementById("fechaNacimientoP")?.value || "").trim();
+  const edad = calcularEdad(fechaNacimiento);
+  return edad === "" ? "-" : String(edad);
+}
+function normalizeTextForLookup(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+function normalizePrintLine(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+function ensurePromoPrefix(text) {
+  const clean = normalizePrintLine(text);
+  if (!clean) return "";
+  if (clean.toLowerCase().startsWith("promocion")) return clean;
+  return `Promocion ${clean}`;
+}
+function limitPrintEditorLine(text) {
+  const raw = String(text ?? "");
+  if (raw.length <= ODONTO_PRINT_MAX_LINE_LENGTH) return raw;
+  return raw.slice(0, ODONTO_PRINT_MAX_LINE_LENGTH);
+}
+function truncateForPrintLine(text) {
+  const normalized = normalizePrintLine(text);
+  if (!normalized) return "";
+  if (normalized.length <= ODONTO_PRINT_MAX_LINE_LENGTH) return normalized;
+  return `${normalized.slice(0, ODONTO_PRINT_MAX_LINE_LENGTH - 3)}...`;
+}
+function formatServicePrice(price) {
+  const amount = Number(price);
+  if (!Number.isFinite(amount) || amount < 0) return "Precio no definido";
+  const rounded = amount.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+  return `$${rounded} c/u`;
+}
+function getOdontoPrintServicePrice(nombreServicio) {
+  const lookup = normalizeTextForLookup(nombreServicio);
+  if (!lookup || !(odontoPrintServicePriceCache instanceof Map)) return null;
+  if (!odontoPrintServicePriceCache.has(lookup)) return null;
+  const value = Number(odontoPrintServicePriceCache.get(lookup));
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+function getPrintableTreatmentLabel(item) {
+  const code = normalizeOdontoTreatmentId(item?.tratamiento);
+  if (code === "CP") return "Relleno Pequeno";
+  if (code === "CG") return "Relleno Grande";
+  return String(item?.etiqueta || item?.tratamiento || "Tratamiento").trim();
+}
+function getPrintableTreatmentPlural(nombre, cantidad) {
+  if (cantidad === 1) return nombre;
+  if (nombre === "Relleno Pequeno") return "Rellenos Pequenos";
+  if (nombre === "Relleno Grande") return "Rellenos Grandes";
+  return nombre;
+}
+function buildPendingLine(item) {
+  const cantidad = Number(item?.cantidad || 0);
+  if (!Number.isFinite(cantidad) || cantidad <= 0) return "";
+  const nombreBase = getPrintableTreatmentLabel(item);
+  const nombre = getPrintableTreatmentPlural(nombreBase, cantidad);
+  const precio = getOdontoPrintServicePrice(nombreBase);
+  const precioTxt = precio == null ? "Precio no definido" : formatServicePrice(precio);
+  return truncateForPrintLine(`${cantidad} ${nombre} ${precioTxt}`);
+}
+async function ensureOdontoPrintServicePriceCache() {
+  if (odontoPrintServicePriceCache instanceof Map) return odontoPrintServicePriceCache;
+  if (odontoPrintServicePricePromise) return odontoPrintServicePricePromise;
+
+  odontoPrintServicePricePromise = (async () => {
+    const cache = new Map();
+    try {
+      const res = await fetch("/api/servicio");
+      const json = await res.json();
+      if (res.ok && json?.ok) {
+        const rows = Array.isArray(json.data) ? json.data : [];
+        rows.forEach((row) => {
+          const nombre = normalizeTextForLookup(row?.nombreS);
+          const precio = Number(row?.precioS);
+          if (!nombre || !Number.isFinite(precio) || precio < 0) return;
+          cache.set(nombre, precio);
+        });
+      }
+    } catch (err) {
+      console.error("Error cargando precios de servicios para impresion", err);
+    } finally {
+      odontoPrintServicePriceCache = cache;
+      odontoPrintServicePricePromise = null;
+    }
+    return cache;
+  })();
+
+  return odontoPrintServicePricePromise;
+}
+function buildOdontoPrintDraftFromCurrentSummary() {
+  const summary = getOdontoSummarySnapshot();
+  const pendientes = Array.isArray(summary?.pendientes) ? summary.pendientes : [];
+  const items = pendientes.map((item) => ({
+    kind: "pendiente",
+    text: buildPendingLine(item)
+  })).filter((item) => item.text);
+
+  return {
+    items,
+    meta: {
+      nombrePaciente: getPacienteNombreForPrint(),
+      edadPaciente: getPacienteEdadForPrint(),
+      fecha: toDdMmYyyy(hoyInputDateLocal()) || "-"
+    }
+  };
+}
+function getOdontoPrintDensityClass(total) {
+  if (total >= 15) return "is-ultra-compact";
+  if (total >= 10) return "is-compact";
+  return "";
+}
+function getOdontoPrintRefs() {
+  return {
+    printBtn: document.getElementById("odonto-summary-print-btn"),
+    modal: document.getElementById("odonto-print-modal"),
+    closeBtn: document.getElementById("odonto-print-close-btn"),
+    addItemInput: document.getElementById("odonto-print-item-input"),
+    addItemBtn: document.getElementById("odonto-print-item-add-btn"),
+    editorList: document.getElementById("odonto-print-items-editor"),
+    presetList: document.getElementById("odonto-print-preset-list"),
+    promoInput: document.getElementById("odonto-print-promo-input"),
+    promoBtn: document.getElementById("odonto-print-promo-add-btn"),
+    runBtn: document.getElementById("odonto-print-run-btn"),
+    countEl: document.getElementById("odonto-print-meta-count"),
+    previewSheet: document.getElementById("odonto-print-preview-sheet"),
+    previewList: document.getElementById("odonto-print-preview-list"),
+    companySucursal: document.getElementById("odonto-print-company-sucursal"),
+    companyTelefono: document.getElementById("odonto-print-company-telefono"),
+    pacienteNombre: document.getElementById("odonto-print-paciente-nombre"),
+    pacienteEdad: document.getElementById("odonto-print-paciente-edad"),
+    pacienteFecha: document.getElementById("odonto-print-paciente-fecha")
+  };
+}
+function cleanupOdontoPrintFrame() {
+  if (!odontoPrintActiveIframe) return;
+  try {
+    odontoPrintActiveIframe.remove();
+  } catch {
+    // ignore cleanup errors
+  }
+  odontoPrintActiveIframe = null;
+}
+function closeOdontoPrintModal() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.modal) return;
+  refs.modal.hidden = true;
+  document.body.classList.remove("odonto-print-modal-open");
+  odontoPrintDraft = null;
+  odontoPrintIsPrinting = false;
+  odontoPrintServicePriceCache = null;
+  odontoPrintServicePricePromise = null;
+  cleanupOdontoPrintFrame();
+
+  if (refs.addItemInput) refs.addItemInput.value = "";
+  if (refs.promoInput) refs.promoInput.value = "";
+  if (refs.runBtn) refs.runBtn.disabled = false;
+}
+function syncOdontoPrintCompanyHeader() {
+  const refs = getOdontoPrintRefs();
+  if (refs.companySucursal) refs.companySucursal.textContent = ODONTO_PRINT_COMPANY_CONFIG.sucursal;
+  if (refs.companyTelefono) refs.companyTelefono.textContent = ODONTO_PRINT_COMPANY_CONFIG.telefono;
+}
+function renderOdontoPrintPresetButtons() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.presetList) return;
+  refs.presetList.innerHTML = "";
+
+  ODONTO_PRINT_PROMO_PRESETS.forEach((promo) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "odonto-print-preset-btn";
+    btn.dataset.promo = promo;
+    btn.textContent = promo;
+    refs.presetList.appendChild(btn);
+  });
+}
+function renderOdontoPrintEditorList() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.editorList) return;
+  refs.editorList.innerHTML = "";
+
+  const items = Array.isArray(odontoPrintDraft?.items) ? odontoPrintDraft.items : [];
+  if (!items.length) {
+    const empty = document.createElement("div");
+    empty.className = "odonto-print-editor-empty";
+    empty.textContent = "No hay lineas. Agregue tratamientos o promociones para imprimir.";
+    refs.editorList.appendChild(empty);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = `odonto-print-editor-item${item.kind === "promo" ? " is-promo" : ""}`;
+
+    const badge = document.createElement("span");
+    badge.className = "odonto-print-editor-badge";
+    badge.textContent = item.kind === "promo" ? "PROMO" : "PEND";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "odonto-print-editor-input";
+    input.value = String(item.text || "");
+    input.dataset.index = String(index);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "odonto-print-editor-remove";
+    removeBtn.dataset.index = String(index);
+    removeBtn.title = "Quitar linea";
+    removeBtn.textContent = "Quitar";
+
+    row.appendChild(badge);
+    row.appendChild(input);
+    row.appendChild(removeBtn);
+    refs.editorList.appendChild(row);
+  });
+}
+function renderOdontoPrintPreviewList() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.previewList || !refs.previewSheet) return;
+
+  const meta = odontoPrintDraft?.meta || {};
+  if (refs.pacienteNombre) refs.pacienteNombre.textContent = `Nombre: ${meta.nombrePaciente || "-"}`;
+  if (refs.pacienteEdad) refs.pacienteEdad.textContent = `Edad: ${meta.edadPaciente || "-"}`;
+  if (refs.pacienteFecha) refs.pacienteFecha.textContent = `Fecha: ${meta.fecha || "-"}`;
+
+  refs.previewList.innerHTML = "";
+  const items = Array.isArray(odontoPrintDraft?.items) ? odontoPrintDraft.items : [];
+  if (refs.countEl) refs.countEl.textContent = `Lineas: ${items.length}`;
+
+  refs.previewSheet.classList.remove("is-compact", "is-ultra-compact");
+  const densityClass = getOdontoPrintDensityClass(items.length);
+  if (densityClass) refs.previewSheet.classList.add(densityClass);
+
+  if (!items.length) {
+    const li = document.createElement("li");
+    li.className = "odonto-print-preview-item is-empty";
+    li.textContent = "Sin tratamientos pendientes";
+    refs.previewList.appendChild(li);
+    return;
+  }
+
+  items.forEach((item) => {
+    const li = document.createElement("li");
+    li.className = `odonto-print-preview-item${item.kind === "promo" ? " is-promo" : ""}`;
+    li.textContent = truncateForPrintLine(item.text);
+    refs.previewList.appendChild(li);
+  });
+}
+function renderOdontoPrintModal() {
+  syncOdontoPrintCompanyHeader();
+  renderOdontoPrintEditorList();
+  renderOdontoPrintPreviewList();
+}
+function addOdontoPrintItem(rawText, kind = "manual") {
+  const preparedText = kind === "promo"
+    ? ensurePromoPrefix(rawText)
+    : rawText;
+  const text = limitPrintEditorLine(preparedText);
+  if (!normalizePrintLine(text)) return;
+  if (!odontoPrintDraft || !Array.isArray(odontoPrintDraft.items)) {
+    odontoPrintDraft = buildOdontoPrintDraftFromCurrentSummary();
+  }
+  odontoPrintDraft.items.push({
+    kind: kind === "promo" ? "promo" : "manual",
+    text
+  });
+  renderOdontoPrintModal();
+}
+function removeOdontoPrintItem(index) {
+  if (!odontoPrintDraft || !Array.isArray(odontoPrintDraft.items)) return;
+  if (!Number.isInteger(index) || index < 0 || index >= odontoPrintDraft.items.length) return;
+  odontoPrintDraft.items.splice(index, 1);
+  renderOdontoPrintModal();
+}
+function updateOdontoPrintItem(index, rawText) {
+  if (!odontoPrintDraft || !Array.isArray(odontoPrintDraft.items)) return;
+  if (!Number.isInteger(index) || index < 0 || index >= odontoPrintDraft.items.length) return;
+  odontoPrintDraft.items[index].text = limitPrintEditorLine(rawText);
+  renderOdontoPrintPreviewList();
+}
+function buildOdontoPrintListHtml(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return '<li class="odonto-print-preview-item is-empty">Sin tratamientos pendientes</li>';
+  }
+  return items.map((item) => {
+    const klass = item?.kind === "promo"
+      ? "odonto-print-preview-item is-promo"
+      : "odonto-print-preview-item";
+    return `<li class="${klass}">${escapeHtml(truncateForPrintLine(item?.text))}</li>`;
+  }).join("");
+}
+function buildOdontoPrintDocumentHtml(draft) {
+  const safeDraft = draft && typeof draft === "object" ? draft : { items: [], meta: {} };
+  const items = Array.isArray(safeDraft.items) ? safeDraft.items : [];
+  const meta = safeDraft.meta && typeof safeDraft.meta === "object" ? safeDraft.meta : {};
+  const densityClass = getOdontoPrintDensityClass(items.length);
+  const listHtml = buildOdontoPrintListHtml(items);
+
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impresion Tratamientos Pendientes</title>
+  <link rel="stylesheet" href="/css/odontograma.css">
+</head>
+<body class="odonto-print-document">
+  <div class="odonto-print-doc-page">
+    <article class="odonto-print-sheet ${densityClass}">
+      <div class="odonto-print-sheet-header">
+        <div class="odonto-print-company-row">
+          <div class="odonto-print-company-left"><strong>${escapeHtml(ODONTO_PRINT_COMPANY_CONFIG.sucursal)}</strong></div>
+          <div class="odonto-print-company-right">${escapeHtml(ODONTO_PRINT_COMPANY_CONFIG.telefono)}</div>
+        </div>
+        <div class="odonto-print-paciente-row">
+          <span>Nombre: ${escapeHtml(meta.nombrePaciente || "-")}</span>
+          <span>Edad: ${escapeHtml(meta.edadPaciente || "-")}</span>
+          <span>Fecha: ${escapeHtml(meta.fecha || "-")}</span>
+        </div>
+      </div>
+      <div class="odonto-print-sheet-body">
+        <ul class="odonto-print-preview-list">${listHtml}</ul>
+      </div>
+    </article>
+  </div>
+</body>
+</html>`;
+}
+function runOdontoPrintJob() {
+  if (odontoPrintIsPrinting) return;
+
+  if (!odontoPrintDraft || !Array.isArray(odontoPrintDraft.items)) {
+    odontoPrintDraft = buildOdontoPrintDraftFromCurrentSummary();
+  }
+  const refs = getOdontoPrintRefs();
+  const draftSnapshot = JSON.parse(JSON.stringify(odontoPrintDraft || { items: [], meta: {} }));
+
+  cleanupOdontoPrintFrame();
+  odontoPrintIsPrinting = true;
+  if (refs.runBtn) refs.runBtn.disabled = true;
+
+  const iframe = document.createElement("iframe");
+  iframe.className = "odonto-print-iframe";
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  odontoPrintActiveIframe = iframe;
+  document.body.appendChild(iframe);
+
+  const releaseBusyState = () => {
+    odontoPrintIsPrinting = false;
+    const latestRefs = getOdontoPrintRefs();
+    if (latestRefs.runBtn) latestRefs.runBtn.disabled = false;
+  };
+
+  let triggered = false;
+  const triggerPrint = () => {
+    if (triggered) return;
+    triggered = true;
+
+    const targetWindow = iframe.contentWindow;
+    if (!targetWindow) {
+      cleanupOdontoPrintFrame();
+      releaseBusyState();
+      return;
+    }
+
+    const cleanupAfterPrint = () => {
+      cleanupOdontoPrintFrame();
+      releaseBusyState();
+    };
+    targetWindow.addEventListener("afterprint", cleanupAfterPrint, { once: true });
+
+    setTimeout(() => {
+      try {
+        targetWindow.focus();
+        targetWindow.print();
+      } catch {
+        cleanupAfterPrint();
+        return;
+      }
+      setTimeout(cleanupAfterPrint, 30000);
+    }, 160);
+  };
+
+  iframe.onload = triggerPrint;
+
+  const targetDoc = iframe.contentDocument;
+  if (!targetDoc) {
+    cleanupOdontoPrintFrame();
+    releaseBusyState();
+    return;
+  }
+  targetDoc.open();
+  targetDoc.write(buildOdontoPrintDocumentHtml(draftSnapshot));
+  targetDoc.close();
+
+  setTimeout(triggerPrint, 450);
+}
+async function openOdontoPrintModal() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.modal) return;
+
+  odontoPrintServicePriceCache = null;
+  odontoPrintServicePricePromise = null;
+  await ensureOdontoPrintServicePriceCache();
+  odontoPrintDraft = buildOdontoPrintDraftFromCurrentSummary();
+  renderOdontoPrintModal();
+  refs.modal.hidden = false;
+  document.body.classList.add("odonto-print-modal-open");
+}
+function bindOdontoPrintFeature() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.modal || !refs.printBtn) return;
+
+  renderOdontoPrintPresetButtons();
+
+  refs.printBtn.onclick = async () => {
+    if (refs.printBtn.disabled) return;
+    refs.printBtn.disabled = true;
+    try {
+      await openOdontoPrintModal();
+    } finally {
+      if (refs.printBtn) refs.printBtn.disabled = false;
+    }
+  };
+  refs.closeBtn.onclick = () => {
+    closeOdontoPrintModal();
+  };
+  refs.modal.onclick = (event) => {
+    if (event.target?.closest?.("[data-odonto-print-close]")) {
+      closeOdontoPrintModal();
+    }
+  };
+  refs.addItemBtn.onclick = () => {
+    const text = String(refs.addItemInput?.value || "");
+    addOdontoPrintItem(text, "manual");
+    if (refs.addItemInput) refs.addItemInput.value = "";
+  };
+  refs.addItemInput.onkeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    refs.addItemBtn?.click();
+  };
+  refs.promoBtn.onclick = () => {
+    const text = String(refs.promoInput?.value || "");
+    addOdontoPrintItem(text, "promo");
+    if (refs.promoInput) refs.promoInput.value = "";
+  };
+  refs.promoInput.onkeydown = (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    refs.promoBtn?.click();
+  };
+  refs.presetList.onclick = (event) => {
+    const button = event.target?.closest?.("button[data-promo]");
+    if (!button) return;
+    addOdontoPrintItem(button.dataset.promo, "promo");
+  };
+  refs.editorList.onclick = (event) => {
+    const removeBtn = event.target?.closest?.(".odonto-print-editor-remove");
+    if (!removeBtn) return;
+    const index = Number(removeBtn.dataset.index || -1);
+    removeOdontoPrintItem(index);
+  };
+  refs.editorList.oninput = (event) => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) return;
+    if (!input.classList.contains("odonto-print-editor-input")) return;
+    const index = Number(input.dataset.index || -1);
+    const limited = limitPrintEditorLine(input.value);
+    if (limited !== input.value) {
+      input.value = limited;
+    }
+    updateOdontoPrintItem(index, limited);
+  };
+  refs.runBtn.onclick = () => {
+    runOdontoPrintJob();
+  };
+
+  window.__closeOdontoPrintModal = closeOdontoPrintModal;
+  window.__cleanupOdontoPrintFrame = cleanupOdontoPrintFrame;
 }
 function actualizarOdontogramaActual(idOdontograma) {
   const lbl = document.getElementById("odontogramaActualP");
@@ -3026,6 +3626,14 @@ function limpiarVistaPaciente() {
   window.pacienteFotoPrincipalId = null;
   window.__pacienteLoading = false;
   setPacienteCambiosPendientes(false);
+  if (typeof window.__closeOdontoPrintModal === "function") {
+    window.__closeOdontoPrintModal();
+  }
+  if (typeof window.__cleanupOdontoPrintFrame === "function") {
+    window.__cleanupOdontoPrintFrame();
+  }
+  window.__closeOdontoPrintModal = null;
+  window.__cleanupOdontoPrintFrame = null;
 
   if (window.odontogramaAPI && typeof window.odontogramaAPI.reset === "function") {
     window.odontogramaAPI.reset();
@@ -3242,6 +3850,7 @@ window.__mountPaciente = function () {
         initOdontograma();
     }
     renderOdontogramaTreatmentSummary();
+    bindOdontoPrintFeature();
     const toggleBloqueo = document.getElementById("toggle-bloqueo");
     if (toggleBloqueo) {
     toggleBloqueo.checked = true;

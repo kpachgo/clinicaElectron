@@ -162,6 +162,17 @@ function getCurrentUser() {
 // FETCH GLOBAL CON JWT
 // =========================================
 const originalFetch = window.fetch;
+const NETWORK_ERROR_STREAK_RESET_MS = 45000;
+const NETWORK_ERROR_NOTIFY_THROTTLE_MS = 20000;
+const NETWORK_ERROR_FOREGROUND_GET_THRESHOLD = 2;
+const NETWORK_ERROR_BACKGROUND_GET_THRESHOLD = 3;
+const NETWORK_ERROR_MESSAGE = "Conexion perdida con el servidor.";
+const networkErrorTracker = {
+    streak: 0,
+    lastFailureAt: 0,
+    lastNotifiedAt: 0,
+    overlayOpenByNetworkError: false
+};
 
 function normalizeFetchMethod(url, requestOptions) {
     const fromOptions = requestOptions?.method;
@@ -173,6 +184,78 @@ function normalizeFetchUrl(url) {
     if (typeof url === "string") return url;
     if (url && typeof url === "object" && typeof url.url === "string") return url.url;
     return "";
+}
+
+function hideConnectionOverlayIfNeeded() {
+    if (!networkErrorTracker.overlayOpenByNetworkError) return;
+    networkErrorTracker.overlayOpenByNetworkError = false;
+    if (typeof window.hideServerErrorOverlay === "function") {
+        window.hideServerErrorOverlay();
+    }
+}
+
+function resetNetworkErrorTracker(options = {}) {
+    const { hideOverlay = false } = options;
+    networkErrorTracker.streak = 0;
+    networkErrorTracker.lastFailureAt = 0;
+    if (hideOverlay) {
+        hideConnectionOverlayIfNeeded();
+    }
+}
+
+function getNetworkFailureThreshold(method, networkMode) {
+    const normalizedMethod = String(method || "GET").toUpperCase();
+    if (normalizedMethod !== "GET" && normalizedMethod !== "HEAD") {
+        return 1;
+    }
+    return networkMode === "background"
+        ? NETWORK_ERROR_BACKGROUND_GET_THRESHOLD
+        : NETWORK_ERROR_FOREGROUND_GET_THRESHOLD;
+}
+
+function shouldNotifyNetworkFailure({ method, networkMode, suppressConnectionAlert = false }) {
+    const now = Date.now();
+    const elapsed = now - Number(networkErrorTracker.lastFailureAt || 0);
+    if (!Number.isFinite(elapsed) || elapsed > NETWORK_ERROR_STREAK_RESET_MS) {
+        networkErrorTracker.streak = 0;
+    }
+    networkErrorTracker.lastFailureAt = now;
+    networkErrorTracker.streak += 1;
+
+    if (suppressConnectionAlert) return false;
+    if (document.visibilityState === "hidden") return false;
+
+    const onlineFlag = typeof navigator !== "undefined" && typeof navigator.onLine === "boolean"
+        ? navigator.onLine
+        : true;
+    if (!onlineFlag) {
+        if (now - Number(networkErrorTracker.lastNotifiedAt || 0) < NETWORK_ERROR_NOTIFY_THROTTLE_MS) {
+            return false;
+        }
+        networkErrorTracker.lastNotifiedAt = now;
+        return true;
+    }
+
+    const threshold = getNetworkFailureThreshold(method, networkMode);
+    if (networkErrorTracker.streak < threshold) return false;
+    if (now - Number(networkErrorTracker.lastNotifiedAt || 0) < NETWORK_ERROR_NOTIFY_THROTTLE_MS) {
+        return false;
+    }
+
+    networkErrorTracker.lastNotifiedAt = now;
+    return true;
+}
+
+if (!window.__networkErrorGuardBound) {
+    window.__networkErrorGuardBound = "1";
+    window.addEventListener("online", () => {
+        resetNetworkErrorTracker({ hideOverlay: true });
+    });
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            resetNetworkErrorTracker({ hideOverlay: false });
+        }
+    });
 }
 
 function shouldPlayMutationSound(method, requestUrl) {
@@ -218,19 +301,29 @@ function maybePlayMutationSound(response, method, requestUrl) {
 }
 
 window.fetch = function (url, options = {}) {
-    const headers = new Headers(options.headers || {});
+    const safeOptions = options && typeof options === "object" ? options : {};
+    const {
+        __networkMode,
+        __skipConnectionErrorAlert,
+        ...rawRequestOptions
+    } = safeOptions;
+
+    const headers = new Headers(rawRequestOptions.headers || {});
 
     const token = getToken();
     if (token && !headers.has("Authorization")) {
         headers.set("Authorization", "Bearer " + token);
     }
 
-    const requestOptions = { ...options, headers };
+    const requestOptions = { ...rawRequestOptions, headers };
     const method = normalizeFetchMethod(url, requestOptions);
     const requestUrl = normalizeFetchUrl(url);
+    const networkMode = String(__networkMode || "").trim().toLowerCase();
+    const suppressConnectionAlert = __skipConnectionErrorAlert === true;
 
     return originalFetch(url, requestOptions)
         .then((response) => {
+            resetNetworkErrorTracker({ hideOverlay: true });
             maybePlayMutationSound(response, method, requestUrl);
             if (!response.ok && typeof window.notifyServerHttpError === "function") {
                 window.notifyServerHttpError(response.status, requestUrl);
@@ -239,7 +332,15 @@ window.fetch = function (url, options = {}) {
         })
         .catch((err) => {
             if (err && err.name !== "AbortError" && typeof window.notifyConnectionError === "function") {
-                window.notifyConnectionError("Conexion perdida con el servidor.");
+                const shouldNotify = shouldNotifyNetworkFailure({
+                    method,
+                    networkMode,
+                    suppressConnectionAlert
+                });
+                if (shouldNotify) {
+                    networkErrorTracker.overlayOpenByNetworkError = true;
+                    window.notifyConnectionError(NETWORK_ERROR_MESSAGE);
+                }
             }
             throw err;
         });

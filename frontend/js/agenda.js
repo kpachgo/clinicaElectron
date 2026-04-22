@@ -110,6 +110,14 @@
   function normalizarTexto(value) {
     return String(value || "").trim().toLowerCase();
   }
+  function normalizarTextoCruce(value) {
+    const raw = String(value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+    if (!raw) return "";
+    return raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
   function normalizarBanderaContacto(value) {
     if (value === true) return true;
     if (value === false) return false;
@@ -552,11 +560,21 @@
             <button id="agenda-clear-reprograma" class="btn-cobrar agenda-btn-reprogramar-cancelar" disabled>
               Cancelar
             </button>
+            <button
+              id="agenda-review-ina"
+              class="btn-cobrar agenda-btn-inasistencia"
+              type="button"
+              title="Revisar inasistencias"
+              aria-label="Revisar inasistencias"
+            >
+              ${getAgendaHeroIcon("queue-list")}
+            </button>
 
             <span id="agenda-reprograma-status" class="agenda-reprograma-status" aria-live="polite"></span>
 
             <select id="agenda-filter-estado" class="filter-estado">
               <option value="">Todos</option>
+              <option value="Pendiente">Pendiente</option>
               <option value="Confirmado">Confirmado</option>
               <option value="Cancelado">Cancelado</option>
               <option value="Reprogramado">Reprogramado</option>
@@ -593,7 +611,53 @@
             <tbody id="agenda-tbody"></tbody>
           </table>
         </div>
-        
+
+        <div id="agenda-ina-modal" class="agenda-ina-modal" hidden>
+          <div class="agenda-ina-backdrop" data-ina-close="1"></div>
+          <div class="agenda-ina-dialog" role="dialog" aria-modal="true" aria-labelledby="agenda-ina-title">
+            <div class="agenda-ina-header">
+              <h3 id="agenda-ina-title">Posibles inasistencias</h3>
+              <button id="agenda-ina-close" class="btn-cobrar agenda-ina-close-btn" type="button">Cerrar</button>
+            </div>
+            <div class="agenda-ina-meta">
+              <span id="agenda-ina-fecha">Fecha: -</span>
+            </div>
+            <div class="agenda-ina-kpis">
+              <article class="agenda-ina-kpi">
+                <span>Candidatos</span>
+                <strong id="agenda-ina-kpi-candidatos">0</strong>
+              </article>
+              <article class="agenda-ina-kpi">
+                <span>Seleccionados</span>
+                <strong id="agenda-ina-kpi-seleccionados">0</strong>
+              </article>
+              <article class="agenda-ina-kpi is-muted">
+                <span>Excluidos</span>
+                <strong id="agenda-ina-kpi-excluidos">0</strong>
+              </article>
+            </div>
+            <div id="agenda-ina-status" class="agenda-ina-status" aria-live="polite"></div>
+            <div class="agenda-ina-toolbar">
+              <button id="agenda-ina-select-all" class="btn-cobrar agenda-ina-select-all" type="button">Seleccionar todo</button>
+              <button id="agenda-ina-clear-all" class="btn-cobrar agenda-ina-clear-all" type="button">Deseleccionar todo</button>
+              <button id="agenda-ina-apply" class="btn-cobrar agenda-ina-apply" type="button">Aplicar cancelacion</button>
+            </div>
+            <div class="agenda-ina-table-wrap">
+              <table class="agenda-ina-table">
+                <thead>
+                  <tr>
+                    <th style="width:50px; text-align:center">OK</th>
+                    <th>Paciente</th>
+                    <th style="width:140px">Hora</th>
+                    <th style="width:180px">Contacto</th>
+                    <th style="width:140px">Estado actual</th>
+                  </tr>
+                </thead>
+                <tbody id="agenda-ina-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
 
       </div>
     `;
@@ -684,11 +748,29 @@
     const toggleLlamadaAgenda = container.querySelector("#agenda-toggle-llamada");
     let pasteCitaBtn = container.querySelector("#agenda-paste-cita");
     let clearReprogramaBtn = container.querySelector("#agenda-clear-reprograma");
+    const reviewInasistenciaBtn = container.querySelector("#agenda-review-ina");
     const reprogramaStatusEl = container.querySelector("#agenda-reprograma-status");
+    const inasistenciaModal = container.querySelector("#agenda-ina-modal");
+    const inasistenciaCloseBtn = container.querySelector("#agenda-ina-close");
+    const inasistenciaFechaEl = container.querySelector("#agenda-ina-fecha");
+    const inasistenciaKpiCandidatos = container.querySelector("#agenda-ina-kpi-candidatos");
+    const inasistenciaKpiSeleccionados = container.querySelector("#agenda-ina-kpi-seleccionados");
+    const inasistenciaKpiExcluidos = container.querySelector("#agenda-ina-kpi-excluidos");
+    const inasistenciaStatusEl = container.querySelector("#agenda-ina-status");
+    const inasistenciaSelectAllBtn = container.querySelector("#agenda-ina-select-all");
+    const inasistenciaClearAllBtn = container.querySelector("#agenda-ina-clear-all");
+    const inasistenciaApplyBtn = container.querySelector("#agenda-ina-apply");
+    const inasistenciaTbody = container.querySelector("#agenda-ina-tbody");
     let agendaReprogramaBuffer = null;
     let agendaModalDesdeReprogramacion = false;
     let agendaMesResultados = null;
     let agendaMesBusquedaToken = 0;
+    let inasistenciaRows = [];
+    let inasistenciaSelectedIds = new Set();
+    let inasistenciaLoading = false;
+    let inasistenciaApplying = false;
+    let inasistenciaFetchSeq = 0;
+    let inasistenciaFetchController = null;
     const agendaContactoSaveInFlight = new Set();
     const agendaUiStateKey = `ui_state_agenda_${getUiStateUserId()}`;
     const agendaUiState = {
@@ -788,6 +870,342 @@
       agendaTable.classList.toggle("hide-contacto-llamada", !llamadaVisible);
       agendaTable.classList.toggle("hide-contactado", !smsVisible && !llamadaVisible);
     }
+    function formatearHoraInasistencia(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return "-";
+      if (/^\d{1,2}:\d{2}$/.test(raw)) {
+        return formatTime12(raw);
+      }
+      return raw;
+    }
+    function setInasistenciaStatus(message, tone = "info") {
+      if (!inasistenciaStatusEl) return;
+      inasistenciaStatusEl.textContent = String(message || "").trim();
+      inasistenciaStatusEl.classList.remove("is-info", "is-success", "is-error", "is-muted");
+      if (tone) {
+        inasistenciaStatusEl.classList.add(`is-${tone}`);
+      }
+    }
+    function renderInasistenciaRows() {
+      if (inasistenciaFechaEl) {
+        const fechaISO = String(dateInput?.value || "").trim();
+        inasistenciaFechaEl.textContent = fechaISO
+          ? `Fecha: ${isoToDDMMYYYY(fechaISO)}`
+          : "Fecha: -";
+      }
+
+      const total = inasistenciaRows.length;
+      const selected = inasistenciaRows.reduce(
+        (acc, row) => acc + (inasistenciaSelectedIds.has(Number(row?.idAgendaAP || 0)) ? 1 : 0),
+        0
+      );
+      const excluded = Math.max(0, total - selected);
+
+      if (inasistenciaKpiCandidatos) inasistenciaKpiCandidatos.textContent = String(total);
+      if (inasistenciaKpiSeleccionados) inasistenciaKpiSeleccionados.textContent = String(selected);
+      if (inasistenciaKpiExcluidos) inasistenciaKpiExcluidos.textContent = String(excluded);
+
+      if (inasistenciaSelectAllBtn) {
+        inasistenciaSelectAllBtn.disabled = inasistenciaLoading || inasistenciaApplying || total === 0;
+      }
+      if (inasistenciaClearAllBtn) {
+        inasistenciaClearAllBtn.disabled = inasistenciaLoading || inasistenciaApplying || total === 0;
+      }
+      if (inasistenciaApplyBtn) {
+        inasistenciaApplyBtn.disabled = inasistenciaLoading || inasistenciaApplying || selected === 0;
+      }
+      if (!inasistenciaTbody) return;
+
+      if (inasistenciaLoading) {
+        inasistenciaTbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align:center; color:#64748b">Cargando posibles inasistencias...</td>
+          </tr>
+        `;
+        return;
+      }
+
+      if (!total) {
+        inasistenciaTbody.innerHTML = `
+          <tr>
+            <td colspan="5" style="text-align:center; color:#64748b">No hay posibles inasistencias para esta fecha</td>
+          </tr>
+        `;
+        return;
+      }
+
+      inasistenciaTbody.innerHTML = "";
+      inasistenciaRows.forEach((row) => {
+        const idAgenda = Number(row?.idAgendaAP || 0);
+        if (!idAgenda) return;
+        const tr = document.createElement("tr");
+        const checked = inasistenciaSelectedIds.has(idAgenda) ? "checked" : "";
+        tr.innerHTML = `
+          <td style="text-align:center">
+            <input type="checkbox" class="agenda-ina-check" data-id="${idAgenda}" ${checked}>
+          </td>
+          <td>${escapeHtml(String(row?.nombre || "-"))}</td>
+          <td>${escapeHtml(formatearHoraInasistencia(row?.hora))}</td>
+          <td>${escapeHtml(String(row?.contacto || "-"))}</td>
+          <td>${escapeHtml(String(row?.estado || "-"))}</td>
+        `;
+        inasistenciaTbody.appendChild(tr);
+      });
+    }
+    function abortInasistenciaFetch() {
+      if (!inasistenciaFetchController) return;
+      try {
+        inasistenciaFetchController.abort();
+      } catch {
+        // ignore abort failures
+      }
+      inasistenciaFetchController = null;
+    }
+    function abrirInasistenciaModal() {
+      if (!inasistenciaModal) return;
+      inasistenciaModal.hidden = false;
+      document.body.classList.add("agenda-ina-open");
+      void cargarPosiblesInasistencias();
+    }
+    function cerrarInasistenciaModal() {
+      if (!inasistenciaModal) return;
+      inasistenciaModal.hidden = true;
+      document.body.classList.remove("agenda-ina-open");
+      inasistenciaLoading = false;
+      inasistenciaFetchSeq++;
+      abortInasistenciaFetch();
+    }
+    window.__agendaCloseInasistenciaModal = cerrarInasistenciaModal;
+    async function cargarPosiblesInasistencias(opts = {}) {
+      const fechaISO = String(dateInput?.value || "").trim();
+      const statusAfter = String(opts?.statusAfter || "").trim();
+      const statusTone = String(opts?.statusTone || "").trim() || "success";
+
+      if (!fechaISO) {
+        inasistenciaRows = [];
+        inasistenciaSelectedIds = new Set();
+        setInasistenciaStatus("Seleccione una fecha valida en Agenda.", "error");
+        renderInasistenciaRows();
+        return;
+      }
+
+      inasistenciaFetchSeq += 1;
+      const localSeq = inasistenciaFetchSeq;
+      abortInasistenciaFetch();
+      const controller = typeof AbortController !== "undefined"
+        ? new AbortController()
+        : null;
+      inasistenciaFetchController = controller;
+
+      inasistenciaLoading = true;
+      setInasistenciaStatus("Cargando posibles inasistencias...", "muted");
+      renderInasistenciaRows();
+
+      try {
+        const options = controller
+          ? { cache: "no-store", signal: controller.signal }
+          : { cache: "no-store" };
+        const [agendaRes, colaRes] = await Promise.all([
+          fetch(`/api/agenda?fecha=${encodeURIComponent(fechaISO)}`, options),
+          fetch(`/api/cola?fecha=${encodeURIComponent(fechaISO)}`, options)
+        ]);
+        const [agendaJson, colaJson] = await Promise.all([
+          agendaRes.json(),
+          colaRes.json()
+        ]);
+
+        if (localSeq !== inasistenciaFetchSeq) return;
+
+        if (!agendaRes.ok || !agendaJson?.ok) {
+          throw new Error(agendaJson?.message || "No se pudo cargar agenda para cruce");
+        }
+        if (!colaRes.ok || !colaJson?.ok) {
+          throw new Error(colaJson?.message || "No se pudo cargar En Cola para cruce");
+        }
+
+        const agendaRowsRaw = Array.isArray(agendaJson?.data) ? agendaJson.data : [];
+        const agendaRows = agendaRowsRaw.map((item) => normalizarAgendaRow(item, fechaISO, true));
+        const candidatos = agendaRows.filter((item) => {
+          const estado = normalizarTexto(item?.estado);
+          return estado === "confirmado" || estado === "pendiente";
+        });
+
+        const atendidosPorAgendaId = new Set();
+        const atendidosPorNombre = new Set();
+        const colaRows = Array.isArray(colaJson?.data) ? colaJson.data : [];
+        colaRows.forEach((item) => {
+          const estado = normalizarTexto(item?.estado);
+          if (estado !== "atendido") return;
+
+          const agendaId = Number(item?.agendaId || 0);
+          if (agendaId > 0) atendidosPorAgendaId.add(agendaId);
+
+          const keyNombre = normalizarTextoCruce(item?.nombrePaciente);
+          if (keyNombre) atendidosPorNombre.add(keyNombre);
+        });
+
+        inasistenciaRows = candidatos
+          .filter((item) => {
+            const agendaId = Number(item?.idAgendaAP || 0);
+            if (agendaId > 0 && atendidosPorAgendaId.has(agendaId)) return false;
+
+            const keyNombreAgenda = normalizarTextoCruce(item?.nombre);
+            if (keyNombreAgenda && atendidosPorNombre.has(keyNombreAgenda)) return false;
+            return true;
+          })
+          .sort((a, b) => {
+            const horaCmp = String(a?.hora || "").localeCompare(String(b?.hora || ""));
+            if (horaCmp !== 0) return horaCmp;
+            return String(a?.nombre || "").localeCompare(String(b?.nombre || ""), "es", { sensitivity: "base" });
+          });
+
+        inasistenciaSelectedIds = new Set(
+          inasistenciaRows
+            .map((item) => Number(item?.idAgendaAP || 0))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        );
+
+        if (statusAfter) {
+          setInasistenciaStatus(statusAfter, statusTone);
+        } else if (!inasistenciaRows.length) {
+          setInasistenciaStatus("No hay posibles inasistencias para esta fecha.", "muted");
+        } else {
+          setInasistenciaStatus(
+            `Revise la lista y excluya manualmente los pacientes que no desea cancelar (${inasistenciaRows.length}).`,
+            "info"
+          );
+        }
+      } catch (err) {
+        if (err?.name === "AbortError" || localSeq !== inasistenciaFetchSeq) return;
+        console.error("Error calculando inasistencias desde Agenda", err);
+        inasistenciaRows = [];
+        inasistenciaSelectedIds = new Set();
+        setInasistenciaStatus(err?.message || "No se pudo calcular posibles inasistencias", "error");
+      } finally {
+        if (inasistenciaFetchController === controller) {
+          inasistenciaFetchController = null;
+          inasistenciaLoading = false;
+        }
+        renderInasistenciaRows();
+      }
+    }
+    async function aplicarCancelacionMasivaInasistencias() {
+      if (inasistenciaApplying || inasistenciaLoading) return;
+
+      const seleccionados = inasistenciaRows
+        .map((row) => Number(row?.idAgendaAP || 0))
+        .filter((id) => inasistenciaSelectedIds.has(id));
+
+      if (!seleccionados.length) {
+        setInasistenciaStatus("Seleccione al menos un registro para cancelar.", "error");
+        renderInasistenciaRows();
+        return;
+      }
+
+      const mensajeConfirm = `Cambiar a Cancelado ${seleccionados.length} cita(s) seleccionada(s)?`;
+      const okConfirmar = typeof window.showSystemConfirm === "function"
+        ? await window.showSystemConfirm(mensajeConfirm)
+        : confirm(mensajeConfirm);
+      if (!okConfirmar) return;
+
+      inasistenciaApplying = true;
+      setInasistenciaStatus("Aplicando cancelaciones...", "muted");
+      renderInasistenciaRows();
+
+      let actualizados = 0;
+      const fallidos = [];
+
+      try {
+        for (const idAgenda of seleccionados) {
+          try {
+            const res = await fetch(`/api/agenda/${idAgenda}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ estado: "Cancelado" })
+            });
+            const json = await res.json();
+            if (!res.ok || !json?.ok) {
+              throw new Error(json?.message || "No se pudo actualizar estado");
+            }
+            actualizados += 1;
+          } catch (err) {
+            fallidos.push({
+              idAgenda,
+              message: String(err?.message || "Error actualizando estado")
+            });
+          }
+        }
+
+        const fechaObjetivo = String(dateInput?.value || "").trim();
+        if (fechaObjetivo) {
+          await cargarAgendaPorFecha(fechaObjetivo);
+          aplicarFiltros();
+        }
+
+        const resumen = `Actualizados: ${actualizados}. Fallidos: ${fallidos.length}.`;
+        await cargarPosiblesInasistencias({
+          statusAfter: resumen,
+          statusTone: fallidos.length ? "error" : "success"
+        });
+
+        if (fallidos.length) {
+          console.error("Fallos en cancelacion masiva de agenda", fallidos);
+        }
+      } catch (err) {
+        console.error("Error en aplicacion masiva de inasistencias", err);
+        setInasistenciaStatus(
+          err?.message || "No se pudo completar la aplicacion de cancelaciones",
+          "error"
+        );
+      } finally {
+        inasistenciaApplying = false;
+        renderInasistenciaRows();
+      }
+    }
+    reviewInasistenciaBtn?.addEventListener("click", () => {
+      abrirInasistenciaModal();
+    });
+    inasistenciaCloseBtn?.addEventListener("click", () => {
+      cerrarInasistenciaModal();
+    });
+    inasistenciaModal?.addEventListener("click", (e) => {
+      if (e.target?.closest?.("[data-ina-close]")) {
+        cerrarInasistenciaModal();
+      }
+    });
+    inasistenciaSelectAllBtn?.addEventListener("click", () => {
+      inasistenciaSelectedIds = new Set(
+        inasistenciaRows
+          .map((row) => Number(row?.idAgendaAP || 0))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      );
+      setInasistenciaStatus("Todos los candidatos fueron seleccionados.", "info");
+      renderInasistenciaRows();
+    });
+    inasistenciaClearAllBtn?.addEventListener("click", () => {
+      inasistenciaSelectedIds = new Set();
+      setInasistenciaStatus("Todos los candidatos fueron excluidos temporalmente.", "info");
+      renderInasistenciaRows();
+    });
+    inasistenciaApplyBtn?.addEventListener("click", async () => {
+      await aplicarCancelacionMasivaInasistencias();
+    });
+    inasistenciaTbody?.addEventListener("change", (e) => {
+      const target = e.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (!target.classList.contains("agenda-ina-check")) return;
+
+      const idAgenda = Number(target.dataset?.id || 0);
+      if (!Number.isInteger(idAgenda) || idAgenda <= 0) return;
+
+      if (target.checked) {
+        inasistenciaSelectedIds.add(idAgenda);
+      } else {
+        inasistenciaSelectedIds.delete(idAgenda);
+      }
+      renderInasistenciaRows();
+    });
+    renderInasistenciaRows();
     let regBtn = container.querySelector("#agenda-register");
     const regBtnSafe = regBtn.cloneNode(true);
     regBtn.replaceWith(regBtnSafe);
@@ -1175,6 +1593,9 @@
 
      document.addEventListener("keydown", e => {
     if (e.key === "Escape") {
+      if (typeof window.__agendaCloseInasistenciaModal === "function") {
+        window.__agendaCloseInasistenciaModal();
+      }
       const modalAgenda = document.querySelector("#modal-agenda");
       if (modalAgenda?.classList.contains("show")) {
         if (typeof window.__agendaResetModalState === "function") {
@@ -2353,6 +2774,9 @@
         agendaFetchController = null;
         agendaFetchDate = "";
         agendaFetchSeq++;
+        inasistenciaApplying = false;
+        cerrarInasistenciaModal();
+        window.__agendaCloseInasistenciaModal = null;
 
         limpiarBufferReprogramacion();
         resetAgendaModalState();
