@@ -923,6 +923,19 @@ function renderPaciente(container) {
 
         <button id="btn-guardarOdontograma">Guardar ODT</button>
         <button id="btn-cargarOdontograma">Cargar ODT</button>
+        <div id="odontograma-summary-panel" class="odonto-summary-panel">
+          <h6 class="odonto-summary-title">Resumen de tratamientos</h6>
+          <div class="odonto-summary-grid">
+            <section class="odonto-summary-block">
+              <div class="odonto-summary-block-title">Pendientes</div>
+              <div id="odonto-summary-pendientes" class="odonto-summary-list"></div>
+            </section>
+            <section class="odonto-summary-block">
+              <div class="odonto-summary-block-title">Ya realizados</div>
+              <div id="odonto-summary-realizados" class="odonto-summary-list"></div>
+            </section>
+          </div>
+        </div>
 
         <div id="clean-message" class="menu-hidden">Seleccione una pieza...</div>
         <div id="ppf-message" class="menu-hidden">Seleccione la primera pieza del puente...</div>
@@ -2093,6 +2106,210 @@ function calcularEdad(fechaNacimiento) {
   return edad;
 }
 // ============= PARTE DE ODONTOGRAMA ==============================
+const ODONTO_SUMMARY_EXCLUDED = new Set(["PPF", "PPR", "PC"]);
+const ODONTO_SUMMARY_ALIAS = {
+  CP: "CP",
+  CG: "CG",
+  OBTURACION: "O",
+  O: "O",
+  SELLANTE: "SFF",
+  SFF: "SFF",
+  RECONSTRUCCION: "R",
+  R: "R",
+  ENDODONCIA: "E",
+  E: "E",
+  CORONA: "C",
+  C: "C",
+  IMPLANTE: "I",
+  I: "I",
+  AUSENTE: "X",
+  EXTRACCION: "X",
+  CX: "CX",
+  X: "X",
+  CAMBIO_RELLENO: "CR",
+  CR: "CR",
+  FRACTURA: "F",
+  F: "F",
+  RL: "RL",
+  REALIZADO: "RL"
+};
+const ODONTO_SUMMARY_LABELS = {
+  CP: "Caries pequena",
+  CG: "Caries grande",
+  O: "Obturacion",
+  SFF: "Sellante",
+  R: "Reconstruccion",
+  E: "Endodoncia",
+  C: "Corona",
+  I: "Implante",
+  X_CIRUGIA: "Extraccion Cirugia",
+  X_EXTRACCION: "Extraccion",
+  X_AUSENTE: "Pieza ausente",
+  CR: "Cambio de relleno",
+  F: "Fractura"
+};
+function normalizeOdontoTreatmentId(rawId) {
+  const token = String(rawId ?? "").trim().toUpperCase();
+  if (!token) return "";
+  return ODONTO_SUMMARY_ALIAS[token] || token;
+}
+function getOdontoTreatmentLabel(code) {
+  const normalized = normalizeOdontoTreatmentId(code);
+  return ODONTO_SUMMARY_LABELS[normalized] || normalized;
+}
+function normalizeOdontoColor(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw.startsWith("rgb")) {
+    const nums = raw.match(/\d+/g) || [];
+    if (nums.length >= 3) {
+      return `#${nums.slice(0, 3).map(n => Number(n).toString(16).padStart(2, "0")).join("")}`;
+    }
+  }
+  return raw;
+}
+function resolveXSummaryTreatment(rawTreatment) {
+  const colorHex = normalizeOdontoColor(rawTreatment?.color);
+  const colorName = String(rawTreatment?.colorName || "").trim().toLowerCase();
+  if (colorHex === "#2693ff" || colorName === "azul") {
+    return "X_AUSENTE";
+  }
+  return "X_EXTRACCION";
+}
+function mapToOdontoSummaryArray(summaryMap) {
+  return Array.from(summaryMap.entries())
+    .map(([tratamiento, piezasSet]) => {
+      const piezas = Array.from(piezasSet)
+        .filter(n => Number.isInteger(n) && n > 0)
+        .sort((a, b) => a - b);
+      return {
+        tratamiento,
+        etiqueta: getOdontoTreatmentLabel(tratamiento),
+        cantidad: piezas.length,
+        piezas
+      };
+    })
+    .sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, "es"));
+}
+function buildOdontogramaTreatmentSummary(data) {
+  const piezas = data && typeof data === "object" && data.piezas && typeof data.piezas === "object"
+    ? data.piezas
+    : {};
+  const pendientesMap = new Map();
+  const realizadosMap = new Map();
+
+  const addToMap = (targetMap, tratamiento, pieza) => {
+    if (!tratamiento || !Number.isInteger(pieza) || pieza <= 0) return;
+    if (!targetMap.has(tratamiento)) {
+      targetMap.set(tratamiento, new Set());
+    }
+    targetMap.get(tratamiento).add(pieza);
+  };
+
+  const collectTreatment = (bucket, rawTreatment, markRl, hasCxInNota = false) => {
+    const rawId = typeof rawTreatment === "string"
+      ? rawTreatment
+      : rawTreatment && typeof rawTreatment === "object"
+        ? rawTreatment.id
+        : "";
+    const normalized = normalizeOdontoTreatmentId(rawId);
+    if (!normalized) return markRl;
+    if (ODONTO_SUMMARY_EXCLUDED.has(normalized)) return markRl;
+    if (normalized === "RL") return true;
+    if (normalized === "CX") {
+      bucket.add("X_CIRUGIA");
+      return markRl;
+    }
+    if (normalized === "X") {
+      if (hasCxInNota) {
+        bucket.add("X_CIRUGIA");
+        return markRl;
+      }
+      bucket.add(resolveXSummaryTreatment(rawTreatment));
+      return markRl;
+    }
+    bucket.add(normalized);
+    return markRl;
+  };
+
+  Object.entries(piezas).forEach(([piezaKey, piezaData]) => {
+    const pieza = Number(piezaKey);
+    if (!Number.isInteger(pieza) || pieza <= 0) return;
+    if (!piezaData || typeof piezaData !== "object") return;
+
+    const pieceTreatments = new Set();
+    let hasRl = false;
+    const nota = String(piezaData?.nota_input || "").toUpperCase();
+    const hasCxInNota = /\bCX\b/.test(nota) || /EXTRACCION\s*CIRUGIA/.test(nota);
+
+    const superficies = piezaData.superficies && typeof piezaData.superficies === "object"
+      ? piezaData.superficies
+      : {};
+    Object.values(superficies).forEach((surfaceTreatments) => {
+      if (!Array.isArray(surfaceTreatments)) return;
+      surfaceTreatments.forEach((treatment) => {
+        hasRl = collectTreatment(pieceTreatments, treatment, hasRl, hasCxInNota);
+      });
+    });
+
+    const piezaCompleta = Array.isArray(piezaData.pieza_completa)
+      ? piezaData.pieza_completa
+      : [];
+    piezaCompleta.forEach((treatment) => {
+      hasRl = collectTreatment(pieceTreatments, treatment, hasRl, hasCxInNota);
+    });
+
+    const targetMap = hasRl ? realizadosMap : pendientesMap;
+    pieceTreatments.forEach((tratamiento) => addToMap(targetMap, tratamiento, pieza));
+  });
+
+  return {
+    pendientes: mapToOdontoSummaryArray(pendientesMap),
+    realizados: mapToOdontoSummaryArray(realizadosMap)
+  };
+}
+function renderOdontoSummaryList(container, items) {
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!Array.isArray(items) || items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "odonto-summary-empty";
+    empty.textContent = "Sin tratamientos registrados";
+    container.appendChild(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "odonto-summary-item";
+
+    const code = document.createElement("span");
+    code.className = "odonto-summary-code";
+    code.textContent = item.etiqueta || item.tratamiento;
+
+    const detail = document.createElement("span");
+    detail.className = "odonto-summary-detail";
+    detail.textContent = `${item.cantidad} pieza${item.cantidad === 1 ? "" : "s"}: [${item.piezas.join(", ")}]`;
+
+    row.appendChild(code);
+    row.appendChild(detail);
+    container.appendChild(row);
+  });
+}
+function renderOdontogramaTreatmentSummary() {
+  const pendientesEl = document.getElementById("odonto-summary-pendientes");
+  const realizadosEl = document.getElementById("odonto-summary-realizados");
+  if (!pendientesEl || !realizadosEl) return;
+
+  const data = window.odontogramaAPI && typeof window.odontogramaAPI.getData === "function"
+    ? window.odontogramaAPI.getData()
+    : null;
+  const summary = buildOdontogramaTreatmentSummary(data);
+
+  renderOdontoSummaryList(pendientesEl, summary.pendientes);
+  renderOdontoSummaryList(realizadosEl, summary.realizados);
+}
 function actualizarOdontogramaActual(idOdontograma) {
   const lbl = document.getElementById("odontogramaActualP");
   const idActivo = Number(idOdontograma || 0) || null;
@@ -2124,6 +2341,7 @@ function limpiarOdontogramaActivoEnVista(options = {}) {
       select.value = "";
     }
   }
+  renderOdontogramaTreatmentSummary();
   sincronizarSnapshotOdontogramaBase();
 }
 async function guardarOdontogramaEnBD() {
@@ -2167,6 +2385,7 @@ async function guardarOdontogramaEnBD() {
       silentNoData: true,
       silentSuccess: true
     });
+    renderOdontogramaTreatmentSummary();
     sincronizarSnapshotOdontogramaBase();
     alert("Odontograma guardado");
 
@@ -2213,6 +2432,7 @@ async function cargarOdontogramaPorId(idOdontograma, options = {}) {
     await new Promise(resolve => requestAnimationFrame(resolve));
     if (isStaleRequest("odontogramaVersion", localSeq)) return false;
     window.odontogramaAPI.cargar();
+    renderOdontogramaTreatmentSummary();
     actualizarOdontogramaActual(json.data.idOdontograma);
     sincronizarSnapshotOdontogramaBase();
 
@@ -2275,6 +2495,7 @@ async function cargarUltimoOdontogramaPaciente(options = {}) {
     await new Promise(resolve => requestAnimationFrame(resolve));
     if (isStaleRequest("odontogramaUltimo", localSeq)) return false;
     window.odontogramaAPI.cargar();
+    renderOdontogramaTreatmentSummary();
     actualizarOdontogramaActual(json.data.idOdontograma);
     sincronizarSnapshotOdontogramaBase();
     await cargarHistorialOdontogramas(window.pacienteActual.idPaciente, json.data.idOdontograma);
@@ -2812,6 +3033,7 @@ function limpiarVistaPaciente() {
       window.odontogramaAPI.cargar();
     }
   }
+  renderOdontogramaTreatmentSummary();
   actualizarOdontogramaActual(null);
   llenarSelectFechasOdontograma([]);
   const toggleBloqueo = document.getElementById("toggle-bloqueo");
@@ -3019,6 +3241,7 @@ window.__mountPaciente = function () {
     if (typeof initOdontograma === "function") {
         initOdontograma();
     }
+    renderOdontogramaTreatmentSummary();
     const toggleBloqueo = document.getElementById("toggle-bloqueo");
     if (toggleBloqueo) {
     toggleBloqueo.checked = true;

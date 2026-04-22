@@ -644,7 +644,11 @@
 
       filtrada.forEach((item) => {
         const tr = document.createElement("tr");
-        tr.className = item.estado === ESTADO_ATENDIDO ? "is-atendido" : "";
+        if (item.estado === ESTADO_ATENDIDO) {
+          tr.className = "cola-row cola-row-atendido is-atendido";
+        } else {
+          tr.className = "cola-row cola-row-espera";
+        }
 
         const tdNombre = document.createElement("td");
         tdNombre.textContent = item.nombrePaciente || "-";

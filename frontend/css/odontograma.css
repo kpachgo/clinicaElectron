@@ -842,6 +842,122 @@ body.odonto-piece-modal-open {
     overflow: hidden;
 }
 
+.odonto-summary-panel {
+    margin-top: 12px;
+    background: #f8fafc;
+    border: 1px solid #dbe5f1;
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.odonto-summary-title {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.odonto-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.odonto-summary-block {
+    background: #ffffff;
+    border: 1px solid #dbe5f1;
+    border-radius: 10px;
+    padding: 10px;
+    min-height: 90px;
+}
+
+.odonto-summary-block-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.odonto-summary-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.odonto-summary-item {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: #ffffff;
+}
+
+.odonto-summary-code {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 22px;
+    border-radius: 999px;
+    background: #dbeafe;
+    color: #1e3a8a;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.odonto-summary-detail {
+    color: #334155;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.odonto-summary-empty {
+    color: #64748b;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.dark-mode .odonto-summary-panel {
+    background: #101b2e;
+    border-color: #33455d;
+}
+
+.dark-mode .odonto-summary-title {
+    color: #e2e8f0;
+}
+
+.dark-mode .odonto-summary-block {
+    background: #111c2f;
+    border-color: #33455d;
+}
+
+.dark-mode .odonto-summary-block-title {
+    color: #9fb0c5;
+}
+
+.dark-mode .odonto-summary-item {
+    background: #152338;
+    border-color: #33455d;
+}
+
+.dark-mode .odonto-summary-code {
+    background: #1d3a63;
+    color: #bfdbfe;
+}
+
+.dark-mode .odonto-summary-detail {
+    color: #cfddf1;
+}
+
+.dark-mode .odonto-summary-empty {
+    color: #8ea0b7;
+}
+
 @media (max-width: 980px) {
     .odonto-piece-body {
         grid-template-columns: 1fr;
@@ -849,6 +965,10 @@ body.odonto-piece-modal-open {
 
     .odonto-piece-touch-zone {
         min-height: 290px;
+    }
+
+    .odonto-summary-grid {
+        grid-template-columns: 1fr;
     }
 }
 

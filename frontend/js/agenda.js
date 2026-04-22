@@ -329,6 +329,14 @@
     "agenda-nombre-estado-no-contesta",
     "agenda-nombre-estado-igs"
   ];
+  const FILA_ESTADO_CLASSNAMES = [
+    "agenda-row-estado-pendiente",
+    "agenda-row-estado-confirmado",
+    "agenda-row-estado-cancelado",
+    "agenda-row-estado-reprogramado",
+    "agenda-row-estado-no-contesta",
+    "agenda-row-estado-igs"
+  ];
   function nombreEstadoClassName(estado) {
     const raw = String(estado || "Pendiente").trim().toLowerCase();
     switch (raw) {
@@ -345,6 +353,23 @@
     cell.classList.add("agenda-nombre-cell");
     NOMBRE_ESTADO_CLASSNAMES.forEach((cls) => cell.classList.remove(cls));
     cell.classList.add(nombreEstadoClassName(estado));
+  }
+  function filaEstadoClassName(estado) {
+    const raw = String(estado || "Pendiente").trim().toLowerCase();
+    switch (raw) {
+      case "confirmado": return "agenda-row-estado-confirmado";
+      case "cancelado": return "agenda-row-estado-cancelado";
+      case "reprogramado": return "agenda-row-estado-reprogramado";
+      case "no contesta": return "agenda-row-estado-no-contesta";
+      case "igs": return "agenda-row-estado-igs";
+      default: return "agenda-row-estado-pendiente";
+    }
+  }
+  function aplicarRefuerzoVisualFila(row, estado) {
+    if (!row) return;
+    row.classList.add("agenda-row");
+    FILA_ESTADO_CLASSNAMES.forEach((cls) => row.classList.remove(cls));
+    row.classList.add(filaEstadoClassName(estado));
   }
   function renderEstadoSelect(value) {
   const sel = document.createElement("select");
@@ -1588,6 +1613,7 @@
 
       list.forEach((item, index) => {
         const tr = document.createElement("tr");
+        aplicarRefuerzoVisualFila(tr, item.estado);
 
         // Contacto (SMS / Llamada)
         const tdContactoMarcadores = document.createElement("td");
@@ -1700,6 +1726,7 @@
 
         item.estado = nuevoEstado;
         sel.className = "select-estado " + estadoClassName(item.estado);
+        aplicarRefuerzoVisualFila(tr, item.estado);
         aplicarRefuerzoVisualNombre(tdNombre, item.estado);
         aplicarFiltros();
 

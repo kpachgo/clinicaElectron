@@ -151,15 +151,15 @@
 }
 
 .agenda-contacto-flag.is-sms {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
+  background: #dbeafe;
+  border-color: #60a5fa;
+  color: #1e40af;
 }
 
 .agenda-contacto-flag.is-llamada {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #15803d;
+  background: #dcfce7;
+  border-color: #4ade80;
+  color: #166534;
 }
 
 .agenda-contacto-flag input[type="checkbox"]:disabled {
@@ -183,10 +183,33 @@
   display: none;
 }
 
-/* Hover de fila completo (incluye Nombre/Hora con color propio) */
-.agenda-table tbody tr:hover td {
-  background: #cfe8ff;
+/* Hover de fila segun estado */
+.agenda-table tbody tr.agenda-row:hover td {
   transition: background-color 0.12s ease;
+}
+
+.agenda-table tbody tr.agenda-row-estado-confirmado:hover td {
+  background: #86efac;
+}
+
+.agenda-table tbody tr.agenda-row-estado-cancelado:hover td {
+  background: #fca5a5;
+}
+
+.agenda-table tbody tr.agenda-row-estado-reprogramado:hover td {
+  background: #fdba74;
+}
+
+.agenda-table tbody tr.agenda-row-estado-no-contesta:hover td {
+  background: #cbd5e1;
+}
+
+.agenda-table tbody tr.agenda-row-estado-igs:hover td {
+  background: #fb923c;
+}
+
+.agenda-table tbody tr.agenda-row-estado-pendiente:hover td {
+  background: #d1d5db;
 }
 
 .agenda-table thead th {
@@ -199,61 +222,61 @@
 /* Refuerzo visual por hora */
 .agenda-hora-cell {
   text-align: center;
-  font-weight: 700;
+  font-weight: 800;
   color: #1f2937;
-  border-left: 3px solid rgba(15, 23, 42, 0.08);
+  border-left: 4px solid rgba(15, 23, 42, 0.22);
 }
 
-.agenda-hora-slot-0 { background: #ffe4e6; }
-.agenda-hora-slot-1 { background: #dcfce7; }
-.agenda-hora-slot-2 { background: #dbeafe; }
-.agenda-hora-slot-3 { background: #fef3c7; }
-.agenda-hora-slot-4 { background: #ffedd5; }
-.agenda-hora-slot-5 { background: #fde68a; }
-.agenda-hora-slot-6 { background: #cffafe; }
-.agenda-hora-slot-7 { background: #ede9fe; }
-.agenda-hora-slot-default { background: #f3f4f6; }
+.agenda-hora-slot-0 { background: #fecaca; }
+.agenda-hora-slot-1 { background: #bbf7d0; }
+.agenda-hora-slot-2 { background: #bfdbfe; }
+.agenda-hora-slot-3 { background: #fde68a; }
+.agenda-hora-slot-4 { background: #fed7aa; }
+.agenda-hora-slot-5 { background: #fcd34d; }
+.agenda-hora-slot-6 { background: #99f6e4; }
+.agenda-hora-slot-7 { background: #ddd6fe; }
+.agenda-hora-slot-default { background: #e5e7eb; }
 
 /* Refuerzo visual por estado en Nombre */
 .agenda-nombre-cell {
-  font-weight: 600;
+  font-weight: 700;
   border-left: 3px solid transparent;
 }
 
 .agenda-nombre-estado-confirmado {
-  background: #ecfdf3;
+  background: #dcfce7;
   border-left-color: #16a34a;
   color: #14532d;
 }
 
 .agenda-nombre-estado-cancelado {
-  background: #fef2f2;
+  background: #fee2e2;
   border-left-color: #dc2626;
   color: #7f1d1d;
 }
 
 .agenda-nombre-estado-reprogramado {
-  background: #fff7ed;
-  border-left-color: #ea580c;
-  color: #9a3412;
-}
-
-.agenda-nombre-estado-no-contesta {
-  background: #f8fafc;
-  border-left-color: #64748b;
-  color: #334155;
-}
-
-.agenda-nombre-estado-igs {
   background: #ffedd5;
   border-left-color: #ea580c;
   color: #9a3412;
 }
 
+.agenda-nombre-estado-no-contesta {
+  background: #e2e8f0;
+  border-left-color: #475569;
+  color: #1e293b;
+}
+
+.agenda-nombre-estado-igs {
+  background: #fdba74;
+  border-left-color: #ea580c;
+  color: #7c2d12;
+}
+
 .agenda-nombre-estado-pendiente {
-  background: #f9fafb;
-  border-left-color: #9ca3af;
-  color: #374151;
+  background: #e5e7eb;
+  border-left-color: #6b7280;
+  color: #1f2937;
 }
 
 /* columna cobrar -> boton */
@@ -352,34 +375,39 @@
 }
 
 .estado-confirmado {
-  background: #dff7e6;
-  color: #0a7a2a;
+  background: #bbf7d0;
+  color: #14532d;
+  border-color: #16a34a;
 }
 
 .estado-cancelado {
-  background: #ffe5e5;
-  color: #b91c1c;
+  background: #fecaca;
+  color: #7f1d1d;
+  border-color: #dc2626;
 }
 
 .estado-reprogramado {
-  background: #fff7d6;
-  color: #a34f00;
+  background: #fdba74;
+  color: #7c2d12;
+  border-color: #ea580c;
 }
 
 .estado-no-contesta {
-  background: #f3f4f6;
-  color: #374151;
+  background: #cbd5e1;
+  color: #0f172a;
+  border-color: #64748b;
 }
 
 .estado-igs {
-  background: #ffedd5;
+  background: #fb923c;
   color: #c2410c;
-  border-color: #fdba74;
+  border-color: #ea580c;
 }
 
 .estado-pendiente {
-  background: #f1f1f1;
-  color: #555;
+  background: #d1d5db;
+  color: #111827;
+  border-color: #6b7280;
 }
 
 /* comentario editable */
@@ -572,8 +600,28 @@
 /* =====================================================
    AGENDA - DARK MODE (ajuste Nombre/Hora sin fondos de color)
 ===================================================== */
-.dark-mode .agenda-table tbody tr:hover td {
-  background: rgba(59, 130, 246, 0.14);
+.dark-mode .agenda-table tbody tr.agenda-row-estado-confirmado:hover td {
+  background: rgba(22, 163, 74, 0.42);
+}
+
+.dark-mode .agenda-table tbody tr.agenda-row-estado-cancelado:hover td {
+  background: rgba(220, 38, 38, 0.4);
+}
+
+.dark-mode .agenda-table tbody tr.agenda-row-estado-reprogramado:hover td {
+  background: rgba(234, 88, 12, 0.4);
+}
+
+.dark-mode .agenda-table tbody tr.agenda-row-estado-no-contesta:hover td {
+  background: rgba(100, 116, 139, 0.42);
+}
+
+.dark-mode .agenda-table tbody tr.agenda-row-estado-igs:hover td {
+  background: rgba(249, 115, 22, 0.42);
+}
+
+.dark-mode .agenda-table tbody tr.agenda-row-estado-pendiente:hover td {
+  background: rgba(107, 114, 128, 0.4);
 }
 
 .dark-mode .agenda-hora-cell {

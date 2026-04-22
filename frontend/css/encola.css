@@ -22,7 +22,8 @@
   --cola-row-border: #f1f5f9;
   --cola-row-text: #0f172a;
   --cola-row-atendido-text: #64748b;
-  --cola-row-hover: rgba(37, 99, 235, 0.04);
+  --cola-row-hover-wait: #fed7aa;
+  --cola-row-hover-done: #bbf7d0;
   --cola-empty-text: #64748b;
 
   --cola-status-wait-bg: #ffedd5;
@@ -62,7 +63,8 @@
   --cola-row-border: #202d40;
   --cola-row-text: #d8e2f0;
   --cola-row-atendido-text: #95a5bb;
-  --cola-row-hover: rgba(59, 130, 246, 0.11);
+  --cola-row-hover-wait: rgba(251, 146, 60, 0.34);
+  --cola-row-hover-done: rgba(22, 163, 74, 0.34);
   --cola-empty-text: #95a5bb;
 
   --cola-status-wait-bg: #4a3118;
@@ -201,8 +203,12 @@
   color: var(--cola-table-head-text);
 }
 
-.cola-table tbody tr:hover td {
-  background: var(--cola-row-hover);
+.cola-table tbody tr.cola-row-espera:hover td {
+  background: var(--cola-row-hover-wait);
+}
+
+.cola-table tbody tr.cola-row-atendido:hover td {
+  background: var(--cola-row-hover-done);
 }
 
 .cola-table tr.is-atendido td {

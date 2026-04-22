@@ -190,7 +190,8 @@ window.initOdontograma = function () {
         { id: "endodoncia", label: "Endodoncia", abbr: "E" },
         { id: "corona", label: "Corona", abbr: "C" },
         { id: "implante", label: "Implante", abbr: "I" },
-        { id: "ausente", label: "Pieza Ausente", abbr: "X" },
+        { id: "extraccion", label: "Extraccion", abbr: "X" },
+        { id: "ausente", label: "Pieza ausente", abbr: "X" },
         { id: "ppf", label: "Puente Parcial Fijo", abbr: "PPF" },
         { id: "ppr", label: "Puente Parcial Removible", abbr: "PPR" },
         { id: "pc", label: "Protesis Completa", abbr: "PC" },
@@ -462,7 +463,8 @@ window.initOdontograma = function () {
         else if (treatmentId === "implante") applyImplante(color);
         else if (treatmentId === "corona") applyCorona(color);
         else if (treatmentId === "realizado") applyRealizado();
-        else if (treatmentId === "ausente") applyPiezaAusente(color);
+        else if (treatmentId === "extraccion") applyPiezaAusente("rojo");
+        else if (treatmentId === "ausente") applyPiezaAusente("azul");
         else if (treatmentId === "cambio_relleno") applyCambioRelleno();
         else if (treatmentId === "fractura") applyFractura();
         else applyColorState(color, treatmentId);
@@ -542,9 +544,20 @@ window.initOdontograma = function () {
         label.textContent = treatment.label;
         row.appendChild(label);
 
-        bindPieceEditorTap(button, () => applyTreatmentFromPieceEditor(treatment.id, "rojo"));
+        const fixedColor = treatment.id === "ausente" ? "azul" : "rojo";
+        bindPieceEditorTap(button, () => applyTreatmentFromPieceEditor(treatment.id, fixedColor));
 
-        if (treatment.id === "cp" || treatment.id === "cg" || treatment.id === "obturacion" || treatment.id === "pc" || treatment.id === "realizado" || treatment.id === "cambio_relleno" || treatment.id === "fractura") {
+        if (
+            treatment.id === "cp" ||
+            treatment.id === "cg" ||
+            treatment.id === "obturacion" ||
+            treatment.id === "pc" ||
+            treatment.id === "realizado" ||
+            treatment.id === "extraccion" ||
+            treatment.id === "ausente" ||
+            treatment.id === "cambio_relleno" ||
+            treatment.id === "fractura"
+        ) {
             button.appendChild(row);
             return button;
         }
@@ -554,7 +567,6 @@ window.initOdontograma = function () {
 
         const colors = ["azul", "naranja", "rojo"];
         colors.forEach(color => {
-            if (treatment.id === "ausente" && color === "naranja") return;
             const dot = document.createElement("div");
             dot.className = `estado-circle estado-${color}`;
             bindPieceEditorTap(dot, () => applyTreatmentFromPieceEditor(treatment.id, color));
@@ -806,7 +818,8 @@ TREATMENTS.forEach(t => {
         else if (t.id === "implante") applyImplante("rojo");
         else if (t.id === "corona") applyCorona("rojo");
         else if (t.id === "realizado") applyRealizado();
-        else if (t.id === "ausente") applyPiezaAusente("rojo");
+        else if (t.id === "extraccion") applyPiezaAusente("rojo");
+        else if (t.id === "ausente") applyPiezaAusente("azul");
         else if (t.id === "cambio_relleno") applyCambioRelleno();
         else if (t.id === "fractura") applyFractura();
         else applyColorState("rojo", t.id);
@@ -846,11 +859,13 @@ if (t.id === "cp" || t.id === "cg") {
     return;
 } 
    // --- OBTURACIÓN SIN COLORES (solo azul) ---
-if (t.id === "obturacion" || t.id === "realizado") {
+if (t.id === "obturacion" || t.id === "realizado" || t.id === "extraccion" || t.id === "ausente") {
 
     btn.onclick = () => {
         if (t.id === "obturacion") applyObturacion(); // ahora ya SIN color variable
-        else applyRealizado();
+        else if (t.id === "realizado") applyRealizado();
+        else if (t.id === "extraccion") applyPiezaAusente("rojo");
+        else if (t.id === "ausente") applyPiezaAusente("azul");
     };
 
     const row = document.createElement("div");
@@ -886,7 +901,6 @@ if (t.id === "obturacion" || t.id === "realizado") {
     azul.className = "estado-circle estado-azul";
     azul.onclick = e => {
         e.stopPropagation();
-        if (t.id === "ausente") return applyPiezaAusente("azul");
         if (t.id === "ppf") return startPPFMode("azul");
         if (t.id === "ppr") return startPPRMode("azul");
 
@@ -899,7 +913,7 @@ if (t.id === "obturacion" || t.id === "realizado") {
     circles.appendChild(azul);
 
     // 🟠 NARANJA — SOLO PARA TRATAMIENTOS QUE USAN COLOR NARANJA
-    if (t.id !== "ausente" && t.id !== "pc" && t.id !== "cp" && t.id !== "cg") {
+    if (t.id !== "ausente" && t.id !== "extraccion" && t.id !== "pc" && t.id !== "cp" && t.id !== "cg") {
         const naranja = document.createElement("div");
         naranja.className = "estado-circle estado-naranja";
         naranja.onclick = e => {
@@ -921,7 +935,6 @@ if (t.id === "obturacion" || t.id === "realizado") {
     rojo.onclick = e => {
         e.stopPropagation();
 
-        if (t.id === "ausente") return applyPiezaAusente("rojo");
         if (t.id === "ppf") return startPPFMode("rojo");
         if (t.id === "ppr") return startPPRMode("rojo");
 
@@ -2742,6 +2755,7 @@ function getAbbr(id) {
         fractura: "F",
         implante: "I",
         x: "X",
+        cx: "CX",
         cr: "CR"
     };
 
@@ -2815,6 +2829,7 @@ function cargarOdontograma() {
             else if (id === "C") crearCorona(pieza, colorHex);
             else if (id === "RL" || id === "REALIZADO") crearRealizado(pieza, colorHex);
             else if (id === "X") crearPiezaAusente(pieza, colorHex);
+            else if (id === "CX") crearPiezaAusente(pieza, colorHex || "#ff3b30");
             else if (id === "CR") crearCambioRelleno(pieza, colorHex);
             else if (id === "F") crearFractura(pieza, colorHex);
 
