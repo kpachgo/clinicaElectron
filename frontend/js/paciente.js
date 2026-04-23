@@ -2489,10 +2489,14 @@ async function ensureOdontoPrintServicePriceCache() {
 
   odontoPrintServicePricePromise = (async () => {
     const cache = new Map();
+    const endpoints = ["/api/servicio/precios", "/api/servicio"];
     try {
-      const res = await fetch("/api/servicio");
-      const json = await res.json();
-      if (res.ok && json?.ok) {
+      for (let i = 0; i < endpoints.length; i += 1) {
+        const endpoint = endpoints[i];
+        const res = await fetch(endpoint);
+        if (!res.ok) continue;
+        const json = await res.json();
+        if (!json?.ok) continue;
         const rows = Array.isArray(json.data) ? json.data : [];
         rows.forEach((row) => {
           const nombre = normalizeTextForLookup(row?.nombreS);
@@ -2500,6 +2504,7 @@ async function ensureOdontoPrintServicePriceCache() {
           if (!nombre || !Number.isFinite(precio) || precio < 0) return;
           cache.set(nombre, precio);
         });
+        if (cache.size > 0) break;
       }
     } catch (err) {
       console.error("Error cargando precios de servicios para impresion", err);

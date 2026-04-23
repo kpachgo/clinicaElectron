@@ -65,6 +65,23 @@ const listar = async (req, res) => {
 };
 
 // =======================
+// LISTAR PRECIOS (SOLO LECTURA PARA VISTAS CLINICAS)
+// =======================
+const listarPrecios = async (req, res) => {
+  try {
+    const [rows] = await queryReadWithRetry("CALL sp_servicio_listar()");
+    const data = firstResultSet(rows).map((row) => ({
+      idServicio: row?.idServicio,
+      nombreS: row?.nombreS,
+      precioS: row?.precioS
+    }));
+    res.json({ ok: true, data });
+  } catch (err) {
+    return handleServicioError(res, err, "Error al listar precios de servicios");
+  }
+};
+
+// =======================
 // CREAR
 // =======================
 const crear = async (req, res) => {
@@ -212,6 +229,7 @@ const buscarLigero = async (req, res) => {
 // ✅ EXPORTAR TODO
 module.exports = {
   listar,
+  listarPrecios,
   crear,
   actualizar,
   eliminar,

@@ -12,6 +12,13 @@ router.get(
   servicioController.listar
 );
 
+router.get(
+  "/precios",
+  authMiddleware,
+  roleMiddleware(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  servicioController.listarPrecios
+);
+
 router.post(
   "/",
   authMiddleware,
