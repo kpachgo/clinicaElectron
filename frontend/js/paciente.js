@@ -43,6 +43,7 @@
   let isAuthorizingCitaPaciente = false;
   let odontoPrintDraft = null;
   let odontoPrintActiveIframe = null;
+  let odontoPrintInlineHost = null;
   let odontoPrintIsPrinting = false;
   let odontoPrintServicePriceCache = null;
   let odontoPrintServicePricePromise = null;
@@ -2564,6 +2565,16 @@ function cleanupOdontoPrintFrame() {
   }
   odontoPrintActiveIframe = null;
 }
+function cleanupOdontoInlinePrintHost() {
+  document.body.classList.remove("odonto-print-inline-mode");
+  if (!odontoPrintInlineHost) return;
+  try {
+    odontoPrintInlineHost.remove();
+  } catch {
+    // ignore cleanup errors
+  }
+  odontoPrintInlineHost = null;
+}
 function closeOdontoPrintModal() {
   const refs = getOdontoPrintRefs();
   if (!refs.modal) return;
@@ -2574,6 +2585,7 @@ function closeOdontoPrintModal() {
   odontoPrintServicePriceCache = null;
   odontoPrintServicePricePromise = null;
   cleanupOdontoPrintFrame();
+  cleanupOdontoInlinePrintHost();
 
   if (refs.addItemInput) refs.addItemInput.value = "";
   if (refs.promoInput) refs.promoInput.value = "";
@@ -2751,6 +2763,42 @@ function buildOdontoPrintDocumentHtml(draft) {
 </body>
 </html>`;
 }
+function ensureInlinePrintHost(draft) {
+  const safeDraft = draft && typeof draft === "object" ? draft : { items: [], meta: {} };
+  const items = Array.isArray(safeDraft.items) ? safeDraft.items : [];
+  const meta = safeDraft.meta && typeof safeDraft.meta === "object" ? safeDraft.meta : {};
+  const densityClass = getOdontoPrintDensityClass(items.length);
+  const listHtml = buildOdontoPrintListHtml(items);
+
+  cleanupOdontoInlinePrintHost();
+  const host = document.createElement("div");
+  host.id = "odonto-print-inline-host";
+  host.className = "odonto-print-inline-host";
+  host.setAttribute("aria-hidden", "true");
+  host.innerHTML = `
+    <div class="odonto-print-doc-page">
+      <article class="odonto-print-sheet ${densityClass}">
+        <div class="odonto-print-sheet-header">
+          <div class="odonto-print-company-row">
+            <div class="odonto-print-company-left"><strong>${escapeHtml(ODONTO_PRINT_COMPANY_CONFIG.sucursal)}</strong></div>
+            <div class="odonto-print-company-right">${escapeHtml(ODONTO_PRINT_COMPANY_CONFIG.telefono)}</div>
+          </div>
+          <div class="odonto-print-paciente-row">
+            <span>Nombre: ${escapeHtml(meta.nombrePaciente || "-")}</span>
+            <span>Edad: ${escapeHtml(meta.edadPaciente || "-")}</span>
+            <span>Fecha: ${escapeHtml(meta.fecha || "-")}</span>
+          </div>
+        </div>
+        <div class="odonto-print-sheet-body">
+          <ul class="odonto-print-preview-list">${listHtml}</ul>
+        </div>
+      </article>
+    </div>
+  `;
+  document.body.appendChild(host);
+  odontoPrintInlineHost = host;
+  document.body.classList.add("odonto-print-inline-mode");
+}
 function runOdontoPrintJob() {
   if (odontoPrintIsPrinting) return;
 
@@ -2759,6 +2807,7 @@ function runOdontoPrintJob() {
   }
   const refs = getOdontoPrintRefs();
   const draftSnapshot = JSON.parse(JSON.stringify(odontoPrintDraft || { items: [], meta: {} }));
+  ensureInlinePrintHost(draftSnapshot);
 
   cleanupOdontoPrintFrame();
   odontoPrintIsPrinting = true;
@@ -2778,11 +2827,17 @@ function runOdontoPrintJob() {
 
   const releaseBusyState = () => {
     odontoPrintIsPrinting = false;
+    cleanupOdontoInlinePrintHost();
     const latestRefs = getOdontoPrintRefs();
     if (latestRefs.runBtn) latestRefs.runBtn.disabled = false;
   };
 
   let triggered = false;
+  const onMainAfterPrint = () => {
+    cleanupOdontoPrintFrame();
+    releaseBusyState();
+  };
+  window.addEventListener("afterprint", onMainAfterPrint, { once: true });
   const triggerPrint = () => {
     if (triggered) return;
     triggered = true;
