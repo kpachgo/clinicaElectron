@@ -2805,6 +2805,38 @@ function shouldUseMainWindowPrintMode() {
   const maxTouchPoints = Number(window.navigator?.maxTouchPoints || 0);
   return mobileUa || maxTouchPoints > 1;
 }
+function openOdontoPrintPopupWindow(draft) {
+  let popup = null;
+  try {
+    popup = window.open("", "_blank");
+  } catch {
+    popup = null;
+  }
+  if (!popup) return false;
+
+  try {
+    popup.document.open();
+    popup.document.write(buildOdontoPrintDocumentHtml(draft));
+    popup.document.close();
+
+    setTimeout(() => {
+      try {
+        popup.focus();
+        popup.print();
+      } catch {
+        // User can still print manually from browser menu
+      }
+    }, 180);
+    return true;
+  } catch {
+    try {
+      popup.close();
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+}
 function runOdontoPrintJob() {
   if (odontoPrintIsPrinting) return;
 
@@ -2813,7 +2845,7 @@ function runOdontoPrintJob() {
   }
   const refs = getOdontoPrintRefs();
   const draftSnapshot = JSON.parse(JSON.stringify(odontoPrintDraft || { items: [], meta: {} }));
-  ensureInlinePrintHost(draftSnapshot);
+  const useMainWindowPrint = shouldUseMainWindowPrintMode();
 
   cleanupOdontoPrintFrame();
   odontoPrintIsPrinting = true;
@@ -2830,7 +2862,8 @@ function runOdontoPrintJob() {
     if (latestRefs.runBtn) latestRefs.runBtn.disabled = false;
   };
 
-  const safetyTimer = setTimeout(releaseBusyState, 45000);
+  const safetyTimeoutMs = useMainWindowPrint ? 10000 : 45000;
+  const safetyTimer = setTimeout(releaseBusyState, safetyTimeoutMs);
   const finishPrintFlow = () => {
     clearTimeout(safetyTimer);
     releaseBusyState();
@@ -2838,18 +2871,22 @@ function runOdontoPrintJob() {
 
   window.addEventListener("afterprint", finishPrintFlow, { once: true });
 
-  if (shouldUseMainWindowPrintMode()) {
-    setTimeout(() => {
-      try {
-        window.focus();
-        window.print();
-      } catch {
-        finishPrintFlow();
-      }
-    }, 120);
+  if (useMainWindowPrint) {
+    if (openOdontoPrintPopupWindow(draftSnapshot)) {
+      setTimeout(finishPrintFlow, 1200);
+      return;
+    }
+    ensureInlinePrintHost(draftSnapshot);
+    try {
+      window.focus();
+      window.print();
+    } catch {
+      finishPrintFlow();
+    }
     return;
   }
 
+  ensureInlinePrintHost(draftSnapshot);
   const iframe = document.createElement("iframe");
   iframe.className = "odonto-print-iframe";
   iframe.setAttribute("aria-hidden", "true");
