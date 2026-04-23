@@ -1392,6 +1392,28 @@ body.odonto-print-modal-open {
     display: none;
 }
 
+body.odonto-print-inline-force {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+}
+
+body.odonto-print-inline-force>*:not(#odonto-print-inline-host) {
+    display: none !important;
+}
+
+body.odonto-print-inline-force #odonto-print-inline-host {
+    display: block !important;
+    width: 8.5in;
+    min-height: 11in;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page {
+    margin: 0 !important;
+}
+
 .odonto-print-document {
     margin: 0;
     padding: 0;

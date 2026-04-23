@@ -2572,6 +2572,7 @@ function cleanupOdontoPrintFrame() {
 }
 function cleanupOdontoInlinePrintHost() {
   document.body.classList.remove("odonto-print-inline-mode");
+  document.body.classList.remove("odonto-print-inline-force");
   if (!odontoPrintInlineHost) return;
   try {
     odontoPrintInlineHost.remove();
@@ -2891,6 +2892,7 @@ function runOdontoPrintJob() {
       return;
     }
     ensureInlinePrintHost(draftSnapshot);
+    document.body.classList.add("odonto-print-inline-force");
     try {
       window.focus();
       window.print();

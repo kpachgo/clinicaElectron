@@ -3,7 +3,7 @@
   "short_name": "Cl\u00ednica",
   "start_url": "/",
   "scope": "/",
-  "display": "standalone",
+  "display": "browser",
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#2563eb",
