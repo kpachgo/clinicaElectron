@@ -2810,6 +2810,14 @@ function shouldUseMainWindowPrintMode() {
   const maxTouchPoints = Number(window.navigator?.maxTouchPoints || 0);
   return mobileUa || maxTouchPoints > 1;
 }
+function isStandaloneAppMode() {
+  try {
+    if (window.matchMedia?.("(display-mode: standalone)")?.matches) return true;
+  } catch {
+    // ignore
+  }
+  return Boolean(window.navigator?.standalone);
+}
 function openOdontoPrintPopupWindow(draft) {
   let popup = null;
   try {
@@ -2851,6 +2859,7 @@ function runOdontoPrintJob() {
   const refs = getOdontoPrintRefs();
   const draftSnapshot = JSON.parse(JSON.stringify(odontoPrintDraft || { items: [], meta: {} }));
   const useMainWindowPrint = shouldUseMainWindowPrintMode();
+  const isStandaloneMode = isStandaloneAppMode();
 
   cleanupOdontoPrintFrame();
   odontoPrintIsPrinting = true;
@@ -2877,7 +2886,7 @@ function runOdontoPrintJob() {
   window.addEventListener("afterprint", finishPrintFlow, { once: true });
 
   if (useMainWindowPrint) {
-    if (openOdontoPrintPopupWindow(draftSnapshot)) {
+    if (!isStandaloneMode && openOdontoPrintPopupWindow(draftSnapshot)) {
       setTimeout(finishPrintFlow, 1200);
       return;
     }
