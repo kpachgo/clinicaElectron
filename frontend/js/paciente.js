@@ -2799,6 +2799,12 @@ function ensureInlinePrintHost(draft) {
   odontoPrintInlineHost = host;
   document.body.classList.add("odonto-print-inline-mode");
 }
+function shouldUseMainWindowPrintMode() {
+  const ua = String(window.navigator?.userAgent || "").toLowerCase();
+  const mobileUa = /(android|iphone|ipad|ipod|mobile|tablet|silk|kindle|webview)/.test(ua);
+  const maxTouchPoints = Number(window.navigator?.maxTouchPoints || 0);
+  return mobileUa || maxTouchPoints > 1;
+}
 function runOdontoPrintJob() {
   if (odontoPrintIsPrinting) return;
 
@@ -2813,6 +2819,37 @@ function runOdontoPrintJob() {
   odontoPrintIsPrinting = true;
   if (refs.runBtn) refs.runBtn.disabled = true;
 
+  let released = false;
+  const releaseBusyState = () => {
+    if (released) return;
+    released = true;
+    cleanupOdontoPrintFrame();
+    cleanupOdontoInlinePrintHost();
+    odontoPrintIsPrinting = false;
+    const latestRefs = getOdontoPrintRefs();
+    if (latestRefs.runBtn) latestRefs.runBtn.disabled = false;
+  };
+
+  const safetyTimer = setTimeout(releaseBusyState, 45000);
+  const finishPrintFlow = () => {
+    clearTimeout(safetyTimer);
+    releaseBusyState();
+  };
+
+  window.addEventListener("afterprint", finishPrintFlow, { once: true });
+
+  if (shouldUseMainWindowPrintMode()) {
+    setTimeout(() => {
+      try {
+        window.focus();
+        window.print();
+      } catch {
+        finishPrintFlow();
+      }
+    }, 120);
+    return;
+  }
+
   const iframe = document.createElement("iframe");
   iframe.className = "odonto-print-iframe";
   iframe.setAttribute("aria-hidden", "true");
@@ -2825,45 +2862,28 @@ function runOdontoPrintJob() {
   odontoPrintActiveIframe = iframe;
   document.body.appendChild(iframe);
 
-  const releaseBusyState = () => {
-    odontoPrintIsPrinting = false;
-    cleanupOdontoInlinePrintHost();
-    const latestRefs = getOdontoPrintRefs();
-    if (latestRefs.runBtn) latestRefs.runBtn.disabled = false;
-  };
-
   let triggered = false;
-  const onMainAfterPrint = () => {
-    cleanupOdontoPrintFrame();
-    releaseBusyState();
-  };
-  window.addEventListener("afterprint", onMainAfterPrint, { once: true });
   const triggerPrint = () => {
     if (triggered) return;
     triggered = true;
 
     const targetWindow = iframe.contentWindow;
     if (!targetWindow) {
-      cleanupOdontoPrintFrame();
-      releaseBusyState();
+      finishPrintFlow();
       return;
     }
 
-    const cleanupAfterPrint = () => {
-      cleanupOdontoPrintFrame();
-      releaseBusyState();
-    };
-    targetWindow.addEventListener("afterprint", cleanupAfterPrint, { once: true });
+    targetWindow.addEventListener("afterprint", () => {
+      setTimeout(finishPrintFlow, 1200);
+    }, { once: true });
 
     setTimeout(() => {
       try {
         targetWindow.focus();
         targetWindow.print();
       } catch {
-        cleanupAfterPrint();
-        return;
+        finishPrintFlow();
       }
-      setTimeout(cleanupAfterPrint, 30000);
     }, 160);
   };
 
@@ -2871,8 +2891,7 @@ function runOdontoPrintJob() {
 
   const targetDoc = iframe.contentDocument;
   if (!targetDoc) {
-    cleanupOdontoPrintFrame();
-    releaseBusyState();
+    finishPrintFlow();
     return;
   }
   targetDoc.open();
