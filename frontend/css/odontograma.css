@@ -1337,7 +1337,7 @@ body.odonto-print-modal-open {
 
 .odonto-print-preview-item {
     color: #1f2937;
-    font-size: 13px;
+    font-size: 17px;
     line-height: 1.2;
     font-weight: 600;
     white-space: nowrap;
@@ -1361,7 +1361,7 @@ body.odonto-print-modal-open {
 }
 
 .odonto-print-sheet.is-compact .odonto-print-preview-item {
-    font-size: 12px;
+    font-size: 16px;
 }
 
 .odonto-print-sheet.is-ultra-compact .odonto-print-preview-list {
@@ -1369,7 +1369,7 @@ body.odonto-print-modal-open {
 }
 
 .odonto-print-sheet.is-ultra-compact .odonto-print-preview-item {
-    font-size: 11px;
+    font-size: 15px;
     line-height: 1.1;
 }
 
