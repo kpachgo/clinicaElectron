@@ -527,8 +527,6 @@
       <div class="agenda-container">
 
         <div class="agenda-header">
-          <div class="agenda-title">Agenda</div>
-
           <div class="agenda-controls">
             <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
             <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
@@ -561,13 +559,34 @@
               Registrar Cita
             </button>
 
-            <button id="agenda-paste-cita" class="btn-cobrar agenda-btn-reprogramar-pegar" disabled>
+            <button id="agenda-paste-cita" class="btn-cobrar agenda-btn-reprogramar-pegar" disabled hidden>
               Pegar Cita
             </button>
 
-            <button id="agenda-clear-reprograma" class="btn-cobrar agenda-btn-reprogramar-cancelar" disabled>
+            <button id="agenda-clear-reprograma" class="btn-cobrar agenda-btn-reprogramar-cancelar" disabled hidden>
               Cancelar
             </button>
+
+            <div class="agenda-filter-estado-wrap">
+              <select id="agenda-filter-estado" class="filter-estado">
+                <option value="">Todos</option>
+                <option value="Pendiente">Pendiente</option>
+                <option value="Confirmado">Confirmado</option>
+                <option value="Cancelado">Cancelado</option>
+                <option value="Reprogramado">Reprogramado</option>
+                <option value="No contesta">No contesta</option>
+                <option value="IGS">IGS</option>
+              </select>
+              <span id="agenda-filter-estado-alert" class="agenda-filter-estado-alert" hidden></span>
+            </div>
+
+            <select id="agenda-filter-contacto" class="filter-estado">
+              <option value="">Contacto: Todos</option>
+              <option value="none">Sin contacto</option>
+              <option value="sms">Con SMS</option>
+              <option value="llamada">Con Llamada</option>
+              <option value="both">Con ambos</option>
+            </select>
             <button
               id="agenda-review-ina"
               class="btn-cobrar agenda-btn-inasistencia"
@@ -580,23 +599,6 @@
 
             <span id="agenda-reprograma-status" class="agenda-reprograma-status" aria-live="polite"></span>
 
-            <select id="agenda-filter-estado" class="filter-estado">
-              <option value="">Todos</option>
-              <option value="Pendiente">Pendiente</option>
-              <option value="Confirmado">Confirmado</option>
-              <option value="Cancelado">Cancelado</option>
-              <option value="Reprogramado">Reprogramado</option>
-              <option value="No contesta">No contesta</option>
-              <option value="IGS">IGS</option>
-            </select>
-
-            <select id="agenda-filter-contacto" class="filter-estado">
-              <option value="">Contacto: Todos</option>
-              <option value="none">Sin contacto</option>
-              <option value="sms">Con SMS</option>
-              <option value="llamada">Con Llamada</option>
-              <option value="both">Con ambos</option>
-            </select>
           </div>
         </div>
 
@@ -753,6 +755,7 @@
     const searchInput = container.querySelector("#agenda-search");
     const agendaSearchScopeAlert = container.querySelector("#agenda-search-scope-alert");
     const estadoFilter = container.querySelector("#agenda-filter-estado");
+    const estadoFilterAlert = container.querySelector("#agenda-filter-estado-alert");
     const contactoFilter = container.querySelector("#agenda-filter-contacto");
     const toggleNumeracionAgenda = container.querySelector("#agenda-toggle-numeracion");
     const toggleSmsAgenda = container.querySelector("#agenda-toggle-sms");
@@ -825,6 +828,46 @@
       agendaSearchScopeAlert.hidden = !show;
       agendaSearchScopeAlert.textContent = show ? String(message || "").trim() : "";
     }
+    const FILTER_ESTADO_VISUAL_CLASSES = [
+      "filter-estado-active",
+      "filter-estado-no-results",
+      "estado-pendiente",
+      "estado-confirmado",
+      "estado-cancelado",
+      "estado-reprogramado",
+      "estado-no-contesta",
+      "estado-igs"
+    ];
+    function actualizarRefuerzoVisualFiltroEstado(hasNoResults = false) {
+      if (!estadoFilter) return;
+      FILTER_ESTADO_VISUAL_CLASSES.forEach((cls) => estadoFilter.classList.remove(cls));
+
+      const estadoActual = String(estadoFilter.value || "").trim();
+      if (!estadoActual) {
+        if (estadoFilterAlert) {
+          estadoFilterAlert.hidden = true;
+          estadoFilterAlert.classList.remove("is-warning");
+          estadoFilterAlert.textContent = "";
+        }
+        return;
+      }
+
+      estadoFilter.classList.add("filter-estado-active");
+      const estadoVisualClass = estadoClassName(estadoActual);
+      if (estadoVisualClass) {
+        estadoFilter.classList.add(estadoVisualClass);
+      }
+
+      const sinCoincidencias = !!hasNoResults;
+      estadoFilter.classList.toggle("filter-estado-no-results", sinCoincidencias);
+
+      if (!estadoFilterAlert) return;
+      estadoFilterAlert.hidden = false;
+      estadoFilterAlert.classList.toggle("is-warning", sinCoincidencias);
+      estadoFilterAlert.textContent = sinCoincidencias
+        ? `Sin coincidencias para filtro: ${estadoActual}`
+        : `Filtro activo: ${estadoActual}`;
+    }
     if (toggleNumeracionAgenda) {
       toggleNumeracionAgenda.checked = !!agendaUiState.numeracion;
     }
@@ -846,6 +889,7 @@
     if (contactoFilter) {
       contactoFilter.value = getSelectSafeValue(contactoFilter, agendaUiState.contacto);
     }
+    actualizarRefuerzoVisualFiltroEstado(false);
     const shouldPreserveAgendaSearch = String(searchInput?.value || "").trim() !== "";
     if (searchInput) {
       searchInput.setAttribute("name", `agenda-search-${Date.now()}`);
@@ -1407,8 +1451,14 @@
     };
     const actualizarUiReprogramacion = () => {
       const hayBuffer = !!agendaReprogramaBuffer;
-      if (pasteCitaBtn) pasteCitaBtn.disabled = !hayBuffer;
-      if (clearReprogramaBtn) clearReprogramaBtn.disabled = !hayBuffer;
+      if (pasteCitaBtn) {
+        pasteCitaBtn.disabled = !hayBuffer;
+        pasteCitaBtn.hidden = !hayBuffer;
+      }
+      if (clearReprogramaBtn) {
+        clearReprogramaBtn.disabled = !hayBuffer;
+        clearReprogramaBtn.hidden = !hayBuffer;
+      }
       if (!reprogramaStatusEl) return;
 
       if (!hayBuffer) {
@@ -2766,6 +2816,8 @@
       const fechaISO = String(dateInput?.value || "").trim();
       const mesLabel = formatearMesBusquedaAgenda(fechaISO);
       const mesLabelSafe = mesLabel || "mes seleccionado";
+      const estadoFiltroActivo = String(estadoFilter?.value || "").trim() !== "";
+      actualizarRefuerzoVisualFiltroEstado(estadoFiltroActivo && listaLocal.length === 0);
 
       if (texto !== "" && Array.isArray(agendaMesResultados)) {
         const listaMes = filtrarYOrdenar(agendaMesResultados, false);

@@ -79,6 +79,12 @@
   letter-spacing: 0.01em;
 }
 
+.agenda-filter-estado-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .agenda-reprograma-status {
   font-size: 12px;
   font-weight: 600;
@@ -696,6 +702,48 @@ body.agenda-ina-open {
   min-width: 120px;
 }
 
+.filter-estado.filter-estado-active {
+  border-width: 2px;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
+}
+
+.filter-estado.filter-estado-no-results {
+  border-color: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.22);
+}
+
+.agenda-filter-estado-alert {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  max-width: 320px;
+  width: fit-content;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 6px rgba(37, 99, 235, 0.12);
+  flex: 0 1 auto;
+}
+
+.agenda-filter-estado-alert[hidden] {
+  display: none !important;
+}
+
+.agenda-filter-estado-alert.is-warning {
+  border-color: #d97706;
+  background: #ffedd5;
+  color: #9a3412;
+  box-shadow: 0 1px 8px rgba(217, 119, 6, 0.18);
+}
+
 .agenda-modal-buscador {
   position: relative;
 }
@@ -859,6 +907,25 @@ body.agenda-ina-open {
   border-color: #dc2626;
   background: rgba(127, 29, 29, 0.45);
   color: #fecaca;
+}
+
+.dark-mode .filter-estado.filter-estado-no-results {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.28);
+}
+
+.dark-mode .agenda-filter-estado-alert {
+  border-color: rgba(59, 130, 246, 0.85);
+  background: rgba(30, 64, 175, 0.35);
+  color: #bfdbfe;
+  box-shadow: 0 2px 10px rgba(30, 64, 175, 0.35);
+}
+
+.dark-mode .agenda-filter-estado-alert.is-warning {
+  border-color: rgba(245, 158, 11, 0.85);
+  background: rgba(146, 64, 14, 0.4);
+  color: #fed7aa;
+  box-shadow: 0 2px 12px rgba(146, 64, 14, 0.42);
 }
 
 .dark-mode .agenda-table tbody tr.agenda-row-estado-cancelado:hover td {
