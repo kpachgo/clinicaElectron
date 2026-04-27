@@ -98,6 +98,24 @@
       // ignore storage write errors
     }
   }
+  function getCurrentRole() {
+    if (typeof window.getCurrentUser === "function") {
+      const user = window.getCurrentUser();
+      return String(user?.rol || "").trim();
+    }
+    try {
+      const raw = sessionStorage.getItem("user");
+      if (!raw) return "";
+      const user = JSON.parse(raw);
+      return String(user?.rol || "").trim();
+    } catch {
+      return "";
+    }
+  }
+  function canMarkPresentesAgenda() {
+    const role = getCurrentRole();
+    return role === "Administrador" || role === "Recepcion" || role === "Redes";
+  }
 
   function normalizarItem(raw) {
     const estadoRaw = String(raw?.estado || "");
@@ -274,6 +292,33 @@
     const qs = fecha ? `?fecha=${encodeURIComponent(fecha)}` : "";
     await fetchJson(`/api/cola/todo${qs}`, { method: "DELETE" });
   }
+  function normalizeAgendaBinaryFlag(value) {
+    if (value === true || value === 1 || value === "1") return true;
+    if (typeof value === "string") {
+      const raw = value.trim().toLowerCase();
+      if (raw === "true" || raw === "yes" || raw === "si" || raw === "s\u00ed") return true;
+    }
+    return false;
+  }
+  async function apiListAgendaByFecha(fechaISO) {
+    const fecha = String(fechaISO || "").trim();
+    if (!fecha) return [];
+    const json = await fetchJson(`/api/agenda?fecha=${encodeURIComponent(fecha)}`, {
+      cache: "no-store"
+    });
+    return Array.isArray(json.data) ? json.data : [];
+  }
+  async function apiSetAgendaPresente(idAgenda) {
+    const id = Number(idAgenda || 0);
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new Error("ID de agenda invalido");
+    }
+    await fetchJson(`/api/agenda/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ presente: 1 })
+    });
+  }
   async function resolverPacienteId(item) {
     const idDirecto = Number(item?.idPaciente || 0);
     if (idDirecto > 0) return idDirecto;
@@ -446,6 +491,10 @@
           <select id="cola-filter-doctor" class="ui-control cola-doctor-select">
             <option value="">Todos los doctores</option>
           </select>
+          <button id="cola-mark-presentes" class="ui-toolbar-btn is-neutral" type="button">
+            ${renderIcon("check-circle", "ui-toolbar-icon")}
+            <span>Marcar presentes</span>
+          </button>
           <button id="cola-clear-atendidos" class="ui-toolbar-btn is-neutral" type="button">
             ${renderIcon("check-circle", "ui-toolbar-icon")}
             <span>Limpiar atendidos</span>
@@ -485,6 +534,7 @@
     const kpiTotal = container.querySelector("#cola-kpi-total");
     const kpiEspera = container.querySelector("#cola-kpi-espera");
     const kpiAtendido = container.querySelector("#cola-kpi-atendido");
+    const btnMarkPresentes = container.querySelector("#cola-mark-presentes");
     const btnClearAtendidos = container.querySelector("#cola-clear-atendidos");
     const btnClearAll = container.querySelector("#cola-clear-all");
 
@@ -500,6 +550,7 @@
     let colaFetchController = null;
     let doctorFetchSeq = 0;
     let doctorFetchController = null;
+    let isMarkingPresentes = false;
     let isClearingAtendidos = false;
     let isClearingAll = false;
     const pendingDoctorIds = new Set();
@@ -517,6 +568,9 @@
     };
     if (toggleNumeracion) {
       toggleNumeracion.checked = !!colaUiState.numeracion;
+    }
+    if (btnMarkPresentes) {
+      btnMarkPresentes.hidden = !canMarkPresentesAgenda();
     }
 
     function abortControllerSafe(controller) {
@@ -699,6 +753,9 @@
       if (kpiTotal) kpiTotal.textContent = `Total: ${total}`;
       if (kpiEspera) kpiEspera.textContent = `En espera: ${espera}`;
       if (kpiAtendido) kpiAtendido.textContent = `Atendidos: ${atendidos}`;
+      if (btnMarkPresentes && !btnMarkPresentes.hidden) {
+        btnMarkPresentes.disabled = isMarkingPresentes || total === 0;
+      }
       if (btnClearAtendidos) btnClearAtendidos.disabled = atendidos === 0;
       if (btnClearAll) btnClearAll.disabled = total === 0;
 
@@ -1152,6 +1209,94 @@
     filterDoctor?.addEventListener("change", () => {
       aplicarColorDoctorSelect(filterDoctor, filterDoctor.value, true);
       draw();
+    });
+    btnMarkPresentes?.addEventListener("click", async () => {
+      if (isDisposed || isMarkingPresentes || btnMarkPresentes.hidden) return;
+
+      const baseRows = Array.isArray(colaData) ? colaData.slice() : [];
+      const totalRows = baseRows.length;
+      const sinAgenda = baseRows.filter((item) => {
+        const agendaId = Number(item?.agendaId || 0);
+        return !Number.isInteger(agendaId) || agendaId <= 0;
+      }).length;
+      const agendaIds = Array.from(
+        new Set(
+          baseRows
+            .map((item) => Number(item?.agendaId || 0))
+            .filter((agendaId) => Number.isInteger(agendaId) && agendaId > 0)
+        )
+      );
+
+      if (!agendaIds.length) {
+        alert("No hay registros con agendaId valido para marcar como presente.");
+        return;
+      }
+
+      const question = `Se marcaran presentes en Agenda para ${agendaIds.length} cita(s) del dia ${formatFecha(fechaVista)}. Continuar?`;
+      const ok = typeof window.showSystemConfirm === "function"
+        ? await window.showSystemConfirm(question)
+        : confirm(question);
+      if (!ok) return;
+
+      isMarkingPresentes = true;
+      draw();
+
+      let updated = 0;
+      let already = 0;
+      let omittedNoAgenda = sinAgenda;
+      let omittedNotFound = 0;
+      let failed = 0;
+
+      try {
+        const agendaRows = await apiListAgendaByFecha(fechaVista);
+        const agendaMap = new Map();
+        agendaRows.forEach((raw) => {
+          const idAgenda = Number(raw?.idAgendaAP || 0);
+          if (Number.isInteger(idAgenda) && idAgenda > 0) {
+            agendaMap.set(idAgenda, raw);
+          }
+        });
+
+        const idsToUpdate = [];
+        agendaIds.forEach((idAgenda) => {
+          const agendaRow = agendaMap.get(idAgenda);
+          if (!agendaRow) {
+            omittedNotFound += 1;
+            return;
+          }
+          if (normalizeAgendaBinaryFlag(agendaRow?.presenteAP)) {
+            already += 1;
+            return;
+          }
+          idsToUpdate.push(idAgenda);
+        });
+
+        for (const idAgenda of idsToUpdate) {
+          try {
+            await apiSetAgendaPresente(idAgenda);
+            updated += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+
+        await recargar({ silent: true });
+
+        const omitidos = omittedNoAgenda + omittedNotFound;
+        alert(
+          `Marcado masivo finalizado.\n` +
+          `Filas en cola: ${totalRows}\n` +
+          `Actualizados: ${updated}\n` +
+          `Ya marcados: ${already}\n` +
+          `Omitidos: ${omitidos} (sin agendaId: ${omittedNoAgenda}, no encontrados en agenda del dia: ${omittedNotFound})\n` +
+          `Fallidos: ${failed}`
+        );
+      } catch (err) {
+        alert(err.message || "No se pudo completar el marcado masivo de presentes");
+      } finally {
+        isMarkingPresentes = false;
+        draw();
+      }
     });
     btnClearAtendidos?.addEventListener("click", async () => {
       if (isClearingAtendidos || isDisposed) return;

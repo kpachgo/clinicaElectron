@@ -44,7 +44,7 @@ router.delete(
 router.get(
   "/search",
   authMiddleware,
-  roleMiddleware(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  roleMiddleware(["Administrador", "Recepcion", "Doctor", "Asistente", "Redes"]),
   servicioController.buscarLigero
 );
 

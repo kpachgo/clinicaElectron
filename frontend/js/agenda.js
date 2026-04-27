@@ -190,6 +190,8 @@
         return `<svg ${base}><path d="M2.25 12c0-4.97 4.03-9 9-9h1.5c4.97 0 9 4.03 9 9s-4.03 9-9 9h-3.25l-3.5 2v-2.7A8.95 8.95 0 0 1 2.25 12Z"></path><path d="M8.25 12h.008v.008H8.25V12Zm3.75 0h.008v.008H12V12Zm3.75 0h.008v.008H15.75V12Z"></path></svg>`;
       case "phone":
         return `<svg ${base}><path d="M2.25 4.5a1.5 1.5 0 0 1 1.5-1.5h2.6a1.5 1.5 0 0 1 1.48 1.26l.41 2.46a1.5 1.5 0 0 1-.43 1.31l-1.2 1.2a13.5 13.5 0 0 0 6.16 6.16l1.2-1.2a1.5 1.5 0 0 1 1.31-.43l2.46.41A1.5 1.5 0 0 1 21 17.65v2.6a1.5 1.5 0 0 1-1.5 1.5h-.75C9.94 21.75 2.25 14.06 2.25 4.5v0Z"></path></svg>`;
+      case "building-office":
+        return `<svg ${base}><path d="M3.75 21h16.5M6 21V6.75A1.5 1.5 0 0 1 7.5 5.25h9A1.5 1.5 0 0 1 18 6.75V21"></path><path d="M9 9h.008v.008H9V9Zm0 3h.008v.008H9V12Zm0 3h.008v.008H9V15Zm3-6h.008v.008H12V9Zm0 3h.008v.008H12V12Zm0 3h.008v.008H12V15Zm3-6h.008v.008H15V9Zm0 3h.008v.008H15V12Zm0 3h.008v.008H15V15Z"></path></svg>`;
       default:
         return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path></svg>`;
     }
@@ -509,7 +511,8 @@
       estado: item.estadoAP || "Pendiente",
       comentario: item.comentarioAP,
       sms: normalizarBanderaContacto(item.smsAP),
-      llamada: normalizarBanderaContacto(item.llamadaAP)
+      llamada: normalizarBanderaContacto(item.llamadaAP),
+      presente: normalizarBanderaContacto(item.presenteAP)
     };
   }
   // =======CARGAR AGENDA DESDE BACKEND (FASE 1)================
@@ -543,6 +546,11 @@
             <label class="agenda-toggle-llamada" for="agenda-toggle-llamada">
               <input type="checkbox" id="agenda-toggle-llamada">
               Llamada
+            </label>
+
+            <label class="agenda-toggle-presente" for="agenda-toggle-presente">
+              <input type="checkbox" id="agenda-toggle-presente">
+              Presente
             </label>
 
             <input type="date" id="agenda-date">
@@ -746,6 +754,7 @@
     const toggleNumeracionAgenda = container.querySelector("#agenda-toggle-numeracion");
     const toggleSmsAgenda = container.querySelector("#agenda-toggle-sms");
     const toggleLlamadaAgenda = container.querySelector("#agenda-toggle-llamada");
+    const togglePresenteAgenda = container.querySelector("#agenda-toggle-presente");
     let pasteCitaBtn = container.querySelector("#agenda-paste-cita");
     let clearReprogramaBtn = container.querySelector("#agenda-clear-reprograma");
     const reviewInasistenciaBtn = container.querySelector("#agenda-review-ina");
@@ -777,6 +786,7 @@
       numeracion: false,
       sms: false,
       llamada: false,
+      presente: false,
       search: "",
       estado: "",
       contacto: "",
@@ -792,6 +802,7 @@
       numeracion: !!toggleNumeracionAgenda?.checked,
       sms: !!toggleSmsAgenda?.checked,
       llamada: !!toggleLlamadaAgenda?.checked,
+      presente: !!togglePresenteAgenda?.checked,
       search: String(searchInput?.value || ""),
       estado: String(estadoFilter?.value || ""),
       contacto: String(contactoFilter?.value || "")
@@ -807,6 +818,9 @@
     }
     if (toggleLlamadaAgenda) {
       toggleLlamadaAgenda.checked = !!agendaUiState.llamada;
+    }
+    if (togglePresenteAgenda) {
+      togglePresenteAgenda.checked = !!agendaUiState.presente;
     }
     if (searchInput) {
       searchInput.value = String(agendaUiState.search || "");
@@ -861,14 +875,19 @@
     function llamadaAgendaActiva() {
       return !!toggleLlamadaAgenda?.checked;
     }
+    function presenteAgendaActivo() {
+      return !!togglePresenteAgenda?.checked;
+    }
 
     function aplicarVisibilidadContactadoAgenda() {
       if (!agendaTable) return;
       const smsVisible = smsAgendaActivo();
       const llamadaVisible = llamadaAgendaActiva();
+      const presenteVisible = presenteAgendaActivo();
       agendaTable.classList.toggle("hide-contacto-sms", !smsVisible);
       agendaTable.classList.toggle("hide-contacto-llamada", !llamadaVisible);
-      agendaTable.classList.toggle("hide-contactado", !smsVisible && !llamadaVisible);
+      agendaTable.classList.toggle("hide-contacto-presente", !presenteVisible);
+      agendaTable.classList.toggle("hide-contactado", !smsVisible && !llamadaVisible && !presenteVisible);
     }
     function formatearHoraInasistencia(value) {
       const raw = String(value || "").trim();
@@ -1710,7 +1729,8 @@
             estado: estadoValue,
             comentario,
             sms: 0,
-            llamada: 0
+            llamada: 0,
+            presente: 0
           })
         });
 
@@ -1731,7 +1751,8 @@
           estado: estadoValue,
           comentario,
           sms: false,
-          llamada: false
+          llamada: false,
+          presente: false
         });
 
         aplicarFiltros();
@@ -1993,11 +2014,14 @@
 
       const prevSms = !!item.sms;
       const prevLlamada = !!item.llamada;
+      const prevPresente = !!item.presente;
       const nextSms = patch.sms === undefined ? prevSms : !!patch.sms;
       const nextLlamada = patch.llamada === undefined ? prevLlamada : !!patch.llamada;
+      const nextPresente = patch.presente === undefined ? prevPresente : !!patch.presente;
 
       item.sms = nextSms;
       item.llamada = nextLlamada;
+      item.presente = nextPresente;
       agendaContactoSaveInFlight.add(idAgenda);
       aplicarFiltros({ dispararFallback: false });
 
@@ -2007,7 +2031,8 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             sms: nextSms ? 1 : 0,
-            llamada: nextLlamada ? 1 : 0
+            llamada: nextLlamada ? 1 : 0,
+            presente: nextPresente ? 1 : 0
           })
         });
 
@@ -2018,6 +2043,7 @@
       } catch (err) {
         item.sms = prevSms;
         item.llamada = prevLlamada;
+        item.presente = prevPresente;
         alert(err?.message || "No se pudo guardar el contacto");
       } finally {
         agendaContactoSaveInFlight.delete(idAgenda);
@@ -2036,7 +2062,7 @@
         const tr = document.createElement("tr");
         aplicarRefuerzoVisualFila(tr, item.estado);
 
-        // Contacto (SMS / Llamada)
+        // Contacto (SMS / Llamada / Presente)
         const tdContactoMarcadores = document.createElement("td");
         tdContactoMarcadores.className = "agenda-col-contacto";
 
@@ -2075,9 +2101,26 @@
         flagLlamada.appendChild(llamadaInput);
         flagLlamada.appendChild(llamadaIcon);
 
+        const flagPresente = document.createElement("label");
+        flagPresente.className = "agenda-contacto-flag is-presente";
+        flagPresente.title = "Presente";
+
+        const presenteInput = document.createElement("input");
+        presenteInput.type = "checkbox";
+        presenteInput.checked = !!item.presente;
+        presenteInput.setAttribute("aria-label", "Marcar paciente presente");
+
+        const presenteIcon = document.createElement("span");
+        presenteIcon.className = "agenda-contacto-icon";
+        presenteIcon.innerHTML = getAgendaHeroIcon("building-office");
+
+        flagPresente.appendChild(presenteInput);
+        flagPresente.appendChild(presenteIcon);
+
         const savingContacto = agendaContactoSaveInFlight.has(Number(item.idAgendaAP || 0));
         smsInput.disabled = savingContacto;
         llamadaInput.disabled = savingContacto;
+        presenteInput.disabled = savingContacto;
 
         smsInput.addEventListener("change", () => {
           guardarMarcasContacto(item, { sms: smsInput.checked });
@@ -2085,9 +2128,13 @@
         llamadaInput.addEventListener("change", () => {
           guardarMarcasContacto(item, { llamada: llamadaInput.checked });
         });
+        presenteInput.addEventListener("change", () => {
+          guardarMarcasContacto(item, { presente: presenteInput.checked });
+        });
 
         contactoWrap.appendChild(flagSms);
         contactoWrap.appendChild(flagLlamada);
+        contactoWrap.appendChild(flagPresente);
         tdContactoMarcadores.appendChild(contactoWrap);
         tr.appendChild(tdContactoMarcadores);
 
@@ -2302,7 +2349,8 @@
                   estado: estadoAgenda,
                   comentario: comentarioAgenda,
                   sms: item.sms ? 1 : 0,
-                  llamada: item.llamada ? 1 : 0
+                  llamada: item.llamada ? 1 : 0,
+                  presente: 0
                 })
               });
               const jsonCrearAgendaHoy = await resCrearAgendaHoy.json();
@@ -2333,7 +2381,8 @@
                   estado: estadoAgenda,
                   comentario: comentarioAgenda,
                   sms: !!item.sms,
-                  llamada: !!item.llamada
+                  llamada: !!item.llamada,
+                  presente: false
                 });
               }
               aplicarFiltros();
@@ -2749,6 +2798,10 @@
       persistAgendaUiState();
     });
     toggleLlamadaAgenda?.addEventListener("change", () => {
+      aplicarVisibilidadContactadoAgenda();
+      persistAgendaUiState();
+    });
+    togglePresenteAgenda?.addEventListener("change", () => {
       aplicarVisibilidadContactadoAgenda();
       persistAgendaUiState();
     });

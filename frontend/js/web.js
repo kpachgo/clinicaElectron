@@ -115,12 +115,14 @@ themeBtn?.addEventListener("click", () => {
 const ROLE_VIEWS = {
     Administrador: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro"],
     Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Servicios", "Cobro"],
+    Redes: ["Agenda", "Monitor de Seguimiento"],
     Doctor: ["Paciente", "En Cola", "Doctores"],
     Asistente: ["Paciente", "En Cola"]
 };
 const ROLE_DEFAULT_VIEW = {
     Administrador: "Agenda",
     Recepcion: "Agenda",
+    Redes: "Agenda",
     Doctor: "Paciente",
     Asistente: "Paciente"
 }

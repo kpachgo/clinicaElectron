@@ -4,6 +4,8 @@ const router = express.Router();
 const auth = require("../middlewares/auth.middleware");
 const role = require("../middlewares/role.middleware");
 const controller = require("../controllers/paciente.controller");
+const ROLES_PACIENTE_AGENDA = ["Administrador", "Recepcion", "Doctor", "Asistente", "Redes"];
+const ROLES_MONITOR_SEGUIMIENTO = ["Administrador", "Recepcion", "Redes"];
 
 // ============================
 // BUSCAR PACIENTES (AUTOCOMPLETE)
@@ -11,13 +13,13 @@ const controller = require("../controllers/paciente.controller");
 router.get(
   "/search",
   auth,
-  role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  role(ROLES_PACIENTE_AGENDA),
   controller.buscar
 );
 router.get(
   "/existe",
   auth,
-  role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  role(ROLES_PACIENTE_AGENDA),
   controller.existePaciente
 );
 
@@ -28,13 +30,13 @@ router.get(
 router.get(
   "/monitor-seguimiento",
   auth,
-  role(["Administrador", "Recepcion"]),
+  role(ROLES_MONITOR_SEGUIMIENTO),
   controller.monitorSeguimiento
 );
 router.put(
   "/monitor-seguimiento/contacto",
   auth,
-  role(["Administrador", "Recepcion"]),
+  role(ROLES_MONITOR_SEGUIMIENTO),
   controller.guardarMonitorContacto
 );
 
@@ -44,7 +46,7 @@ router.put(
 router.get(
   "/:id",
   auth,
-  role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  role(ROLES_PACIENTE_AGENDA),
   controller.obtenerPorId
 );
 

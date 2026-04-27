@@ -102,7 +102,8 @@ exports.actualizar = async (req, res) => {
     estado,
     comentario,
     sms,
-    llamada
+    llamada,
+    presente
   } = req.body;
 
   if (!id) {
@@ -116,15 +117,18 @@ exports.actualizar = async (req, res) => {
 
   const hasSms = Object.prototype.hasOwnProperty.call(req.body || {}, "sms");
   const hasLlamada = Object.prototype.hasOwnProperty.call(req.body || {}, "llamada");
+  const hasPresente = Object.prototype.hasOwnProperty.call(req.body || {}, "presente");
   const hasComentario = Object.prototype.hasOwnProperty.call(req.body || {}, "comentario");
 
   let smsDbValue = null;
   let llamadaDbValue = null;
+  let presenteDbValue = null;
   try {
     if (hasSms) smsDbValue = normalizeBinaryFlag(sms, "sms");
     if (hasLlamada) llamadaDbValue = normalizeBinaryFlag(llamada, "llamada");
+    if (hasPresente) presenteDbValue = normalizeBinaryFlag(presente, "presente");
   } catch (err) {
-    return badRequest(res, err?.message || "Valor invalido para sms/llamada");
+    return badRequest(res, err?.message || "Valor invalido para sms/llamada/presente");
   }
 
   const toDbValue = (v) => (v === undefined ? null : v);
@@ -132,7 +136,7 @@ exports.actualizar = async (req, res) => {
   if (!hasComentario) {
     try {
       await pool.query(
-        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           idAgenda,
           toDbValue(nombre),
@@ -142,7 +146,8 @@ exports.actualizar = async (req, res) => {
           toDbValue(estado),
           toDbValue(comentario),
           smsDbValue,
-          llamadaDbValue
+          llamadaDbValue,
+          presenteDbValue
         ]
       );
 
@@ -158,7 +163,7 @@ exports.actualizar = async (req, res) => {
     await conn.beginTransaction();
 
     await conn.query(
-      "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         idAgenda,
         toDbValue(nombre),
@@ -168,7 +173,8 @@ exports.actualizar = async (req, res) => {
         toDbValue(estado),
         toDbValue(comentario),
         smsDbValue,
-        llamadaDbValue
+        llamadaDbValue,
+        presenteDbValue
       ]
     );
 
@@ -233,7 +239,8 @@ exports.crear = async (req, res) => {
       estado,
       comentario,
       sms,
-      llamada
+      llamada,
+      presente
     } = req.body;
 
     if (!nombre || !hora || !fecha || !contacto) {
@@ -242,15 +249,17 @@ exports.crear = async (req, res) => {
 
     let smsFlag = 0;
     let llamadaFlag = 0;
+    let presenteFlag = 0;
     try {
       if (sms !== undefined) smsFlag = normalizeBinaryFlag(sms, "sms");
       if (llamada !== undefined) llamadaFlag = normalizeBinaryFlag(llamada, "llamada");
+      if (presente !== undefined) presenteFlag = normalizeBinaryFlag(presente, "presente");
     } catch (err) {
-      return badRequest(res, err?.message || "Valor invalido para sms/llamada");
+      return badRequest(res, err?.message || "Valor invalido para sms/llamada/presente");
     }
 
     const [rows] = await pool.query(
-      "CALL sp_agenda_create(?, ?, ?, ?, ?, ?, ?, ?)",
+      "CALL sp_agenda_create(?, ?, ?, ?, ?, ?, ?, ?, ?)",
       [
         nombre,
         hora,
@@ -259,7 +268,8 @@ exports.crear = async (req, res) => {
         estado || null,
         comentario || null,
         smsFlag,
-        llamadaFlag
+        llamadaFlag,
+        presenteFlag
       ]
     );
 

@@ -6,6 +6,7 @@
   "description": "Runtime app",
   "author": "Clinica",
   "dependencies": {
+    "clinica": "file:..",
     "electron-updater": "^6.8.3"
   }
 }

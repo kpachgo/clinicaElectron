@@ -6,37 +6,38 @@ const authMiddleware = require("../middlewares/auth.middleware");
 const roleMiddleware = require("../middlewares/role.middleware");
 
 const agendaController = require("../controllers/agenda.controller");
+const ROLES_AGENDA = ["Administrador", "Recepcion", "Redes"];
 
 router.get(
   "/buscar-mes",
   authMiddleware,
-  roleMiddleware(["Administrador", "Recepcion"]),
+  roleMiddleware(ROLES_AGENDA),
   agendaController.buscarPorMes
 );
 
 router.get(
   "/",
   authMiddleware,
-  roleMiddleware(["Administrador", "Recepcion"]),
+  roleMiddleware(ROLES_AGENDA),
   agendaController.listarPorFecha
 );
 
 router.put(
   "/:id",
   authMiddleware,
-  roleMiddleware(["Administrador", "Recepcion"]),
+  roleMiddleware(ROLES_AGENDA),
   agendaController.actualizar
 );
 router.delete(
   "/:id",
   authMiddleware,
-  roleMiddleware(["Administrador", "Recepcion"]),
+  roleMiddleware(ROLES_AGENDA),
   agendaController.eliminar
 );
 router.post(
   "/",
   authMiddleware,
-  roleMiddleware(["Administrador", "Recepcion"]),
+  roleMiddleware(ROLES_AGENDA),
   agendaController.crear
 );
 

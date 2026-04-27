@@ -5,11 +5,12 @@ const auth = require("../middlewares/auth.middleware");
 const role = require("../middlewares/role.middleware");
 const controller = require("../controllers/cola.controller");
 const ROLES_COLA = ["Administrador", "Recepcion", "Doctor", "Asistente"];
+const ROLES_COLA_LECTURA = [...ROLES_COLA, "Redes"];
 
 router.get(
   "/",
   auth,
-  role(ROLES_COLA),
+  role(ROLES_COLA_LECTURA),
   controller.listar
 );
 
