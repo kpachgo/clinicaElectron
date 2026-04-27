@@ -245,6 +245,17 @@ async function obtenerCorreoUsuarioDoctorPorIdDoctor(idDoctor) {
 // ============================
 // 🔍 BUSCAR PACIENTES (AUTOCOMPLETE)
 // ============================
+function esBusquedaTelefono(texto) {
+  const q = String(texto || "").trim();
+  if (!q) return false;
+
+  const soloCaracteresTelefono = q.replace(/[0-9\s()+\-./]/g, "") === "";
+  if (!soloCaracteresTelefono) return false;
+
+  const digitos = q.replace(/\D+/g, "");
+  return digitos.length >= 3;
+}
+
 const buscar = async (req, res) => {
   try {
     const q = String(req.query?.q || "").trim();
@@ -253,12 +264,25 @@ const buscar = async (req, res) => {
       return badRequest(res, "Minimo 3 caracteres");
     }
 
-    const [rows] = await queryReadWithRetry(
-      "CALL sp_paciente_buscar_ligero(?)",
-      [q]
-    );
-
-    const data = firstResultSet(rows);
+    let data = [];
+    if (esBusquedaTelefono(q)) {
+      const qDigitos = q.replace(/\D+/g, "");
+      const [rows] = await queryReadWithRetry(
+        `SELECT idPaciente, NombreP, telefonoP
+         FROM paciente
+         WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(telefonoP, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', ''), '.', '') LIKE ?
+         ORDER BY NombreP ASC
+         LIMIT 25`,
+        [`%${qDigitos}%`]
+      );
+      data = Array.isArray(rows) ? rows : [];
+    } else {
+      const [rows] = await queryReadWithRetry(
+        "CALL sp_paciente_buscar_ligero(?)",
+        [q]
+      );
+      data = firstResultSet(rows);
+    }
 
     res.json({
       ok: true,

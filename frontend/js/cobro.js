@@ -5,10 +5,12 @@
   let cuentasActuales = [];
   let totalDescuentoActual = 0;
   let reporteMensualActual = [];
+  let reporteMensualVistaActual = [];
   let reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
   let reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
   let reporteMensualFiltroActual = null;
   let reporteMensualFormaPagoActual = "";
+  let reporteMensualDoctorActual = null;
   let faltantesCobroActual = [];
   let faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
   let doctoresCuentaData = [];
@@ -591,8 +593,12 @@
 
         <div class="cuenta-controls cobro-modal-controls">
           <input type="month" id="reporte-mensual-mes">
+          <input type="search" id="reporte-mensual-paciente-search" placeholder="Buscar paciente" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
           <select id="reporte-mensual-servicio" class="cobro-forma-pago">
             <option value="">Todos los tratamientos</option>
+          </select>
+          <select id="reporte-mensual-doctor" class="cobro-forma-pago cuenta-doctor-select" aria-label="Filtrar por doctor en reporte mensual">
+            <option value="">Todos los doctores</option>
           </select>
           <select id="reporte-mensual-forma-pago" class="cobro-forma-pago" aria-label="Filtrar por metodo de pago mensual">
             <option value="">Todos los metodos de pago</option>
@@ -601,7 +607,7 @@
             <option value="igs">IGS</option>
             <option value="transferencia">Transferencia</option>
           </select>
-          <button id="btn-reporte-mensual-pdf" class="btn-cobro-secondary" type="button">Generar reporte mensual PDF</button>
+          <button id="btn-reporte-mensual-pdf" class="btn-cobro-secondary" type="button">PDF</button>
         </div>
 
         <div class="cuenta-table-wrap">
@@ -717,7 +723,9 @@
     const reporteMensualModal = document.getElementById("reporte-mensual-modal");
     const btnCerrarReporteMensual = document.getElementById("btn-cerrar-reporte-mensual");
     const inputReporteMensualMes = document.getElementById("reporte-mensual-mes");
+    const inputReporteMensualPacienteSearch = document.getElementById("reporte-mensual-paciente-search");
     const selectReporteMensualServicio = document.getElementById("reporte-mensual-servicio");
+    const selectReporteMensualDoctor = document.getElementById("reporte-mensual-doctor");
     const selectReporteMensualFormaPago = document.getElementById("reporte-mensual-forma-pago");
     const btnReporteMensualPdf = document.getElementById("btn-reporte-mensual-pdf");
     const tbodyReporteMensual = document.getElementById("reporte-mensual-tbody");
@@ -1738,6 +1746,29 @@
       aplicarColorDoctorCuentaSelect(cuentaDoctorFilter, cuentaDoctorFilter.value, true);
     }
 
+    function construirOpcionesDoctorReporteMensual() {
+      if (!selectReporteMensualDoctor) return;
+      const selectedRaw = String(selectReporteMensualDoctor.value || "");
+      selectReporteMensualDoctor.innerHTML = "";
+
+      const optTodos = document.createElement("option");
+      optTodos.value = "";
+      optTodos.textContent = "Todos los doctores";
+      selectReporteMensualDoctor.appendChild(optTodos);
+
+      doctoresCuentaData.forEach((doc) => {
+        const opt = document.createElement("option");
+        opt.value = String(doc.idDoctor);
+        opt.textContent = doc.nombreD;
+        selectReporteMensualDoctor.appendChild(opt);
+      });
+
+      const optionExists = Array.from(selectReporteMensualDoctor.options)
+        .some((o) => o.value === selectedRaw);
+      selectReporteMensualDoctor.value = optionExists ? selectedRaw : "";
+      aplicarColorDoctorCuentaSelect(selectReporteMensualDoctor, selectReporteMensualDoctor.value, true);
+    }
+
     async function cargarDoctoresCuenta(force = false) {
       if (!isCobroViewActive()) return null;
       if (!force && cargarDoctoresCuentaPromise) return cargarDoctoresCuentaPromise;
@@ -1755,12 +1786,14 @@
           if (!res.ok || !json.ok || !Array.isArray(json.data)) {
             doctoresCuentaData = [];
             construirOpcionesFiltroDoctorCuenta();
+            construirOpcionesDoctorReporteMensual();
             return;
           }
           doctoresCuentaData = json.data
             .map(normalizarDoctorCuenta)
             .filter(Boolean);
           construirOpcionesFiltroDoctorCuenta();
+          construirOpcionesDoctorReporteMensual();
 
           if (Array.isArray(cuentasActuales) && cuentasActuales.length > 0) {
             aplicarFiltroCuenta();
@@ -1770,6 +1803,7 @@
           console.error(err);
           doctoresCuentaData = [];
           construirOpcionesFiltroDoctorCuenta();
+          construirOpcionesDoctorReporteMensual();
         } finally {
           endRequest("doctores", req.controller);
           cargarDoctoresCuentaPromise = null;
@@ -1824,9 +1858,31 @@
       }
     }
 
+    function calcularTotalesReporteMensual(lista) {
+      const rows = Array.isArray(lista) ? lista : [];
+      return rows.reduce(
+        (acc, row) => {
+          acc.cantidadTotalMes += Number(row.cantidadPaciente || 0);
+          acc.montoTotalMes += Number(row.montoPaciente || 0);
+          return acc;
+        },
+        { pacientesUnicos: rows.length, cantidadTotalMes: 0, montoTotalMes: 0 }
+      );
+    }
+
+    function filtrarReporteMensualPorPaciente(lista) {
+      const rows = Array.isArray(lista) ? lista : [];
+      const q = normalizarTextoCruce(inputReporteMensualPacienteSearch?.value || "");
+      if (!q) return rows;
+      return rows.filter((row) => normalizarTextoCruce(row?.nombrePaciente).includes(q));
+    }
+
     function renderReporteMensual(lista, totales, totalesGlobalMes) {
       tbodyReporteMensual.innerHTML = "";
       const rows = Array.isArray(lista) ? lista : [];
+      const rowsVisibles = filtrarReporteMensualPorPaciente(rows);
+      reporteMensualVistaActual = rowsVisibles;
+      const tieneBusquedaPaciente = normalizarTextoCruce(inputReporteMensualPacienteSearch?.value || "") !== "";
       const safeTotales = {
         pacientesUnicos: Number(totales?.pacientesUnicos || 0),
         cantidadTotalMes: Number(totales?.cantidadTotalMes || 0),
@@ -1837,15 +1893,18 @@
         cantidadTotalMes: Number(totalesGlobalMes?.cantidadTotalMes || 0),
         montoTotalMes: Number(totalesGlobalMes?.montoTotalMes || 0)
       };
+      const totalesVisibles = tieneBusquedaPaciente
+        ? calcularTotalesReporteMensual(rowsVisibles)
+        : safeTotales;
 
-      if (rows.length === 0) {
+      if (rowsVisibles.length === 0) {
         tbodyReporteMensual.innerHTML = `
           <tr>
-            <td colspan="3" style="text-align:center;color:#64748b">No hay pacientes para el filtro y mes seleccionado</td>
+            <td colspan="3" style="text-align:center;color:#64748b">${tieneBusquedaPaciente ? "No hay pacientes para la busqueda" : "No hay pacientes para el filtro y mes seleccionado"}</td>
           </tr>
         `;
       } else {
-        rows.forEach((item) => {
+        rowsVisibles.forEach((item) => {
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${escapeHtml(item.nombrePaciente || "-")}</td>
@@ -1860,13 +1919,13 @@
       const strongCantidad = reporteMensualCantidadBox?.querySelector("strong");
       const strongTotal = reporteMensualTotalBox?.querySelector("strong");
       if (strongPacientes) {
-        strongPacientes.textContent = String(safeTotales.pacientesUnicos);
+        strongPacientes.textContent = String(totalesVisibles.pacientesUnicos);
       }
       if (strongCantidad) {
-        strongCantidad.textContent = String(safeTotales.cantidadTotalMes);
+        strongCantidad.textContent = String(totalesVisibles.cantidadTotalMes);
       }
       if (strongTotal) {
-        strongTotal.textContent = precioUSD(safeTotales.montoTotalMes);
+        strongTotal.textContent = precioUSD(totalesVisibles.montoTotalMes);
       }
       const strongTotalGlobal = reporteMensualTotalGlobalBox?.querySelector("strong");
       if (strongTotalGlobal) {
@@ -1878,15 +1937,18 @@
       if (!isCobroViewActive()) return;
       const mes = String(inputReporteMensualMes?.value || "").trim();
       const idServicio = String(selectReporteMensualServicio?.value || "").trim();
+      const idDoctor = String(selectReporteMensualDoctor?.value || "").trim();
       const formaPago = String(selectReporteMensualFormaPago?.value || "").trim();
 
       if (!mes) {
         invalidateRequest("reporteMensual");
         reporteMensualActual = [];
+        reporteMensualVistaActual = [];
         reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
         reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
         reporteMensualFiltroActual = null;
         reporteMensualFormaPagoActual = "";
+        reporteMensualDoctorActual = null;
         renderReporteMensual(
           reporteMensualActual,
           reporteMensualTotalesActual,
@@ -1900,6 +1962,7 @@
       try {
         const query = new URLSearchParams({ mes });
         if (idServicio) query.set("idServicio", idServicio);
+        if (idDoctor) query.set("idDoctor", idDoctor);
         if (formaPago) query.set("formaPago", formaPago);
 
         const res = await fetch(
@@ -1916,6 +1979,7 @@
         reporteMensualActual = Array.isArray(json.data) ? json.data : [];
         reporteMensualFiltroActual = json.filtroServicio || null;
         reporteMensualFormaPagoActual = String(json.filtroFormaPago?.valor || "").trim();
+        reporteMensualDoctorActual = json.filtroDoctor || null;
         reporteMensualTotalesActual = {
           pacientesUnicos: Number(json.totales?.pacientesUnicos || 0),
           cantidadTotalMes: Number(json.totales?.cantidadTotalMes || 0),
@@ -1930,6 +1994,7 @@
         if (
           String(inputReporteMensualMes?.value || "").trim() !== mes ||
           String(selectReporteMensualServicio?.value || "").trim() !== idServicio ||
+          String(selectReporteMensualDoctor?.value || "").trim() !== idDoctor ||
           String(selectReporteMensualFormaPago?.value || "").trim() !== formaPago
         ) {
           return;
@@ -2138,7 +2203,10 @@
         return;
       }
 
-      if (!Array.isArray(reporteMensualActual) || reporteMensualActual.length === 0) {
+      const listaMensualPdf = Array.isArray(reporteMensualVistaActual)
+        ? reporteMensualVistaActual
+        : [];
+      if (!listaMensualPdf.length) {
         alert("No hay datos para generar el reporte mensual");
         return;
       }
@@ -2156,16 +2224,23 @@
       const labelOriginal = btnReporteMensualPdf?.textContent || "Generar reporte mensual PDF";
       if (btnReporteMensualPdf) {
         btnReporteMensualPdf.disabled = true;
-        btnReporteMensualPdf.textContent = "Generando...";
+        btnReporteMensualPdf.textContent = "...";
       }
 
       try {
         const usuario = textoSeguro(document.getElementById("top-user-name")?.textContent) || "Usuario";
+        const pacienteFiltro = textoSeguro(inputReporteMensualPacienteSearch?.value || "") || "Todos";
+        const totalesPdf = calcularTotalesReporteMensual(listaMensualPdf);
         const tratamientoFiltro = reporteMensualFiltroActual?.nombre
           || (selectReporteMensualServicio?.value
             ? (selectReporteMensualServicio?.selectedOptions?.[0]?.textContent || "")
             : "Todos los tratamientos")
           || "Todos los tratamientos";
+        const doctorFiltro = reporteMensualDoctorActual?.nombre
+          || (selectReporteMensualDoctor?.value
+            ? (selectReporteMensualDoctor?.selectedOptions?.[0]?.textContent || "")
+            : "Todos los doctores")
+          || "Todos los doctores";
         const metodoPagoFiltro = reporteMensualFormaPagoActual
           || (selectReporteMensualFormaPago?.value
             ? (selectReporteMensualFormaPago?.selectedOptions?.[0]?.textContent || "")
@@ -2191,16 +2266,18 @@
         doc.text("Reporte mensual por pacientes", marginX, y);
         doc.text(`Mes: ${formatearMesCorto(mes)}`, marginX, y + 13);
         doc.text(`Tratamiento: ${textoSeguro(tratamientoFiltro)}`, marginX, y + 26);
-        doc.text(`Metodo de pago: ${textoSeguro(metodoPagoFiltro || "Todos")}`, marginX, y + 39);
-        doc.text(`Generado por: ${usuario}`, marginX, y + 52);
+        doc.text(`Doctor: ${textoSeguro(doctorFiltro)}`, marginX, y + 39);
+        doc.text(`Metodo de pago: ${textoSeguro(metodoPagoFiltro || "Todos")}`, marginX, y + 52);
+        doc.text(`Paciente: ${pacienteFiltro}`, marginX, y + 65);
+        doc.text(`Generado por: ${usuario}`, marginX, y + 78);
         doc.text(
           `Generado: ${new Date().toLocaleString("es-SV", { hour12: true })}`,
           pageWidth - marginX,
-          y + 52,
+          y + 78,
           { align: "right" }
         );
 
-        y += 66;
+        y += 92;
 
         doc.autoTable({
           startY: y,
@@ -2208,9 +2285,9 @@
           theme: "grid",
           head: [["Resumen mensual", "Valor"]],
           body: [
-            ["Pacientes unicos", String(Number(reporteMensualTotalesActual.pacientesUnicos || 0))],
-            ["Cantidad total", String(Number(reporteMensualTotalesActual.cantidadTotalMes || 0))],
-            ["Monto total", precioUSD(Number(reporteMensualTotalesActual.montoTotalMes || 0))],
+            ["Pacientes unicos", String(Number(totalesPdf.pacientesUnicos || 0))],
+            ["Cantidad total", String(Number(totalesPdf.cantidadTotalMes || 0))],
+            ["Monto total", precioUSD(Number(totalesPdf.montoTotalMes || 0))],
             ["Monto global mes (sin filtros)", precioUSD(Number(reporteMensualTotalesGlobalActual.montoTotalMes || 0))]
           ],
           styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, overflow: "linebreak" },
@@ -2219,7 +2296,7 @@
 
         y = (doc.lastAutoTable?.finalY || y) + 8;
 
-        const filasMensuales = reporteMensualActual.map((r) => ([
+        const filasMensuales = listaMensualPdf.map((r) => ([
           textoSeguro(r.nombrePaciente) || "-",
           String(Number(r.cantidadPaciente || 0)),
           precioUSD(Number(r.montoPaciente || 0))
@@ -2240,7 +2317,9 @@
           }
         });
 
-        const suffix = selectReporteMensualServicio?.value ? `-servicio-${selectReporteMensualServicio.value}` : "";
+        const suffixServicio = selectReporteMensualServicio?.value ? `-servicio-${selectReporteMensualServicio.value}` : "";
+        const suffixDoctor = selectReporteMensualDoctor?.value ? `-doctor-${selectReporteMensualDoctor.value}` : "";
+        const suffix = `${suffixServicio}${suffixDoctor}`;
         doc.save(`reporte-cobro-mensual-${mes}${suffix}.pdf`);
       } catch (err) {
         console.error(err);
@@ -2582,7 +2661,10 @@
     });
     btnAbrirReporteMensual?.addEventListener("click", () => {
       abrirReporteMensualModal();
-      cargarServiciosReporteMensual().then(cargarReporteMensual);
+      Promise.all([
+        Promise.resolve(cargarServiciosReporteMensual()),
+        Promise.resolve(cargarDoctoresCuenta())
+      ]).then(() => cargarReporteMensual());
     });
     btnCerrarReporteMensual?.addEventListener("click", cerrarReporteMensualModal);
     reporteMensualModal?.addEventListener("click", (e) => {
@@ -2619,7 +2701,18 @@
       document.addEventListener("keydown", window.__cobroModalEscHandler);
     }
     inputReporteMensualMes?.addEventListener("change", cargarReporteMensual);
+    inputReporteMensualPacienteSearch?.addEventListener("input", () => {
+      renderReporteMensual(
+        reporteMensualActual,
+        reporteMensualTotalesActual,
+        reporteMensualTotalesGlobalActual
+      );
+    });
     selectReporteMensualServicio?.addEventListener("change", cargarReporteMensual);
+    selectReporteMensualDoctor?.addEventListener("change", () => {
+      aplicarColorDoctorCuentaSelect(selectReporteMensualDoctor, selectReporteMensualDoctor.value, true);
+      cargarReporteMensual();
+    });
     selectReporteMensualFormaPago?.addEventListener("change", cargarReporteMensual);
 
     cuentaSearch.addEventListener("input", () => {
@@ -2652,6 +2745,7 @@
     btnReporteMensualPdf?.addEventListener("click", generarReporteMensualPdf);
     aplicarVisibilidadColumnasCuenta();
     construirOpcionesFiltroDoctorCuenta();
+    construirOpcionesDoctorReporteMensual();
     persistCobroUiState();
     configurarHoverTotalesKpi();
 
@@ -2695,10 +2789,12 @@
     cuentasActuales = [];
     totalDescuentoActual = 0;
     reporteMensualActual = [];
+    reporteMensualVistaActual = [];
     reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
     reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
     reporteMensualFiltroActual = null;
     reporteMensualFormaPagoActual = "";
+    reporteMensualDoctorActual = null;
     faltantesCobroActual = [];
     faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
     doctoresCuentaData = [];
@@ -2722,10 +2818,12 @@
         cuentasActuales = [];
         totalDescuentoActual = 0;
         reporteMensualActual = [];
+        reporteMensualVistaActual = [];
         reporteMensualTotalesActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
         reporteMensualTotalesGlobalActual = { pacientesUnicos: 0, cantidadTotalMes: 0, montoTotalMes: 0 };
         reporteMensualFiltroActual = null;
         reporteMensualFormaPagoActual = "";
+        reporteMensualDoctorActual = null;
         faltantesCobroActual = [];
         faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
         doctoresCuentaData = [];
@@ -2739,7 +2837,9 @@
         const inputCuentaDoctorFilter = document.getElementById("cuenta-doctor-filter");
         const inputCuentaFormaPagoFilter = document.getElementById("cuenta-forma-pago-filter");
         const inputReporteMes = document.getElementById("reporte-mensual-mes");
+        const inputReportePaciente = document.getElementById("reporte-mensual-paciente-search");
         const selectReporteServicio = document.getElementById("reporte-mensual-servicio");
+        const selectReporteDoctor = document.getElementById("reporte-mensual-doctor");
         const selectReporteFormaPago = document.getElementById("reporte-mensual-forma-pago");
         const faltantesCobroModal = document.getElementById("faltantes-cobro-modal");
         const inputDescuentoNombre = document.getElementById("descuento-nombre");
@@ -2763,7 +2863,12 @@
         if (inputCuentaFormaPagoFilter) inputCuentaFormaPagoFilter.value = "";
         if (inputFecha) inputFecha.value = "";
         if (inputReporteMes) inputReporteMes.value = "";
+        if (inputReportePaciente) inputReportePaciente.value = "";
         if (selectReporteServicio) selectReporteServicio.value = "";
+        if (selectReporteDoctor) {
+          selectReporteDoctor.value = "";
+          aplicarColorDoctorCuentaSelect(selectReporteDoctor, selectReporteDoctor.value, true);
+        }
         if (selectReporteFormaPago) selectReporteFormaPago.value = "";
         if (inputDescuentoNombre) inputDescuentoNombre.value = "";
         if (inputDescuentoCantidad) inputDescuentoCantidad.value = "";

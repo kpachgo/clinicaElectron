@@ -946,14 +946,31 @@
   flex: 0 0 160px;
 }
 
+.cobro-modal-controls input[type="search"] {
+  width: 220px;
+  flex: 0 1 220px;
+}
+
 .cobro-modal-controls select {
-  width: 280px;
+  width: 260px;
   flex: 1 1 240px;
 }
 
+.cobro-modal-controls #reporte-mensual-doctor {
+  width: 180px;
+  flex: 0 1 180px;
+}
+
 .cobro-modal-controls #reporte-mensual-forma-pago {
-  width: 220px;
-  flex: 0 1 220px;
+  width: 190px;
+  flex: 0 1 190px;
+}
+
+.cobro-modal-controls #btn-reporte-mensual-pdf {
+  min-width: 64px;
+  padding-left: 14px;
+  padding-right: 14px;
+  flex: 0 0 auto;
 }
 
 .cuenta-table-wrap {
@@ -1712,6 +1729,7 @@ body.cobro-modal-open {
   .cuenta-header .cuenta-controls-actions #btn-abrir-reporte-mensual,
   .cuenta-header .cuenta-controls-actions #btn-abrir-faltantes-cobro,
   .cobro-modal-controls input[type="month"],
+  .cobro-modal-controls input[type="search"],
   .cobro-modal-controls select,
   .cobro-modal-controls #btn-reporte-mensual-pdf,
   .descuento-form input {

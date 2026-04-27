@@ -21,6 +21,13 @@ router.get(
   controller.listarPorFecha
 );
 
+router.get(
+  "/buscar-mes",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.buscarPorMes
+);
+
 // REPORTE MENSUAL POR TRATAMIENTO
 router.get(
   "/reporte-mensual",

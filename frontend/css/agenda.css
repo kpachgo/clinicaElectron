@@ -66,6 +66,19 @@
   filter: grayscale(0.1);
 }
 
+.agenda-search-scope-alert {
+  margin-top: 8px;
+  margin-bottom: 6px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid #ef4444;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
 .agenda-reprograma-status {
   font-size: 12px;
   font-weight: 600;
@@ -840,6 +853,12 @@ body.agenda-ina-open {
 ===================================================== */
 .dark-mode .agenda-table tbody tr.agenda-row-estado-confirmado:hover td {
   background: rgba(22, 163, 74, 0.42);
+}
+
+.dark-mode .agenda-search-scope-alert {
+  border-color: #dc2626;
+  background: rgba(127, 29, 29, 0.45);
+  color: #fecaca;
 }
 
 .dark-mode .agenda-table tbody tr.agenda-row-estado-cancelado:hover td {

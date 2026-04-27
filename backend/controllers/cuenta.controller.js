@@ -41,6 +41,16 @@ let detalleCuentaDoctorColCache = {
   value: null,
   checkedAt: 0
 };
+const DETALLE_CUENTA_MONTO_COL_CACHE_TTL_MS = 5 * 60 * 1000;
+let detalleCuentaMontoColsCache = {
+  value: null,
+  checkedAt: 0
+};
+const DETALLE_CUENTA_CUENTA_FK_COL_CACHE_TTL_MS = 5 * 60 * 1000;
+let detalleCuentaCuentaFkColCache = {
+  value: null,
+  checkedAt: 0
+};
 
 async function queryReadWithRetry(sql, params = [], options = {}) {
   const attempts = Number.isInteger(Number(options.attempts)) && Number(options.attempts) > 0
@@ -92,6 +102,125 @@ async function hasDetalleCuentaDoctorCol(force = false) {
   return hasCol;
 }
 
+function isUnknownDetalleCuentaMontoColError(err) {
+  if (!err) return false;
+  const code = String(err?.code || "").toUpperCase();
+  const errno = Number(err?.errno || 0);
+  if (errno !== 1054 && code !== "ER_BAD_FIELD_ERROR") {
+    return false;
+  }
+  const msg = String(err?.sqlMessage || err?.message || "").toLowerCase();
+  return (
+    msg.includes("dc.cantidaddc") ||
+    msg.includes("dc.cantidadd") ||
+    msg.includes("dc.preciounitariodc") ||
+    msg.includes("dc.preciod") ||
+    msg.includes("dc.subtotaldc") ||
+    msg.includes("dc.subtotal") ||
+    msg.includes("dc.idcuenta") ||
+    msg.includes("dc.idc") ||
+    msg.includes("dc.cantidad") ||
+    msg.includes("dc.precio")
+  );
+}
+
+async function getDetalleCuentaMontoCols(force = false) {
+  const now = Date.now();
+  if (!force && detalleCuentaMontoColsCache.value) {
+    const age = now - Number(detalleCuentaMontoColsCache.checkedAt || 0);
+    if (age >= 0 && age < DETALLE_CUENTA_MONTO_COL_CACHE_TTL_MS) {
+      return detalleCuentaMontoColsCache.value;
+    }
+  }
+
+  const [rows] = await queryReadWithRetry(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'detallecuenta'
+       AND COLUMN_NAME IN (
+         'cantidadDC', 'cantidad', 'cantidadD',
+         'precioUnitarioDC', 'precio', 'precioD',
+         'subTotalDC', 'subtotalDC', 'subTotal', 'subtotal'
+       )`
+  );
+  const fields = new Set((Array.isArray(rows) ? rows : []).map((r) => String(r.COLUMN_NAME || "")));
+  const cantidadCol = fields.has("cantidadDC")
+    ? "cantidadDC"
+    : fields.has("cantidad")
+      ? "cantidad"
+      : fields.has("cantidadD")
+        ? "cantidadD"
+        : null;
+  const precioCol = fields.has("precioUnitarioDC")
+    ? "precioUnitarioDC"
+    : fields.has("precio")
+      ? "precio"
+      : fields.has("precioD")
+        ? "precioD"
+        : null;
+  const subtotalCol = fields.has("subTotalDC")
+    ? "subTotalDC"
+    : fields.has("subtotalDC")
+      ? "subtotalDC"
+      : fields.has("subTotal")
+        ? "subTotal"
+        : fields.has("subtotal")
+          ? "subtotal"
+          : null;
+
+  if (!cantidadCol || (!subtotalCol && !precioCol)) {
+    throw new Error(
+      "No se encontraron columnas de monto en detallecuenta"
+    );
+  }
+
+  const value = { cantidadCol, precioCol, subtotalCol };
+  detalleCuentaMontoColsCache = {
+    value,
+    checkedAt: now
+  };
+  return value;
+}
+
+async function getDetalleCuentaCuentaFkCol(force = false) {
+  const now = Date.now();
+  if (!force && detalleCuentaCuentaFkColCache.value) {
+    const age = now - Number(detalleCuentaCuentaFkColCache.checkedAt || 0);
+    if (age >= 0 && age < DETALLE_CUENTA_CUENTA_FK_COL_CACHE_TTL_MS) {
+      return detalleCuentaCuentaFkColCache.value;
+    }
+  }
+
+  const [rows] = await queryReadWithRetry(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'detallecuenta'
+       AND COLUMN_NAME IN ('idCuenta', 'idC')`
+  );
+  const fields = new Set((Array.isArray(rows) ? rows : []).map((r) => String(r.COLUMN_NAME || "")));
+  const col = fields.has("idCuenta")
+    ? "idCuenta"
+    : fields.has("idC")
+      ? "idC"
+      : null;
+
+  if (!col) {
+    throw new Error("No se encontro columna de relacion con cuenta en detallecuenta (idCuenta/idC)");
+  }
+
+  detalleCuentaCuentaFkColCache = {
+    value: col,
+    checkedAt: now
+  };
+  return col;
+}
+
+function quoteSqlIdentifier(identifier) {
+  return `\`${String(identifier || "").replace(/`/g, "``")}\``;
+}
+
 function handleCuentaError(res, err, fallbackMessage) {
   if (isTransientDbError(err)) {
     return res.status(503).json({
@@ -112,6 +241,123 @@ function normalizarFormaPago(rawValue) {
     transferencia: "Transferencia"
   };
   return map[raw] || null;
+}
+
+function isLegacyStoredProcedureArgsError(err) {
+  if (!err) return false;
+  if (Number(err?.errno || 0) === 1318) return true;
+  if (String(err?.code || "").toUpperCase() === "ER_SP_WRONG_NO_OF_ARGS") return true;
+  const msg = String(err?.sqlMessage || err?.message || "").toLowerCase();
+  return msg.includes("incorrect number of arguments");
+}
+
+async function queryReporteMensualPacientesSP({
+  anio,
+  mesNumero,
+  idServicio,
+  formaPago,
+  idDoctor,
+  requireDoctorFilter = false
+}) {
+  try {
+    return await queryReadWithRetry(
+      "CALL sp_cuenta_reporte_mensual_pacientes(?, ?, ?, ?, ?)",
+      [anio, mesNumero, idServicio, formaPago, idDoctor]
+    );
+  } catch (err) {
+    if (isUnknownDetalleCuentaMontoColError(err)) {
+      return queryReporteMensualPacientesDirect({
+        anio,
+        mesNumero,
+        idServicio,
+        formaPago,
+        idDoctor
+      });
+    }
+
+    if (!isLegacyStoredProcedureArgsError(err)) {
+      throw err;
+    }
+
+    if (requireDoctorFilter || idDoctor !== null) {
+      const migrationError = new Error(
+        "Falta migracion en base de datos: sp_cuenta_reporte_mensual_pacientes con filtro por doctor"
+      );
+      migrationError.isDoctorReportMigrationError = true;
+      throw migrationError;
+    }
+
+    try {
+      return await queryReadWithRetry(
+        "CALL sp_cuenta_reporte_mensual_pacientes(?, ?, ?, ?)",
+        [anio, mesNumero, idServicio, formaPago]
+      );
+    } catch (legacyErr) {
+      if (isUnknownDetalleCuentaMontoColError(legacyErr)) {
+        return queryReporteMensualPacientesDirect({
+          anio,
+          mesNumero,
+          idServicio,
+          formaPago,
+          idDoctor
+        });
+      }
+      throw legacyErr;
+    }
+  }
+}
+
+async function queryReporteMensualPacientesDirect({
+  anio,
+  mesNumero,
+  idServicio,
+  formaPago,
+  idDoctor
+}) {
+  const detalleCuentaFkCol = await getDetalleCuentaCuentaFkCol();
+  const { cantidadCol, precioCol, subtotalCol } = await getDetalleCuentaMontoCols();
+  const detalleCuentaFkSql = `dc.${quoteSqlIdentifier(detalleCuentaFkCol)}`;
+  const cantidadSql = `IFNULL(dc.${quoteSqlIdentifier(cantidadCol)}, 0)`;
+  const montoSql = subtotalCol
+    ? `IFNULL(dc.${quoteSqlIdentifier(subtotalCol)}, 0)`
+    : `(${cantidadSql} * IFNULL(dc.${quoteSqlIdentifier(precioCol)}, 0))`;
+
+  const where = [
+    "YEAR(c.fechaC) = ?",
+    "MONTH(c.fechaC) = ?",
+    "(? IS NULL OR dc.idServicio = ?)",
+    "(? IS NULL OR TRIM(?) = '' OR LOWER(TRIM(c.FormaPagoC)) = LOWER(TRIM(?)))"
+  ];
+  const params = [
+    anio,
+    mesNumero,
+    idServicio,
+    idServicio,
+    formaPago,
+    formaPago,
+    formaPago
+  ];
+
+  if (idDoctor !== null) {
+    where.push("dc.idDoctor = ?");
+    params.push(idDoctor);
+  }
+
+  const sql = `
+    SELECT
+      p.idPaciente AS idPaciente,
+      p.NombreP AS nombrePaciente,
+      SUM(${cantidadSql}) AS cantidadPaciente,
+      ROUND(SUM(${montoSql}), 2) AS montoPaciente
+    FROM cuenta c
+    INNER JOIN paciente p ON p.idPaciente = c.idPaciente
+    INNER JOIN detallecuenta dc ON ${detalleCuentaFkSql} = c.idCuenta
+    WHERE ${where.join("\n      AND ")}
+    GROUP BY p.idPaciente, p.NombreP
+    ORDER BY montoPaciente DESC, cantidadPaciente DESC, p.NombreP ASC
+  `;
+
+  return queryReadWithRetry(sql, params);
 }
 
 const crear = async (req, res) => {
@@ -336,6 +582,7 @@ const listarReporteMensualPacientes = async (req, res) => {
     const mes = String(req.query?.mes || "").trim();
     const idServicioRaw = String(req.query?.idServicio || "").trim();
     const formaPagoRaw = String(req.query?.formaPago || "").trim();
+    const idDoctorRaw = String(req.query?.idDoctor || "").trim();
     const mesMatch = mes.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
 
     if (!mesMatch) {
@@ -373,10 +620,40 @@ const listarReporteMensualPacientes = async (req, res) => {
       }
     }
 
-    const [rows] = await queryReadWithRetry(
-      "CALL sp_cuenta_reporte_mensual_pacientes(?, ?, ?, ?)",
-      [anio, mesNumero, idServicio, formaPago]
-    );
+    let idDoctor = null;
+    let doctor = null;
+    if (idDoctorRaw) {
+      idDoctor = Number(idDoctorRaw);
+      if (!Number.isInteger(idDoctor) || idDoctor <= 0) {
+        return badRequest(res, "idDoctor invalido");
+      }
+
+      const hasDoctorCol = await hasDetalleCuentaDoctorCol();
+      if (!hasDoctorCol) {
+        return badRequest(
+          res,
+          "Falta migracion en base de datos: detallecuenta.idDoctor"
+        );
+      }
+
+      const [doctorRows] = await queryReadWithRetry(
+        "SELECT idDoctor, nombreD FROM doctor WHERE idDoctor = ? LIMIT 1",
+        [idDoctor]
+      );
+      doctor = Array.isArray(doctorRows) ? doctorRows[0] : null;
+      if (!doctor) {
+        return badRequest(res, "Doctor no encontrado");
+      }
+    }
+
+    const [rows] = await queryReporteMensualPacientesSP({
+      anio,
+      mesNumero,
+      idServicio,
+      formaPago,
+      idDoctor,
+      requireDoctorFilter: idDoctor !== null
+    });
 
     const data = firstResultSet(rows).map((row) => ({
       idPaciente: Number(row.idPaciente),
@@ -385,10 +662,14 @@ const listarReporteMensualPacientes = async (req, res) => {
       montoPaciente: Number(row.montoPaciente || 0)
     }));
 
-    const [rowsGlobal] = await queryReadWithRetry(
-      "CALL sp_cuenta_reporte_mensual_pacientes(?, ?, ?, ?)",
-      [anio, mesNumero, null, null]
-    );
+    const [rowsGlobal] = await queryReporteMensualPacientesSP({
+      anio,
+      mesNumero,
+      idServicio: null,
+      formaPago: null,
+      idDoctor: null,
+      requireDoctorFilter: false
+    });
 
     const dataGlobal = firstResultSet(rowsGlobal).map((row) => ({
       idPaciente: Number(row.idPaciente),
@@ -426,12 +707,182 @@ const listarReporteMensualPacientes = async (req, res) => {
       filtroFormaPago: formaPago
         ? { valor: formaPago }
         : null,
+      filtroDoctor: doctor
+        ? {
+            idDoctor: Number(doctor.idDoctor),
+            nombre: String(doctor.nombreD || "")
+          }
+        : null,
       data,
       totales,
       totalesGlobalMes
     });
   } catch (err) {
+    if (err?.isDoctorReportMigrationError) {
+      return badRequest(res, err.message || "Falta migracion para reporte mensual por doctor");
+    }
     return handleCuentaError(res, err, "Error al listar reporte mensual por pacientes");
+  }
+};
+
+const buscarPorMes = async (req, res) => {
+  try {
+    const fecha = String(req.query?.fecha || "").trim();
+    const qRaw = String(req.query?.q || "").trim();
+
+    if (!fecha) {
+      return badRequest(res, "Fecha requerida");
+    }
+    if (!esFechaISOValida(fecha)) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
+    if (qRaw.length < 1) {
+      return res.json({ ok: true, data: [] });
+    }
+
+    const m = fecha.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
+    const anio = Number(m[1]);
+    const mes = Number(m[2]);
+    const desde = `${m[1]}-${m[2]}-01`;
+    const ultimoDia = String(new Date(Date.UTC(anio, mes, 0)).getUTCDate()).padStart(2, "0");
+    const hasta = `${m[1]}-${m[2]}-${ultimoDia}`;
+    const qLike = `%${qRaw.toLowerCase()}%`;
+
+    const { cantidadCol } = await getDetalleCuentaMontoCols();
+    const detalleCuentaFkCol = await getDetalleCuentaCuentaFkCol();
+    const cantidadSql = `IFNULL(dc.${quoteSqlIdentifier(cantidadCol)}, 0)`;
+    const detalleCuentaFkSql = `dc.${quoteSqlIdentifier(detalleCuentaFkCol)}`;
+    const detalleCuentaFkSql2 = `dc2.${quoteSqlIdentifier(detalleCuentaFkCol)}`;
+    const detalleCuentaFkSql3 = `dc3.${quoteSqlIdentifier(detalleCuentaFkCol)}`;
+    const hasDoctorCol = await hasDetalleCuentaDoctorCol();
+    const sql = hasDoctorCol
+      ? `
+        SELECT
+          c.idCuenta,
+          p.NombreP AS nombrePaciente,
+          ROUND(IFNULL(c.totalC, 0), 2) AS totalC,
+          c.FormaPagoC,
+          DATE_FORMAT(c.fechaC, '%Y-%m-%d') AS fechaC,
+          SUM(${cantidadSql}) AS cantidadTotal,
+          GROUP_CONCAT(
+            CONCAT(
+              IFNULL(s.nombreS, ''),
+              CASE
+                WHEN ${cantidadSql} > 1 THEN CONCAT(' x', CAST(${cantidadSql} AS UNSIGNED))
+                ELSE ''
+              END
+            )
+            ORDER BY s.nombreS
+            SEPARATOR ', '
+          ) AS procedimientos,
+          CASE
+            WHEN COUNT(DISTINCT COALESCE(dc.idDoctor, 0)) = 1
+            THEN NULLIF(MAX(COALESCE(dc.idDoctor, 0)), 0)
+            ELSE NULL
+          END AS idDoctorCuenta,
+          CASE
+            WHEN COUNT(DISTINCT COALESCE(dc.idDoctor, 0)) = 1
+            THEN COALESCE(MAX(d.nombreD), '')
+            ELSE ''
+          END AS nombreDoctorCuenta
+        FROM cuenta c
+        INNER JOIN paciente p ON p.idPaciente = c.idPaciente
+        INNER JOIN detallecuenta dc ON ${detalleCuentaFkSql} = c.idCuenta
+        LEFT JOIN servicio s ON s.idServicio = dc.idServicio
+        LEFT JOIN doctor d ON d.idDoctor = dc.idDoctor
+        WHERE c.fechaC BETWEEN ? AND ?
+          AND c.fechaC <> ?
+          AND (
+            LOWER(TRIM(IFNULL(p.NombreP, ''))) LIKE ?
+            OR EXISTS (
+              SELECT 1
+              FROM detallecuenta dc2
+              INNER JOIN servicio s2 ON s2.idServicio = dc2.idServicio
+              WHERE ${detalleCuentaFkSql2} = c.idCuenta
+                AND LOWER(TRIM(IFNULL(s2.nombreS, ''))) LIKE ?
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM detallecuenta dc3
+              INNER JOIN doctor d3 ON d3.idDoctor = dc3.idDoctor
+              WHERE ${detalleCuentaFkSql3} = c.idCuenta
+                AND LOWER(TRIM(IFNULL(d3.nombreD, ''))) LIKE ?
+            )
+          )
+        GROUP BY c.idCuenta, p.NombreP, c.totalC, c.FormaPagoC, c.fechaC
+        ORDER BY c.fechaC DESC, c.idCuenta DESC
+        LIMIT 250
+      `
+      : `
+        SELECT
+          c.idCuenta,
+          p.NombreP AS nombrePaciente,
+          ROUND(IFNULL(c.totalC, 0), 2) AS totalC,
+          c.FormaPagoC,
+          DATE_FORMAT(c.fechaC, '%Y-%m-%d') AS fechaC,
+          SUM(${cantidadSql}) AS cantidadTotal,
+          GROUP_CONCAT(
+            CONCAT(
+              IFNULL(s.nombreS, ''),
+              CASE
+                WHEN ${cantidadSql} > 1 THEN CONCAT(' x', CAST(${cantidadSql} AS UNSIGNED))
+                ELSE ''
+              END
+            )
+            ORDER BY s.nombreS
+            SEPARATOR ', '
+          ) AS procedimientos,
+          NULL AS idDoctorCuenta,
+          '' AS nombreDoctorCuenta
+        FROM cuenta c
+        INNER JOIN paciente p ON p.idPaciente = c.idPaciente
+        INNER JOIN detallecuenta dc ON ${detalleCuentaFkSql} = c.idCuenta
+        LEFT JOIN servicio s ON s.idServicio = dc.idServicio
+        WHERE c.fechaC BETWEEN ? AND ?
+          AND c.fechaC <> ?
+          AND (
+            LOWER(TRIM(IFNULL(p.NombreP, ''))) LIKE ?
+            OR EXISTS (
+              SELECT 1
+              FROM detallecuenta dc2
+              INNER JOIN servicio s2 ON s2.idServicio = dc2.idServicio
+              WHERE ${detalleCuentaFkSql2} = c.idCuenta
+                AND LOWER(TRIM(IFNULL(s2.nombreS, ''))) LIKE ?
+            )
+          )
+        GROUP BY c.idCuenta, p.NombreP, c.totalC, c.FormaPagoC, c.fechaC
+        ORDER BY c.fechaC DESC, c.idCuenta DESC
+        LIMIT 250
+      `;
+
+    const params = hasDoctorCol
+      ? [desde, hasta, fecha, qLike, qLike, qLike]
+      : [desde, hasta, fecha, qLike, qLike];
+    const [rows] = await queryReadWithRetry(sql, params);
+    const data = (Array.isArray(rows) ? rows : []).map((row) => ({
+      idCuenta: Number(row.idCuenta || 0),
+      nombrePaciente: String(row.nombrePaciente || ""),
+      totalC: Number(row.totalC || 0),
+      FormaPagoC: String(row.FormaPagoC || ""),
+      cantidadTotal: Number(row.cantidadTotal || 0),
+      procedimientos: String(row.procedimientos || ""),
+      idDoctorCuenta: row.idDoctorCuenta == null ? null : Number(row.idDoctorCuenta || 0),
+      nombreDoctorCuenta: String(row.nombreDoctorCuenta || ""),
+      fechaC: String(row.fechaC || "")
+    }));
+
+    res.json({
+      ok: true,
+      fechaBase: fecha,
+      desde,
+      hasta,
+      data
+    });
+  } catch (err) {
+    return handleCuentaError(res, err, "Error al buscar cuentas del mes");
   }
 };
 
@@ -550,6 +1001,7 @@ const eliminarDescuento = async (req, res) => {
 module.exports = {
   crear,
   listarPorFecha,
+  buscarPorMes,
   actualizarDoctorCuenta,
   listarReporteMensual,
   listarReporteMensualPacientes,

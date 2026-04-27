@@ -701,11 +701,12 @@ function renderPaciente(container) {
     <h5 class="paciente-titulo">Buscador</h5>
     <div class="p-row">
     <div class="p-col p-60">
-    <label class="form-label">Nombre  </label>
+    <label class="form-label">Nombre o telefono</label>
       <input
         type="text"
         id="buscar-paciente-p"
         class="form-control"
+        placeholder="Buscar por nombre o telefono"
       >
       <div id="lista-paciente" class="autocomplete-list"></div>
     </div>
@@ -1974,7 +1975,9 @@ function initAutocompletePaciente() {
       json.data.forEach(p => {
         const div = document.createElement("div");
         div.className = "autocomplete-item";
-        div.textContent = p.NombreP;
+        const nombre = String(p?.NombreP || "").trim() || "Sin nombre";
+        const telefono = String(p?.telefonoP || "").trim();
+        div.textContent = telefono ? `${nombre} - ${telefono}` : nombre;
 
         div.onclick = async () => {
           const puedeCambiar = await Promise.resolve(
@@ -1986,7 +1989,7 @@ function initAutocompletePaciente() {
           const listaLocal = document.getElementById("lista-paciente");
 
           if (inputLocal) {
-            inputLocal.value = p.NombreP;
+            inputLocal.value = nombre;
           }
 
           if (listaLocal) {

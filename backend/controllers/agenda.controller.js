@@ -19,6 +19,74 @@ function normalizeBinaryFlag(value, fieldName) {
   throw new Error(`${fieldName} invalido. Use 0/1 o true/false`);
 }
 
+function normalizeText(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeDigits(value) {
+  return String(value ?? "").replace(/\D+/g, "");
+}
+
+function isSamePhone(a, b) {
+  const aRaw = normalizeText(a);
+  const bRaw = normalizeText(b);
+  if (aRaw && bRaw && aRaw === bRaw) return true;
+
+  const aDigits = normalizeDigits(a);
+  const bDigits = normalizeDigits(b);
+  return aDigits && bDigits && aDigits === bDigits;
+}
+
+async function getAgendaSnapshot(db, idAgenda) {
+  const [rows] = await db.query(
+    `SELECT idAgendaAP, nombreAP, contactoAP
+     FROM agendapersona
+     WHERE idAgendaAP = ?
+     LIMIT 1`,
+    [idAgenda]
+  );
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+async function syncPacienteTelefonoFromAgenda(db, options = {}) {
+  const agendaNombre = String(options?.agendaNombre || "").trim();
+  const contactoAnterior = String(options?.contactoAnterior || "").trim();
+  const contactoNuevo = String(options?.contactoNuevo || "").trim();
+
+  if (!agendaNombre || !contactoNuevo) return;
+
+  const [rows] = await db.query(
+    `SELECT idPaciente, NombreP, telefonoP
+     FROM paciente
+     WHERE LOWER(TRIM(NombreP)) = ?
+     ORDER BY idPaciente ASC`,
+    [normalizeText(agendaNombre)]
+  );
+
+  const candidatos = Array.isArray(rows) ? rows : [];
+  if (candidatos.length === 0) return;
+
+  let objetivo = null;
+  if (candidatos.length === 1) {
+    objetivo = candidatos[0];
+  } else if (contactoAnterior) {
+    const porTelefonoAnterior = candidatos.filter((row) => isSamePhone(row?.telefonoP, contactoAnterior));
+    if (porTelefonoAnterior.length === 1) {
+      objetivo = porTelefonoAnterior[0];
+    }
+  }
+
+  const idPaciente = Number(objetivo?.idPaciente || 0);
+  if (!Number.isInteger(idPaciente) || idPaciente <= 0) return;
+
+  await db.query(
+    `UPDATE paciente
+     SET telefonoP = ?
+     WHERE idPaciente = ?`,
+    [contactoNuevo, idPaciente]
+  );
+}
+
 // =================================================
 // LISTAR AGENDA POR FECHA (FASE 1)
 // =================================================
@@ -119,6 +187,8 @@ exports.actualizar = async (req, res) => {
   const hasLlamada = Object.prototype.hasOwnProperty.call(req.body || {}, "llamada");
   const hasPresente = Object.prototype.hasOwnProperty.call(req.body || {}, "presente");
   const hasComentario = Object.prototype.hasOwnProperty.call(req.body || {}, "comentario");
+  const hasNombre = Object.prototype.hasOwnProperty.call(req.body || {}, "nombre");
+  const hasContacto = Object.prototype.hasOwnProperty.call(req.body || {}, "contacto");
 
   let smsDbValue = null;
   let llamadaDbValue = null;
@@ -135,6 +205,15 @@ exports.actualizar = async (req, res) => {
 
   if (!hasComentario) {
     try {
+      let agendaSnapshot = null;
+      if (hasContacto) {
+        try {
+          agendaSnapshot = await getAgendaSnapshot(pool, idAgenda);
+        } catch (snapshotErr) {
+          console.warn("[agenda.actualizar] No se pudo leer snapshot de agenda para sync de telefono:", snapshotErr?.message || snapshotErr);
+        }
+      }
+
       await pool.query(
         "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
@@ -151,6 +230,24 @@ exports.actualizar = async (req, res) => {
         ]
       );
 
+      if (hasContacto) {
+        try {
+          const agendaNombre = hasNombre
+            ? String(nombre ?? "").trim()
+            : String(agendaSnapshot?.nombreAP || "").trim();
+          const contactoAnterior = String(agendaSnapshot?.contactoAP || "").trim();
+          const contactoNuevo = String(contacto ?? "").trim();
+
+          await syncPacienteTelefonoFromAgenda(pool, {
+            agendaNombre,
+            contactoAnterior,
+            contactoNuevo
+          });
+        } catch (syncErr) {
+          console.warn("[agenda.actualizar] Sync telefono paciente omitido:", syncErr?.message || syncErr);
+        }
+      }
+
       return res.json({ ok: true });
     } catch (error) {
       return serverError(res, error, "Error al actualizar agenda");
@@ -161,6 +258,15 @@ exports.actualizar = async (req, res) => {
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
+
+    let agendaSnapshot = null;
+    if (hasContacto) {
+      try {
+        agendaSnapshot = await getAgendaSnapshot(conn, idAgenda);
+      } catch (snapshotErr) {
+        console.warn("[agenda.actualizar] No se pudo leer snapshot de agenda para sync de telefono:", snapshotErr?.message || snapshotErr);
+      }
+    }
 
     await conn.query(
       "CALL sp_agenda_update(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -185,6 +291,24 @@ exports.actualizar = async (req, res) => {
        WHERE agendaId = ?`,
       [tratamientoSync, idAgenda]
     );
+
+    if (hasContacto) {
+      try {
+        const agendaNombre = hasNombre
+          ? String(nombre ?? "").trim()
+          : String(agendaSnapshot?.nombreAP || "").trim();
+        const contactoAnterior = String(agendaSnapshot?.contactoAP || "").trim();
+        const contactoNuevo = String(contacto ?? "").trim();
+
+        await syncPacienteTelefonoFromAgenda(conn, {
+          agendaNombre,
+          contactoAnterior,
+          contactoNuevo
+        });
+      } catch (syncErr) {
+        console.warn("[agenda.actualizar] Sync telefono paciente omitido:", syncErr?.message || syncErr);
+      }
+    }
 
     await conn.commit();
     return res.json({ ok: true });

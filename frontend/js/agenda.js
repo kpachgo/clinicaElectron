@@ -600,6 +600,8 @@
           </div>
         </div>
 
+        <div id="agenda-search-scope-alert" class="agenda-search-scope-alert" hidden></div>
+
         <div class="agenda-table-wrap">
           <table class="agenda-table">
             <thead>
@@ -749,6 +751,7 @@
     const agendaTable = container.querySelector(".agenda-table");
     const dateInput = container.querySelector("#agenda-date");
     const searchInput = container.querySelector("#agenda-search");
+    const agendaSearchScopeAlert = container.querySelector("#agenda-search-scope-alert");
     const estadoFilter = container.querySelector("#agenda-filter-estado");
     const contactoFilter = container.querySelector("#agenda-filter-contacto");
     const toggleNumeracionAgenda = container.querySelector("#agenda-toggle-numeracion");
@@ -810,6 +813,18 @@
     const persistAgendaUiState = () => {
       saveSessionUiState(agendaUiStateKey, getAgendaUiStateSnapshot());
     };
+    function formatearMesBusquedaAgenda(fechaISO) {
+      const raw = String(fechaISO || "").trim();
+      const m = raw.match(/^(\d{4})-(\d{2})-\d{2}$/);
+      if (!m) return "";
+      return `${m[2]}/${m[1]}`;
+    }
+    function setAgendaSearchScopeAlert(visible, message = "") {
+      if (!agendaSearchScopeAlert) return;
+      const show = !!visible;
+      agendaSearchScopeAlert.hidden = !show;
+      agendaSearchScopeAlert.textContent = show ? String(message || "").trim() : "";
+    }
     if (toggleNumeracionAgenda) {
       toggleNumeracionAgenda.checked = !!agendaUiState.numeracion;
     }
@@ -2748,11 +2763,24 @@
       const { dispararFallback = true } = opts;
       const texto = (searchInput.value || "").trim();
       const listaLocal = filtrarYOrdenar(agendaData, true);
+      const fechaISO = String(dateInput?.value || "").trim();
+      const mesLabel = formatearMesBusquedaAgenda(fechaISO);
+      const mesLabelSafe = mesLabel || "mes seleccionado";
 
       if (texto !== "" && Array.isArray(agendaMesResultados)) {
         const listaMes = filtrarYOrdenar(agendaMesResultados, false);
+        if (listaMes.length > 0) {
+          setAgendaSearchScopeAlert(true, `Resultado del mes (${mesLabelSafe}): se muestran pacientes de otras fechas.`);
+        } else {
+          setAgendaSearchScopeAlert(true, `Resultado del mes (${mesLabelSafe}): no hay coincidencias en otras fechas.`);
+        }
         drawRows(listaMes);
       } else {
+        if (texto && listaLocal.length === 0 && dispararFallback) {
+          setAgendaSearchScopeAlert(true, `Resultado del mes (${mesLabelSafe}): buscando en otras fechas...`);
+        } else {
+          setAgendaSearchScopeAlert(false);
+        }
         drawRows(listaLocal);
       }
 
@@ -2761,12 +2789,14 @@
       if (!texto) {
         agendaMesResultados = null;
         agendaMesBusquedaToken++;
+        setAgendaSearchScopeAlert(false);
         return;
       }
 
       if (listaLocal.length > 0) {
         agendaMesResultados = null;
         agendaMesBusquedaToken++;
+        setAgendaSearchScopeAlert(false);
         return;
       }
 
