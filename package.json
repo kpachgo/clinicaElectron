@@ -31,7 +31,8 @@
     "productName": "ClinicaElectron",
     "asar": true,
     "files": [
-      "**/*"
+      "**/*",
+      "!node_modules/clinica{,/**}"
     ],
     "extraResources": [
       {
