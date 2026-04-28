@@ -48,6 +48,11 @@
   let odontoPrintServicePriceCache = null;
   let odontoPrintServicePricePromise = null;
   const MAX_PROCEDIMIENTO_CITA = 500;
+  const ODONTO_VISUAL_SUPERIOR_PIEZAS = new Set([18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]);
+  const ODONTO_VISUAL_INFERIOR_PIEZAS = new Set([48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]);
+  const ODONTO_VISUAL_TEMPORAL_PIEZAS = new Set([55, 54, 53, 52, 51, 61, 62, 63, 64, 65, 85, 84, 83, 82, 81, 71, 72, 73, 74, 75]);
+  let odontoVisualModeActive = false;
+  let odontoVisualPrevBloqueado = true;
 
 function isAbortError(err) {
   return String(err?.name || "") === "AbortError";
@@ -283,9 +288,31 @@ function renderFotoPrincipalPaciente() {
   ayuda.textContent = "Vista previa del paciente. Puede cambiarse desde Registro de Fotografias.";
 }
 // CREAR FILAS DE DIENTES
+function getOdontoVisualImagePath(pieza) {
+    const piezaNum = Number(pieza || 0);
+    if (ODONTO_VISUAL_SUPERIOR_PIEZAS.has(piezaNum)) {
+      return `/img/DentaduraAdulto/Superior/${piezaNum}.png`;
+    }
+    if (ODONTO_VISUAL_INFERIOR_PIEZAS.has(piezaNum)) {
+      return `/img/DentaduraAdulto/Inferior/${piezaNum}.png`;
+    }
+    return "";
+}
 function crearFila(lista) {
-    return lista.map(num => `
-        <div class="tooth" data-pieza="${num}">
+    return lista.map(num => {
+        const visualImageSrc = getOdontoVisualImagePath(num);
+        const visualImageHtml = visualImageSrc
+            ? `<img class="tooth-visual-image" src="${visualImageSrc}" alt="Pieza ${num}" loading="lazy" decoding="async">`
+            : "";
+        const visualClass = visualImageSrc ? " tooth-has-visual-image" : "";
+        const isInferiorAdultPiece = ODONTO_VISUAL_INFERIOR_PIEZAS.has(Number(num));
+        const visualPlacementClass = isInferiorAdultPiece ? " tooth-visual-placement-bottom" : "";
+        const visualImageTopHtml = isInferiorAdultPiece ? "" : visualImageHtml;
+        const visualImageBottomHtml = isInferiorAdultPiece ? visualImageHtml : "";
+
+        return `
+        <div class="tooth${visualClass}${visualPlacementClass}" data-pieza="${num}">
+            ${visualImageTopHtml}
             <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" data-pieza="${num}">
                 
                 <!-- Contorno -->
@@ -340,8 +367,10 @@ function crearFila(lista) {
 
             <div class="tooth-label">${num}</div>
             <input type="text" class="tooth-note" data-pieza="${num}">
+            ${visualImageBottomHtml}
         </div>
-    `).join("");
+    `;
+    }).join("");
 }
 function debounce(fn, delay = 350) {
   let timer;
@@ -385,6 +414,7 @@ async function runPacienteLoadingFlow(_initialText, runner) {
 }
 async function cargarPacienteCompleto(idPaciente) {
   return runPacienteLoadingFlow("Cargando paciente...", async () => {
+    setOdontoVisualMode(false, { restorePreviousLock: false });
     const okPaciente = await cargarPaciente(idPaciente);
     if (!okPaciente) return false;
     limpiarOdontogramaActivoEnVista({ clearHistorial: false });
@@ -625,8 +655,235 @@ function setPacienteEdicionHabilitada(habilitada) {
   const btnGuardarPaciente = document.getElementById("btn-guardar-paciente");
   if (btnGuardarPaciente) btnGuardarPaciente.disabled = !habilitada;
 }
+function toothHasAnyTreatmentForVisualMode(tooth) {
+  if (!tooth) return false;
+
+  const noteInput = tooth.querySelector("input.tooth-note");
+  if (noteInput) {
+    if (String(noteInput.value || "").trim().length > 0) return true;
+    if (noteInput.dataset.ppfIds || noteInput.dataset.pprIds || noteInput.dataset.pc || noteInput.dataset.pcIds) {
+      return true;
+    }
+  }
+
+  if (tooth.querySelector('.surface[data-treatment]:not([data-treatment=""])')) return true;
+  if (tooth.querySelector(".triangulo-endo, .flecha-implante, .corona-overlay, .realizado-overlay, .pieza-ausente, .cambio-relleno, .fractura-mark, .placa-completa")) {
+    return true;
+  }
+
+  const surfaces = tooth.querySelectorAll(".surface");
+  for (let i = 0; i < surfaces.length; i += 1) {
+    const fill = String(surfaces[i].getAttribute("fill") || "").trim().toLowerCase();
+    if (fill && fill !== "transparent" && fill !== "none") {
+      return true;
+    }
+  }
+
+  return false;
+}
+function normalizeOdontoVisualColor(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return "";
+  if (raw.startsWith("#")) return raw;
+  if (!raw.startsWith("rgb")) return raw;
+  const nums = raw.match(/\d+/g);
+  if (!nums || nums.length < 3) return raw;
+  const r = Number(nums[0]).toString(16).padStart(2, "0");
+  const g = Number(nums[1]).toString(16).padStart(2, "0");
+  const b = Number(nums[2]).toString(16).padStart(2, "0");
+  return `#${r}${g}${b}`;
+}
+function toothHasAusenteTreatmentForVisualMode(tooth) {
+  if (!tooth) return false;
+  const ausenteMark = tooth.querySelector(".pieza-ausente");
+  if (!ausenteMark) return false;
+
+  const treatmentColor = String(ausenteMark.dataset.treatmentColor || "").trim().toLowerCase();
+  if (treatmentColor === "azul") return true;
+
+  const lines = ausenteMark.querySelectorAll("line");
+  for (let i = 0; i < lines.length; i += 1) {
+    const strokeHex = normalizeOdontoVisualColor(lines[i].getAttribute("stroke"));
+    if (strokeHex === "#2693ff") {
+      return true;
+    }
+  }
+  return false;
+}
+function syncOdontoVisualAusenteImagesVisibility() {
+  const wrapper = document.getElementById("odontograma-wrapper");
+  if (!wrapper) return;
+
+  const teeth = wrapper.querySelectorAll(".tooth.tooth-has-visual-image");
+  teeth.forEach(tooth => {
+    if (!odontoVisualModeActive) {
+      tooth.classList.remove("tooth-visual-hidden-by-ausente");
+      return;
+    }
+    tooth.classList.toggle(
+      "tooth-visual-hidden-by-ausente",
+      toothHasAusenteTreatmentForVisualMode(tooth)
+    );
+  });
+}
+function hasAnyTreatmentInPieceSet(pieceSet) {
+  const wrapper = document.getElementById("odontograma-wrapper");
+  if (!wrapper) return false;
+
+  for (const pieza of pieceSet) {
+    const tooth = wrapper.querySelector(`.tooth[data-pieza="${pieza}"]`);
+    if (toothHasAnyTreatmentForVisualMode(tooth)) {
+      return true;
+    }
+  }
+  return false;
+}
+function syncOdontoVisualTemporalRowsVisibility() {
+  const wrapper = document.getElementById("odontograma-wrapper");
+  if (!wrapper) return;
+
+  const temporalRows = wrapper.querySelectorAll(".odont-mid-top, .odont-mid-bottom");
+  if (!odontoVisualModeActive) {
+    temporalRows.forEach(row => {
+      row.style.removeProperty("display");
+    });
+    return;
+  }
+
+  const adultHasTreatment =
+    hasAnyTreatmentInPieceSet(ODONTO_VISUAL_SUPERIOR_PIEZAS) ||
+    hasAnyTreatmentInPieceSet(ODONTO_VISUAL_INFERIOR_PIEZAS);
+  const temporalHasTreatment = hasAnyTreatmentInPieceSet(ODONTO_VISUAL_TEMPORAL_PIEZAS);
+  const shouldHideTemporals = adultHasTreatment && !temporalHasTreatment;
+
+  temporalRows.forEach(row => {
+    row.style.display = shouldHideTemporals ? "none" : "";
+  });
+}
+function syncOdontoVisualModeContainerClass() {
+  const wrapper = document.getElementById("odontograma-wrapper");
+  if (!wrapper) return;
+  wrapper.classList.toggle("odonto-visual-mode", odontoVisualModeActive);
+  syncOdontoVisualTemporalRowsVisibility();
+  syncOdontoVisualAusenteImagesVisibility();
+}
+function syncOdontoVisualModeButtonText() {
+  const btnVisual = document.getElementById("btn-visual-odontograma");
+  if (!btnVisual) return;
+  btnVisual.textContent = odontoVisualModeActive ? "Salir modo visual" : "Modo visual";
+  btnVisual.setAttribute("aria-pressed", odontoVisualModeActive ? "true" : "false");
+}
+function syncOdontoVisualModeControls() {
+  const tienePacienteConId = Number(window.pacienteActual?.idPaciente || 0) > 0;
+  const btnVisual = document.getElementById("btn-visual-odontograma");
+  if (btnVisual) {
+    btnVisual.disabled = !tienePacienteConId;
+    btnVisual.title = !tienePacienteConId
+      ? "Cargue un paciente para usar el modo visual"
+      : odontoVisualModeActive
+        ? "Salir del modo visual"
+        : "Ver piezas del odontograma en modo visual";
+  }
+
+  const toggleBloqueo = document.getElementById("toggle-bloqueo");
+  if (toggleBloqueo) {
+    toggleBloqueo.disabled = !tienePacienteConId || odontoVisualModeActive;
+    if (odontoVisualModeActive) {
+      toggleBloqueo.title = "Desactive el modo visual para editar el odontograma";
+    } else {
+      toggleBloqueo.title = tienePacienteConId
+        ? "Bloquear o desbloquear odontograma"
+        : "Cargue un paciente para desbloquear odontograma";
+    }
+  }
+
+  const btnClean = document.getElementById("btn-clean");
+  if (btnClean) btnClean.disabled = odontoVisualModeActive;
+
+  const btnCleanOne = document.getElementById("btn-clean-one");
+  if (btnCleanOne) btnCleanOne.disabled = odontoVisualModeActive;
+
+  const btnPieceEditor = document.getElementById("btn-piece-editor");
+  if (btnPieceEditor) btnPieceEditor.disabled = odontoVisualModeActive;
+}
+function setOdontoVisualMode(active, options = {}) {
+  const { restorePreviousLock = true } = options;
+  const activar = Boolean(active);
+  const tienePacienteConId = Number(window.pacienteActual?.idPaciente || 0) > 0;
+
+  if (activar && !tienePacienteConId) {
+    syncOdontoVisualModeButtonText();
+    syncOdontoVisualModeControls();
+    return;
+  }
+
+  if (activar === odontoVisualModeActive) {
+    syncOdontoVisualModeContainerClass();
+    syncOdontoVisualModeButtonText();
+    syncOdontoVisualModeControls();
+    return;
+  }
+
+  const toggleBloqueo = document.getElementById("toggle-bloqueo");
+  if (activar) {
+    odontoVisualPrevBloqueado = toggleBloqueo
+      ? !!toggleBloqueo.checked
+      : !!window.odontogramaBloqueado;
+
+    if (toggleBloqueo) {
+      toggleBloqueo.checked = true;
+      toggleBloqueo.dispatchEvent(new Event("change", { bubbles: true }));
+    } else {
+      window.odontogramaBloqueado = true;
+    }
+
+    const pieceModal = document.getElementById("odonto-piece-modal");
+    if (pieceModal) pieceModal.classList.remove("is-open");
+    document.body.classList.remove("odonto-piece-modal-open");
+
+    const odontoMenu = document.getElementById("menu");
+    if (odontoMenu) odontoMenu.classList.add("menu-hidden");
+  } else if (restorePreviousLock) {
+    const restaurarBloqueo = !!odontoVisualPrevBloqueado;
+    if (toggleBloqueo) {
+      toggleBloqueo.checked = restaurarBloqueo;
+      toggleBloqueo.dispatchEvent(new Event("change", { bubbles: true }));
+    } else {
+      window.odontogramaBloqueado = restaurarBloqueo;
+    }
+  }
+
+  odontoVisualModeActive = activar;
+  if (!odontoVisualModeActive) {
+    odontoVisualPrevBloqueado = true;
+  }
+
+  syncOdontoVisualModeContainerClass();
+  syncOdontoVisualModeButtonText();
+  syncOdontoVisualModeControls();
+}
+function initOdontoVisualModeControls() {
+  const btnVisual = document.getElementById("btn-visual-odontograma");
+  if (!btnVisual) return;
+  btnVisual.addEventListener("click", () => {
+    setOdontoVisualMode(!odontoVisualModeActive);
+  });
+  syncOdontoVisualModeButtonText();
+  syncOdontoVisualModeControls();
+}
+function resetOdontoVisualModeState() {
+  odontoVisualModeActive = false;
+  odontoVisualPrevBloqueado = true;
+  syncOdontoVisualModeContainerClass();
+  syncOdontoVisualModeButtonText();
+  syncOdontoVisualModeControls();
+}
 function actualizarAccionesPaciente() {
   const tienePacienteConId = !!window.pacienteActual?.idPaciente;
+  if (!tienePacienteConId && odontoVisualModeActive) {
+    resetOdontoVisualModeState();
+  }
+
   const pacienteContainer = document.querySelector(".paciente-container");
   if (pacienteContainer) {
     pacienteContainer.classList.toggle("paciente-sin-seleccion", !tienePacienteConId);
@@ -657,6 +914,8 @@ function actualizarAccionesPaciente() {
       toggleBloqueo.dispatchEvent(new Event("change", { bubbles: true }));
     }
   }
+
+  syncOdontoVisualModeControls();
 }
 function aplicarPrefillDesdeAgendaEnPaciente() {
   const prefill = window.__agendaPacientePrefill;
@@ -908,6 +1167,7 @@ function renderPaciente(container) {
           <button id="btn-clean">Limpiar</button>
           <button id="btn-clean-one">Limpiar pieza</button>
           <button id="btn-piece-editor">Seleccion por pieza</button>
+          <button id="btn-visual-odontograma" type="button" aria-pressed="false">Modo visual</button>
           <label class="toggle-ios">
             <input type="checkbox" id="toggle-bloqueo">
             <span class="slider"></span>
@@ -3764,6 +4024,7 @@ function limpiarVistaPaciente() {
   }
   window.__closeOdontoPrintModal = null;
   window.__cleanupOdontoPrintFrame = null;
+  setOdontoVisualMode(false, { restorePreviousLock: false });
 
   if (window.odontogramaAPI && typeof window.odontogramaAPI.reset === "function") {
     window.odontogramaAPI.reset();
@@ -3986,6 +4247,8 @@ window.__mountPaciente = function () {
     toggleBloqueo.checked = true;
     window.odontogramaBloqueado = true;
 }
+    resetOdontoVisualModeState();
+    initOdontoVisualModeControls();
     sincronizarSnapshotOdontogramaBase();
 
 

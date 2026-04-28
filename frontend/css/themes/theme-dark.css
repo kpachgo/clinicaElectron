@@ -15,6 +15,72 @@ body[data-theme="dark"] {
   --success: #16a34a;
   --success-hover: #15803d;
   color-scheme: dark;
+
+  --ms-accent: #60a5fa;
+  --ms-surface: #0f172a;
+  --ms-border: #253246;
+  --ms-text: #e2e8f0;
+  --ms-muted: #94a3b8;
+  --ms-row-hover: rgba(96, 165, 250, 0.13);
+  --ms-soft-bg: #1e293b;
+
+  --ms-btn-neutral-bg: #14233a;
+  --ms-btn-neutral-border: #365172;
+  --ms-btn-neutral-text: #dbeafe;
+  --ms-btn-neutral-hover: #1b2f4d;
+
+  --ms-kpi-status-neutral-bg: #1e293b;
+  --ms-kpi-status-neutral-border: #475569;
+  --ms-kpi-status-neutral-text: #cbd5e1;
+  --ms-kpi-status-active-bg: #1f355f;
+  --ms-kpi-status-active-border: #4f75b8;
+  --ms-kpi-status-active-text: #bfdbfe;
+
+  --ms-filter-trat-bg: #1f3144;
+  --ms-filter-trat-border: #365a7f;
+  --ms-filter-search-bg: #22283f;
+  --ms-filter-search-border: #3a4b73;
+
+  --ms-total-bg: #1f355f;
+  --ms-total-border: #4f75b8;
+  --ms-total-text: #bfdbfe;
+
+  --ms-retrasado-bg: #4a3118;
+  --ms-retrasado-border: #9a5b20;
+  --ms-retrasado-text: #fdba74;
+
+  --ms-m2-bg: #4b3817;
+  --ms-m2-border: #9a6f21;
+  --ms-m2-text: #fcd34d;
+
+  --ms-m3-bg: #4b1f2a;
+  --ms-m3-border: #8f3a4a;
+  --ms-m3-text: #fecaca;
+
+  --ms-activo-bg: #183428;
+  --ms-activo-border: #2d7a57;
+  --ms-activo-text: #86efac;
+
+  --ms-inactivo-bg: #1e293b;
+  --ms-inactivo-border: #475569;
+  --ms-inactivo-text: #cbd5e1;
+
+  --ms-chip-al-dia-bg: #232d45;
+  --ms-chip-al-dia-border: #4c5a88;
+  --ms-chip-al-dia-text: #c7d2fe;
+  --ms-chip-tratamiento-bg: #1f3144;
+  --ms-chip-tratamiento-border: #365a7f;
+  --ms-chip-tratamiento-text: #bae6fd;
+
+  --ms-contacto-bg: rgba(15, 23, 42, 0.4);
+  --ms-contacto-border: rgba(148, 163, 184, 0.4);
+  --ms-contacto-text: #e2e8f0;
+  --ms-contacto-sms-bg: rgba(30, 64, 175, 0.24);
+  --ms-contacto-sms-border: rgba(96, 165, 250, 0.55);
+  --ms-contacto-sms-text: #bfdbfe;
+  --ms-contacto-llamada-bg: rgba(21, 128, 61, 0.22);
+  --ms-contacto-llamada-border: rgba(74, 222, 128, 0.5);
+  --ms-contacto-llamada-text: #bbf7d0;
 }
 
 /* =====================================================
@@ -93,4 +159,114 @@ body[data-theme="dark"].dark-mode #close-menu {
 body[data-theme="dark"].dark-mode #close-menu:hover {
   background: #233147;
   border-color: #5077ab;
+}
+
+/* Resumen de tratamientos + hoja de pendientes (sin tocar hoja blanca) */
+body[data-theme="dark"].dark-mode .odonto-summary-panel {
+  background: #101b2e;
+  border-color: #33455d;
+}
+
+body[data-theme="dark"].dark-mode .odonto-summary-title {
+  color: #e2e8f0;
+}
+
+body[data-theme="dark"].dark-mode .odonto-summary-block {
+  background: #111c2f;
+  border-color: #33455d;
+}
+
+body[data-theme="dark"].dark-mode .odonto-summary-block-title {
+  color: #9fb0c5;
+}
+
+body[data-theme="dark"].dark-mode .odonto-summary-item {
+  background: #152338;
+  border-color: #33455d;
+}
+
+body[data-theme="dark"].dark-mode .odonto-summary-code {
+  background: #1d3a63;
+  color: #bfdbfe;
+}
+
+body[data-theme="dark"].dark-mode .odonto-summary-detail {
+  color: #cfddf1;
+}
+
+body[data-theme="dark"].dark-mode .odonto-summary-empty {
+  color: #8ea0b7;
+}
+
+body[data-theme="dark"].dark-mode .paciente-card #odonto-summary-print-btn {
+  background: #14233a;
+  border-color: #365172;
+  color: #dbeafe;
+}
+
+body[data-theme="dark"].dark-mode .paciente-card #odonto-summary-print-btn:hover {
+  background: #1b2f4d;
+  border-color: #4e76ab;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-modal-dialog {
+  border-color: #304660;
+  background: #0f1c2f;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-modal-header {
+  background: #101f35;
+  border-color: #304660;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-modal-header h6 {
+  color: #dbe7f5;
+}
+
+body[data-theme="dark"].dark-mode #odonto-print-close-btn {
+  background: #14253d;
+  border-color: #385274;
+  color: #d7e5f6;
+}
+
+body[data-theme="dark"].dark-mode #odonto-print-close-btn:hover {
+  background: #1a2f4d;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-editor,
+body[data-theme="dark"].dark-mode .odonto-print-preview-pane {
+  background: #101f34;
+  border-color: #304660;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-editor h6,
+body[data-theme="dark"].dark-mode .odonto-print-preview-pane h6,
+body[data-theme="dark"].dark-mode .odonto-print-promos h6,
+body[data-theme="dark"].dark-mode #odonto-print-meta-count {
+  color: #bfd1e8;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-editor-item {
+  background: #12253d;
+  border-color: #304660;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-editor-item.is-promo {
+  background: #2a1820;
+  border-color: #6a3241;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-editor-input {
+  background: #0d1a2b;
+  border-color: #2c4059;
+  color: #e2e8f0;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-editor-empty {
+  color: #8ea0b7;
+}
+
+body[data-theme="dark"].dark-mode .odonto-print-preview {
+  background: #0c1729;
+  border-color: #304660;
 }

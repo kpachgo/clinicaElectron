@@ -17,6 +17,72 @@ body[data-theme="vampire"] {
   --table-row-border: rgba(212, 212, 212, 0.1);
   --table-row-hover: rgba(0, 122, 204, 0.12);
   color-scheme: dark;
+
+  --ms-accent: #007acc;
+  --ms-surface: #1f1f1f;
+  --ms-border: #3c3c3c;
+  --ms-text: #d4d4d4;
+  --ms-muted: #9da5b4;
+  --ms-row-hover: rgba(0, 122, 204, 0.12);
+  --ms-soft-bg: #252526;
+
+  --ms-btn-neutral-bg: #2a2d2e;
+  --ms-btn-neutral-border: #3c3c3c;
+  --ms-btn-neutral-text: #d4d4d4;
+  --ms-btn-neutral-hover: #323233;
+
+  --ms-kpi-status-neutral-bg: #252526;
+  --ms-kpi-status-neutral-border: #3c3c3c;
+  --ms-kpi-status-neutral-text: #9da5b4;
+  --ms-kpi-status-active-bg: #094771;
+  --ms-kpi-status-active-border: #007acc;
+  --ms-kpi-status-active-text: #ffffff;
+
+  --ms-filter-trat-bg: #25384b;
+  --ms-filter-trat-border: #3d5f7f;
+  --ms-filter-search-bg: #2a2d2e;
+  --ms-filter-search-border: #4a4a4a;
+
+  --ms-total-bg: #253b66;
+  --ms-total-border: #3f6092;
+  --ms-total-text: #c6ddff;
+
+  --ms-retrasado-bg: #4b2d21;
+  --ms-retrasado-border: #7a4f3a;
+  --ms-retrasado-text: #d19a66;
+
+  --ms-m2-bg: #4b3a20;
+  --ms-m2-border: #7a5d2f;
+  --ms-m2-text: #e5c07b;
+
+  --ms-m3-bg: #5a2233;
+  --ms-m3-border: #7a3648;
+  --ms-m3-text: #f2a2b5;
+
+  --ms-activo-bg: #1f3a2a;
+  --ms-activo-border: #2f5f47;
+  --ms-activo-text: #4ec9b0;
+
+  --ms-inactivo-bg: #253040;
+  --ms-inactivo-border: #465266;
+  --ms-inactivo-text: #c6ccda;
+
+  --ms-chip-al-dia-bg: #2a3247;
+  --ms-chip-al-dia-border: #4f5c79;
+  --ms-chip-al-dia-text: #c9d1f2;
+  --ms-chip-tratamiento-bg: #25384b;
+  --ms-chip-tratamiento-border: #3d5f7f;
+  --ms-chip-tratamiento-text: #9cdcfe;
+
+  --ms-contacto-bg: #252526;
+  --ms-contacto-border: #3c3c3c;
+  --ms-contacto-text: #d4d4d4;
+  --ms-contacto-sms-bg: #25384b;
+  --ms-contacto-sms-border: #3d5f7f;
+  --ms-contacto-sms-text: #9cdcfe;
+  --ms-contacto-llamada-bg: #1f3a2a;
+  --ms-contacto-llamada-border: #2f5f47;
+  --ms-contacto-llamada-text: #4ec9b0;
 }
 
 /* Ajustes de croma para que se sienta mas VS Code */
@@ -509,4 +575,155 @@ body[data-theme="vampire"].dark-mode #close-menu {
 body[data-theme="vampire"].dark-mode #close-menu:hover {
   background: #323233;
   border-color: #007acc;
+}
+
+/* Resumen de tratamientos + hoja de pendientes (sin tocar hoja blanca) */
+body[data-theme="vampire"].dark-mode .odonto-summary-panel {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-summary-title {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-summary-block {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-summary-block-title {
+  color: #9da5b4;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-summary-item {
+  background: #2a2d2e;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-summary-code {
+  background: #094771;
+  color: #9cdcfe;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-summary-detail {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-summary-empty {
+  color: #9da5b4;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-card #odonto-summary-print-btn {
+  background: #252526;
+  border-color: #3c3c3c;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-card #odonto-summary-print-btn:hover {
+  background: #2a2d2e;
+  border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-modal-dialog {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-modal-header {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-modal-header h6 {
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-close-btn {
+  background: #2a2d2e;
+  border-color: #3c3c3c;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-close-btn:hover {
+  background: #323233;
+  border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-editor,
+body[data-theme="vampire"].dark-mode .odonto-print-preview-pane {
+  background: #252526;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-editor h6,
+body[data-theme="vampire"].dark-mode .odonto-print-preview-pane h6,
+body[data-theme="vampire"].dark-mode .odonto-print-promos h6,
+body[data-theme="vampire"].dark-mode #odonto-print-meta-count {
+  color: #9da5b4;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-editor-item {
+  background: #2a2d2e;
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-editor-item.is-promo {
+  background: #3a232d;
+  border-color: #6a3241;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-editor-input {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-editor-input::placeholder {
+  color: #808080;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-editor-row button,
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-preset-btn,
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-editor-remove,
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-run-btn {
+  border-color: #3c3c3c;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-editor-row button,
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-preset-btn {
+  background: #2a2d2e;
+  color: #d4d4d4;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-editor-row button:hover,
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-preset-btn:hover {
+  background: #323233;
+  border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-editor-remove {
+  background: #4a2525;
+  color: #ffb4b4;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-editor-remove:hover {
+  background: #5c2d2d;
+  border-color: #f14c4c;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-run-btn {
+  background: #094771;
+  border-color: #007acc;
+  color: #ffffff;
+}
+
+body[data-theme="vampire"].dark-mode #odonto-print-modal .odonto-print-run-btn:hover {
+  background: #005f99;
+  border-color: #007acc;
+}
+
+body[data-theme="vampire"].dark-mode .odonto-print-preview {
+  background: #1f1f1f;
+  border-color: #3c3c3c;
 }

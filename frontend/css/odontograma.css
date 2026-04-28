@@ -52,6 +52,49 @@
     display: block;
 }
 
+.tooth-visual-image {
+    display: none;
+    width: auto;
+    height: 110px;
+    max-width: 65px;
+    object-fit: contain;
+    margin: 0 auto 6px;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+#odontograma-wrapper.odonto-visual-mode .tooth.tooth-has-visual-image {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#odontograma-wrapper.odonto-visual-mode .tooth.tooth-has-visual-image .tooth-visual-image {
+    display: block;
+}
+
+#odontograma-wrapper.odonto-visual-mode .tooth.tooth-visual-hidden-by-ausente .tooth-visual-image {
+    visibility: hidden !important;
+}
+
+#odontograma-wrapper.odonto-visual-mode .tooth.tooth-visual-placement-bottom .tooth-visual-image {
+    margin: 6px auto 0;
+}
+
+#odontograma-wrapper.odonto-visual-mode .tooth svg {
+    margin: 0 auto;
+}
+
+#odontograma-wrapper.odonto-visual-mode .tooth-label {
+    margin-top: 2px;
+}
+
+#odontograma-wrapper.odonto-visual-mode .tooth,
+#odontograma-wrapper.odonto-visual-mode .tooth-note {
+    pointer-events: none;
+}
+
 /* En modo oscuro, aclarar solo el trazo base del diente (stroke original #444). */
 .dark-mode .tooth svg [stroke="#444"] {
     stroke: #f8fafc !important;
@@ -100,7 +143,8 @@
 /* Blindaje puntual: botones principales del toolbar odontograma */
 .dark-mode .paciente-container #btn-clean,
 .dark-mode .paciente-container #btn-clean-one,
-.dark-mode .paciente-container #btn-piece-editor {
+.dark-mode .paciente-container #btn-piece-editor,
+.dark-mode .paciente-container #btn-visual-odontograma {
     background: #14233a !important;
     border: 1px solid #355074 !important;
     color: #e2e8f0 !important;
@@ -118,7 +162,8 @@
 
 .dark-mode .paciente-container #btn-clean:hover,
 .dark-mode .paciente-container #btn-clean-one:hover,
-.dark-mode .paciente-container #btn-piece-editor:hover {
+.dark-mode .paciente-container #btn-piece-editor:hover,
+.dark-mode .paciente-container #btn-visual-odontograma:hover {
     background: #1b2f4d !important;
     border-color: #5077ab !important;
 }
@@ -175,7 +220,8 @@ body[data-theme="vampire"].dark-mode .odonto-piece-treatments button {
 /* Estos tres usan !important en dark base, aqui tambien para reemplazar. */
 body[data-theme="vampire"].dark-mode .paciente-container #btn-clean,
 body[data-theme="vampire"].dark-mode .paciente-container #btn-clean-one,
-body[data-theme="vampire"].dark-mode .paciente-container #btn-piece-editor {
+body[data-theme="vampire"].dark-mode .paciente-container #btn-piece-editor,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-visual-odontograma {
     background: #252526 !important;
     border: 1px solid #3c3c3c !important;
     color: #d4d4d4 !important;
@@ -193,7 +239,8 @@ body[data-theme="vampire"].dark-mode .odonto-piece-treatments button:hover {
 
 body[data-theme="vampire"].dark-mode .paciente-container #btn-clean:hover,
 body[data-theme="vampire"].dark-mode .paciente-container #btn-clean-one:hover,
-body[data-theme="vampire"].dark-mode .paciente-container #btn-piece-editor:hover {
+body[data-theme="vampire"].dark-mode .paciente-container #btn-piece-editor:hover,
+body[data-theme="vampire"].dark-mode .paciente-container #btn-visual-odontograma:hover {
     background: #2a2d2e !important;
     border-color: #007acc !important;
 }
@@ -974,6 +1021,7 @@ body.odonto-print-modal-open {
     margin: 0;
 }
 
+.paciente-card #odonto-summary-print-btn,
 .odonto-summary-print-btn {
     border: 1px solid #b4c7e6;
     background: #ffffff;
@@ -986,11 +1034,13 @@ body.odonto-print-modal-open {
     white-space: nowrap;
 }
 
+.paciente-card #odonto-summary-print-btn:hover,
 .odonto-summary-print-btn:hover {
     background: #edf4ff;
     border-color: #94b4e2;
 }
 
+.paciente-card #odonto-summary-print-btn:disabled,
 .odonto-summary-print-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -1047,6 +1097,7 @@ body.odonto-print-modal-open {
     color: #0f172a;
 }
 
+#odonto-print-close-btn,
 .odonto-print-close-btn {
     border: 1px solid #d0d8e6;
     background: #ffffff;
@@ -1058,6 +1109,7 @@ body.odonto-print-modal-open {
     cursor: pointer;
 }
 
+#odonto-print-close-btn:hover,
 .odonto-print-close-btn:hover {
     background: #eef2f8;
 }
@@ -1095,10 +1147,10 @@ body.odonto-print-modal-open {
     margin-bottom: 8px;
 }
 
-.odonto-print-editor-row button,
-.odonto-print-preset-btn,
-.odonto-print-editor-remove,
-.odonto-print-run-btn {
+#odonto-print-modal .odonto-print-editor-row button,
+#odonto-print-modal .odonto-print-preset-btn,
+#odonto-print-modal .odonto-print-editor-remove,
+#odonto-print-modal .odonto-print-run-btn {
     border: 1px solid #c4d1e7;
     background: #f6f9ff;
     color: #1e3a8a;
@@ -1109,10 +1161,10 @@ body.odonto-print-modal-open {
     cursor: pointer;
 }
 
-.odonto-print-editor-row button:hover,
-.odonto-print-preset-btn:hover,
-.odonto-print-editor-remove:hover,
-.odonto-print-run-btn:hover {
+#odonto-print-modal .odonto-print-editor-row button:hover,
+#odonto-print-modal .odonto-print-preset-btn:hover,
+#odonto-print-modal .odonto-print-editor-remove:hover,
+#odonto-print-modal .odonto-print-run-btn:hover {
     background: #e6efff;
 }
 
@@ -1180,13 +1232,13 @@ body.odonto-print-modal-open {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.17);
 }
 
-.odonto-print-editor-remove {
+#odonto-print-modal .odonto-print-editor-remove {
     background: #fff1f2;
     border-color: #fecdd3;
     color: #be123c;
 }
 
-.odonto-print-editor-remove:hover {
+#odonto-print-modal .odonto-print-editor-remove:hover {
     background: #ffe4e6;
 }
 
@@ -1216,18 +1268,18 @@ body.odonto-print-modal-open {
     color: #334155;
 }
 
-.odonto-print-run-btn {
+#odonto-print-modal .odonto-print-run-btn {
     background: #1d4ed8;
     border-color: #1d4ed8;
     color: #ffffff;
 }
 
-.odonto-print-run-btn:hover {
+#odonto-print-modal .odonto-print-run-btn:hover {
     background: #1e40af;
     border-color: #1e40af;
 }
 
-.odonto-print-run-btn:disabled {
+#odonto-print-modal .odonto-print-run-btn:disabled {
     opacity: 0.65;
     cursor: not-allowed;
 }
@@ -1476,12 +1528,14 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
     }
 }
 
+.dark-mode .paciente-card #odonto-summary-print-btn,
 .dark-mode .odonto-summary-print-btn {
     background: #14233a;
     border-color: #365172;
     color: #dbeafe;
 }
 
+.dark-mode .paciente-card #odonto-summary-print-btn:hover,
 .dark-mode .odonto-summary-print-btn:hover {
     background: #1b2f4d;
     border-color: #4e76ab;
@@ -1501,12 +1555,14 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
     color: #dbe7f5;
 }
 
+.dark-mode #odonto-print-close-btn,
 .dark-mode .odonto-print-close-btn {
     background: #14253d;
     border-color: #385274;
     color: #d7e5f6;
 }
 
+.dark-mode #odonto-print-close-btn:hover,
 .dark-mode .odonto-print-close-btn:hover {
     background: #1a2f4d;
 }

@@ -1,11 +1,30 @@
 ﻿/* monitorSeguimiento.css - vista Monitor de Seguimiento (v1 mock) */
 
 :root {
+  --ms-accent: #2563eb;
   --ms-surface: #ffffff;
   --ms-border: #e2e8f0;
   --ms-text: #0f172a;
   --ms-muted: #64748b;
   --ms-row-hover: rgba(37, 99, 235, 0.05);
+  --ms-soft-bg: #f8fafc;
+
+  --ms-btn-neutral-bg: #0f172a;
+  --ms-btn-neutral-border: #0f172a;
+  --ms-btn-neutral-text: #ffffff;
+  --ms-btn-neutral-hover: #111827;
+
+  --ms-kpi-status-neutral-bg: #f8fafc;
+  --ms-kpi-status-neutral-border: #e2e8f0;
+  --ms-kpi-status-neutral-text: #64748b;
+  --ms-kpi-status-active-bg: #eff6ff;
+  --ms-kpi-status-active-border: #bfdbfe;
+  --ms-kpi-status-active-text: #1d4ed8;
+
+  --ms-filter-trat-bg: #e0f2fe;
+  --ms-filter-trat-border: #7dd3fc;
+  --ms-filter-search-bg: #eef2ff;
+  --ms-filter-search-border: #c7d2fe;
 
   --ms-total-bg: #eff6ff;
   --ms-total-border: #bfdbfe;
@@ -30,14 +49,50 @@
   --ms-inactivo-bg: #f1f5f9;
   --ms-inactivo-border: #cbd5e1;
   --ms-inactivo-text: #334155;
+
+  --ms-chip-al-dia-bg: #eef2ff;
+  --ms-chip-al-dia-border: #c7d2fe;
+  --ms-chip-al-dia-text: #3730a3;
+  --ms-chip-tratamiento-bg: #e0f2fe;
+  --ms-chip-tratamiento-border: #7dd3fc;
+  --ms-chip-tratamiento-text: #0c4a6e;
+
+  --ms-contacto-bg: #f8fafc;
+  --ms-contacto-border: rgba(148, 163, 184, 0.35);
+  --ms-contacto-text: #334155;
+  --ms-contacto-sms-bg: #eff6ff;
+  --ms-contacto-sms-border: #bfdbfe;
+  --ms-contacto-sms-text: #1d4ed8;
+  --ms-contacto-llamada-bg: #f0fdf4;
+  --ms-contacto-llamada-border: #bbf7d0;
+  --ms-contacto-llamada-text: #15803d;
 }
 
 .dark-mode {
+  --ms-accent: #60a5fa;
   --ms-surface: #0f172a;
   --ms-border: #253246;
   --ms-text: #e2e8f0;
   --ms-muted: #94a3b8;
   --ms-row-hover: rgba(96, 165, 250, 0.13);
+  --ms-soft-bg: #1e293b;
+
+  --ms-btn-neutral-bg: #14233a;
+  --ms-btn-neutral-border: #365172;
+  --ms-btn-neutral-text: #dbeafe;
+  --ms-btn-neutral-hover: #1b2f4d;
+
+  --ms-kpi-status-neutral-bg: #1e293b;
+  --ms-kpi-status-neutral-border: #475569;
+  --ms-kpi-status-neutral-text: #cbd5e1;
+  --ms-kpi-status-active-bg: #1f355f;
+  --ms-kpi-status-active-border: #4f75b8;
+  --ms-kpi-status-active-text: #bfdbfe;
+
+  --ms-filter-trat-bg: #1f3144;
+  --ms-filter-trat-border: #365a7f;
+  --ms-filter-search-bg: #22283f;
+  --ms-filter-search-border: #3a4b73;
 
   --ms-total-bg: #1f355f;
   --ms-total-border: #4f75b8;
@@ -62,6 +117,23 @@
   --ms-inactivo-bg: #1e293b;
   --ms-inactivo-border: #475569;
   --ms-inactivo-text: #cbd5e1;
+
+  --ms-chip-al-dia-bg: #232d45;
+  --ms-chip-al-dia-border: #4c5a88;
+  --ms-chip-al-dia-text: #c7d2fe;
+  --ms-chip-tratamiento-bg: #1f3144;
+  --ms-chip-tratamiento-border: #365a7f;
+  --ms-chip-tratamiento-text: #bae6fd;
+
+  --ms-contacto-bg: rgba(15, 23, 42, 0.4);
+  --ms-contacto-border: rgba(148, 163, 184, 0.4);
+  --ms-contacto-text: #e2e8f0;
+  --ms-contacto-sms-bg: rgba(30, 64, 175, 0.24);
+  --ms-contacto-sms-border: rgba(96, 165, 250, 0.55);
+  --ms-contacto-sms-text: #bfdbfe;
+  --ms-contacto-llamada-bg: rgba(21, 128, 61, 0.22);
+  --ms-contacto-llamada-border: rgba(74, 222, 128, 0.5);
+  --ms-contacto-llamada-text: #bbf7d0;
 }
 
 .ms-container {
@@ -136,7 +208,7 @@
   width: 14px;
   height: 14px;
   margin: 0;
-  accent-color: #2563eb;
+  accent-color: var(--ms-accent);
 }
 
 .ms-controls .ui-control.ui-control-search {
@@ -146,6 +218,12 @@
 .ms-controls #ms-tratamiento.ui-control,
 .ms-controls #ms-estado.ui-control {
   min-width: 170px;
+}
+
+.ms-controls select option,
+.ms-page-size select option {
+  background: var(--ms-surface);
+  color: var(--ms-text);
 }
 
 .ms-kpi-grid {
@@ -158,7 +236,7 @@
 .ms-kpi-card {
   border-radius: 10px;
   border: 1px solid var(--ms-border);
-  background: #f8fafc;
+  background: var(--ms-soft-bg);
   padding: 10px;
   min-height: 78px;
   text-align: left;
@@ -256,25 +334,15 @@
 }
 
 .ms-kpi-status-pill.is-neutral {
-  color: var(--ms-muted);
-  border-color: var(--ms-border);
-  background: #f8fafc;
+  color: var(--ms-kpi-status-neutral-text);
+  border-color: var(--ms-kpi-status-neutral-border);
+  background: var(--ms-kpi-status-neutral-bg);
 }
 
 .ms-kpi-status-pill.is-active {
-  color: #1d4ed8;
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.dark-mode .ms-kpi-status-pill.is-neutral {
-  background: #1e293b;
-}
-
-.dark-mode .ms-kpi-status-pill.is-active {
-  color: #bfdbfe;
-  border-color: #4f75b8;
-  background: #1f355f;
+  color: var(--ms-kpi-status-active-text);
+  border-color: var(--ms-kpi-status-active-border);
+  background: var(--ms-kpi-status-active-bg);
 }
 
 .ms-active-filters-wrap {
@@ -311,7 +379,7 @@
   gap: 6px;
   border-radius: 999px;
   border: 1px solid var(--ms-border);
-  background: #f8fafc;
+  background: var(--ms-soft-bg);
   padding: 5px 10px;
   font-size: 12px;
   color: var(--ms-text);
@@ -339,18 +407,13 @@
 }
 
 .ms-filter-pill.tone-tratamiento {
-  background: #e0f2fe;
-  border-color: #7dd3fc;
+  background: var(--ms-filter-trat-bg);
+  border-color: var(--ms-filter-trat-border);
 }
 
 .ms-filter-pill.tone-search {
-  background: #eef2ff;
-  border-color: #c7d2fe;
-}
-
-.dark-mode .ms-filter-pill.tone-tratamiento {
-  background: #1f3144;
-  border-color: #365a7f;
+  background: var(--ms-filter-search-bg);
+  border-color: var(--ms-filter-search-border);
 }
 
 .ms-table-wrap {
@@ -388,9 +451,9 @@
   gap: 4px;
   padding: 2px 5px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: #f8fafc;
-  color: #334155;
+  border: 1px solid var(--ms-contacto-border);
+  background: var(--ms-contacto-bg);
+  color: var(--ms-contacto-text);
   cursor: pointer;
   transition: filter 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
 }
@@ -403,7 +466,7 @@
   width: 12px;
   height: 12px;
   margin: 0;
-  accent-color: #2563eb;
+  accent-color: var(--ms-accent);
 }
 
 .ms-contacto-icon {
@@ -419,15 +482,15 @@
 }
 
 .ms-contacto-flag.is-sms {
-  background: #eff6ff;
-  border-color: #bfdbfe;
-  color: #1d4ed8;
+  background: var(--ms-contacto-sms-bg);
+  border-color: var(--ms-contacto-sms-border);
+  color: var(--ms-contacto-sms-text);
 }
 
 .ms-contacto-flag.is-llamada {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
-  color: #15803d;
+  background: var(--ms-contacto-llamada-bg);
+  border-color: var(--ms-contacto-llamada-border);
+  color: var(--ms-contacto-llamada-text);
 }
 
 .ms-table.hide-numeracion .ms-col-num {
@@ -486,9 +549,9 @@
 }
 
 .ms-chip.is-al-dia {
-  background: #eef2ff;
-  border-color: #c7d2fe;
-  color: #3730a3;
+  background: var(--ms-chip-al-dia-bg);
+  border-color: var(--ms-chip-al-dia-border);
+  color: var(--ms-chip-al-dia-text);
 }
 
 .ms-chip.is-retrasado {
@@ -510,15 +573,9 @@
 }
 
 .ms-chip.is-tratamiento {
-  background: #e0f2fe;
-  border-color: #7dd3fc;
-  color: #0c4a6e;
-}
-
-.dark-mode .ms-chip.is-tratamiento {
-  background: #1f3144;
-  border-color: #365a7f;
-  color: #bae6fd;
+  background: var(--ms-chip-tratamiento-bg);
+  border-color: var(--ms-chip-tratamiento-border);
+  color: var(--ms-chip-tratamiento-text);
 }
 
 .dark-mode .ms-toggle-numeracion,
@@ -527,22 +584,15 @@
   color: #cbd5e1;
 }
 
-.dark-mode .ms-contacto-flag {
-  background: rgba(15, 23, 42, 0.4);
-  border-color: rgba(148, 163, 184, 0.4);
-  color: #e2e8f0;
+.ms-container .ui-toolbar-btn.is-neutral {
+  background: var(--ms-btn-neutral-bg);
+  border: 1px solid var(--ms-btn-neutral-border);
+  color: var(--ms-btn-neutral-text);
 }
 
-.dark-mode .ms-contacto-flag.is-sms {
-  background: rgba(30, 64, 175, 0.24);
-  border-color: rgba(96, 165, 250, 0.55);
-  color: #bfdbfe;
-}
-
-.dark-mode .ms-contacto-flag.is-llamada {
-  background: rgba(21, 128, 61, 0.22);
-  border-color: rgba(74, 222, 128, 0.5);
-  color: #bbf7d0;
+.ms-container .ui-toolbar-btn.is-neutral:hover:not(:disabled) {
+  background: var(--ms-btn-neutral-hover);
+  filter: none;
 }
 
 .ms-pagination {

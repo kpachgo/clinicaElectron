@@ -311,6 +311,77 @@ body[data-theme="princess"] .cola-estado-select option {
 }
 
 /* =====================================================
+   MONITOR DE SEGUIMIENTO - PRINCESS
+===================================================== */
+body[data-theme="princess"] {
+  --ms-accent: #ff69b4;
+  --ms-surface: #ffe8f4;
+  --ms-border: #ff9cce;
+  --ms-text: #4a2340;
+  --ms-muted: #845872;
+  --ms-row-hover: rgba(214, 51, 154, 0.12);
+  --ms-soft-bg: #ffeef8;
+
+  --ms-btn-neutral-bg: #ff69b4;
+  --ms-btn-neutral-border: #ff69b4;
+  --ms-btn-neutral-text: #ffffff;
+  --ms-btn-neutral-hover: #cd0067;
+
+  --ms-kpi-status-neutral-bg: #ffdbee;
+  --ms-kpi-status-neutral-border: #ff9cce;
+  --ms-kpi-status-neutral-text: #845872;
+  --ms-kpi-status-active-bg: #ffcae3;
+  --ms-kpi-status-active-border: #ff9cce;
+  --ms-kpi-status-active-text: #7f2459;
+
+  --ms-filter-trat-bg: #ffe1ec;
+  --ms-filter-trat-border: #ff9cce;
+  --ms-filter-search-bg: #ffeef8;
+  --ms-filter-search-border: #ffc4df;
+
+  --ms-total-bg: #ffdff0;
+  --ms-total-border: #ff9cce;
+  --ms-total-text: #cd0067;
+
+  --ms-retrasado-bg: #fff1e8;
+  --ms-retrasado-border: #fdba74;
+  --ms-retrasado-text: #9a3412;
+
+  --ms-m2-bg: #fff7d6;
+  --ms-m2-border: #f6d879;
+  --ms-m2-text: #8a5612;
+
+  --ms-m3-bg: #ffe8ef;
+  --ms-m3-border: #ffb3c7;
+  --ms-m3-text: #a01357;
+
+  --ms-activo-bg: #e8f7ef;
+  --ms-activo-border: #9ed5b8;
+  --ms-activo-text: #1f6a45;
+
+  --ms-inactivo-bg: #f8ebf3;
+  --ms-inactivo-border: #eab6d1;
+  --ms-inactivo-text: #7a4f66;
+
+  --ms-chip-al-dia-bg: #f4e8ff;
+  --ms-chip-al-dia-border: #d8b4fe;
+  --ms-chip-al-dia-text: #6b21a8;
+  --ms-chip-tratamiento-bg: #ffdbee;
+  --ms-chip-tratamiento-border: #ff9cce;
+  --ms-chip-tratamiento-text: #631f50;
+
+  --ms-contacto-bg: #fff1f8;
+  --ms-contacto-border: #ffc4df;
+  --ms-contacto-text: #7a4f66;
+  --ms-contacto-sms-bg: #ffe6f3;
+  --ms-contacto-sms-border: #ff9cce;
+  --ms-contacto-sms-text: #a01357;
+  --ms-contacto-llamada-bg: #e8f7ef;
+  --ms-contacto-llamada-border: #9ed5b8;
+  --ms-contacto-llamada-text: #1f6a45;
+}
+
+/* =====================================================
    PACIENTE - PRINCESS
 ===================================================== */
 body[data-theme="princess"] .paciente-card,
@@ -582,6 +653,7 @@ body[data-theme="princess"] .tooth svg [stroke="#444"] {
 }
 
 body[data-theme="princess"] .paciente-container .toolbar button,
+body[data-theme="princess"] .paciente-container #btn-visual-odontograma,
 body[data-theme="princess"] .paciente-container #btn-guardarOdontograma,
 body[data-theme="princess"] .paciente-container #btn-cargarOdontograma,
 body[data-theme="princess"] .odonto-piece-close,
@@ -593,6 +665,7 @@ body[data-theme="princess"] .odonto-piece-treatments button {
 }
 
 body[data-theme="princess"] .paciente-container .toolbar button:hover,
+body[data-theme="princess"] .paciente-container #btn-visual-odontograma:hover,
 body[data-theme="princess"] .paciente-container #btn-guardarOdontograma:hover,
 body[data-theme="princess"] .paciente-container #btn-cargarOdontograma:hover,
 body[data-theme="princess"] .odonto-piece-close:hover,
@@ -603,6 +676,7 @@ body[data-theme="princess"] .odonto-piece-treatments button:hover {
 }
 
 body[data-theme="princess"] .paciente-container .toolbar button:focus-visible,
+body[data-theme="princess"] .paciente-container #btn-visual-odontograma:focus-visible,
 body[data-theme="princess"] .paciente-container #btn-guardarOdontograma:focus-visible,
 body[data-theme="princess"] .paciente-container #btn-cargarOdontograma:focus-visible,
 body[data-theme="princess"] .odonto-piece-close:focus-visible,
@@ -694,6 +768,157 @@ body[data-theme="princess"] #odonto-piece-modal .odonto-piece-treatments button 
 body[data-theme="princess"] #odonto-piece-modal .odonto-piece-treatments button:hover {
   background: #ffc5e2;
   border-color: #ff9cce;
+}
+
+/* Resumen de tratamientos + hoja de pendientes (sin tocar hoja blanca) */
+body[data-theme="princess"] .odonto-summary-panel {
+  background: #ffe4f2;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .odonto-summary-title {
+  color: #631f50;
+}
+
+body[data-theme="princess"] .odonto-summary-block {
+  background: #fff0f8;
+  border-color: #ffb9db;
+}
+
+body[data-theme="princess"] .odonto-summary-block-title {
+  color: #845872;
+}
+
+body[data-theme="princess"] .odonto-summary-item {
+  background: #ffeaf5;
+  border-color: #ffc4df;
+}
+
+body[data-theme="princess"] .odonto-summary-code {
+  background: #ffcae3;
+  color: #7f2459;
+}
+
+body[data-theme="princess"] .odonto-summary-detail {
+  color: #5a2d4b;
+}
+
+body[data-theme="princess"] .odonto-summary-empty {
+  color: #9a6b88;
+}
+
+body[data-theme="princess"] .paciente-card #odonto-summary-print-btn {
+  background: #ffd2e8;
+  border-color: #ff9cce;
+  color: #631f50;
+}
+
+body[data-theme="princess"] .paciente-card #odonto-summary-print-btn:hover {
+  background: #ffc5e2;
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] .odonto-print-modal-dialog {
+  background: #ffeaf5;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .odonto-print-modal-header {
+  background: #fff3fa;
+  border-color: #ffb9db;
+}
+
+body[data-theme="princess"] .odonto-print-modal-header h6 {
+  color: #631f50;
+}
+
+body[data-theme="princess"] #odonto-print-close-btn {
+  background: #ffd2e8;
+  border-color: #ff9cce;
+  color: #631f50;
+}
+
+body[data-theme="princess"] #odonto-print-close-btn:hover {
+  background: #ffc5e2;
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] .odonto-print-editor,
+body[data-theme="princess"] .odonto-print-preview-pane {
+  background: #fff3fa;
+  border-color: #ffb9db;
+}
+
+body[data-theme="princess"] .odonto-print-editor h6,
+body[data-theme="princess"] .odonto-print-preview-pane h6,
+body[data-theme="princess"] .odonto-print-promos h6,
+body[data-theme="princess"] #odonto-print-meta-count {
+  color: #845872;
+}
+
+body[data-theme="princess"] .odonto-print-editor-item {
+  background: #ffeef8;
+  border-color: #ffc4df;
+}
+
+body[data-theme="princess"] .odonto-print-editor-item.is-promo {
+  background: #ffe8f1;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .odonto-print-editor-input {
+  background: #ffdbee;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .odonto-print-editor-input::placeholder {
+  color: #a16b8e;
+}
+
+body[data-theme="princess"] #odonto-print-modal .odonto-print-editor-row button,
+body[data-theme="princess"] #odonto-print-modal .odonto-print-preset-btn,
+body[data-theme="princess"] #odonto-print-modal .odonto-print-editor-remove,
+body[data-theme="princess"] #odonto-print-modal .odonto-print-run-btn {
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] #odonto-print-modal .odonto-print-editor-row button,
+body[data-theme="princess"] #odonto-print-modal .odonto-print-preset-btn {
+  background: #ffd2e8;
+  color: #631f50;
+}
+
+body[data-theme="princess"] #odonto-print-modal .odonto-print-editor-row button:hover,
+body[data-theme="princess"] #odonto-print-modal .odonto-print-preset-btn:hover {
+  background: #ffc5e2;
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] #odonto-print-modal .odonto-print-editor-remove {
+  background: #ffe1ec;
+  color: #a01357;
+}
+
+body[data-theme="princess"] #odonto-print-modal .odonto-print-editor-remove:hover {
+  background: #ffd3e3;
+  border-color: #ff69b4;
+}
+
+body[data-theme="princess"] #odonto-print-modal .odonto-print-run-btn {
+  background: #ff69b4;
+  border-color: #ff69b4;
+  color: #ffffff;
+}
+
+body[data-theme="princess"] #odonto-print-modal .odonto-print-run-btn:hover {
+  background: #cd0067;
+  border-color: #cd0067;
+}
+
+body[data-theme="princess"] .odonto-print-preview {
+  background: #ffe8f4;
+  border-color: #ffb9db;
 }
 
 /* =====================================================
