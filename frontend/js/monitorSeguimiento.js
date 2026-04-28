@@ -11,6 +11,10 @@
     return String(value || "").trim().toLowerCase();
   }
 
+  function onlyDigits(value) {
+    return String(value || "").replace(/\D+/g, "");
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -104,6 +108,12 @@
 
   function getMonitorIcon(iconName) {
     const base = 'class="ms-contact-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"';
+    if (iconName === "magnifying-glass") {
+      return `<svg ${base}><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>`;
+    }
+    if (iconName === "calendar-days") {
+      return `<svg ${base}><rect x="3" y="4.75" width="18" height="16" rx="2.5"></rect><path d="M8 3v3.5M16 3v3.5M3 9.5h18"></path><path d="M8 13h3M13 13h3M8 16.5h3"></path></svg>`;
+    }
     if (iconName === "phone") {
       return `<svg ${base}><path d="M2.25 4.5a1.5 1.5 0 0 1 1.5-1.5h2.6a1.5 1.5 0 0 1 1.48 1.26l.41 2.46a1.5 1.5 0 0 1-.43 1.31l-1.2 1.2a13.5 13.5 0 0 0 6.16 6.16l1.2-1.2a1.5 1.5 0 0 1 1.31-.43l2.46.41A1.5 1.5 0 0 1 21 17.65v2.6a1.5 1.5 0 0 1-1.5 1.5h-.75C9.94 21.75 2.25 14.06 2.25 4.5v0Z"></path></svg>`;
     }
@@ -117,6 +127,110 @@
       throw new Error(json?.message || "Error de comunicacion con el servidor");
     }
     return json;
+  }
+
+  async function resolverPacienteIdDesdeMonitor(row) {
+    const idDirecto = Math.max(0, toInt(row?.idPaciente, 0));
+    if (idDirecto > 0) return idDirecto;
+
+    const nombreMonitor = String(row?.NombreP || "").trim();
+    if (!nombreMonitor) {
+      throw new Error("La fila no tiene nombre de paciente");
+    }
+
+    const json = await fetchJson(`/api/paciente/search?q=${encodeURIComponent(nombreMonitor)}`, {
+      cache: "no-store"
+    });
+    const data = Array.isArray(json?.data) ? json.data : [];
+
+    const exactos = data.filter((p) => {
+      const nombrePaciente = String(p?.NombreP || "").trim();
+      return normalizeText(nombrePaciente) === normalizeText(nombreMonitor);
+    });
+
+    if (!exactos.length) {
+      throw new Error(`No existe un paciente registrado con nombre exacto: "${nombreMonitor}"`);
+    }
+
+    if (exactos.length === 1) {
+      const id = Number(exactos[0]?.idPaciente || 0);
+      if (!id) throw new Error("No se pudo resolver el paciente");
+      return id;
+    }
+
+    const contactoMonitor = onlyDigits(row?.telefonoP || "");
+    if (contactoMonitor) {
+      const filtradosTelefono = exactos.filter((p) => {
+        const tel = onlyDigits(p?.telefonoP || p?.TelefonoP || "");
+        return tel && tel === contactoMonitor;
+      });
+      if (filtradosTelefono.length === 1) {
+        const id = Number(filtradosTelefono[0]?.idPaciente || 0);
+        if (!id) throw new Error("No se pudo resolver el paciente");
+        return id;
+      }
+    }
+
+    throw new Error("Hay multiples pacientes con ese nombre. Abra Paciente y seleccionelo manualmente.");
+  }
+
+  async function abrirPacienteDesdeMonitor(row) {
+    const idPaciente = await resolverPacienteIdDesdeMonitor(row);
+    if (!idPaciente) {
+      throw new Error("No se pudo identificar el paciente");
+    }
+
+    const pacienteApi = window.__pacienteViewAPI;
+    if (pacienteApi && typeof pacienteApi.openById === "function") {
+      const ok = await pacienteApi.openById(idPaciente);
+      if (ok === false) {
+        throw new Error("No se pudo abrir la vista Paciente");
+      }
+      return;
+    }
+
+    window.__pacienteAbrirPendienteId = idPaciente;
+    if (typeof window.loadView === "function") {
+      await Promise.resolve(window.loadView("Paciente"));
+      return;
+    }
+
+    throw new Error("No se pudo abrir la vista Paciente");
+  }
+
+  async function abrirBusquedaManualPacienteDesdeMonitor(row, message) {
+    const pacienteApi = window.__pacienteViewAPI;
+    if (!pacienteApi || typeof pacienteApi.openManualSearch !== "function") {
+      return false;
+    }
+
+    const ok = await pacienteApi.openManualSearch({
+      query: String(row?.NombreP || ""),
+      contacto: String(row?.telefonoP || ""),
+      message: String(message || "")
+    });
+    return !!ok;
+  }
+
+  function notifyMonitor(message, options = {}) {
+    if (typeof window.showSystemMessage === "function") {
+      window.showSystemMessage(message, options);
+      return;
+    }
+    alert(message);
+  }
+
+  function buildProximaCitaText(row, cita) {
+    const nombre = String(row?.NombreP || "Paciente").trim();
+    if (!cita) {
+      return `${nombre}: no tiene una proxima cita agendada.`;
+    }
+
+    const fecha = formatDateShort(cita.fechaAP);
+    const hora = String(cita.horaAP || cita.hora24 || "-").trim() || "-";
+    const estado = String(cita.estadoAP || "-").trim() || "-";
+    const contacto = String(cita.contactoAP || row?.telefonoP || "-").trim() || "-";
+    return `${nombre}: proxima cita ${fecha} ${hora} | Estado: ${estado} | Contacto: ${contacto}`;
   }
 
   function buildMonitorQuery(state) {
@@ -261,6 +375,7 @@
                 <th class="ms-col-contacto">Contactado</th>
                 <th class="ms-col-num">#</th>
                 <th>Paciente</th>
+                <th class="ms-col-accion">Accion</th>
                 <th>Telefono</th>
                 <th>Ultima visita</th>
                 <th style="text-align:center; width:140px;">Meses ausencia</th>
@@ -335,6 +450,7 @@
     let fetchSeq = 0;
     let fetchController = null;
     const savingContactoSet = new Set();
+    const proximaCitaCache = new Map();
     const listeners = [];
 
     function bind(el, eventName, handler, options) {
@@ -438,14 +554,14 @@
 
       if (state.loading) {
         refs.tbody.innerHTML = `
-          <tr><td colspan="9" class="ms-empty">Cargando monitor de seguimiento...</td></tr>
+          <tr><td colspan="10" class="ms-empty">Cargando monitor de seguimiento...</td></tr>
         `;
         return;
       }
 
       if (state.errorText) {
         refs.tbody.innerHTML = `
-          <tr><td colspan="9" class="ms-empty">${escapeHtml(state.errorText)}</td></tr>
+          <tr><td colspan="10" class="ms-empty">${escapeHtml(state.errorText)}</td></tr>
         `;
         return;
       }
@@ -453,7 +569,7 @@
       const pageRows = state.rows;
       if (!pageRows.length) {
         refs.tbody.innerHTML = `
-          <tr><td colspan="9" class="ms-empty">No hay pacientes para el filtro actual</td></tr>
+          <tr><td colspan="10" class="ms-empty">No hay pacientes para el filtro actual</td></tr>
         `;
         return;
       }
@@ -501,6 +617,32 @@
             </td>
             <td class="ms-col-num">${rowNumber}</td>
             <td>${escapeHtml(row.NombreP || "-")}</td>
+            <td class="ms-col-accion">
+              <div class="ms-row-actions">
+                <button
+                  type="button"
+                  class="ms-open-paciente-btn"
+                  data-open-row-index="${index}"
+                  data-id-paciente="${row.idPaciente}"
+                  data-nombre="${escapeHtml(row.NombreP || "")}"
+                  data-telefono="${escapeHtml(row.telefonoP || "")}"
+                  title="Abrir paciente"
+                  aria-label="Abrir paciente"
+                >
+                  ${getMonitorIcon("magnifying-glass")}
+                </button>
+                <button
+                  type="button"
+                  class="ms-open-paciente-btn ms-next-cita-btn"
+                  data-open-row-index="${index}"
+                  data-id-paciente="${row.idPaciente}"
+                  title="Ver proxima cita"
+                  aria-label="Ver proxima cita"
+                >
+                  ${getMonitorIcon("calendar-days")}
+                </button>
+              </div>
+            </td>
             <td>${escapeHtml(row.telefonoP || "-")}</td>
             <td>${escapeHtml(formatDateShort(row.ultimaVisitaP))}</td>
             <td style="text-align:center;">${row.mesesAusencia}</td>
@@ -542,6 +684,16 @@
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {})
+      });
+    }
+
+    async function apiGetProximaCita(idPaciente) {
+      const id = Math.max(0, toInt(idPaciente, 0));
+      if (!id) {
+        throw new Error("Paciente invalido para consultar proxima cita");
+      }
+      return fetchJson(`/api/paciente/monitor-seguimiento/proxima-cita?idPaciente=${id}`, {
+        cache: "no-store"
       });
     }
 
@@ -712,6 +864,94 @@
       if (!isViewActive()) return;
       state.showLlamada = !!e?.target?.checked;
       applyContactColumnVisibility();
+    });
+
+    bind(refs.tbody, "click", async (e) => {
+      if (!isViewActive()) return;
+      const btn = e?.target?.closest?.(".ms-open-paciente-btn");
+      if (!btn) return;
+      if (btn.classList.contains("ms-next-cita-btn")) return;
+
+      e.preventDefault();
+      if (btn.disabled) return;
+
+      const rowIndex = toInt(btn.dataset.openRowIndex, -1);
+      const rowFromState = rowIndex >= 0 ? state.rows[rowIndex] : null;
+      const row = rowFromState || {
+        idPaciente: Math.max(0, toInt(btn.dataset.idPaciente, 0)),
+        NombreP: String(btn.dataset.nombre || "").trim(),
+        telefonoP: String(btn.dataset.telefono || "").trim()
+      };
+
+      btn.disabled = true;
+      try {
+        await abrirPacienteDesdeMonitor(row);
+      } catch (err) {
+        const message = String(err?.message || "No se pudo abrir el paciente");
+        const okManual = await abrirBusquedaManualPacienteDesdeMonitor(row, message);
+        if (!okManual) {
+          alert(message);
+        }
+      } finally {
+        if (isViewActive() && btn.isConnected) {
+          btn.disabled = false;
+        }
+      }
+    });
+
+    bind(refs.tbody, "click", async (e) => {
+      if (!isViewActive()) return;
+      const btn = e?.target?.closest?.(".ms-next-cita-btn");
+      if (!btn) return;
+
+      e.preventDefault();
+      if (btn.disabled) return;
+
+      const rowIndex = toInt(btn.dataset.openRowIndex, -1);
+      const rowFromState = rowIndex >= 0 ? state.rows[rowIndex] : null;
+      const row = rowFromState || {
+        idPaciente: Math.max(0, toInt(btn.dataset.idPaciente, 0)),
+        NombreP: "",
+        telefonoP: ""
+      };
+
+      if (!row.idPaciente) {
+        notifyMonitor("No se pudo identificar el paciente para consultar proxima cita.", {
+          title: "Monitor de Seguimiento",
+          type: "warning"
+        });
+        return;
+      }
+
+      const cacheKey = String(row.idPaciente);
+      if (proximaCitaCache.has(cacheKey)) {
+        const cached = proximaCitaCache.get(cacheKey) || null;
+        notifyMonitor(buildProximaCitaText(row, cached), {
+          title: "Proxima cita",
+          type: cached ? "info" : "warning"
+        });
+        return;
+      }
+
+      btn.disabled = true;
+      try {
+        const response = await apiGetProximaCita(row.idPaciente);
+        const cita = response?.data || null;
+        proximaCitaCache.set(cacheKey, cita);
+        notifyMonitor(buildProximaCitaText(row, cita), {
+          title: "Proxima cita",
+          type: cita ? "info" : "warning"
+        });
+      } catch (err) {
+        notifyMonitor(err?.message || "No se pudo consultar la proxima cita", {
+          title: "Monitor de Seguimiento",
+          type: "error"
+        });
+      } finally {
+        if (isViewActive() && btn.isConnected) {
+          btn.disabled = false;
+        }
+      }
     });
 
     bind(refs.tbody, "change", async (e) => {

@@ -118,6 +118,17 @@ function normalizeMonitorQuery(rawValue) {
   return String(rawValue || "").trim();
 }
 
+function normalizeDigitsOnly(value) {
+  return String(value || "").replace(/\D+/g, "");
+}
+
+function getCurrentLocalHHMM() {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
 function normalizeBitValue(rawValue, fallback = "__INVALID__") {
   if (rawValue === undefined || rawValue === null || rawValue === "") return fallback;
   if (rawValue === true || rawValue === 1 || rawValue === "1") return 1;
@@ -463,6 +474,117 @@ const monitorSeguimiento = async (req, res) => {
     });
   } catch (err) {
     return handlePacienteError(res, err, "Error al listar monitor de seguimiento");
+  }
+};
+
+const monitorSeguimientoProximaCita = async (req, res) => {
+  try {
+    const idPaciente = Number(req.query?.idPaciente || 0);
+    if (!Number.isInteger(idPaciente) || idPaciente <= 0) {
+      return badRequest(res, "idPaciente invalido");
+    }
+
+    const [pacienteRows] = await queryReadWithRetry(
+      `SELECT idPaciente, NombreP, telefonoP
+       FROM paciente
+       WHERE idPaciente = ?
+       LIMIT 1`,
+      [idPaciente]
+    );
+
+    const paciente = Array.isArray(pacienteRows) ? pacienteRows[0] : null;
+    if (!paciente) {
+      return notFound(res, "Paciente no encontrado");
+    }
+
+    const nombrePaciente = String(paciente.NombreP || "").trim();
+    if (!nombrePaciente) {
+      return res.json({ ok: true, data: null });
+    }
+
+    const telefonoPacienteDig = normalizeDigitsOnly(paciente.telefonoP);
+    const hoyIso = getTodayLocalISO();
+    const horaActual = getCurrentLocalHHMM();
+    const hora24Expr = `
+      COALESCE(
+        DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%l:%i %p'), '%H:%i'),
+        DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%l:%i%p'), '%H:%i'),
+        DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%H:%i'), '%H:%i'),
+        DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%H:%i:%s'), '%H:%i')
+      )
+    `;
+    const contactoDigExpr = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(a.contactoAP, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', ''), '.', '')";
+
+    const [agendaRows] = await queryReadWithRetry(
+      `SELECT
+         a.idAgendaAP,
+         DATE_FORMAT(a.fechaAP, '%Y-%m-%d') AS fechaAP,
+         TRIM(IFNULL(a.horaAP, '')) AS horaAP,
+         ${hora24Expr} AS hora24,
+         TRIM(IFNULL(a.estadoAP, '')) AS estadoAP,
+         TRIM(IFNULL(a.nombreAP, '')) AS nombreAP,
+         TRIM(IFNULL(a.contactoAP, '')) AS contactoAP,
+         CASE
+           WHEN ? <> '' AND ${contactoDigExpr} = ? THEN 1
+           ELSE 0
+         END AS telefonoMatch
+       FROM agendapersona a
+       WHERE LOWER(TRIM(IFNULL(a.nombreAP, ''))) = LOWER(TRIM(?))
+         AND LOWER(TRIM(IFNULL(a.estadoAP, ''))) NOT IN ('cancelado', 'cancelada')
+         AND (
+           a.fechaAP > ?
+           OR (
+             a.fechaAP = ?
+             AND (
+               ${hora24Expr} IS NULL
+               OR ${hora24Expr} >= ?
+             )
+           )
+         )
+       ORDER BY
+         telefonoMatch DESC,
+         a.fechaAP ASC,
+         (${hora24Expr} IS NULL) ASC,
+         ${hora24Expr} ASC,
+         a.idAgendaAP ASC
+       LIMIT 1`,
+      [
+        telefonoPacienteDig,
+        telefonoPacienteDig,
+        nombrePaciente,
+        hoyIso,
+        hoyIso,
+        horaActual
+      ]
+    );
+
+    const agenda = Array.isArray(agendaRows) && agendaRows.length > 0
+      ? agendaRows[0]
+      : null;
+
+    if (!agenda) {
+      return res.json({
+        ok: true,
+        data: null
+      });
+    }
+
+    const telefonoMatch = Number(agenda.telefonoMatch || 0) === 1;
+    return res.json({
+      ok: true,
+      data: {
+        idAgendaAP: Number(agenda.idAgendaAP || 0),
+        fechaAP: String(agenda.fechaAP || "").trim(),
+        horaAP: String(agenda.horaAP || "").trim(),
+        hora24: String(agenda.hora24 || "").trim() || null,
+        estadoAP: String(agenda.estadoAP || "").trim(),
+        nombreAP: String(agenda.nombreAP || "").trim(),
+        contactoAP: String(agenda.contactoAP || "").trim(),
+        matchBy: telefonoMatch ? "nombre_y_telefono" : "nombre"
+      }
+    });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al consultar proxima cita de monitor");
   }
 };
 
@@ -1017,6 +1139,7 @@ module.exports = {
   buscar,
   existePaciente,
   monitorSeguimiento,
+  monitorSeguimientoProximaCita,
   guardarMonitorContacto,
   obtenerPorId,
   guardarFirma,

@@ -422,7 +422,7 @@
 
 .ms-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1290px;
 }
 
 .ms-col-num {
@@ -436,6 +436,50 @@
   width: 96px;
   text-align: center;
   white-space: nowrap;
+}
+
+.ms-col-accion {
+  width: 172px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ms-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ms-open-paciente-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid var(--ms-btn-neutral-border);
+  background: var(--ms-btn-neutral-bg);
+  color: var(--ms-btn-neutral-text);
+  cursor: pointer;
+  transition: filter 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.ms-open-paciente-btn:hover:not(:disabled) {
+  background: var(--ms-btn-neutral-hover);
+  filter: none;
+}
+
+.ms-open-paciente-btn .ms-contact-icon-svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+}
+
+.ms-open-paciente-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .ms-contacto-flags {
