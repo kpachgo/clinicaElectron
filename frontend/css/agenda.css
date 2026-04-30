@@ -95,6 +95,10 @@ body.agenda-ina-open {
   overflow: hidden;
 }
 
+body.agenda-day-summary-open {
+  overflow: hidden;
+}
+
 .agenda-btn-inasistencia {
   background: #92400e;
   width: 34px;
@@ -119,6 +123,32 @@ body.agenda-ina-open {
 
 .agenda-btn-inasistencia:hover {
   background: #78350f;
+}
+
+.agenda-btn-day-summary {
+  background: #0f766e;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agenda-btn-day-summary .agenda-action-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.agenda-btn-day-summary:hover {
+  background: #0f5f59;
 }
 
 .agenda-ina-modal {
@@ -269,6 +299,272 @@ body.agenda-ina-open {
 
 .agenda-ina-apply:hover {
   background: #991b1b;
+}
+
+.agenda-day-summary-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: block;
+}
+
+.agenda-day-summary-modal[hidden] {
+  display: none !important;
+}
+
+.agenda-day-summary-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.agenda-day-summary-dialog {
+  position: relative;
+  width: min(900px, calc(100vw - 32px));
+  max-height: calc(100vh - 56px);
+  margin: 28px auto;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #d9e2ec;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.26);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.agenda-day-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.agenda-day-summary-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-main, #0f172a);
+}
+
+.agenda-day-summary-close-btn {
+  background: #334155;
+}
+
+.agenda-day-summary-close-btn:hover {
+  background: #1e293b;
+}
+
+.agenda-day-summary-meta {
+  padding: 8px 16px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  color: var(--text-muted, #64748b);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.agenda-day-summary-kpis-wrap {
+  padding: 10px 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agenda-day-summary-kpi {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.agenda-day-summary-kpi.is-muted {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+}
+
+.agenda-day-summary-kpi span {
+  display: block;
+  font-size: 12px;
+  color: #475569;
+}
+
+.agenda-day-summary-kpi strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 20px;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.agenda-day-summary-estados {
+  padding: 0 16px 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.agenda-day-summary-estado {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.agenda-day-summary-estado span {
+  display: block;
+  font-size: 12px;
+  color: #475569;
+}
+
+.agenda-day-summary-estado strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 20px;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.agenda-day-summary-estado.is-highlight.is-confirmado {
+  border-color: #86efac;
+  background: #ecfdf5;
+}
+
+.agenda-day-summary-estado.is-highlight.is-cancelado {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.agenda-day-summary-estado.is-highlight.is-reprogramado {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.agenda-day-summary-empty {
+  margin: 0;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  color: #64748b;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.agenda-day-summary-view-toggle {
+  margin: 0 16px 12px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.agenda-day-summary-view-btn {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.agenda-day-summary-view-btn:hover {
+  border-color: #93c5fd;
+  color: #1e3a8a;
+}
+
+.agenda-day-summary-view-btn.is-active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.agenda-day-summary-treatment-wrap {
+  margin: 0 16px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.agenda-day-summary-treatment-table {
+  width: 100%;
+  min-width: 360px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.agenda-day-summary-treatment-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  color: #334155;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.agenda-day-summary-treatment-table tbody td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #1f2937;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.agenda-day-summary-treatment-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.agenda-day-summary-hours-wrap {
+  margin: 0 16px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.agenda-day-summary-hours-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.agenda-day-summary-hours-table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8fafc;
+  color: #334155;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.agenda-day-summary-hours-table tbody td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #1f2937;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.agenda-day-summary-hours-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.agenda-day-summary-hours-table tbody tr.is-no-hour td {
+  background: #fff7ed;
+  color: #9a3412;
 }
 
 .agenda-ina-toolbar .btn-cobrar:disabled,
@@ -1017,7 +1313,17 @@ body.agenda-ina-open {
     margin: 9px auto;
   }
 
+  .agenda-day-summary-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 18px);
+    margin: 9px auto;
+  }
+
   .agenda-ina-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .agenda-day-summary-kpis-wrap {
     grid-template-columns: 1fr;
   }
 
@@ -1029,9 +1335,17 @@ body.agenda-ina-open {
   .agenda-ina-toolbar .btn-cobrar {
     width: 100%;
   }
+
+  .agenda-day-summary-estados {
+    grid-template-columns: 1fr;
+  }
 }
 
 .dark-mode .agenda-ina-backdrop {
+  background: rgba(2, 6, 23, 0.72);
+}
+
+.dark-mode .agenda-day-summary-backdrop {
   background: rgba(2, 6, 23, 0.72);
 }
 
@@ -1041,7 +1355,17 @@ body.agenda-ina-open {
   box-shadow: 0 24px 50px rgba(2, 6, 23, 0.7);
 }
 
+.dark-mode .agenda-day-summary-dialog {
+  background: #0f172a;
+  border-color: #334155;
+  box-shadow: 0 24px 50px rgba(2, 6, 23, 0.7);
+}
+
 .dark-mode .agenda-ina-header {
+  border-bottom-color: #334155;
+}
+
+.dark-mode .agenda-day-summary-header {
   border-bottom-color: #334155;
 }
 
@@ -1049,11 +1373,24 @@ body.agenda-ina-open {
   color: #e2e8f0;
 }
 
+.dark-mode .agenda-day-summary-header h3 {
+  color: #e2e8f0;
+}
+
 .dark-mode .agenda-ina-meta {
   color: #94a3b8;
 }
 
+.dark-mode .agenda-day-summary-meta {
+  color: #94a3b8;
+}
+
 .dark-mode .agenda-ina-kpi {
+  border-color: #334155;
+  background: #1e293b;
+}
+
+.dark-mode .agenda-day-summary-kpi {
   border-color: #334155;
   background: #1e293b;
 }
@@ -1063,11 +1400,24 @@ body.agenda-ina-open {
   background: #111827;
 }
 
+.dark-mode .agenda-day-summary-kpi.is-muted {
+  border-color: #475569;
+  background: #111827;
+}
+
 .dark-mode .agenda-ina-kpi span {
   color: #94a3b8;
 }
 
+.dark-mode .agenda-day-summary-kpi span {
+  color: #94a3b8;
+}
+
 .dark-mode .agenda-ina-kpi strong {
+  color: #f8fafc;
+}
+
+.dark-mode .agenda-day-summary-kpi strong {
   color: #f8fafc;
 }
 
@@ -1096,7 +1446,29 @@ body.agenda-ina-open {
   background: #0f172a;
 }
 
+.dark-mode .agenda-day-summary-hours-wrap {
+  border-color: #334155;
+  background: #0f172a;
+}
+
+.dark-mode .agenda-day-summary-treatment-wrap {
+  border-color: #334155;
+  background: #0f172a;
+}
+
 .dark-mode .agenda-ina-table thead th {
+  background: #1e293b;
+  color: #cbd5e1;
+  border-bottom-color: #334155;
+}
+
+.dark-mode .agenda-day-summary-treatment-table thead th {
+  background: #1e293b;
+  color: #cbd5e1;
+  border-bottom-color: #334155;
+}
+
+.dark-mode .agenda-day-summary-hours-table thead th {
   background: #1e293b;
   color: #cbd5e1;
   border-bottom-color: #334155;
@@ -1105,4 +1477,70 @@ body.agenda-ina-open {
 .dark-mode .agenda-ina-table tbody td {
   color: #e2e8f0;
   border-bottom-color: #1f2937;
+}
+
+.dark-mode .agenda-day-summary-hours-table tbody td {
+  color: #e2e8f0;
+  border-bottom-color: #1f2937;
+}
+
+.dark-mode .agenda-day-summary-treatment-table tbody td {
+  color: #e2e8f0;
+  border-bottom-color: #1f2937;
+}
+
+.dark-mode .agenda-day-summary-estado {
+  border-color: #334155;
+  background: #111827;
+}
+
+.dark-mode .agenda-day-summary-estado span {
+  color: #94a3b8;
+}
+
+.dark-mode .agenda-day-summary-estado strong {
+  color: #f8fafc;
+}
+
+.dark-mode .agenda-day-summary-view-btn {
+  border-color: #334155;
+  background: #111827;
+  color: #94a3b8;
+}
+
+.dark-mode .agenda-day-summary-view-btn:hover {
+  border-color: #3b82f6;
+  color: #bfdbfe;
+}
+
+.dark-mode .agenda-day-summary-view-btn.is-active {
+  border-color: #3b82f6;
+  background: #1d4f91;
+  color: #dbeafe;
+}
+
+.dark-mode .agenda-day-summary-estado.is-highlight.is-confirmado {
+  border-color: #166534;
+  background: #052e20;
+}
+
+.dark-mode .agenda-day-summary-estado.is-highlight.is-cancelado {
+  border-color: #7f1d1d;
+  background: #3f1212;
+}
+
+.dark-mode .agenda-day-summary-estado.is-highlight.is-reprogramado {
+  border-color: #1d4ed8;
+  background: #152b52;
+}
+
+.dark-mode .agenda-day-summary-empty {
+  border-color: #334155;
+  background: #0f172a;
+  color: #94a3b8;
+}
+
+.dark-mode .agenda-day-summary-hours-table tbody tr.is-no-hour td {
+  background: #3b2210;
+  color: #fed7aa;
 }

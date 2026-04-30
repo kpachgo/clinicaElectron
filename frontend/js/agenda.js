@@ -176,6 +176,8 @@
     switch (iconName) {
       case "queue-list":
         return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path><path d="M3.75 6.75h.008v.008H3.75V6.75Zm0 5.25h.008v.008H3.75V12Zm0 5.25h.008v.008H3.75v-.008Z"></path></svg>`;
+      case "chart-bar":
+        return `<svg ${base}><path d="M3.75 20.25h16.5"></path><path d="M7.5 18v-6.75m4.5 6.75V6.75m4.5 11.25v-4.5"></path></svg>`;
       case "document-duplicate":
         return `<svg ${base}><path d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125H6.375a1.125 1.125 0 0 1-1.125-1.125V8.25c0-.621.504-1.125 1.125-1.125H9.75"></path><path d="M15 3.75H9.75a1.5 1.5 0 0 0-1.5 1.5v8.25c0 .828.672 1.5 1.5 1.5H15a1.5 1.5 0 0 0 1.5-1.5V5.25A1.5 1.5 0 0 0 15 3.75Z"></path></svg>`;
       case "currency-dollar":
@@ -596,6 +598,15 @@
             >
               ${getAgendaHeroIcon("queue-list")}
             </button>
+            <button
+              id="agenda-day-summary-open"
+              class="btn-cobrar agenda-btn-day-summary"
+              type="button"
+              title="Resumen del dia"
+              aria-label="Abrir resumen del dia"
+            >
+              ${getAgendaHeroIcon("chart-bar")}
+            </button>
 
             <span id="agenda-reprograma-status" class="agenda-reprograma-status" aria-live="polite"></span>
 
@@ -666,6 +677,77 @@
                   </tr>
                 </thead>
                 <tbody id="agenda-ina-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="agenda-day-summary-modal" class="agenda-day-summary-modal" hidden>
+          <div class="agenda-day-summary-backdrop" data-day-summary-close="1"></div>
+          <div class="agenda-day-summary-dialog" role="dialog" aria-modal="true" aria-labelledby="agenda-day-summary-title">
+            <div class="agenda-day-summary-header">
+              <h3 id="agenda-day-summary-title">Resumen del dia</h3>
+              <button id="agenda-day-summary-close" class="btn-cobrar agenda-day-summary-close-btn" type="button">Cerrar</button>
+            </div>
+            <div class="agenda-day-summary-meta">
+              <span id="agenda-day-summary-fecha">Fecha: -</span>
+              <span id="agenda-day-summary-scope">Base: filtros activos</span>
+            </div>
+
+            <div class="agenda-day-summary-kpis-wrap">
+              <article class="agenda-day-summary-kpi">
+                <span>Total tratamientos</span>
+                <strong id="agenda-day-summary-total">0</strong>
+              </article>
+              <article class="agenda-day-summary-kpi is-muted">
+                <span>Franja mas cargada</span>
+                <strong id="agenda-day-summary-top-hour">-</strong>
+              </article>
+            </div>
+
+            <div id="agenda-day-summary-estados" class="agenda-day-summary-estados"></div>
+
+            <div class="agenda-day-summary-view-toggle" role="group" aria-label="Vista del resumen">
+              <button
+                id="agenda-day-summary-view-treatment"
+                type="button"
+                class="agenda-day-summary-view-btn"
+                aria-pressed="false"
+              >
+                Por tratamiento
+              </button>
+              <button
+                id="agenda-day-summary-view-hour"
+                type="button"
+                class="agenda-day-summary-view-btn is-active"
+                aria-pressed="true"
+              >
+                Por hora
+              </button>
+            </div>
+
+            <div class="agenda-day-summary-treatment-wrap">
+              <table class="agenda-day-summary-treatment-table">
+                <thead>
+                  <tr>
+                    <th>Tratamiento</th>
+                    <th style="width: 120px; text-align: right;">Pacientes</th>
+                  </tr>
+                </thead>
+                <tbody id="agenda-day-summary-treatment-body"></tbody>
+              </table>
+            </div>
+
+            <div class="agenda-day-summary-hours-wrap">
+              <table class="agenda-day-summary-hours-table">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th style="width: 120px; text-align: right;">Confirmados</th>
+                    <th>Nombre del tratamiento</th>
+                  </tr>
+                </thead>
+                <tbody id="agenda-day-summary-hours-body"></tbody>
               </table>
             </div>
           </div>
@@ -764,6 +846,7 @@
     let pasteCitaBtn = container.querySelector("#agenda-paste-cita");
     let clearReprogramaBtn = container.querySelector("#agenda-clear-reprograma");
     const reviewInasistenciaBtn = container.querySelector("#agenda-review-ina");
+    const daySummaryBtn = container.querySelector("#agenda-day-summary-open");
     const reprogramaStatusEl = container.querySelector("#agenda-reprograma-status");
     const inasistenciaModal = container.querySelector("#agenda-ina-modal");
     const inasistenciaCloseBtn = container.querySelector("#agenda-ina-close");
@@ -776,6 +859,19 @@
     const inasistenciaClearAllBtn = container.querySelector("#agenda-ina-clear-all");
     const inasistenciaApplyBtn = container.querySelector("#agenda-ina-apply");
     const inasistenciaTbody = container.querySelector("#agenda-ina-tbody");
+    const daySummaryModal = container.querySelector("#agenda-day-summary-modal");
+    const daySummaryCloseBtn = container.querySelector("#agenda-day-summary-close");
+    const daySummaryFechaEl = container.querySelector("#agenda-day-summary-fecha");
+    const daySummaryScopeEl = container.querySelector("#agenda-day-summary-scope");
+    const daySummaryTotalEl = container.querySelector("#agenda-day-summary-total");
+    const daySummaryTopHourEl = container.querySelector("#agenda-day-summary-top-hour");
+    const daySummaryEstadosEl = container.querySelector("#agenda-day-summary-estados");
+    const daySummaryViewTreatmentBtn = container.querySelector("#agenda-day-summary-view-treatment");
+    const daySummaryViewHourBtn = container.querySelector("#agenda-day-summary-view-hour");
+    const daySummaryTreatmentWrap = container.querySelector(".agenda-day-summary-treatment-wrap");
+    const daySummaryHoursWrap = container.querySelector(".agenda-day-summary-hours-wrap");
+    const daySummaryTreatmentBody = container.querySelector("#agenda-day-summary-treatment-body");
+    const daySummaryHoursBody = container.querySelector("#agenda-day-summary-hours-body");
     let agendaReprogramaBuffer = null;
     let agendaModalDesdeReprogramacion = false;
     let agendaMesResultados = null;
@@ -786,6 +882,8 @@
     let inasistenciaApplying = false;
     let inasistenciaFetchSeq = 0;
     let inasistenciaFetchController = null;
+    let daySummaryActiveView = "hour";
+    const RESUMEN_ESTADOS_HIGHLIGHT = new Set(["confirmado", "cancelado", "reprogramado"]);
     const agendaContactoSaveInFlight = new Set();
     const agendaUiStateKey = `ui_state_agenda_${getUiStateUserId()}`;
     const agendaUiState = {
@@ -956,6 +1054,245 @@
       }
       return raw;
     }
+    function isDaySummaryModalOpen() {
+      return !!daySummaryModal && daySummaryModal.hidden === false;
+    }
+    function closeDaySummaryModal() {
+      if (!daySummaryModal) return;
+      daySummaryModal.hidden = true;
+      document.body.classList.remove("agenda-day-summary-open");
+    }
+    function setDaySummaryActiveView(view) {
+      const nextView = view === "hour" ? "hour" : "treatment";
+      daySummaryActiveView = nextView;
+      if (daySummaryViewTreatmentBtn) {
+        const active = nextView === "treatment";
+        daySummaryViewTreatmentBtn.classList.toggle("is-active", active);
+        daySummaryViewTreatmentBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      if (daySummaryViewHourBtn) {
+        const active = nextView === "hour";
+        daySummaryViewHourBtn.classList.toggle("is-active", active);
+        daySummaryViewHourBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      if (daySummaryTreatmentWrap) {
+        daySummaryTreatmentWrap.hidden = nextView !== "treatment";
+      }
+      if (daySummaryHoursWrap) {
+        daySummaryHoursWrap.hidden = nextView !== "hour";
+      }
+    }
+    function buildAgendaDaySummaryBase() {
+      return filtrarYOrdenar(agendaData, true);
+    }
+    function splitTratamientosComentario(value) {
+      const raw = String(value || "").trim();
+      if (!raw) return ["Sin especificar"];
+      const parts = raw
+        .split(/[,\n;|]+/g)
+        .map((token) => String(token || "").replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+      return parts.length ? parts : [raw];
+    }
+    function computeAgendaDaySummary(rows) {
+      const safeRows = Array.isArray(rows) ? rows : [];
+      const byEstado = new Map();
+      const byHour = new Map();
+      const byTratamiento = new Map();
+      let sinHora = 0;
+      const sinHoraTratamientos = new Set();
+
+      safeRows.forEach((row) => {
+        const estadoLabel = String(row?.estado || "Pendiente").trim() || "Pendiente";
+        const estadoKey = normalizarTexto(estadoLabel) || "pendiente";
+        const estadoItem = byEstado.get(estadoKey) || {
+          key: estadoKey,
+          label: estadoLabel,
+          total: 0,
+          highlight: RESUMEN_ESTADOS_HIGHLIGHT.has(estadoKey)
+        };
+        estadoItem.total += 1;
+        byEstado.set(estadoKey, estadoItem);
+
+        const tratamientos = splitTratamientosComentario(row?.comentario);
+        const tratamiento = tratamientos.join(", ");
+        const tratamientosUnicosFila = new Set(
+          tratamientos.map((name) => normalizarTextoCruce(name)).filter(Boolean)
+        );
+        tratamientosUnicosFila.forEach((keyTratamiento) => {
+          const current = byTratamiento.get(keyTratamiento) || {
+            key: keyTratamiento,
+            label: tratamientos.find((name) => normalizarTextoCruce(name) === keyTratamiento) || "Sin especificar",
+            total: 0
+          };
+          current.total += 1;
+          byTratamiento.set(keyTratamiento, current);
+        });
+        const hm = String(row?.hora || "").trim();
+        const isConfirmado = estadoKey === "confirmado";
+        if (!isConfirmado) return;
+        const m = hm.match(/^(\d{1,2}):(\d{2})$/);
+        if (!m) {
+          sinHora += 1;
+          sinHoraTratamientos.add(tratamiento);
+          return;
+        }
+
+        const hh = Number(m[1]);
+        const mm = Number(m[2]);
+        if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+          sinHora += 1;
+          sinHoraTratamientos.add(tratamiento);
+          return;
+        }
+
+        const hourLabel = `${String(hh).padStart(2, "0")}:00`;
+        const bucket = byHour.get(hourLabel) || {
+          total: 0,
+          tratamientos: new Set()
+        };
+        bucket.total += 1;
+        bucket.tratamientos.add(tratamiento);
+        byHour.set(hourLabel, bucket);
+      });
+
+      const estados = Array.from(byEstado.values()).sort((a, b) => {
+        const diff = Number(b.total || 0) - Number(a.total || 0);
+        if (diff !== 0) return diff;
+        return String(a.label || "").localeCompare(String(b.label || ""), "es", { sensitivity: "base" });
+      });
+      const tratamientos = Array.from(byTratamiento.values()).sort((a, b) => {
+        const diff = Number(b.total || 0) - Number(a.total || 0);
+        if (diff !== 0) return diff;
+        return String(a.label || "").localeCompare(String(b.label || ""), "es", { sensitivity: "base" });
+      });
+
+      const hours = Array.from(byHour.entries())
+        .map(([hour, data]) => ({
+          hour,
+          total: Number(data?.total || 0),
+          tratamientos: Array.from(data?.tratamientos || []),
+          noHour: false
+        }))
+        .sort((a, b) => String(a.hour).localeCompare(String(b.hour), "es", { numeric: true }));
+      if (sinHora > 0) {
+        hours.push({
+          hour: "Sin hora",
+          total: sinHora,
+          tratamientos: Array.from(sinHoraTratamientos),
+          noHour: true
+        });
+      }
+
+      const topHour = hours
+        .filter((item) => !item.noHour)
+        .sort((a, b) => Number(b.total || 0) - Number(a.total || 0))[0] || null;
+
+      return {
+        total: safeRows.length,
+        estados,
+        tratamientos,
+        hours,
+        topHour
+      };
+    }
+    function renderAgendaDaySummaryModal() {
+      if (!daySummaryModal) return;
+
+      const fechaISO = String(dateInput?.value || "").trim();
+      if (daySummaryFechaEl) {
+        daySummaryFechaEl.textContent = fechaISO
+          ? `Fecha: ${isoToDDMMYYYY(fechaISO)}`
+          : "Fecha: -";
+      }
+      if (daySummaryScopeEl) {
+        const hasSearch = String(searchInput?.value || "").trim() !== "";
+        const hasEstado = String(estadoFilter?.value || "").trim() !== "";
+        const hasContacto = String(contactoFilter?.value || "").trim() !== "";
+        const active = [hasSearch, hasEstado, hasContacto].filter(Boolean).length;
+        daySummaryScopeEl.textContent = active > 0
+          ? `Base: filtros activos (${active})`
+          : "Base: filtros activos";
+      }
+
+      const summary = computeAgendaDaySummary(buildAgendaDaySummaryBase());
+      if (daySummaryTotalEl) {
+        daySummaryTotalEl.textContent = String(summary.total || 0);
+      }
+      if (daySummaryTopHourEl) {
+        daySummaryTopHourEl.textContent = summary.topHour
+          ? `${summary.topHour.hour} (${summary.topHour.total})`
+          : "-";
+      }
+
+      if (daySummaryEstadosEl) {
+        if (!summary.estados.length) {
+          daySummaryEstadosEl.innerHTML = `<p class="agenda-day-summary-empty">No hay estados para mostrar con los filtros actuales.</p>`;
+        } else {
+          daySummaryEstadosEl.innerHTML = summary.estados.map((estado) => {
+            const key = String(estado.key || "");
+            let estadoTone = "";
+            if (key === "confirmado") estadoTone = " is-confirmado";
+            if (key === "cancelado") estadoTone = " is-cancelado";
+            if (key === "reprogramado") estadoTone = " is-reprogramado";
+            const highlight = estado.highlight ? " is-highlight" : "";
+            return `
+              <article class="agenda-day-summary-estado${highlight}${estadoTone}">
+                <span>${escapeHtml(String(estado.label || "-"))}</span>
+                <strong>${Number(estado.total || 0)}</strong>
+              </article>
+            `;
+          }).join("");
+        }
+      }
+      if (daySummaryTreatmentBody) {
+        if (!summary.tratamientos.length) {
+          daySummaryTreatmentBody.innerHTML = `
+            <tr>
+              <td colspan="2" style="text-align:center; color:#64748b;">No hay tratamientos para mostrar.</td>
+            </tr>
+          `;
+        } else {
+          daySummaryTreatmentBody.innerHTML = summary.tratamientos.map((item) => `
+            <tr>
+              <td>${escapeHtml(String(item.label || "Sin especificar"))}</td>
+              <td style="text-align:right;">${Number(item.total || 0)}</td>
+            </tr>
+          `).join("");
+        }
+      }
+
+      if (daySummaryHoursBody) {
+        if (!summary.hours.length) {
+          daySummaryHoursBody.innerHTML = `
+            <tr>
+              <td colspan="3" style="text-align:center; color:#64748b;">No hay tratamientos confirmados para esta fecha/filtros.</td>
+            </tr>
+          `;
+        } else {
+          daySummaryHoursBody.innerHTML = summary.hours.map((hourItem) => `
+            <tr class="${hourItem.noHour ? "is-no-hour" : ""}">
+              <td>${escapeHtml(String(hourItem.hour || "-"))}</td>
+              <td style="text-align:right;">${Number(hourItem.total || 0)}</td>
+              <td>${escapeHtml((Array.isArray(hourItem.tratamientos) && hourItem.tratamientos.length)
+                ? hourItem.tratamientos.join(", ")
+                : "Sin especificar")}</td>
+            </tr>
+          `).join("");
+        }
+      }
+    }
+    function refreshDaySummaryIfOpen(force = false) {
+      if (!force && !isDaySummaryModalOpen()) return;
+      renderAgendaDaySummaryModal();
+    }
+    function openDaySummaryModal() {
+      if (!daySummaryModal) return;
+      daySummaryModal.hidden = false;
+      document.body.classList.add("agenda-day-summary-open");
+      refreshDaySummaryIfOpen(true);
+    }
+    window.__agendaCloseDaySummaryModal = closeDaySummaryModal;
     function setInasistenciaStatus(message, tone = "info") {
       if (!inasistenciaStatusEl) return;
       inasistenciaStatusEl.textContent = String(message || "").trim();
@@ -1243,6 +1580,23 @@
     reviewInasistenciaBtn?.addEventListener("click", () => {
       abrirInasistenciaModal();
     });
+    daySummaryBtn?.addEventListener("click", () => {
+      openDaySummaryModal();
+    });
+    daySummaryViewTreatmentBtn?.addEventListener("click", () => {
+      setDaySummaryActiveView("treatment");
+    });
+    daySummaryViewHourBtn?.addEventListener("click", () => {
+      setDaySummaryActiveView("hour");
+    });
+    daySummaryCloseBtn?.addEventListener("click", () => {
+      closeDaySummaryModal();
+    });
+    daySummaryModal?.addEventListener("click", (e) => {
+      if (e.target?.closest?.("[data-day-summary-close]")) {
+        closeDaySummaryModal();
+      }
+    });
     inasistenciaCloseBtn?.addEventListener("click", () => {
       cerrarInasistenciaModal();
     });
@@ -1284,6 +1638,7 @@
       renderInasistenciaRows();
     });
     renderInasistenciaRows();
+    setDaySummaryActiveView("hour");
     let regBtn = container.querySelector("#agenda-register");
     const regBtnSafe = regBtn.cloneNode(true);
     regBtn.replaceWith(regBtnSafe);
@@ -1679,6 +2034,9 @@
     if (e.key === "Escape") {
       if (typeof window.__agendaCloseInasistenciaModal === "function") {
         window.__agendaCloseInasistenciaModal();
+      }
+      if (typeof window.__agendaCloseDaySummaryModal === "function") {
+        window.__agendaCloseDaySummaryModal();
       }
       const modalAgenda = document.querySelector("#modal-agenda");
       if (modalAgenda?.classList.contains("show")) {
@@ -2835,6 +3193,7 @@
         }
         drawRows(listaLocal);
       }
+      refreshDaySummaryIfOpen();
 
       if (!dispararFallback) return;
 
@@ -2912,6 +3271,8 @@
         inasistenciaApplying = false;
         cerrarInasistenciaModal();
         window.__agendaCloseInasistenciaModal = null;
+        closeDaySummaryModal();
+        window.__agendaCloseDaySummaryModal = null;
 
         limpiarBufferReprogramacion();
         resetAgendaModalState();

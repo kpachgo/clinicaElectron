@@ -616,6 +616,37 @@ body[data-theme="princess"] .modal-info-doctor .doctor-img-box {
   background: #ffdbee;
 }
 
+body[data-theme="princess"] .modal-info-doctor .doctor-info-kicker {
+  color: #cd0067;
+}
+
+body[data-theme="princess"] .modal-info-doctor .doctor-info-subtitle {
+  color: #8c4b74;
+}
+
+body[data-theme="princess"] .modal-info-doctor .doctor-info-card,
+body[data-theme="princess"] .modal-info-doctor .doctor-media-card {
+  border-color: #ff9cce;
+  background: linear-gradient(180deg, #ffe7f4 0%, #ffdff0 100%);
+}
+
+body[data-theme="princess"] .modal-info-doctor .doctor-info-row + .doctor-info-row {
+  border-top-color: #f7b8db;
+}
+
+body[data-theme="princess"] .modal-info-doctor .doctor-label {
+  color: #7a3e62;
+}
+
+body[data-theme="princess"] .modal-info-doctor .doctor-value,
+body[data-theme="princess"] .modal-info-doctor .doctor-media-title {
+  color: #5a1f47;
+}
+
+body[data-theme="princess"] .modal-info-doctor .doctor-media-empty {
+  color: #8b4a72;
+}
+
 body[data-theme="princess"] .paciente-card input.form-control:disabled,
 body[data-theme="princess"] .paciente-card select.form-control:disabled,
 body[data-theme="princess"] .paciente-card textarea.form-control:disabled,

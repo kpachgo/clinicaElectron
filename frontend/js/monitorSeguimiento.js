@@ -70,6 +70,50 @@
     return fallback;
   }
 
+  function getUiStateUserId() {
+    try {
+      const raw = sessionStorage.getItem("user");
+      if (!raw) return "anon";
+      const user = JSON.parse(raw);
+      const candidates = [
+        user?.idUsuario,
+        user?.idusuario,
+        user?.IDUsuario,
+        user?.IdUsuario,
+        user?.idUser,
+        user?.id
+      ];
+      for (const candidate of candidates) {
+        const num = Number(candidate);
+        if (Number.isInteger(num) && num > 0) return String(num);
+        const text = String(candidate ?? "").trim();
+        if (text) return text;
+      }
+    } catch {
+      // ignore invalid session payload
+    }
+    return "anon";
+  }
+
+  function loadSessionUiState(key) {
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveSessionUiState(key, state) {
+    try {
+      sessionStorage.setItem(key, JSON.stringify(state || {}));
+    } catch {
+      // ignore storage write errors
+    }
+  }
+
   function getSegmentByMonths(months) {
     const safeMonths = toInt(months, 0);
     if (safeMonths >= 3) return "m3";
@@ -427,17 +471,25 @@
       btnNext: container.querySelector("#ms-next")
     };
 
+    const monitorUiStateKey = `ui_state_monitor_seguimiento_${getUiStateUserId()}`;
+    const persistedUiState = loadSessionUiState(monitorUiStateKey);
+    const persistedFechaCorte = String(persistedUiState?.fechaCorte || "").trim();
+    const persistedSegmentFilter = String(persistedUiState?.segmentFilter || "all").trim().toLowerCase();
+    const persistedEstadoFilter = String(persistedUiState?.estadoFilter || "all").trim().toLowerCase();
+    const persistedTratamientoFilter = String(persistedUiState?.tratamientoFilter || "all").trim().toLowerCase();
+    const persistedPageSize = toInt(persistedUiState?.pageSize, DEFAULT_PAGE_SIZE);
+
     const state = {
-      fechaCorte: getTodayLocalISO(),
-      q: "",
-      segmentFilter: "all",
-      estadoFilter: "all",
-      tratamientoFilter: "all",
-      showNumeracion: false,
-      showSms: false,
-      showLlamada: false,
+      fechaCorte: parseISODate(persistedFechaCorte) ? persistedFechaCorte : getTodayLocalISO(),
+      q: String(persistedUiState?.q || ""),
+      segmentFilter: SEGMENT_VALUES.has(persistedSegmentFilter) ? persistedSegmentFilter : "all",
+      estadoFilter: ESTADO_VALUES.has(persistedEstadoFilter) ? persistedEstadoFilter : "all",
+      tratamientoFilter: TRATAMIENTO_VALUES.has(persistedTratamientoFilter) ? persistedTratamientoFilter : "all",
+      showNumeracion: !!toBit(persistedUiState?.showNumeracion, 0),
+      showSms: !!toBit(persistedUiState?.showSms, 0),
+      showLlamada: !!toBit(persistedUiState?.showLlamada, 0),
       page: 1,
-      pageSize: DEFAULT_PAGE_SIZE,
+      pageSize: PAGE_SIZE_OPTIONS.includes(persistedPageSize) ? persistedPageSize : DEFAULT_PAGE_SIZE,
       rows: [],
       loading: false,
       errorText: "",
@@ -452,6 +504,24 @@
     const savingContactoSet = new Set();
     const proximaCitaCache = new Map();
     const listeners = [];
+
+    function getMonitorUiStateSnapshot() {
+      return {
+        fechaCorte: state.fechaCorte,
+        q: state.q,
+        segmentFilter: state.segmentFilter,
+        estadoFilter: state.estadoFilter,
+        tratamientoFilter: state.tratamientoFilter,
+        showNumeracion: state.showNumeracion ? 1 : 0,
+        showSms: state.showSms ? 1 : 0,
+        showLlamada: state.showLlamada ? 1 : 0,
+        pageSize: state.pageSize
+      };
+    }
+
+    function persistMonitorUiState() {
+      saveSessionUiState(monitorUiStateKey, getMonitorUiStateSnapshot());
+    }
 
     function bind(el, eventName, handler, options) {
       if (!el) return;
@@ -764,11 +834,12 @@
       state.pageSize = DEFAULT_PAGE_SIZE;
 
       if (refs.inputFecha) refs.inputFecha.value = state.fechaCorte;
-      if (refs.inputSearch) refs.inputSearch.value = "";
+      if (refs.inputSearch) refs.inputSearch.value = state.q;
       if (refs.inputTratamiento) refs.inputTratamiento.value = state.tratamientoFilter;
       if (refs.inputEstado) refs.inputEstado.value = state.estadoFilter;
       if (refs.pageSize) refs.pageSize.value = String(state.pageSize);
 
+      persistMonitorUiState();
       void refreshData();
     }
 
@@ -777,6 +848,7 @@
       const next = String(refs.inputFecha?.value || "").trim();
       state.fechaCorte = next || getTodayLocalISO();
       state.page = 1;
+      persistMonitorUiState();
       void refreshData();
     });
 
@@ -784,6 +856,7 @@
       if (!isViewActive()) return;
       state.q = String(e?.target?.value || "");
       state.page = 1;
+      persistMonitorUiState();
       if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
         if (!isViewActive()) return;
@@ -796,6 +869,7 @@
       const next = String(e?.target?.value || "all").trim().toLowerCase();
       state.tratamientoFilter = TRATAMIENTO_VALUES.has(next) ? next : "all";
       state.page = 1;
+      persistMonitorUiState();
       void refreshData();
     });
 
@@ -804,6 +878,7 @@
       const next = String(e?.target?.value || "all").trim().toLowerCase();
       state.estadoFilter = ESTADO_VALUES.has(next) ? next : "all";
       state.page = 1;
+      persistMonitorUiState();
       void refreshData();
     });
 
@@ -823,6 +898,7 @@
       else state.segmentFilter = state.segmentFilter === key ? "all" : key;
 
       state.page = 1;
+      persistMonitorUiState();
       void refreshData();
     });
 
@@ -831,6 +907,7 @@
       const nextSize = toInt(e?.target?.value, DEFAULT_PAGE_SIZE);
       state.pageSize = PAGE_SIZE_OPTIONS.includes(nextSize) ? nextSize : DEFAULT_PAGE_SIZE;
       state.page = 1;
+      persistMonitorUiState();
       void refreshData();
     });
 
@@ -851,18 +928,21 @@
     bind(refs.toggleNumeracion, "change", (e) => {
       if (!isViewActive()) return;
       state.showNumeracion = !!e?.target?.checked;
+      persistMonitorUiState();
       applyContactColumnVisibility();
     });
 
     bind(refs.toggleSms, "change", (e) => {
       if (!isViewActive()) return;
       state.showSms = !!e?.target?.checked;
+      persistMonitorUiState();
       applyContactColumnVisibility();
     });
 
     bind(refs.toggleLlamada, "change", (e) => {
       if (!isViewActive()) return;
       state.showLlamada = !!e?.target?.checked;
+      persistMonitorUiState();
       applyContactColumnVisibility();
     });
 
@@ -1003,12 +1083,8 @@
       }
     });
 
-    state.showNumeracion = false;
-    state.showSms = false;
-    state.showLlamada = false;
-
     if (refs.inputFecha) refs.inputFecha.value = state.fechaCorte;
-    if (refs.inputSearch) refs.inputSearch.value = "";
+    if (refs.inputSearch) refs.inputSearch.value = state.q;
     if (refs.inputTratamiento) refs.inputTratamiento.value = state.tratamientoFilter;
     if (refs.inputEstado) refs.inputEstado.value = state.estadoFilter;
     if (refs.pageSize) refs.pageSize.value = String(state.pageSize);
@@ -1016,6 +1092,7 @@
     if (refs.toggleSms) refs.toggleSms.checked = state.showSms;
     if (refs.toggleLlamada) refs.toggleLlamada.checked = state.showLlamada;
 
+    persistMonitorUiState();
     renderAll();
     void refreshData();
 

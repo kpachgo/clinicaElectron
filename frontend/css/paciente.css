@@ -854,60 +854,199 @@
    MODAL INFO DOCTOR
 ======================================================= */
 .modal-info-doctor .modal-content {
-    width: 520px;
-    max-width: 95%;
-    padding: 24px 26px;
-    border-radius: 14px;
+    width: 680px;
+    max-width: 94%;
+    padding: 28px 30px 22px;
+    border-radius: 18px;
     background: #ffffff;
+    border: 1px solid #dbe4f0;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.18);
 }
 /* Título */
 .modal-info-doctor h2 {
-    margin: 0 0 16px;
+    margin: 0;
     text-align: center;
-    font-size: 20px;
+    font-size: 30px;
     font-weight: 700;
-    color: #1f2937;
+    color: #0f172a;
+    letter-spacing: 0.01em;
 }
 /* Contenido */
 .modal-info-doctor #doctor-info-body {
+    margin-top: 16px;
     font-size: 14px;
+    line-height: 1.45;
     color: #374151;
 }
 /* Etiquetas */
 .modal-info-doctor .doctor-label {
-    font-weight: 600;
-    margin-top: 12px;
-    display: block;
-    color: #111827;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
 }
 
-/* Separador */
-.modal-info-doctor .doctor-separator {
-    margin: 12px 0;
-    border-top: 1px solid #e5e7eb;
-}
-
-/* Firma y sello */
-.modal-info-doctor .doctor-img-box {
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    padding: 10px;
-    background: #f9fafb;
-    margin-top: 6px;
+.modal-info-doctor .doctor-info-head {
+    margin-bottom: 14px;
     text-align: center;
 }
 
-.modal-info-doctor .doctor-img-box img {
-    max-width: 100%;
-    max-height: 180px;
+.modal-info-doctor .doctor-info-kicker {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: #2563eb;
+}
+
+.modal-info-doctor .doctor-info-subtitle {
+    margin: 6px 0 0;
+    font-size: 14px;
+    color: #64748b;
+}
+
+.modal-info-doctor .doctor-info-card {
+    border: 1px solid #dbe4f0;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #f8fbff 0%, #f6f8fc 100%);
+    padding: 14px 16px;
+}
+
+.modal-info-doctor .doctor-info-row {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    gap: 14px;
+    align-items: baseline;
+}
+
+.modal-info-doctor .doctor-info-row + .doctor-info-row {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #dde6f2;
+}
+
+.modal-info-doctor .doctor-value {
+    min-width: 0;
+    margin: 0;
+    font-size: 19px;
+    font-weight: 600;
+    color: #0f172a;
+    overflow-wrap: anywhere;
+}
+
+.modal-info-doctor .doctor-media-grid {
+    margin-top: 16px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.modal-info-doctor .doctor-media-card {
+    border: 1px solid #dbe4f0;
+    border-radius: 14px;
+    background: #fbfdff;
+    padding: 12px;
+}
+
+.modal-info-doctor .doctor-media-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.modal-info-doctor .doctor-img-box {
+    min-height: 210px;
+    border: 1px solid #d9e2ef;
+    border-radius: 12px;
+    padding: 10px;
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.modal-info-doctor .doctor-media-img {
+    width: 100%;
+    max-height: 188px;
     object-fit: contain;
 }
 
-/* Footer */
-.modal-info-doctor .modal-footer {
+.modal-info-doctor .doctor-media-empty {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    text-align: center;
+}
+
+.modal-info-doctor .modal-buttons {
     display: flex;
     justify-content: center;
     margin-top: 18px;
+}
+
+.modal-info-doctor .modal-buttons .btn-cancelar {
+    min-width: 112px;
+}
+
+@media (max-width: 900px) {
+    .modal-info-doctor .modal-content {
+        width: 94%;
+        padding: 24px 18px 18px;
+    }
+
+    .modal-info-doctor h2 {
+        font-size: 26px;
+    }
+
+    .modal-info-doctor .doctor-info-row {
+        grid-template-columns: 96px minmax(0, 1fr);
+        gap: 10px;
+    }
+
+    .modal-info-doctor .doctor-value {
+        font-size: 17px;
+    }
+
+    .modal-info-doctor .doctor-media-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-info-doctor .doctor-img-box {
+        min-height: 190px;
+    }
+}
+
+@media (max-width: 540px) {
+    .modal-info-doctor .modal-content {
+        padding: 20px 14px 14px;
+    }
+
+    .modal-info-doctor h2 {
+        font-size: 24px;
+    }
+
+    .modal-info-doctor .doctor-info-subtitle {
+        font-size: 13px;
+    }
+
+    .modal-info-doctor .doctor-info-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .modal-info-doctor .doctor-info-row + .doctor-info-row {
+        margin-top: 12px;
+    }
+
+    .modal-info-doctor .doctor-value {
+        font-size: 16px;
+    }
 }
 /* =======================================================
    PACIENTE — COMPACTACIÓN TABLET / ESCRITORIO BAJO
@@ -1153,6 +1292,7 @@
 .dark-mode #modal-doctor-info .modal-content {
     background: var(--pac-card-bg);
     border: 1px solid var(--pac-card-border);
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.38);
 }
 
 .dark-mode #modal-cita-paciente h2,
@@ -1190,8 +1330,31 @@
     color: #cdd8e7;
 }
 
-.dark-mode .modal-info-doctor .doctor-separator {
-    border-top-color: var(--pac-card-border);
+.dark-mode .modal-info-doctor .doctor-info-kicker {
+    color: #7cb5ff;
+}
+
+.dark-mode .modal-info-doctor .doctor-info-subtitle {
+    color: #a8bdd8;
+}
+
+.dark-mode .modal-info-doctor .doctor-info-card,
+.dark-mode .modal-info-doctor .doctor-media-card {
+    border-color: var(--pac-card-border);
+    background: #111f33;
+}
+
+.dark-mode .modal-info-doctor .doctor-info-row + .doctor-info-row {
+    border-top-color: #33455f;
+}
+
+.dark-mode .modal-info-doctor .doctor-value,
+.dark-mode .modal-info-doctor .doctor-media-title {
+    color: #e4ecf8;
+}
+
+.dark-mode .modal-info-doctor .doctor-media-empty {
+    color: #a8bdd8;
 }
 
 .dark-mode .paciente-card input.form-control:disabled,

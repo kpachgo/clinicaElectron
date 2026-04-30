@@ -3826,26 +3826,45 @@ function registrarEventoVerDoctor() {
       const modal = document.getElementById("modal-doctor-info");
 
       body.innerHTML = `
-        <p><strong>Nombre:</strong> ${d.nombreD}</p>
-        <p><strong>Telefono:</strong> ${d.TelefonoD || "-"}</p>
+        <div class="doctor-info-head">
+          <p class="doctor-info-kicker">Ficha profesional</p>
+          <p class="doctor-info-subtitle">Datos asociados a la cita del paciente.</p>
+        </div>
 
-        <hr>
+        <section class="doctor-info-card">
+          <div class="doctor-info-row">
+            <span class="doctor-label">Nombre</span>
+            <span class="doctor-value">${d.nombreD || "-"}</span>
+          </div>
+          <div class="doctor-info-row">
+            <span class="doctor-label">Telefono</span>
+            <span class="doctor-value">${d.TelefonoD || "-"}</span>
+          </div>
+        </section>
 
-        <strong>Firma:</strong><br>
-        ${
-          d.FirmaD
-            ? `<img src="${d.FirmaD}" style="max-width:100%; border:1px solid #ddd;">`
-            : "<em>No registrada</em>"
-        }
+        <section class="doctor-media-grid">
+          <article class="doctor-media-card">
+            <h3 class="doctor-media-title">Firma</h3>
+            <div class="doctor-img-box">
+              ${
+                d.FirmaD
+                  ? `<img class="doctor-media-img" src="${d.FirmaD}" alt="Firma del doctor">`
+                  : '<p class="doctor-media-empty">No registrada</p>'
+              }
+            </div>
+          </article>
 
-        <br><br>
-
-        <strong>Sello:</strong><br>
-        ${
-          d.SelloD
-            ? `<img src="${d.SelloD}" style="max-width:100%; border:1px solid #ddd;">`
-            : "<em>No registrado</em>"
-        }
+          <article class="doctor-media-card">
+            <h3 class="doctor-media-title">Sello</h3>
+            <div class="doctor-img-box">
+              ${
+                d.SelloD
+                  ? `<img class="doctor-media-img" src="${d.SelloD}" alt="Sello del doctor">`
+                  : '<p class="doctor-media-empty">No registrado</p>'
+              }
+            </div>
+          </article>
+        </section>
       `;
 
       modal.classList.add("show");
