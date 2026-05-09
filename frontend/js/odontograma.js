@@ -995,6 +995,23 @@ function hideMenu() {
     resetMenuScrollSnapshot();
 }
 closeMenuBtn.onclick = hideMenu;
+function bringRealizadoOverlayToFront(pieza) {
+    const piezaTxt = String(pieza || "").trim();
+    if (!piezaTxt) return;
+    const svg = document.querySelector(`svg[data-pieza="${piezaTxt}"]`);
+    if (!svg) return;
+    const realizado = svg.querySelector(".realizado-overlay");
+    if (!realizado || realizado.parentNode !== svg) return;
+    svg.appendChild(realizado);
+}
+function enforceRealizadoOverlayPriority() {
+    document.querySelectorAll("svg[data-pieza]").forEach(svg => {
+        const realizado = svg.querySelector(".realizado-overlay");
+        if (realizado && realizado.parentNode === svg) {
+            svg.appendChild(realizado);
+        }
+    });
+}
  /* TRATAMIENTOS VISUALES */
  // Aplicar un tratamiento SIN color (color rojo por defecto)
 function applyTreatment(surface, treatmentId){
@@ -1018,6 +1035,7 @@ function applyTreatment(surface, treatmentId){
             input.value += ", " + t.abbr;
     }
 
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1059,6 +1077,7 @@ function applyColorState(color, treatmentId) {
         input.value = tokens.join(", ");
     }
 
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1101,6 +1120,7 @@ function applyObturacion() {
     // Actualizar input → abreviación O
     const input = document.querySelector(`input.tooth-note[data-pieza="${pieza}"]`);
     addAbbreviationToInput(pieza, "O");
+    bringRealizadoOverlayToFront(pieza);
     currentSurface = null;
     hideMenu();
 }
@@ -1141,6 +1161,7 @@ function applyEndodoncia(color) {
     const pieza = currentSurface.dataset.pieza;
     const input = document.querySelector(`input.tooth-note[data-pieza="${pieza}"]`);
     addAbbreviationToInput(pieza, "E");
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1193,6 +1214,7 @@ function applyImplante(color) {
     const input = document.querySelector(`input.tooth-note[data-pieza="${pieza}"]`);
     addAbbreviationToInput(pieza, "I");
 
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1234,6 +1256,7 @@ function applyCorona(color) {
     const pieza = currentSurface.dataset.pieza;
     const input = document.querySelector(`input.tooth-note[data-pieza="${pieza}"]`);
     addAbbreviationToInput(pieza, "C");
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1276,6 +1299,7 @@ function applyRealizado() {
 
     const pieza = currentSurface.dataset.pieza;
     addAbbreviationToInput(pieza, "RL");
+    bringRealizadoOverlayToFront(pieza);
 
     hideMenu();
     currentSurface = null;
@@ -1336,6 +1360,7 @@ function applyPiezaAusente(color = "rojo") {
     const input = document.querySelector(`input.tooth-note[data-pieza="${pieza}"]`);
     if (input) input.value = "X";
 
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1370,6 +1395,7 @@ function applyFractura() {
     const pieza = currentSurface.dataset.pieza;
     const input = document.querySelector(`input.tooth-note[data-pieza="${pieza}"]`);
     addAbbreviationToInput(pieza, "F");
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1423,6 +1449,7 @@ function applyCambioRelleno() {
     const pieza = currentSurface.dataset.pieza;
     const input = document.querySelector(`input.tooth-note[data-pieza="${pieza}"]`);
     addAbbreviationToInput(pieza, "CR");
+    bringRealizadoOverlayToFront(pieza);
     hideMenu();
     currentSurface = null;
 }
@@ -1476,6 +1503,7 @@ function applyPlacaCompleta() {
         const input = document.querySelector(`input.tooth-note[data-pieza="${p}"]`);
         input.dataset.pc = "true";
         if (input) input.value = "PC";
+        bringRealizadoOverlayToFront(p);
     });
 
     hideMenu();
@@ -2889,6 +2917,7 @@ function cargarOdontograma() {
         const inf = [31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48];
         inf.forEach(n => crearLineaPC(String(n), "#2693ff"));
     }
+    enforceRealizadoOverlayPriority();
     odontogramaData.meta.fecha_cargado = new Date().toISOString();
 }
 window.cargarOdontograma = cargarOdontograma;

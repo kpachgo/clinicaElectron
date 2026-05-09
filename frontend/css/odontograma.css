@@ -1674,3 +1674,63 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
         grid-template-columns: 1fr;
     }
 }
+
+/* Indicador ligero de carga para odontograma */
+.odontograma-scale-container {
+    position: relative;
+}
+.odontograma-loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.78);
+    z-index: 70;
+}
+.odontograma-loading-overlay.is-visible {
+    display: flex;
+}
+.odontograma-loading-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border: 1px solid #dbe5f1;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 600;
+}
+.odontograma-loading-spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #cbd5e1;
+    border-top-color: #2563eb;
+    animation: odonto-spin 0.9s linear infinite;
+}
+@keyframes odonto-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .odontograma-loading-spinner {
+        animation: none;
+    }
+}
+.dark-mode .odontograma-loading-overlay {
+    background: rgba(15, 23, 42, 0.55);
+}
+.dark-mode .odontograma-loading-card {
+    background: #0f172a;
+    border-color: #334155;
+    color: #e2e8f0;
+}
+.dark-mode .odontograma-loading-spinner {
+    border-color: #475569;
+    border-top-color: #93c5fd;
+}

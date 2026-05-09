@@ -53,6 +53,8 @@
   const ODONTO_VISUAL_TEMPORAL_PIEZAS = new Set([55, 54, 53, 52, 51, 61, 62, 63, 64, 65, 85, 84, 83, 82, 81, 71, 72, 73, 74, 75]);
   let odontoVisualModeActive = false;
   let odontoVisualPrevBloqueado = true;
+  let odontoLoadingActiveCount = 0;
+  let odontoLoadingShowTimer = null;
 
 function isAbortError(err) {
   return String(err?.name || "") === "AbortError";
@@ -131,6 +133,43 @@ function fechaLegible(fechaISO) {
   const mes = String(d.getMonth() + 1).padStart(2, "0");
   const anio = d.getFullYear();
   return `${dia}-${mes}-${anio}`;
+}
+function setOdontoLoadingOverlayVisible(visible, text = "Cargando odontograma...") {
+  const overlay = document.getElementById("odontograma-loading-overlay");
+  const textEl = document.getElementById("odontograma-loading-text");
+  const container = document.querySelector(".odontograma-scale-container");
+  if (!overlay) return;
+  if (textEl) textEl.textContent = text;
+  overlay.classList.toggle("is-visible", Boolean(visible));
+  if (container) {
+    container.setAttribute("aria-busy", visible ? "true" : "false");
+  }
+}
+function startOdontoLoadingOverlay(text = "Cargando odontograma...") {
+  odontoLoadingActiveCount += 1;
+  if (odontoLoadingActiveCount !== 1) return;
+  if (odontoLoadingShowTimer) {
+    clearTimeout(odontoLoadingShowTimer);
+  }
+  // Evita parpadeos en cargas muy rapidas.
+  odontoLoadingShowTimer = setTimeout(() => {
+    odontoLoadingShowTimer = null;
+    if (odontoLoadingActiveCount > 0) {
+      setOdontoLoadingOverlayVisible(true, text);
+    }
+  }, 120);
+}
+function stopOdontoLoadingOverlay() {
+  if (odontoLoadingActiveCount > 0) {
+    odontoLoadingActiveCount -= 1;
+  }
+  if (odontoLoadingActiveCount > 0) return;
+  odontoLoadingActiveCount = 0;
+  if (odontoLoadingShowTimer) {
+    clearTimeout(odontoLoadingShowTimer);
+    odontoLoadingShowTimer = null;
+  }
+  setOdontoLoadingOverlayVisible(false);
 }
 function actualizarEstadoFirmaPaciente(rutaFirma) {
   const estadoEl = document.getElementById("firmaEstadoP");
@@ -1192,6 +1231,12 @@ function renderPaciente(container) {
             </div>
             <div class="odont-row odont-bottom">
               ${crearFila([48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38])}
+            </div>
+          </div>
+          <div id="odontograma-loading-overlay" class="odontograma-loading-overlay" aria-live="polite" aria-atomic="true">
+            <div class="odontograma-loading-card">
+              <span class="odontograma-loading-spinner" aria-hidden="true"></span>
+              <span id="odontograma-loading-text">Cargando odontograma...</span>
             </div>
           </div>
         </div>
@@ -2443,7 +2488,7 @@ function calcularEdad(fechaNacimiento) {
   return edad;
 }
 // ============= PARTE DE ODONTOGRAMA ==============================
-const ODONTO_SUMMARY_EXCLUDED = new Set(["PPF", "PPR", "PC"]);
+const ODONTO_SUMMARY_EXCLUDED = new Set(["PPF", "PPR", "PC", "O", "X_AUSENTE"]);
 const ODONTO_SUMMARY_ALIAS = {
   CP: "CP",
   CG: "CG",
@@ -2479,12 +2524,14 @@ const ODONTO_SUMMARY_LABELS = {
   E: "Endodoncia",
   C: "Corona",
   I: "Implante",
+  X_CORDAL_SIMPLE: "Extraccion cordal simple",
   X_CIRUGIA: "Extraccion Cirugia",
   X_EXTRACCION: "Extraccion",
   X_AUSENTE: "Pieza ausente",
   CR: "Cambio de relleno",
   F: "Fractura"
 };
+const ODONTO_CORDAL_PIEZAS = new Set([18, 28, 38, 48]);
 const ODONTO_PRINT_COMPANY_CONFIG = {
   sucursal: "Sucursal Sonsonate, Centro comercial el encuentro local 22",
   telefono: "Tel. 6061-3992"
@@ -2554,7 +2601,13 @@ function buildOdontogramaTreatmentSummary(data) {
     targetMap.get(tratamiento).add(pieza);
   };
 
-  const collectTreatment = (bucket, rawTreatment, markRl, hasCxInNota = false) => {
+  const collectTreatment = (
+    bucket,
+    rawTreatment,
+    markRl,
+    hasCxInNota = false,
+    hasCordalSimpleInNota = false
+  ) => {
     const rawId = typeof rawTreatment === "string"
       ? rawTreatment
       : rawTreatment && typeof rawTreatment === "object"
@@ -2569,11 +2622,19 @@ function buildOdontogramaTreatmentSummary(data) {
       return markRl;
     }
     if (normalized === "X") {
+      const resolvedX = resolveXSummaryTreatment(rawTreatment);
+      if (hasCordalSimpleInNota && resolvedX === "X_EXTRACCION") {
+        bucket.add("X_CORDAL_SIMPLE");
+        return markRl;
+      }
+      if (ODONTO_SUMMARY_EXCLUDED.has(resolvedX)) {
+        return markRl;
+      }
       if (hasCxInNota) {
         bucket.add("X_CIRUGIA");
         return markRl;
       }
-      bucket.add(resolveXSummaryTreatment(rawTreatment));
+      bucket.add(resolvedX);
       return markRl;
     }
     bucket.add(normalized);
@@ -2589,6 +2650,7 @@ function buildOdontogramaTreatmentSummary(data) {
     let hasRl = false;
     const nota = String(piezaData?.nota_input || "").toUpperCase();
     const hasCxInNota = /\bCX\b/.test(nota) || /EXTRACCION\s*CIRUGIA/.test(nota);
+    const hasSimpleCordalInNota = ODONTO_CORDAL_PIEZAS.has(pieza) && /\bS\b/.test(nota);
 
     const superficies = piezaData.superficies && typeof piezaData.superficies === "object"
       ? piezaData.superficies
@@ -2596,7 +2658,13 @@ function buildOdontogramaTreatmentSummary(data) {
     Object.values(superficies).forEach((surfaceTreatments) => {
       if (!Array.isArray(surfaceTreatments)) return;
       surfaceTreatments.forEach((treatment) => {
-        hasRl = collectTreatment(pieceTreatments, treatment, hasRl, hasCxInNota);
+        hasRl = collectTreatment(
+          pieceTreatments,
+          treatment,
+          hasRl,
+          hasCxInNota,
+          hasSimpleCordalInNota
+        );
       });
     });
 
@@ -2604,7 +2672,13 @@ function buildOdontogramaTreatmentSummary(data) {
       ? piezaData.pieza_completa
       : [];
     piezaCompleta.forEach((treatment) => {
-      hasRl = collectTreatment(pieceTreatments, treatment, hasRl, hasCxInNota);
+      hasRl = collectTreatment(
+        pieceTreatments,
+        treatment,
+        hasRl,
+        hasCxInNota,
+        hasSimpleCordalInNota
+      );
     });
 
     const targetMap = hasRl ? realizadosMap : pendientesMap;
@@ -3401,6 +3475,7 @@ async function cargarOdontogramaPorId(idOdontograma, options = {}) {
 
   const req = beginRequest("odontogramaVersion");
   const localSeq = req.seq;
+  startOdontoLoadingOverlay("Cargando odontograma...");
 
   try {
     const res = await fetch(`/api/odontograma/version/${idOdontograma}`, {
@@ -3442,6 +3517,7 @@ async function cargarOdontogramaPorId(idOdontograma, options = {}) {
     return false;
   } finally {
     endRequest("odontogramaVersion", req.controller);
+    stopOdontoLoadingOverlay();
   }
 }
 async function cargarUltimoOdontogramaPaciente(options = {}) {
@@ -3459,6 +3535,7 @@ async function cargarUltimoOdontogramaPaciente(options = {}) {
 
   const req = beginRequest("odontogramaUltimo");
   const localSeq = req.seq;
+  startOdontoLoadingOverlay("Cargando odontograma...");
 
   try {
     const res = await fetch(
@@ -3502,6 +3579,7 @@ async function cargarUltimoOdontogramaPaciente(options = {}) {
     return false;
   } finally {
     endRequest("odontogramaUltimo", req.controller);
+    stopOdontoLoadingOverlay();
   }
 }
 // ============= FIRMA PACIENTE====
@@ -4034,6 +4112,12 @@ function limpiarVistaPaciente() {
   window.ultimoOdontogramaId = null;
   window.pacienteFotoPrincipalId = null;
   window.__pacienteLoading = false;
+  odontoLoadingActiveCount = 0;
+  if (odontoLoadingShowTimer) {
+    clearTimeout(odontoLoadingShowTimer);
+    odontoLoadingShowTimer = null;
+  }
+  setOdontoLoadingOverlayVisible(false);
   setPacienteCambiosPendientes(false);
   if (typeof window.__closeOdontoPrintModal === "function") {
     window.__closeOdontoPrintModal();

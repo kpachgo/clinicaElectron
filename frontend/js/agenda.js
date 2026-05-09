@@ -107,6 +107,23 @@
       // ignore storage write errors
     }
   }
+  function getCurrentRole() {
+    if (typeof window.getCurrentUser === "function") {
+      const user = window.getCurrentUser();
+      return String(user?.rol || "").trim();
+    }
+    try {
+      const raw = sessionStorage.getItem("user");
+      if (!raw) return "";
+      const user = JSON.parse(raw);
+      return String(user?.rol || "").trim();
+    } catch {
+      return "";
+    }
+  }
+  function isRedesRole() {
+    return normalizarTexto(getCurrentRole()) === "redes";
+  }
   function normalizarTexto(value) {
     return String(value || "").trim().toLowerCase();
   }
@@ -872,6 +889,7 @@
     const daySummaryHoursWrap = container.querySelector(".agenda-day-summary-hours-wrap");
     const daySummaryTreatmentBody = container.querySelector("#agenda-day-summary-treatment-body");
     const daySummaryHoursBody = container.querySelector("#agenda-day-summary-hours-body");
+    const isRedes = isRedesRole();
     let agendaReprogramaBuffer = null;
     let agendaModalDesdeReprogramacion = false;
     let agendaMesResultados = null;
@@ -3072,11 +3090,17 @@
           }
         });
 
-        actionsWrap.appendChild(btnEnCola);
+        if (!isRedes) {
+          actionsWrap.appendChild(btnEnCola);
+        }
         actionsWrap.appendChild(btnReprogramar);
-        actionsWrap.appendChild(btnCobrar);
+        if (!isRedes) {
+          actionsWrap.appendChild(btnCobrar);
+        }
         actionsWrap.appendChild(btnAbrirPaciente);
-        actionsWrap.appendChild(btnCrear);
+        if (!isRedes) {
+          actionsWrap.appendChild(btnCrear);
+        }
         actionsWrap.appendChild(btnEliminar);
         tdAcciones.appendChild(actionsWrap);
         tr.appendChild(tdAcciones);
