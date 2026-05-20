@@ -1,9 +1,11 @@
+const fs = require("fs/promises");
+const path = require("path");
 const pool = require("../config/db");
 const authService = require("../services/auth.service");
 const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet, firstRow } = require("../utils/dbResult");
 const { parsePngBase64, writeBufferFile } = require("../utils/file");
-const { firmasDir } = require("../config/storagePaths");
+const { firmasDir, legacyFrontendDir } = require("../config/storagePaths");
 
 const ESTADO_AUTORIZACION_PENDIENTE = "PENDIENTE";
 const ESTADO_AUTORIZACION_OK = "AUTORIZADA";
@@ -17,6 +19,8 @@ const MONITOR_SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3"]);
 const MONITOR_ESTADO_VALUES = new Set(["all", "activo", "inactivo"]);
 const MONITOR_TRATAMIENTO_VALUES = new Set(["all", "odontologia", "ortodoncia", "sin_registrar"]);
 const MONITOR_PAGE_SIZE_VALUES = new Set([10, 25, 50]);
+const PRINT_BRANDING_LOGO_BASENAME = "print_logo";
+const PRINT_BRANDING_LOGO_DIR = path.join(legacyFrontendDir, "img", "docs");
 
 function isTransientDbError(err) {
   const code = String(err?.code || "").toUpperCase();
@@ -88,6 +92,54 @@ function getTodayLocalISO() {
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function getPrintBrandingLogoCandidates() {
+  return [
+    `${PRINT_BRANDING_LOGO_BASENAME}.png`,
+    `${PRINT_BRANDING_LOGO_BASENAME}.jpg`
+  ];
+}
+
+async function getLatestPrintBrandingLogoMeta() {
+  const candidates = getPrintBrandingLogoCandidates();
+  let latest = null;
+
+  for (const fileName of candidates) {
+    const fullPath = path.join(PRINT_BRANDING_LOGO_DIR, fileName);
+    try {
+      const stats = await fs.stat(fullPath);
+      if (!stats.isFile()) continue;
+      if (!latest || stats.mtimeMs > latest.mtimeMs) {
+        latest = {
+          fileName,
+          mtimeMs: stats.mtimeMs,
+          updatedAt: stats.mtime.toISOString()
+        };
+      }
+    } catch (err) {
+      if (err?.code !== "ENOENT") throw err;
+    }
+  }
+
+  return latest;
+}
+
+async function cleanupAlternatePrintBrandingLogos(activeFileName) {
+  const active = String(activeFileName || "").trim().toLowerCase();
+  const candidates = getPrintBrandingLogoCandidates();
+
+  await Promise.all(
+    candidates
+      .filter((fileName) => String(fileName).toLowerCase() !== active)
+      .map(async (fileName) => {
+        try {
+          await fs.unlink(path.join(PRINT_BRANDING_LOGO_DIR, fileName));
+        } catch (err) {
+          if (err?.code !== "ENOENT") throw err;
+        }
+      })
+  );
 }
 
 function getResultSet(rows, index = 0) {
@@ -665,6 +717,51 @@ const guardarFirma = async (req, res) => {
 // ============================
 // 💾 GUARDAR / ACTUALIZAR PACIENTE
 // ============================
+const obtenerPrintBrandingLogo = async (req, res) => {
+  try {
+    const logoMeta = await getLatestPrintBrandingLogoMeta();
+    if (!logoMeta) {
+      return res.json({
+        ok: true,
+        logoUrl: null
+      });
+    }
+
+    const cacheBust = Math.floor(logoMeta.mtimeMs);
+    return res.json({
+      ok: true,
+      logoUrl: `/img/docs/${logoMeta.fileName}?v=${cacheBust}`,
+      updatedAt: logoMeta.updatedAt
+    });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al obtener logo de impresion");
+  }
+};
+
+const subirPrintBrandingLogo = async (req, res) => {
+  try {
+    if (!req.file) {
+      return badRequest(res, "Archivo de logo requerido");
+    }
+
+    const fileName = String(req.file?.filename || "").trim();
+    if (!fileName) {
+      return badRequest(res, "No se pudo procesar el nombre del logo");
+    }
+
+    await cleanupAlternatePrintBrandingLogos(fileName);
+    const logoMeta = await getLatestPrintBrandingLogoMeta();
+
+    return res.json({
+      ok: true,
+      logoUrl: `/img/docs/${fileName}?v=${Date.now()}`,
+      updatedAt: logoMeta?.updatedAt || new Date().toISOString()
+    });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al subir logo de impresion");
+  }
+};
+
 const guardarPaciente = async (req, res) => {
   try {
     const p = req.body;
@@ -1142,6 +1239,8 @@ module.exports = {
   monitorSeguimientoProximaCita,
   guardarMonitorContacto,
   obtenerPorId,
+  obtenerPrintBrandingLogo,
+  subirPrintBrandingLogo,
   guardarFirma,
   guardarPaciente,
   crearCitaPaciente,

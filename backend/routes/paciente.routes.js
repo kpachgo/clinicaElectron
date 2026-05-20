@@ -1,11 +1,36 @@
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
 
 const auth = require("../middlewares/auth.middleware");
 const role = require("../middlewares/role.middleware");
 const controller = require("../controllers/paciente.controller");
+const uploadPrintLogo = require("../middlewares/uploadPrintLogo");
 const ROLES_PACIENTE_AGENDA = ["Administrador", "Recepcion", "Doctor", "Asistente", "Redes"];
 const ROLES_MONITOR_SEGUIMIENTO = ["Administrador", "Recepcion", "Redes"];
+const ROLES_PRINT_BRANDING = ["Administrador", "Recepcion", "Doctor", "Asistente"];
+
+function uploadPrintLogoWithJsonErrors(req, res, next) {
+  uploadPrintLogo.single("logo")(req, res, (err) => {
+    if (!err) return next();
+
+    let message = "No se pudo procesar el archivo del logo";
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        message = "El logo excede el tamano maximo permitido (4 MB)";
+      } else if (err.message) {
+        message = err.message;
+      }
+    } else if (err?.message) {
+      message = err.message;
+    }
+
+    return res.status(400).json({
+      ok: false,
+      message
+    });
+  });
+}
 
 // ============================
 // BUSCAR PACIENTES (AUTOCOMPLETE)
@@ -44,6 +69,19 @@ router.put(
   auth,
   role(ROLES_MONITOR_SEGUIMIENTO),
   controller.guardarMonitorContacto
+);
+router.get(
+  "/print-branding/logo",
+  auth,
+  role(ROLES_PRINT_BRANDING),
+  controller.obtenerPrintBrandingLogo
+);
+router.post(
+  "/print-branding/logo",
+  auth,
+  role(ROLES_PRINT_BRANDING),
+  uploadPrintLogoWithJsonErrors,
+  controller.subirPrintBrandingLogo
 );
 
 // ============================
