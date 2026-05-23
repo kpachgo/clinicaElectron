@@ -18,6 +18,7 @@ app.use("/fotos", express.static(storagePaths.fotosDir));
 app.use("/firmas", express.static(storagePaths.firmasDir));
 app.use("/img/docs", express.static(storagePaths.imgDocsDir));
 app.use("/img/docs", express.static(path.join(frontendDir, "img/docs")));
+app.use("/docs", express.static(storagePaths.docsDir));
 
 // Servir frontend
 app.use(express.static(frontendDir));

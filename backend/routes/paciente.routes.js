@@ -6,9 +6,11 @@ const auth = require("../middlewares/auth.middleware");
 const role = require("../middlewares/role.middleware");
 const controller = require("../controllers/paciente.controller");
 const uploadPrintLogo = require("../middlewares/uploadPrintLogo");
+const uploadPrintDocPdf = require("../middlewares/uploadPrintDocPdf");
 const ROLES_PACIENTE_AGENDA = ["Administrador", "Recepcion", "Doctor", "Asistente", "Redes"];
 const ROLES_MONITOR_SEGUIMIENTO = ["Administrador", "Recepcion", "Redes"];
 const ROLES_PRINT_BRANDING = ["Administrador", "Recepcion", "Doctor", "Asistente"];
+const ROLES_PRINT_DOCS = ["Administrador", "Recepcion", "Doctor", "Asistente"];
 
 function uploadPrintLogoWithJsonErrors(req, res, next) {
   uploadPrintLogo.single("logo")(req, res, (err) => {
@@ -18,6 +20,28 @@ function uploadPrintLogoWithJsonErrors(req, res, next) {
     if (err instanceof multer.MulterError) {
       if (err.code === "LIMIT_FILE_SIZE") {
         message = "El logo excede el tamano maximo permitido (4 MB)";
+      } else if (err.message) {
+        message = err.message;
+      }
+    } else if (err?.message) {
+      message = err.message;
+    }
+
+    return res.status(400).json({
+      ok: false,
+      message
+    });
+  });
+}
+
+function uploadPrintDocPdfWithJsonErrors(req, res, next) {
+  uploadPrintDocPdf.single("pdf")(req, res, (err) => {
+    if (!err) return next();
+
+    let message = "No se pudo procesar el archivo PDF";
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        message = "El PDF excede el tamano maximo permitido (15 MB)";
       } else if (err.message) {
         message = err.message;
       }
@@ -82,6 +106,25 @@ router.post(
   role(ROLES_PRINT_BRANDING),
   uploadPrintLogoWithJsonErrors,
   controller.subirPrintBrandingLogo
+);
+router.get(
+  "/print-docs",
+  auth,
+  role(ROLES_PRINT_DOCS),
+  controller.listarPrintDocs
+);
+router.post(
+  "/print-docs",
+  auth,
+  role(ROLES_PRINT_DOCS),
+  uploadPrintDocPdfWithJsonErrors,
+  controller.subirPrintDoc
+);
+router.delete(
+  "/print-docs/:fileName",
+  auth,
+  role(ROLES_PRINT_DOCS),
+  controller.eliminarPrintDoc
 );
 
 // ============================

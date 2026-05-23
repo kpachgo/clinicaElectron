@@ -1,10 +1,9 @@
 const fs = require("fs");
-const path = require("path");
 const multer = require("multer");
-const { legacyFrontendDir } = require("../config/storagePaths");
+const { imgDocsDir } = require("../config/storagePaths");
 
 const PRINT_LOGO_BASENAME = "print_logo";
-const PRINT_LOGO_DIR = path.join(legacyFrontendDir, "img", "docs");
+const PRINT_LOGO_DIR = imgDocsDir;
 const MIME_EXTENSION = {
   "image/png": ".png",
   "image/jpeg": ".jpg",

@@ -5,7 +5,7 @@ const authService = require("../services/auth.service");
 const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet, firstRow } = require("../utils/dbResult");
 const { parsePngBase64, writeBufferFile } = require("../utils/file");
-const { firmasDir, legacyFrontendDir } = require("../config/storagePaths");
+const { firmasDir, legacyFrontendDir, imgDocsDir, docsDir } = require("../config/storagePaths");
 
 const ESTADO_AUTORIZACION_PENDIENTE = "PENDIENTE";
 const ESTADO_AUTORIZACION_OK = "AUTORIZADA";
@@ -20,7 +20,9 @@ const MONITOR_ESTADO_VALUES = new Set(["all", "activo", "inactivo"]);
 const MONITOR_TRATAMIENTO_VALUES = new Set(["all", "odontologia", "ortodoncia", "sin_registrar"]);
 const MONITOR_PAGE_SIZE_VALUES = new Set([10, 25, 50]);
 const PRINT_BRANDING_LOGO_BASENAME = "print_logo";
-const PRINT_BRANDING_LOGO_DIR = path.join(legacyFrontendDir, "img", "docs");
+const PRINT_BRANDING_LOGO_DIR = imgDocsDir;
+const PRINT_BRANDING_LOGO_LEGACY_DIR = path.join(legacyFrontendDir, "img", "docs");
+const PRINT_DOC_BASENAME = "print_doc";
 
 function isTransientDbError(err) {
   const code = String(err?.code || "").toUpperCase();
@@ -101,24 +103,32 @@ function getPrintBrandingLogoCandidates() {
   ];
 }
 
+function getPrintBrandingLogoSearchDirs() {
+  const dirs = [PRINT_BRANDING_LOGO_DIR, PRINT_BRANDING_LOGO_LEGACY_DIR];
+  return [...new Set(dirs.filter(Boolean))];
+}
+
 async function getLatestPrintBrandingLogoMeta() {
   const candidates = getPrintBrandingLogoCandidates();
   let latest = null;
+  const searchDirs = getPrintBrandingLogoSearchDirs();
 
-  for (const fileName of candidates) {
-    const fullPath = path.join(PRINT_BRANDING_LOGO_DIR, fileName);
-    try {
-      const stats = await fs.stat(fullPath);
-      if (!stats.isFile()) continue;
-      if (!latest || stats.mtimeMs > latest.mtimeMs) {
-        latest = {
-          fileName,
-          mtimeMs: stats.mtimeMs,
-          updatedAt: stats.mtime.toISOString()
-        };
+  for (const dirPath of searchDirs) {
+    for (const fileName of candidates) {
+      const fullPath = path.join(dirPath, fileName);
+      try {
+        const stats = await fs.stat(fullPath);
+        if (!stats.isFile()) continue;
+        if (!latest || stats.mtimeMs > latest.mtimeMs) {
+          latest = {
+            fileName,
+            mtimeMs: stats.mtimeMs,
+            updatedAt: stats.mtime.toISOString()
+          };
+        }
+      } catch (err) {
+        if (err?.code !== "ENOENT") throw err;
       }
-    } catch (err) {
-      if (err?.code !== "ENOENT") throw err;
     }
   }
 
@@ -128,18 +138,99 @@ async function getLatestPrintBrandingLogoMeta() {
 async function cleanupAlternatePrintBrandingLogos(activeFileName) {
   const active = String(activeFileName || "").trim().toLowerCase();
   const candidates = getPrintBrandingLogoCandidates();
+  const searchDirs = getPrintBrandingLogoSearchDirs();
 
   await Promise.all(
-    candidates
-      .filter((fileName) => String(fileName).toLowerCase() !== active)
-      .map(async (fileName) => {
-        try {
-          await fs.unlink(path.join(PRINT_BRANDING_LOGO_DIR, fileName));
-        } catch (err) {
-          if (err?.code !== "ENOENT") throw err;
-        }
-      })
+    searchDirs.flatMap((dirPath) =>
+      candidates
+        .filter((fileName) => String(fileName).toLowerCase() !== active)
+        .map(async (fileName) => {
+          try {
+            await fs.unlink(path.join(dirPath, fileName));
+          } catch (err) {
+            if (err?.code !== "ENOENT") throw err;
+          }
+        })
+    )
   );
+}
+
+function pad2(num) {
+  return String(Number(num || 0)).padStart(2, "0");
+}
+
+function buildLocalDateStampParts(date = new Date()) {
+  return {
+    yyyy: String(date.getFullYear()),
+    mm: pad2(date.getMonth() + 1),
+    dd: pad2(date.getDate()),
+    hh: pad2(date.getHours()),
+    mi: pad2(date.getMinutes()),
+    ss: pad2(date.getSeconds())
+  };
+}
+
+function slugifyBaseName(rawName) {
+  const txt = String(rawName || "").trim().toLowerCase();
+  if (!txt) return "documento";
+  const noExt = txt.replace(/\.pdf$/i, "");
+  const normalized = noExt
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "documento";
+}
+
+function buildPrintDocAutoFileName(originalName) {
+  const now = new Date();
+  const stamp = buildLocalDateStampParts(now);
+  const slug = slugifyBaseName(originalName).slice(0, 32);
+  const ms = String(now.getMilliseconds()).padStart(3, "0");
+  return `${PRINT_DOC_BASENAME}_${stamp.yyyy}${stamp.mm}${stamp.dd}_${stamp.hh}${stamp.mi}${stamp.ss}${ms}_${slug}.pdf`;
+}
+
+function normalizePrintDocFileName(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const base = path.basename(raw);
+  if (base !== raw) return "";
+  if (!/^[a-zA-Z0-9._-]+\.pdf$/i.test(base)) return "";
+  return base;
+}
+
+function buildPrintDocUrl(fileName, mtimeMs) {
+  const safeName = encodeURIComponent(fileName);
+  const cacheBust = Number.isFinite(Number(mtimeMs)) ? Math.floor(Number(mtimeMs)) : Date.now();
+  return `/docs/${safeName}?v=${cacheBust}`;
+}
+
+async function readPrintDocsDirectoryMeta() {
+  try {
+    const entries = await fs.readdir(docsDir, { withFileTypes: true });
+    const files = entries.filter((entry) => entry.isFile());
+    const meta = [];
+
+    for (const entry of files) {
+      const fileName = normalizePrintDocFileName(entry.name);
+      if (!fileName) continue;
+      const fullPath = path.join(docsDir, fileName);
+      const stats = await fs.stat(fullPath);
+      if (!stats.isFile()) continue;
+      meta.push({
+        fileName,
+        size: Number(stats.size || 0),
+        mtimeMs: Number(stats.mtimeMs || 0),
+        updatedAt: stats.mtime.toISOString()
+      });
+    }
+
+    meta.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return meta;
+  } catch (err) {
+    if (err?.code === "ENOENT") return [];
+    throw err;
+  }
 }
 
 function getResultSet(rows, index = 0) {
@@ -762,6 +853,79 @@ const subirPrintBrandingLogo = async (req, res) => {
   }
 };
 
+const listarPrintDocs = async (req, res) => {
+  try {
+    const docs = await readPrintDocsDirectoryMeta();
+    return res.json({
+      ok: true,
+      data: docs.map((doc) => ({
+        fileName: doc.fileName,
+        name: doc.fileName,
+        size: doc.size,
+        updatedAt: doc.updatedAt,
+        mtimeMs: doc.mtimeMs,
+        url: buildPrintDocUrl(doc.fileName, doc.mtimeMs)
+      }))
+    });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al listar documentos PDF");
+  }
+};
+
+const subirPrintDoc = async (req, res) => {
+  try {
+    if (!req.file) {
+      return badRequest(res, "Archivo PDF requerido");
+    }
+
+    const buffer = req.file.buffer;
+    if (!buffer || !Buffer.isBuffer(buffer) || !buffer.length) {
+      return badRequest(res, "No se pudo procesar el archivo PDF");
+    }
+
+    const autoFileName = buildPrintDocAutoFileName(req.file.originalname || "documento.pdf");
+    const fullPath = path.join(docsDir, autoFileName);
+    await fs.mkdir(docsDir, { recursive: true });
+    await fs.writeFile(fullPath, buffer);
+    const stats = await fs.stat(fullPath);
+
+    return res.json({
+      ok: true,
+      fileName: autoFileName,
+      name: autoFileName,
+      size: Number(stats.size || buffer.length || 0),
+      updatedAt: stats.mtime.toISOString(),
+      mtimeMs: Number(stats.mtimeMs || Date.now()),
+      url: buildPrintDocUrl(autoFileName, stats.mtimeMs)
+    });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al subir documento PDF");
+  }
+};
+
+const eliminarPrintDoc = async (req, res) => {
+  try {
+    const fileName = normalizePrintDocFileName(req.params?.fileName);
+    if (!fileName) {
+      return badRequest(res, "Nombre de archivo invalido");
+    }
+
+    const fullPath = path.join(docsDir, fileName);
+    try {
+      await fs.unlink(fullPath);
+    } catch (err) {
+      if (err?.code === "ENOENT") {
+        return notFound(res, "Documento no encontrado");
+      }
+      throw err;
+    }
+
+    return res.json({ ok: true, fileName });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al eliminar documento PDF");
+  }
+};
+
 const guardarPaciente = async (req, res) => {
   try {
     const p = req.body;
@@ -1241,6 +1405,9 @@ module.exports = {
   obtenerPorId,
   obtenerPrintBrandingLogo,
   subirPrintBrandingLogo,
+  listarPrintDocs,
+  subirPrintDoc,
+  eliminarPrintDoc,
   guardarFirma,
   guardarPaciente,
   crearCitaPaciente,

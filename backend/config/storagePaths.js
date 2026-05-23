@@ -31,9 +31,10 @@ const dataRootDir = resolveDataRoot();
 const fotosDir = path.join(dataRootDir, "fotos");
 const firmasDir = path.join(dataRootDir, "firmas");
 const imgDocsDir = path.join(dataRootDir, "img-docs");
+const docsDir = path.join(dataRootDir, "docs");
 
 function ensureDataDirsSync() {
-  for (const dir of [dataRootDir, fotosDir, firmasDir, imgDocsDir]) {
+  for (const dir of [dataRootDir, fotosDir, firmasDir, imgDocsDir, docsDir]) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -45,6 +46,7 @@ module.exports = {
   fotosDir,
   firmasDir,
   imgDocsDir,
+  docsDir,
   legacyFrontendDir,
   ensureDataDirsSync
 };

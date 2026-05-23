@@ -46,6 +46,10 @@
   let odontoPrintActiveIframe = null;
   let odontoPrintInlineHost = null;
   let odontoPrintIsPrinting = false;
+  let odontoMultiDocs = [];
+  let odontoMultiSelectedFileName = "";
+  let odontoMultiPrintActiveIframe = null;
+  let odontoMultiPrintIsPrinting = false;
   let odontoPrintServicePriceCache = null;
   let odontoPrintServicePricePromise = null;
   const MAX_PROCEDIMIENTO_CITA = 500;
@@ -801,12 +805,24 @@ function syncOdontoVisualTemporalRowsVisibility() {
     row.style.display = shouldHideTemporals ? "none" : "";
   });
 }
+function notifyOdontogramaLayoutChanged() {
+  const dispatchLayoutChanged = () => {
+    if (typeof window.__odontogramaBridgeLayoutRecalc === "function") {
+      window.__odontogramaBridgeLayoutRecalc();
+    }
+    window.dispatchEvent(new CustomEvent("odontograma:layout-changed"));
+  };
+  dispatchLayoutChanged();
+  window.requestAnimationFrame(dispatchLayoutChanged);
+  window.setTimeout(dispatchLayoutChanged, 140);
+}
 function syncOdontoVisualModeContainerClass() {
   const wrapper = document.getElementById("odontograma-wrapper");
   if (!wrapper) return;
   wrapper.classList.toggle("odonto-visual-mode", odontoVisualModeActive);
   syncOdontoVisualTemporalRowsVisibility();
   syncOdontoVisualAusenteImagesVisibility();
+  notifyOdontogramaLayoutChanged();
 }
 function syncOdontoVisualModeButtonText() {
   const btnVisual = document.getElementById("btn-visual-odontograma");
@@ -1150,15 +1166,6 @@ function renderPaciente(container) {
             <label class="form-label">Examen Complementarios</label>
             <input type="text" class="form-control" id="examenComplementarioP">
           </div>
-          <div class="p-col p-20">
-            <label class="form-label" >Tipo de Mordida</label>
-            <select class="form-control" id="tipoMordidaP">
-              <option>Sin registrar</option>
-              <option>Clase 1</option>
-              <option>Clase 2</option>
-              <option>Clase 3</option>
-            </select>
-      </div>
         </div>
       </div>
       
@@ -1212,12 +1219,20 @@ function renderPaciente(container) {
           <label class="toggle-ios">
             <input type="checkbox" id="toggle-bloqueo">
             <span class="slider"></span>
-            <span class="label-text">Bloquear odontograma</span>
           </label>
           <label id="odontogramaActualP">Sin odontograma</label>
           <select class="form-control" id="fechaO">
               <option value="">Sin registros</option>
           </select>
+          <div class="odonto-mordida-toolbar" aria-label="Tipo de mordida">
+            <label for="tipoMordidaP">Tipo de Mordida</label>
+            <select class="form-control" id="tipoMordidaP">
+              <option>Sin registrar</option>
+              <option>Clase 1</option>
+              <option>Clase 2</option>
+              <option>Clase 3</option>
+            </select>
+          </div>
         </div>
 
         <div class="odontograma-scale-container">
@@ -1251,6 +1266,8 @@ function renderPaciente(container) {
             <div class="odonto-summary-header-actions">
               <button id="odonto-summary-print-btn" class="odonto-summary-print-btn" type="button">Imprimir pendiente</button>
               <button id="odonto-summary-assist-btn" class="odonto-summary-print-btn" type="button">Asistencia</button>
+              <button id="odonto-summary-consent-btn" class="odonto-summary-print-btn" type="button">Consentimiento endodoncia</button>
+              <button id="odonto-summary-multi-btn" class="odonto-summary-print-btn" type="button">Imprimir varios</button>
             </div>
           </div>
           <div class="odonto-summary-grid">
@@ -1360,6 +1377,58 @@ function renderPaciente(container) {
                     <div id="odonto-assist-preset-list" class="odonto-print-preset-list"></div>
                   </div>
                 </div>
+
+                <div id="odonto-consent-editor" class="odonto-assist-editor" hidden>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-yo-paciente-input">Yo (paciente)</label>
+                    <input id="odonto-consent-yo-paciente-input" data-consent-field="yoPaciente" type="text" class="form-control" placeholder="Nombre del paciente">
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-dui-paciente-input">No. de DUI (paciente)</label>
+                    <input id="odonto-consent-dui-paciente-input" data-consent-field="duiPaciente" type="text" class="form-control" placeholder="DUI del paciente">
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-domicilio-paciente-input">Domicilio (paciente)</label>
+                    <input id="odonto-consent-domicilio-paciente-input" data-consent-field="domicilioPaciente" type="text" class="form-control" placeholder="Domicilio del paciente">
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-yo-representante-input">O yo (representante)</label>
+                    <input id="odonto-consent-yo-representante-input" data-consent-field="yoRepresentante" type="text" class="form-control" placeholder="Nombre del representante">
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-dui-representante-input">No. de DUI (representante)</label>
+                    <input id="odonto-consent-dui-representante-input" data-consent-field="duiRepresentante" type="text" class="form-control" placeholder="DUI del representante">
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-cirujano-input">Que el cirujano dentista</label>
+                    <input id="odonto-consent-cirujano-input" data-consent-field="cirujanoDentista" type="text" class="form-control" placeholder="Nombre del cirujano dentista">
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-observaciones-input">Observaciones</label>
+                    <textarea id="odonto-consent-observaciones-input" data-consent-field="observaciones" class="p-textarea" rows="3" placeholder="Observaciones"></textarea>
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-lugar-input">Lugar de firma</label>
+                    <input id="odonto-consent-lugar-input" data-consent-field="lugarFirma" type="text" class="form-control" placeholder="Ciudad">
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label>Fecha final</label>
+                    <div class="odonto-assist-time-row">
+                      <div class="odonto-assist-time-col">
+                        <label for="odonto-consent-fecha-dia-input">Dia</label>
+                        <input id="odonto-consent-fecha-dia-input" data-consent-field="fechaDia" type="text" class="form-control" placeholder="20">
+                      </div>
+                      <div class="odonto-assist-time-col">
+                        <label for="odonto-consent-fecha-mes-input">Mes</label>
+                        <input id="odonto-consent-fecha-mes-input" data-consent-field="fechaMes" type="text" class="form-control" placeholder="mayo">
+                      </div>
+                    </div>
+                  </div>
+                  <div class="odonto-assist-editor-row">
+                    <label for="odonto-consent-fecha-anio-input">Anio</label>
+                    <input id="odonto-consent-fecha-anio-input" data-consent-field="fechaAnio" type="text" class="form-control" placeholder="2026">
+                  </div>
+                </div>
               </section>
 
               <section class="odonto-print-preview-pane">
@@ -1388,7 +1457,38 @@ function renderPaciente(container) {
                         <ul id="odonto-print-preview-list" class="odonto-print-preview-list"></ul>
                       </div>
                     </div>
+                    <div id="odonto-print-consent-preview-host" class="odonto-print-consent-preview-host" hidden></div>
                   </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <div id="odonto-multi-print-modal" class="odonto-multi-print-modal" hidden>
+          <div class="odonto-multi-print-backdrop" data-odonto-multi-close="1"></div>
+          <div class="odonto-multi-print-dialog" role="dialog" aria-modal="true" aria-labelledby="odonto-multi-print-title">
+            <div class="odonto-multi-print-header">
+              <h6 id="odonto-multi-print-title">Imprimir varios (biblioteca PDF)</h6>
+              <button id="odonto-multi-print-close-btn" class="odonto-print-close-btn" type="button">Cerrar</button>
+            </div>
+            <div class="odonto-multi-print-body">
+              <section class="odonto-multi-print-editor">
+                <div class="odonto-print-editor-row">
+                  <input id="odonto-multi-pdf-input" type="file" accept="application/pdf,.pdf" class="form-control">
+                  <button id="odonto-multi-pdf-upload-btn" type="button">Guardar PDF</button>
+                </div>
+                <small class="odonto-print-company-editor-note">Biblioteca global en este equipo. Maximo 15 MB por archivo.</small>
+                <div id="odonto-multi-doc-list" class="odonto-multi-doc-list"></div>
+              </section>
+              <section class="odonto-multi-print-preview-pane">
+                <div class="odonto-print-preview-actions">
+                  <span id="odonto-multi-meta">Sin documento seleccionado</span>
+                  <button id="odonto-multi-run-btn" class="odonto-print-run-btn" type="button">Imprimir</button>
+                </div>
+                <div class="odonto-multi-preview">
+                  <iframe id="odonto-multi-preview-frame" title="Previsualizacion PDF" hidden></iframe>
+                  <div id="odonto-multi-preview-empty" class="odonto-multi-preview-empty">Seleccione un documento para previsualizar.</div>
                 </div>
               </section>
             </div>
@@ -2631,6 +2731,7 @@ const ODONTO_PRINT_COMPANY_DEFAULT_CONFIG = {
 };
 const ODONTO_PRINT_COMPANY_STORAGE_KEY = "odonto_print_company_config_v1";
 const ODONTO_PRINT_BRANDING_STORAGE_KEY = "odonto_print_branding_config_v1";
+const ODONTO_PRINT_CONSENT_LOCATION_STORAGE_KEY = "odonto_print_consent_location_v1";
 const ODONTO_PRINT_BRANDING_DEFAULTS = {
   logoUrl: "",
   watermarkSizePct: 52,
@@ -2642,6 +2743,8 @@ let odontoPrintBrandingConfig = { ...ODONTO_PRINT_BRANDING_DEFAULTS };
 let odontoPrintBrandingLoaded = false;
 const ODONTO_PRINT_MODE_PENDIENTE = "pendiente";
 const ODONTO_PRINT_MODE_ASISTENCIA = "asistencia";
+const ODONTO_PRINT_MODE_CONSENTIMIENTO = "consentimiento_endodoncia";
+const ODONTO_PRINT_MULTI_ENDPOINT = "/api/paciente/print-docs";
 const ODONTO_PRINT_PROMO_PRESETS = [
   "Promocion Limpieza Profunda $20",
   "Promocion 3 Rellenos Pequenos x $40",
@@ -2655,6 +2758,11 @@ const ODONTO_ASSIST_PRESETS = [
   "Limpieza dental"
 ];
 const ODONTO_PRINT_MAX_LINE_LENGTH = 128;
+const ODONTO_PRINT_CONSENT_DEFAULTS = {
+  lugarFirma: "San Salvador"
+};
+let odontoPrintConsentConfig = { ...ODONTO_PRINT_CONSENT_DEFAULTS };
+let odontoPrintConsentConfigLoaded = false;
 function normalizeOdontoTreatmentId(rawId) {
   const token = String(rawId ?? "").trim().toUpperCase();
   if (!token) return "";
@@ -3082,8 +3190,14 @@ function getPacienteDuiForPrint() {
 function isOdontoPrintModeAsistencia(mode = odontoPrintMode) {
   return String(mode || "").trim().toLowerCase() === ODONTO_PRINT_MODE_ASISTENCIA;
 }
+function isOdontoPrintModeConsentimiento(mode = odontoPrintMode) {
+  return String(mode || "").trim().toLowerCase() === ODONTO_PRINT_MODE_CONSENTIMIENTO;
+}
 function getOdontoPrintDraftMode(draft) {
   const mode = String(draft?.mode || "").trim().toLowerCase();
+  if (mode === ODONTO_PRINT_MODE_CONSENTIMIENTO) {
+    return ODONTO_PRINT_MODE_CONSENTIMIENTO;
+  }
   return mode === ODONTO_PRINT_MODE_ASISTENCIA
     ? ODONTO_PRINT_MODE_ASISTENCIA
     : ODONTO_PRINT_MODE_PENDIENTE;
@@ -3219,6 +3333,49 @@ function buildOdontoAssistanceDraft() {
     }
   };
 }
+function getTodayConsentDateParts() {
+  const raw = String(hoyInputDateLocal() || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return { dia: "", mes: "", anio: "" };
+  }
+  const monthIndex = Math.max(1, Math.min(12, Number(match[2] || 0)));
+  const monthNames = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+  ];
+  return {
+    dia: String(Number(match[3] || 0) || ""),
+    mes: monthNames[monthIndex - 1] || "",
+    anio: String(match[1] || "")
+  };
+}
+function buildOdontoEndoConsentDraft() {
+  const consentCfg = getOdontoPrintConsentConfig();
+  const dateParts = getTodayConsentDateParts();
+  return {
+    mode: ODONTO_PRINT_MODE_CONSENTIMIENTO,
+    consentimiento: {
+      yoPaciente: getPacienteNombreForPrint(),
+      duiPaciente: getPacienteDuiForPrint(),
+      domicilioPaciente: "",
+      yoRepresentante: "",
+      duiRepresentante: "",
+      cirujanoDentista: "",
+      observaciones: "",
+      lugarFirma: consentCfg.lugarFirma || ODONTO_PRINT_CONSENT_DEFAULTS.lugarFirma,
+      fechaDia: dateParts.dia,
+      fechaMes: dateParts.mes,
+      fechaAnio: dateParts.anio
+    },
+    meta: {
+      nombrePaciente: getPacienteNombreForPrint(),
+      edadPaciente: getPacienteEdadForPrint(),
+      duiPaciente: getPacienteDuiForPrint(),
+      fecha: toDdMmYyyy(hoyInputDateLocal()) || "-"
+    }
+  };
+}
 function autoFormatAssistHour(value) {
   if (!value) return "";
   let v = String(value).trim().toLowerCase().replace(/\s+/g, "");
@@ -3329,6 +3486,46 @@ function getOdontoPrintCompanyConfig() {
   loadOdontoPrintCompanyConfig();
   return normalizeOdontoPrintCompanyConfig(odontoPrintCompanyConfig);
 }
+function normalizeOdontoPrintConsentConfig(rawConfig) {
+  const fallback = { ...ODONTO_PRINT_CONSENT_DEFAULTS };
+  if (!rawConfig || typeof rawConfig !== "object") {
+    return fallback;
+  }
+  const lugarFirma = normalizeOdontoPrintCompanyText(rawConfig.lugarFirma, 96);
+  return {
+    lugarFirma: lugarFirma || fallback.lugarFirma
+  };
+}
+function loadOdontoPrintConsentConfig() {
+  if (odontoPrintConsentConfigLoaded) return;
+  odontoPrintConsentConfigLoaded = true;
+  try {
+    const raw = localStorage.getItem(ODONTO_PRINT_CONSENT_LOCATION_STORAGE_KEY);
+    if (!raw) {
+      odontoPrintConsentConfig = { ...ODONTO_PRINT_CONSENT_DEFAULTS };
+      return;
+    }
+    const parsed = JSON.parse(raw);
+    odontoPrintConsentConfig = normalizeOdontoPrintConsentConfig(parsed);
+  } catch {
+    odontoPrintConsentConfig = { ...ODONTO_PRINT_CONSENT_DEFAULTS };
+  }
+}
+function saveOdontoPrintConsentConfig(rawConfig) {
+  odontoPrintConsentConfig = normalizeOdontoPrintConsentConfig(rawConfig);
+  try {
+    localStorage.setItem(
+      ODONTO_PRINT_CONSENT_LOCATION_STORAGE_KEY,
+      JSON.stringify(odontoPrintConsentConfig)
+    );
+  } catch {
+    // ignore storage failures
+  }
+}
+function getOdontoPrintConsentConfig() {
+  loadOdontoPrintConsentConfig();
+  return normalizeOdontoPrintConsentConfig(odontoPrintConsentConfig);
+}
 function clampNumber(value, min, max, fallback) {
   const num = Number(value);
   if (!Number.isFinite(num)) return fallback;
@@ -3422,6 +3619,8 @@ function getOdontoPrintRefs() {
   return {
     printBtn: document.getElementById("odonto-summary-print-btn"),
     assistBtn: document.getElementById("odonto-summary-assist-btn"),
+    consentBtn: document.getElementById("odonto-summary-consent-btn"),
+    multiBtn: document.getElementById("odonto-summary-multi-btn"),
     modal: document.getElementById("odonto-print-modal"),
     modalTitle: document.getElementById("odonto-print-modal-title"),
     closeBtn: document.getElementById("odonto-print-close-btn"),
@@ -3451,11 +3650,24 @@ function getOdontoPrintRefs() {
     assistDesdeInput: document.getElementById("odonto-assist-time-desde-input"),
     assistHastaInput: document.getElementById("odonto-assist-time-hasta-input"),
     assistPresetList: document.getElementById("odonto-assist-preset-list"),
+    consentEditor: document.getElementById("odonto-consent-editor"),
+    consentYoPacienteInput: document.getElementById("odonto-consent-yo-paciente-input"),
+    consentDuiPacienteInput: document.getElementById("odonto-consent-dui-paciente-input"),
+    consentDomicilioPacienteInput: document.getElementById("odonto-consent-domicilio-paciente-input"),
+    consentYoRepresentanteInput: document.getElementById("odonto-consent-yo-representante-input"),
+    consentDuiRepresentanteInput: document.getElementById("odonto-consent-dui-representante-input"),
+    consentCirujanoInput: document.getElementById("odonto-consent-cirujano-input"),
+    consentObservacionesInput: document.getElementById("odonto-consent-observaciones-input"),
+    consentLugarInput: document.getElementById("odonto-consent-lugar-input"),
+    consentFechaDiaInput: document.getElementById("odonto-consent-fecha-dia-input"),
+    consentFechaMesInput: document.getElementById("odonto-consent-fecha-mes-input"),
+    consentFechaAnioInput: document.getElementById("odonto-consent-fecha-anio-input"),
     runBtn: document.getElementById("odonto-print-run-btn"),
     countEl: document.getElementById("odonto-print-meta-count"),
     previewSheet: document.getElementById("odonto-print-preview-sheet"),
     previewBody: document.getElementById("odonto-print-preview-body"),
     previewStandard: document.getElementById("odonto-print-preview-standard"),
+    consentPreviewHost: document.getElementById("odonto-print-consent-preview-host"),
     previewList: document.getElementById("odonto-print-preview-list"),
     companyLogo: document.getElementById("odonto-print-company-logo"),
     companySucursal: document.getElementById("odonto-print-company-sucursal"),
@@ -3463,7 +3675,16 @@ function getOdontoPrintRefs() {
     pacienteRow: document.getElementById("odonto-print-paciente-row"),
     pacienteNombre: document.getElementById("odonto-print-paciente-nombre"),
     pacienteEdad: document.getElementById("odonto-print-paciente-edad"),
-    pacienteFecha: document.getElementById("odonto-print-paciente-fecha")
+    pacienteFecha: document.getElementById("odonto-print-paciente-fecha"),
+    multiModal: document.getElementById("odonto-multi-print-modal"),
+    multiCloseBtn: document.getElementById("odonto-multi-print-close-btn"),
+    multiPdfInput: document.getElementById("odonto-multi-pdf-input"),
+    multiUploadBtn: document.getElementById("odonto-multi-pdf-upload-btn"),
+    multiList: document.getElementById("odonto-multi-doc-list"),
+    multiMeta: document.getElementById("odonto-multi-meta"),
+    multiRunBtn: document.getElementById("odonto-multi-run-btn"),
+    multiPreviewFrame: document.getElementById("odonto-multi-preview-frame"),
+    multiPreviewEmpty: document.getElementById("odonto-multi-preview-empty")
   };
 }
 function setOdontoPrintCompanyEditorExpanded(expanded) {
@@ -3515,6 +3736,18 @@ function closeOdontoPrintModal() {
   if (refs.assistTreatmentInput) refs.assistTreatmentInput.value = "";
   if (refs.assistDesdeInput) refs.assistDesdeInput.value = "";
   if (refs.assistHastaInput) refs.assistHastaInput.value = "";
+  if (refs.consentYoPacienteInput) refs.consentYoPacienteInput.value = "";
+  if (refs.consentDuiPacienteInput) refs.consentDuiPacienteInput.value = "";
+  if (refs.consentDomicilioPacienteInput) refs.consentDomicilioPacienteInput.value = "";
+  if (refs.consentYoRepresentanteInput) refs.consentYoRepresentanteInput.value = "";
+  if (refs.consentCalidadRepresentanteInput) refs.consentCalidadRepresentanteInput.value = "";
+  if (refs.consentDuiRepresentanteInput) refs.consentDuiRepresentanteInput.value = "";
+  if (refs.consentCirujanoInput) refs.consentCirujanoInput.value = "";
+  if (refs.consentObservacionesInput) refs.consentObservacionesInput.value = "";
+  if (refs.consentLugarInput) refs.consentLugarInput.value = "";
+  if (refs.consentFechaDiaInput) refs.consentFechaDiaInput.value = "";
+  if (refs.consentFechaMesInput) refs.consentFechaMesInput.value = "";
+  if (refs.consentFechaAnioInput) refs.consentFechaAnioInput.value = "";
   if (refs.logoInput) refs.logoInput.value = "";
   setOdontoPrintCompanyEditorExpanded(false);
   if (refs.runBtn) refs.runBtn.disabled = false;
@@ -3596,6 +3829,29 @@ function updateOdontoAssistTimeField(fieldName, text) {
   const key = fieldName === "horaHasta" ? "horaHasta" : "horaDesde";
   odontoPrintDraft.asistencia[key] = limitPrintEditorLine(String(text ?? ""));
 }
+function ensureConsentDraftObject() {
+  if (!odontoPrintDraft || typeof odontoPrintDraft !== "object") return null;
+  if (getOdontoPrintDraftMode(odontoPrintDraft) !== ODONTO_PRINT_MODE_CONSENTIMIENTO) return null;
+  if (!odontoPrintDraft.consentimiento || typeof odontoPrintDraft.consentimiento !== "object") {
+    const defaults = buildOdontoEndoConsentDraft().consentimiento;
+    odontoPrintDraft.consentimiento = { ...defaults };
+  }
+  return odontoPrintDraft.consentimiento;
+}
+function updateOdontoConsentField(fieldName, text, { persistLocation = false } = {}) {
+  const consent = ensureConsentDraftObject();
+  if (!consent) return;
+  const key = String(fieldName || "").trim();
+  if (!key || !Object.prototype.hasOwnProperty.call(consent, key)) return;
+  if (key === "observaciones") {
+    consent[key] = String(text ?? "").slice(0, 600);
+  } else {
+    consent[key] = limitPrintEditorLine(String(text ?? ""));
+  }
+  if (persistLocation && key === "lugarFirma") {
+    saveOdontoPrintConsentConfig({ lugarFirma: consent[key] || ODONTO_PRINT_CONSENT_DEFAULTS.lugarFirma });
+  }
+}
 function commitAssistHourInput(inputEl, fieldName) {
   if (!(inputEl instanceof HTMLInputElement)) return;
   const formatted = autoFormatAssistHour(inputEl.value);
@@ -3610,14 +3866,31 @@ function renderOdontoPrintEditorList() {
 
   const mode = getOdontoPrintDraftMode(odontoPrintDraft);
   const isAsistencia = mode === ODONTO_PRINT_MODE_ASISTENCIA;
-  if (refs.standardEditor) refs.standardEditor.hidden = isAsistencia;
+  const isConsent = mode === ODONTO_PRINT_MODE_CONSENTIMIENTO;
+  if (refs.standardEditor) refs.standardEditor.hidden = isAsistencia || isConsent;
   if (refs.assistEditor) refs.assistEditor.hidden = !isAsistencia;
+  if (refs.consentEditor) refs.consentEditor.hidden = !isConsent;
 
   if (isAsistencia) {
     const value = String(odontoPrintDraft?.asistencia?.tratamiento || "");
     if (refs.assistTreatmentInput) refs.assistTreatmentInput.value = value;
     if (refs.assistDesdeInput) refs.assistDesdeInput.value = String(odontoPrintDraft?.asistencia?.horaDesde || "");
     if (refs.assistHastaInput) refs.assistHastaInput.value = String(odontoPrintDraft?.asistencia?.horaHasta || "");
+    return;
+  }
+  if (isConsent) {
+    const consent = ensureConsentDraftObject() || {};
+    if (refs.consentYoPacienteInput) refs.consentYoPacienteInput.value = String(consent.yoPaciente || "");
+    if (refs.consentDuiPacienteInput) refs.consentDuiPacienteInput.value = String(consent.duiPaciente || "");
+    if (refs.consentDomicilioPacienteInput) refs.consentDomicilioPacienteInput.value = String(consent.domicilioPaciente || "");
+    if (refs.consentYoRepresentanteInput) refs.consentYoRepresentanteInput.value = String(consent.yoRepresentante || "");
+    if (refs.consentDuiRepresentanteInput) refs.consentDuiRepresentanteInput.value = String(consent.duiRepresentante || "");
+    if (refs.consentCirujanoInput) refs.consentCirujanoInput.value = String(consent.cirujanoDentista || "");
+    if (refs.consentObservacionesInput) refs.consentObservacionesInput.value = String(consent.observaciones || "");
+    if (refs.consentLugarInput) refs.consentLugarInput.value = String(consent.lugarFirma || "");
+    if (refs.consentFechaDiaInput) refs.consentFechaDiaInput.value = String(consent.fechaDia || "");
+    if (refs.consentFechaMesInput) refs.consentFechaMesInput.value = String(consent.fechaMes || "");
+    if (refs.consentFechaAnioInput) refs.consentFechaAnioInput.value = String(consent.fechaAnio || "");
     return;
   }
 
@@ -3663,13 +3936,15 @@ function renderOdontoPrintPreviewList() {
 
   const mode = getOdontoPrintDraftMode(odontoPrintDraft);
   const isAsistencia = mode === ODONTO_PRINT_MODE_ASISTENCIA;
-  if (refs.previewStandard) refs.previewStandard.hidden = false;
+  const isConsent = mode === ODONTO_PRINT_MODE_CONSENTIMIENTO;
+  if (refs.previewStandard) refs.previewStandard.hidden = isConsent;
+  if (refs.consentPreviewHost) refs.consentPreviewHost.hidden = !isConsent;
 
   const meta = odontoPrintDraft?.meta || {};
   const branding = getOdontoPrintBrandingConfig();
   refs.previewSheet.style.setProperty("--odonto-print-watermark-size", `${branding.watermarkSizePct}%`);
   refs.previewSheet.style.setProperty("--odonto-print-watermark-opacity", String(branding.watermarkOpacity));
-  if (refs.pacienteRow) refs.pacienteRow.hidden = isAsistencia;
+  if (refs.pacienteRow) refs.pacienteRow.hidden = isAsistencia || isConsent;
   if (refs.pacienteNombre) refs.pacienteNombre.textContent = `Nombre: ${meta.nombrePaciente || "-"}`;
   if (refs.pacienteEdad) refs.pacienteEdad.textContent = `Edad: ${meta.edadPaciente || "-"}`;
   if (refs.pacienteFecha) refs.pacienteFecha.textContent = `Fecha: ${meta.fecha || "-"}`;
@@ -3678,6 +3953,17 @@ function renderOdontoPrintPreviewList() {
     refs.companyLogo.src = hasLogo ? branding.logoUrl : "";
     refs.companyLogo.hidden = !hasLogo;
     refs.previewSheet.classList.toggle("has-brand-logo", hasLogo);
+  }
+  refs.previewSheet.classList.toggle("is-consent-mode", isConsent);
+
+  if (isConsent) {
+    const consent = ensureConsentDraftObject() || {};
+    if (refs.countEl) refs.countEl.textContent = "Consentimiento";
+    if (refs.consentPreviewHost) {
+      refs.consentPreviewHost.innerHTML = buildOdontoConsentSinglePageHtml(consent, branding);
+    }
+    refs.previewSheet.classList.remove("is-compact", "is-ultra-compact");
+    return;
   }
 
   if (isAsistencia) {
@@ -3707,13 +3993,17 @@ function renderOdontoPrintModal() {
   const refs = getOdontoPrintRefs();
   const mode = getOdontoPrintDraftMode(odontoPrintDraft);
   const isAsistencia = mode === ODONTO_PRINT_MODE_ASISTENCIA;
+  const isConsent = mode === ODONTO_PRINT_MODE_CONSENTIMIENTO;
   if (refs.modalTitle) {
-    refs.modalTitle.textContent = isAsistencia
-      ? "Hoja de asistencia"
-      : "Hoja de tratamientos pendientes";
+    refs.modalTitle.textContent = isConsent
+      ? "Consentimiento endodoncia"
+      : isAsistencia
+        ? "Hoja de asistencia"
+        : "Hoja de tratamientos pendientes";
   }
   if (refs.modal) {
     refs.modal.classList.toggle("is-assist-mode", isAsistencia);
+    refs.modal.classList.toggle("is-consent-mode", isConsent);
   }
   syncOdontoPrintCompanyHeader();
   syncOdontoPrintBrandingUi();
@@ -3721,7 +4011,7 @@ function renderOdontoPrintModal() {
   renderOdontoPrintPreviewList();
 }
 function addOdontoPrintItem(rawText, kind = "manual") {
-  if (isOdontoPrintModeAsistencia()) return;
+  if (isOdontoPrintModeAsistencia() || isOdontoPrintModeConsentimiento()) return;
   const preparedText = kind === "promo"
     ? ensurePromoPrefix(rawText)
     : rawText;
@@ -3737,14 +4027,14 @@ function addOdontoPrintItem(rawText, kind = "manual") {
   renderOdontoPrintModal();
 }
 function removeOdontoPrintItem(index) {
-  if (isOdontoPrintModeAsistencia()) return;
+  if (isOdontoPrintModeAsistencia() || isOdontoPrintModeConsentimiento()) return;
   if (!odontoPrintDraft || !Array.isArray(odontoPrintDraft.items)) return;
   if (!Number.isInteger(index) || index < 0 || index >= odontoPrintDraft.items.length) return;
   odontoPrintDraft.items.splice(index, 1);
   renderOdontoPrintModal();
 }
 function updateOdontoPrintItem(index, rawText) {
-  if (isOdontoPrintModeAsistencia()) return;
+  if (isOdontoPrintModeAsistencia() || isOdontoPrintModeConsentimiento()) return;
   if (!odontoPrintDraft || !Array.isArray(odontoPrintDraft.items)) return;
   if (!Number.isInteger(index) || index < 0 || index >= odontoPrintDraft.items.length) return;
   odontoPrintDraft.items[index].text = limitPrintEditorLine(rawText);
@@ -3784,6 +4074,82 @@ function buildOdontoAssistBodyInnerHtml(meta, tratamiento, horaDesde = "", horaH
         <span class="odonto-print-assist-sign-line"></span>
       </div>
     </div>
+  `;
+}
+function buildConsentInlineValue(value, minWidthClass = "") {
+  const rawValue = String(value || "").trim();
+  const safeClass = minWidthClass ? ` ${minWidthClass}` : "";
+  const filledClass = rawValue ? " is-filled" : "";
+  return `<span class="odonto-consent-inline${safeClass}${filledClass}">${escapeHtml(rawValue)}</span>`;
+}
+function buildConsentTextareaValue(value) {
+  const safe = escapeHtml(String(value || "").trim());
+  return safe ? safe.replace(/\n/g, "<br>") : "&nbsp;";
+}
+function buildOdontoConsentHeaderHtml(brandingConfig = getOdontoPrintBrandingConfig()) {
+  const branding = normalizeOdontoPrintBrandingConfig(brandingConfig);
+  const logoUrl = String(branding.logoUrl || "").trim();
+  const logoHtml = logoUrl
+    ? `<img class="odonto-print-consent-header-logo" src="${escapeHtml(logoUrl)}" alt="Logo clinica">`
+    : `<div class="odonto-print-consent-header-logo is-empty"></div>`;
+  return `
+    <header class="odonto-print-consent-header">
+      ${logoHtml}
+      <div class="odonto-print-consent-header-text">
+        <h2>CONSENTIMIENTO INFORMADO PARA ENDODONCIA</h2>
+      </div>
+    </header>
+  `;
+}
+function buildOdontoConsentSinglePageHtml(consent, brandingConfig = getOdontoPrintBrandingConfig()) {
+  const branding = normalizeOdontoPrintBrandingConfig(brandingConfig);
+  const brandingVars = getOdontoPrintBrandingCssVars(branding);
+  const safeConsent = consent && typeof consent === "object" ? consent : {};
+  const hasObservaciones = Boolean(String(safeConsent.observaciones || "").trim());
+  const bodyHtml = `
+    <div class="odonto-print-consent-content">
+      <div class="odonto-consent-top-spacer" aria-hidden="true"></div>
+      <p class="odonto-consent-line-text">YO (PACIENTE): ${buildConsentInlineValue(safeConsent.yoPaciente, "is-wide")}</p>
+      <p class="odonto-consent-line-text">No DE DUI: ${buildConsentInlineValue(safeConsent.duiPaciente, "is-mid")}</p>
+      <p class="odonto-consent-line-text">CON DOMICILIO EN: ${buildConsentInlineValue(safeConsent.domicilioPaciente, "is-mid")}</p>
+      <p class="odonto-consent-line-text">REPRESENTANTE LEGAL: ${buildConsentInlineValue(safeConsent.yoRepresentante, "is-mid")}</p>
+      <p class="odonto-consent-line-text">No DE DUI: ${buildConsentInlineValue(safeConsent.duiRepresentante, "is-mid")}</p>
+      <p class="odonto-consent-line-text">DECLARO</p>
+      <p class="odonto-consent-line-text">Que el cirujano dentista: ${buildConsentInlineValue(safeConsent.cirujanoDentista, "is-mid")}</p>
+      <p class="odonto-consent-paragraph">Me ha explicado que es conveniente en mi situacion proceder a realizar el tratamiento endodontico de mi pieza dentaria, para lo que me ha informado debidamente lo siguiente:</p>
+      <ol class="odonto-consent-list">
+        <li>El proposito principal de la intervencion es la eliminacion del tejido pulpar inflamado o infectado del interior del diente o molar para evitar secuelas dolorosas o infecciosas.</li>
+        <li>El tratamiento que voy a recibir implica la administracion de anestesia local, que consiste en proporcionar, mediante una inyeccion, sustancias que provocan el bloqueo reversible de los nervios; de tal manera que se inhibe transitoriamente la sensibilidad con el fin de realizar el tratamiento sin dolor. Tambien me ha explicado que tendre la sensacion de adormecimiento del labio o de la cara, que normalmente desaparece en dos o tres horas.</li>
+        <li>La intervencion consiste en la eliminacion y el relleno de la camara pulpar y los tejidos radiculares con un material que selle la cavidad e impida el paso de bacterias y toxinas infecciosas, conservando el diente o molar.</li>
+        <li>Se me ha informado que, a pesar de realizar correctamente la endodoncia, cabe la posibilidad de infeccion; por lo cual sera necesario visitar al odontologo(a) cada 6 meses. Tambien puede ser necesario proceder a una repeticion del tratamiento, si asi lo amerita.</li>
+        <li>Luego de realizada la endodoncia, procederan a la colocacion de un poste de metal o fibra de vidrio que servira de soporte para mi diente o molar, para luego realizar la reconstruccion.</li>
+        <li>Tambien me ha advertido que es posible que despues de un tiempo la endodoncia cambie de color y se oscurezca ligeramente. Es frecuente que el diente o molar en el que se ha realizado la endodoncia se debilite y tienda a fracturarse, por lo que puede ser necesario realizar coronas de porcelana o de circonio para refuerzo intrarradicular.</li>
+      </ol>
+      <p class="odonto-consent-paragraph">Este consentimiento puede ser revocado discrecionalmente por mi, sin necesidad de justificacion alguna, en cualquier momento antes de realizar el procedimiento.</p>
+      <p class="odonto-consent-line-text">Observaciones: ${buildConsentInlineValue("", "is-observaciones")}</p>
+      <div class="odonto-consent-observaciones-box${hasObservaciones ? " is-filled" : ""}">${buildConsentTextareaValue(safeConsent.observaciones)}</div>
+      <p class="odonto-consent-paragraph">He comprendido lo que me ha explicado mi cirujano dentista de forma clara, con un lenguaje sencillo, habiendo resuelto todas las dudas que se me han planteado, y la informacion complementaria que le he solicitado.</p>
+      <p class="odonto-consent-paragraph">Estoy satisfecho(a) con la informacion recibida y he comprendido el alcance y riesgos de este tratamiento y, por ello, DOY MI CONSENTIMIENTO para que se me practique el tratamiento de endodoncia.</p>
+      <p class="odonto-consent-line-text">En ${buildConsentInlineValue(safeConsent.lugarFirma || ODONTO_PRINT_CONSENT_DEFAULTS.lugarFirma, "is-lugar")} ${buildConsentInlineValue(safeConsent.fechaDia, "is-fecha-corta")} de ${buildConsentInlineValue(safeConsent.fechaMes, "is-fecha-media")} de ${buildConsentInlineValue(safeConsent.fechaAnio, "is-fecha-corta")}</p>
+      <div class="odonto-consent-signatures">
+        <div class="odonto-consent-sign-col">
+          <div class="odonto-consent-sign-line"></div>
+          <div class="odonto-consent-sign-label">EL PACIENTE O REPRESENTANTE LEGAL</div>
+        </div>
+        <div class="odonto-consent-sign-col">
+          <div class="odonto-consent-sign-line"></div>
+          <div class="odonto-consent-sign-label">CIRUJANO DENTISTA</div>
+        </div>
+      </div>
+    </div>
+  `;
+  return `
+    <section class="odonto-print-consent-page is-single-page" style="${escapeHtml(brandingVars)}">
+      ${buildOdontoConsentHeaderHtml(branding)}
+      <div class="odonto-print-consent-page-body">
+        ${buildOdontoPrintSheetBodyHtml(bodyHtml, branding)}
+      </div>
+    </section>
   `;
 }
 function buildOdontoPrintSheetBodyHtml(bodyContentHtml, brandingConfig = getOdontoPrintBrandingConfig()) {
@@ -3834,21 +4200,35 @@ function buildOdontoPrintDocumentHtml(draft) {
   const meta = safeDraft.meta && typeof safeDraft.meta === "object" ? safeDraft.meta : {};
   const mode = getOdontoPrintDraftMode(safeDraft);
   const isAsistencia = mode === ODONTO_PRINT_MODE_ASISTENCIA;
+  const isConsent = mode === ODONTO_PRINT_MODE_CONSENTIMIENTO;
   const items = Array.isArray(safeDraft.items) ? safeDraft.items : [];
   const densityClass = getOdontoPrintDensityClass(items.length);
   const listHtml = buildOdontoPrintListHtml(items);
   const tratamientoAssist = truncateForPrintLine(safeDraft?.asistencia?.tratamiento || "");
   const horaDesdeAssist = autoFormatAssistHour(safeDraft?.asistencia?.horaDesde || "");
   const horaHastaAssist = autoFormatAssistHour(safeDraft?.asistencia?.horaHasta || "");
-  const bodyHtml = isAsistencia
-    ? buildOdontoAssistBodyInnerHtml(meta, tratamientoAssist, horaDesdeAssist, horaHastaAssist)
-    : `<ul class="odonto-print-preview-list">${listHtml}</ul>`;
-  const articleHtml = buildOdontoPrintArticleHtml(meta, bodyHtml, isAsistencia ? "" : densityClass, {
-    showPacienteRow: !isAsistencia
-  });
-  const title = isAsistencia
-    ? "Impresion Hoja de Asistencia"
-    : "Impresion Tratamientos Pendientes";
+  let documentPagesHtml = "";
+  let title = "Impresion Tratamientos Pendientes";
+
+  if (isConsent) {
+    const consent = safeDraft?.consentimiento && typeof safeDraft.consentimiento === "object"
+      ? safeDraft.consentimiento
+      : {};
+    const consentPageHtml = buildOdontoConsentSinglePageHtml(consent, getOdontoPrintBrandingConfig());
+    documentPagesHtml = `<div class="odonto-print-doc-page odonto-print-doc-page-consent-single">${consentPageHtml}</div>`;
+    title = "Impresion Consentimiento Endodoncia";
+  } else {
+    const bodyHtml = isAsistencia
+      ? buildOdontoAssistBodyInnerHtml(meta, tratamientoAssist, horaDesdeAssist, horaHastaAssist)
+      : `<ul class="odonto-print-preview-list">${listHtml}</ul>`;
+    const articleHtml = buildOdontoPrintArticleHtml(meta, bodyHtml, isAsistencia ? "" : densityClass, {
+      showPacienteRow: !isAsistencia
+    });
+    documentPagesHtml = `<div class="odonto-print-doc-page">${articleHtml}</div>`;
+    title = isAsistencia
+      ? "Impresion Hoja de Asistencia"
+      : "Impresion Tratamientos Pendientes";
+  }
 
   return `<!doctype html>
 <html lang="es">
@@ -3859,9 +4239,7 @@ function buildOdontoPrintDocumentHtml(draft) {
   <link rel="stylesheet" href="/css/odontograma.css">
 </head>
 <body class="odonto-print-document">
-  <div class="odonto-print-doc-page">
-    ${articleHtml}
-  </div>
+  ${documentPagesHtml}
 </body>
 </html>`;
 }
@@ -3870,29 +4248,40 @@ function ensureInlinePrintHost(draft) {
   const meta = safeDraft.meta && typeof safeDraft.meta === "object" ? safeDraft.meta : {};
   const mode = getOdontoPrintDraftMode(safeDraft);
   const isAsistencia = mode === ODONTO_PRINT_MODE_ASISTENCIA;
+  const isConsent = mode === ODONTO_PRINT_MODE_CONSENTIMIENTO;
   const items = Array.isArray(safeDraft.items) ? safeDraft.items : [];
   const densityClass = getOdontoPrintDensityClass(items.length);
   const listHtml = buildOdontoPrintListHtml(items);
   const tratamientoAssist = truncateForPrintLine(safeDraft?.asistencia?.tratamiento || "");
   const horaDesdeAssist = autoFormatAssistHour(safeDraft?.asistencia?.horaDesde || "");
   const horaHastaAssist = autoFormatAssistHour(safeDraft?.asistencia?.horaHasta || "");
-  const bodyHtml = isAsistencia
-    ? buildOdontoAssistBodyInnerHtml(meta, tratamientoAssist, horaDesdeAssist, horaHastaAssist)
-    : `<ul class="odonto-print-preview-list">${listHtml}</ul>`;
-  const articleHtml = buildOdontoPrintArticleHtml(meta, bodyHtml, isAsistencia ? "" : densityClass, {
-    showPacienteRow: !isAsistencia
-  });
+  let hostPagesHtml = "";
+  if (isConsent) {
+    const consent = safeDraft?.consentimiento && typeof safeDraft.consentimiento === "object"
+      ? safeDraft.consentimiento
+      : {};
+    const consentPageHtml = buildOdontoConsentSinglePageHtml(consent, getOdontoPrintBrandingConfig());
+    hostPagesHtml = `<div class="odonto-print-doc-page odonto-print-doc-page-consent-single">${consentPageHtml}</div>`;
+  } else {
+    const bodyHtml = isAsistencia
+      ? buildOdontoAssistBodyInnerHtml(meta, tratamientoAssist, horaDesdeAssist, horaHastaAssist)
+      : `<ul class="odonto-print-preview-list">${listHtml}</ul>`;
+    const articleHtml = buildOdontoPrintArticleHtml(meta, bodyHtml, isAsistencia ? "" : densityClass, {
+      showPacienteRow: !isAsistencia
+    });
+    hostPagesHtml = `
+      <div class="odonto-print-doc-page">
+        ${articleHtml}
+      </div>
+    `;
+  }
 
   cleanupOdontoInlinePrintHost();
   const host = document.createElement("div");
   host.id = "odonto-print-inline-host";
   host.className = "odonto-print-inline-host";
   host.setAttribute("aria-hidden", "true");
-  host.innerHTML = `
-    <div class="odonto-print-doc-page">
-      ${articleHtml}
-    </div>
-  `;
+  host.innerHTML = hostPagesHtml;
   document.body.appendChild(host);
   odontoPrintInlineHost = host;
   document.body.classList.add("odonto-print-inline-mode");
@@ -3947,9 +4336,11 @@ function runOdontoPrintJob() {
   if (odontoPrintIsPrinting) return;
 
   if (!odontoPrintDraft || typeof odontoPrintDraft !== "object") {
-    odontoPrintDraft = isOdontoPrintModeAsistencia()
-      ? buildOdontoAssistanceDraft()
-      : buildOdontoPrintDraftFromCurrentSummary();
+    odontoPrintDraft = isOdontoPrintModeConsentimiento()
+      ? buildOdontoEndoConsentDraft()
+      : isOdontoPrintModeAsistencia()
+        ? buildOdontoAssistanceDraft()
+        : buildOdontoPrintDraftFromCurrentSummary();
   }
   const refs = getOdontoPrintRefs();
   const draftSnapshot = JSON.parse(JSON.stringify(odontoPrintDraft || { items: [], meta: {} }));
@@ -4053,11 +4444,15 @@ async function openOdontoPrintModal() {
 async function openOdontoPrintModalByMode(mode = ODONTO_PRINT_MODE_PENDIENTE) {
   const refs = getOdontoPrintRefs();
   if (!refs.modal) return;
-  odontoPrintMode = isOdontoPrintModeAsistencia(mode)
-    ? ODONTO_PRINT_MODE_ASISTENCIA
-    : ODONTO_PRINT_MODE_PENDIENTE;
+  odontoPrintMode = isOdontoPrintModeConsentimiento(mode)
+    ? ODONTO_PRINT_MODE_CONSENTIMIENTO
+    : isOdontoPrintModeAsistencia(mode)
+      ? ODONTO_PRINT_MODE_ASISTENCIA
+      : ODONTO_PRINT_MODE_PENDIENTE;
 
-  if (isOdontoPrintModeAsistencia(odontoPrintMode)) {
+  if (isOdontoPrintModeConsentimiento(odontoPrintMode)) {
+    odontoPrintDraft = buildOdontoEndoConsentDraft();
+  } else if (isOdontoPrintModeAsistencia(odontoPrintMode)) {
     odontoPrintDraft = buildOdontoAssistanceDraft();
   } else {
     odontoPrintServicePriceCache = null;
@@ -4070,11 +4465,297 @@ async function openOdontoPrintModalByMode(mode = ODONTO_PRINT_MODE_PENDIENTE) {
   refs.modal.hidden = false;
   document.body.classList.add("odonto-print-modal-open");
 }
+function formatBytesCompact(bytes) {
+  const num = Number(bytes || 0);
+  if (!Number.isFinite(num) || num <= 0) return "0 B";
+  if (num < 1024) return `${num} B`;
+  if (num < 1024 * 1024) return `${(num / 1024).toFixed(1)} KB`;
+  return `${(num / (1024 * 1024)).toFixed(2)} MB`;
+}
+function normalizeOdontoPrintDocEntry(rawDoc) {
+  const fileName = String(rawDoc?.fileName || rawDoc?.name || "").trim();
+  const updatedAtRaw = String(rawDoc?.updatedAt || "").trim();
+  const updatedDate = updatedAtRaw ? new Date(updatedAtRaw) : null;
+  const updatedLabel = updatedDate && !Number.isNaN(updatedDate.getTime())
+    ? `${String(updatedDate.getDate()).padStart(2, "0")}/${String(updatedDate.getMonth() + 1).padStart(2, "0")}/${updatedDate.getFullYear()}`
+    : "-";
+  return {
+    fileName,
+    name: String(rawDoc?.name || fileName || "").trim(),
+    size: Number(rawDoc?.size || 0),
+    updatedAt: updatedAtRaw,
+    updatedLabel,
+    url: String(rawDoc?.url || "").trim()
+  };
+}
+function getSelectedOdontoMultiDoc() {
+  const selected = odontoMultiDocs.find((doc) => doc.fileName === odontoMultiSelectedFileName);
+  return selected || null;
+}
+function setOdontoMultiSelectedFileName(fileName) {
+  const next = String(fileName || "").trim();
+  odontoMultiSelectedFileName = next;
+}
+function cleanupOdontoMultiPrintFrame() {
+  if (!odontoMultiPrintActiveIframe) return;
+  try {
+    odontoMultiPrintActiveIframe.remove();
+  } catch {
+    // ignore cleanup errors
+  }
+  odontoMultiPrintActiveIframe = null;
+}
+function buildOdontoMultiPreviewUrl(rawUrl) {
+  const base = String(rawUrl || "").trim();
+  if (!base) return "";
+  const withoutHash = base.split("#")[0];
+  return `${withoutHash}#view=FitH&zoom=page-width&navpanes=0&pagemode=none`;
+}
+function renderOdontoMultiPreview() {
+  const refs = getOdontoPrintRefs();
+  const selected = getSelectedOdontoMultiDoc();
+  if (refs.multiMeta) {
+    refs.multiMeta.textContent = selected
+      ? `${selected.name || selected.fileName} (${formatBytesCompact(selected.size)})`
+      : "Sin documento seleccionado";
+  }
+  if (refs.multiRunBtn) refs.multiRunBtn.disabled = !selected || odontoMultiPrintIsPrinting;
+  if (!refs.multiPreviewFrame || !refs.multiPreviewEmpty) return;
+
+  if (!selected || !selected.url) {
+    refs.multiPreviewFrame.removeAttribute("src");
+    refs.multiPreviewFrame.hidden = true;
+    refs.multiPreviewEmpty.hidden = false;
+    return;
+  }
+
+  refs.multiPreviewFrame.src = buildOdontoMultiPreviewUrl(selected.url);
+  refs.multiPreviewFrame.hidden = false;
+  refs.multiPreviewEmpty.hidden = true;
+}
+function renderOdontoMultiDocList() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.multiList) return;
+  refs.multiList.innerHTML = "";
+  if (!odontoMultiDocs.length) {
+    const empty = document.createElement("div");
+    empty.className = "odonto-multi-doc-empty";
+    empty.textContent = "No hay documentos guardados.";
+    refs.multiList.appendChild(empty);
+    renderOdontoMultiPreview();
+    return;
+  }
+
+  odontoMultiDocs.forEach((doc) => {
+    const row = document.createElement("div");
+    row.className = "odonto-multi-doc-item";
+    if (doc.fileName === odontoMultiSelectedFileName) row.classList.add("is-selected");
+    row.dataset.fileName = doc.fileName;
+
+    const info = document.createElement("div");
+    info.className = "odonto-multi-doc-info";
+    const title = document.createElement("strong");
+    title.textContent = doc.name || doc.fileName;
+    const meta = document.createElement("span");
+    meta.textContent = `${formatBytesCompact(doc.size)} · ${doc.updatedLabel}`;
+    info.appendChild(title);
+    info.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "odonto-multi-doc-actions";
+
+    const btnDelete = document.createElement("button");
+    btnDelete.type = "button";
+    btnDelete.dataset.action = "delete";
+    btnDelete.dataset.fileName = doc.fileName;
+    btnDelete.className = "is-danger";
+    btnDelete.textContent = "Eliminar";
+
+    actions.appendChild(btnDelete);
+    row.appendChild(info);
+    row.appendChild(actions);
+    refs.multiList.appendChild(row);
+  });
+  renderOdontoMultiPreview();
+}
+async function fetchOdontoMultiDocsList() {
+  const res = await fetch(ODONTO_PRINT_MULTI_ENDPOINT, { cache: "no-store" });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.ok || !Array.isArray(json?.data)) {
+    throw new Error(json?.message || "No se pudo cargar la lista de documentos.");
+  }
+  odontoMultiDocs = json.data
+    .map(normalizeOdontoPrintDocEntry)
+    .filter((doc) => Boolean(doc.fileName && doc.url));
+
+  if (!odontoMultiDocs.some((doc) => doc.fileName === odontoMultiSelectedFileName)) {
+    odontoMultiSelectedFileName = odontoMultiDocs[0]?.fileName || "";
+  }
+  renderOdontoMultiDocList();
+}
+async function uploadOdontoMultiPdf(file) {
+  if (!(file instanceof File)) {
+    throw new Error("Seleccione un archivo PDF.");
+  }
+  const fd = new FormData();
+  fd.append("pdf", file);
+  const res = await fetch(ODONTO_PRINT_MULTI_ENDPOINT, {
+    method: "POST",
+    body: fd
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.message || "No se pudo guardar el PDF.");
+  }
+  return normalizeOdontoPrintDocEntry(json);
+}
+async function deleteOdontoMultiPdf(fileName) {
+  const safe = String(fileName || "").trim();
+  if (!safe) throw new Error("Documento invalido");
+  const res = await fetch(`${ODONTO_PRINT_MULTI_ENDPOINT}/${encodeURIComponent(safe)}`, {
+    method: "DELETE"
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.ok) {
+    throw new Error(json?.message || "No se pudo eliminar el PDF.");
+  }
+}
+function closeOdontoMultiPrintModal() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.multiModal) return;
+  refs.multiModal.hidden = true;
+  document.body.classList.remove("odonto-print-modal-open");
+  cleanupOdontoMultiPrintFrame();
+  odontoMultiPrintIsPrinting = false;
+  if (refs.multiRunBtn) refs.multiRunBtn.disabled = false;
+  if (refs.multiPdfInput) refs.multiPdfInput.value = "";
+  if (refs.multiPreviewFrame) refs.multiPreviewFrame.removeAttribute("src");
+}
+async function openOdontoMultiPrintModal() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.multiModal) return;
+  refs.multiModal.hidden = false;
+  document.body.classList.add("odonto-print-modal-open");
+  try {
+    await fetchOdontoMultiDocsList();
+  } catch (err) {
+    alert(err?.message || "No se pudo cargar la biblioteca PDF.");
+  }
+}
+function openPdfPrintPopup(url, title = "Imprimir documento PDF") {
+  let popup = null;
+  try {
+    popup = window.open("", "_blank");
+  } catch {
+    popup = null;
+  }
+  if (!popup) return false;
+  try {
+    popup.document.open();
+    popup.document.write(`<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>${title}</title></head>
+<body style="margin:0;padding:0">
+  <iframe src="${url}" style="width:100vw;height:100vh;border:0" onload="setTimeout(function(){try{window.focus();window.print();}catch(e){}},220)"></iframe>
+</body></html>`);
+    popup.document.close();
+    return true;
+  } catch {
+    try {
+      popup.close();
+    } catch {
+      // ignore
+    }
+    return false;
+  }
+}
+function runOdontoMultiPrintJob() {
+  if (odontoMultiPrintIsPrinting) return;
+  const selected = getSelectedOdontoMultiDoc();
+  if (!selected?.url) {
+    alert("Seleccione un documento para imprimir.");
+    return;
+  }
+
+  const refs = getOdontoPrintRefs();
+  odontoMultiPrintIsPrinting = true;
+  cleanupOdontoMultiPrintFrame();
+  if (refs.multiRunBtn) refs.multiRunBtn.disabled = true;
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    odontoMultiPrintIsPrinting = false;
+    cleanupOdontoMultiPrintFrame();
+    const nextRefs = getOdontoPrintRefs();
+    if (nextRefs.multiRunBtn) nextRefs.multiRunBtn.disabled = false;
+  };
+  const timer = setTimeout(release, 45000);
+  const finish = () => {
+    clearTimeout(timer);
+    release();
+  };
+  window.addEventListener("afterprint", finish, { once: true });
+
+  if (shouldUseMainWindowPrintMode()) {
+    if (openPdfPrintPopup(selected.url, selected.name || selected.fileName)) {
+      setTimeout(finish, 1200);
+      return;
+    }
+    try {
+      const opened = window.open(selected.url, "_blank");
+      if (!opened) throw new Error("popup-bloqueado");
+      setTimeout(finish, 1200);
+      return;
+    } catch {
+      finish();
+      return;
+    }
+  }
+
+  const iframe = document.createElement("iframe");
+  iframe.className = "odonto-print-iframe";
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  odontoMultiPrintActiveIframe = iframe;
+  document.body.appendChild(iframe);
+
+  let triggered = false;
+  const triggerPrint = () => {
+    if (triggered) return;
+    triggered = true;
+    const targetWindow = iframe.contentWindow;
+    if (!targetWindow) {
+      finish();
+      return;
+    }
+    targetWindow.addEventListener("afterprint", () => {
+      setTimeout(finish, 800);
+    }, { once: true });
+    setTimeout(() => {
+      try {
+        targetWindow.focus();
+        targetWindow.print();
+      } catch {
+        finish();
+      }
+    }, 160);
+  };
+  iframe.onload = triggerPrint;
+  iframe.src = selected.url;
+  setTimeout(triggerPrint, 700);
+}
 function bindOdontoPrintFeature() {
   const refs = getOdontoPrintRefs();
-  if (!refs.modal || !refs.printBtn || !refs.assistBtn) return;
+  if (!refs.modal || !refs.printBtn || !refs.assistBtn || !refs.consentBtn || !refs.multiBtn || !refs.multiModal) return;
   loadOdontoPrintCompanyConfig();
   loadOdontoPrintBrandingConfig();
+  loadOdontoPrintConsentConfig();
 
   renderOdontoPrintPresetButtons();
   renderOdontoAssistPresetButtons();
@@ -4107,9 +4788,32 @@ function bindOdontoPrintFeature() {
       if (refs.assistBtn) refs.assistBtn.disabled = false;
     }
   };
+  refs.consentBtn.onclick = async () => {
+    if (refs.consentBtn.disabled) return;
+    refs.consentBtn.disabled = true;
+    try {
+      await openOdontoPrintModalByMode(ODONTO_PRINT_MODE_CONSENTIMIENTO);
+    } finally {
+      if (refs.consentBtn) refs.consentBtn.disabled = false;
+    }
+  };
+  refs.multiBtn.onclick = async () => {
+    if (refs.multiBtn.disabled) return;
+    refs.multiBtn.disabled = true;
+    try {
+      await openOdontoMultiPrintModal();
+    } finally {
+      if (refs.multiBtn) refs.multiBtn.disabled = false;
+    }
+  };
   refs.closeBtn.onclick = () => {
     closeOdontoPrintModal();
   };
+  if (refs.multiCloseBtn) {
+    refs.multiCloseBtn.onclick = () => {
+      closeOdontoMultiPrintModal();
+    };
+  }
   if (refs.companyToggleBtn) {
     refs.companyToggleBtn.onclick = () => {
       const expanded = refs.companyToggleBtn?.getAttribute("aria-expanded") === "true";
@@ -4192,6 +4896,13 @@ function bindOdontoPrintFeature() {
       closeOdontoPrintModal();
     }
   };
+  if (refs.multiModal) {
+    refs.multiModal.onclick = (event) => {
+      if (event.target?.closest?.("[data-odonto-multi-close]")) {
+        closeOdontoMultiPrintModal();
+      }
+    };
+  }
   refs.addItemBtn.onclick = () => {
     const text = String(refs.addItemInput?.value || "");
     addOdontoPrintItem(text, "manual");
@@ -4290,12 +5001,101 @@ function bindOdontoPrintFeature() {
       commitAssistHourInput(event.target, "horaHasta");
     };
   }
+  if (refs.consentEditor) {
+    refs.consentEditor.oninput = (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement)) return;
+      const fieldName = String(target.dataset.consentField || "").trim();
+      if (!fieldName) return;
+      const isObservaciones = fieldName === "observaciones";
+      const limitedValue = isObservaciones
+        ? String(target.value || "").slice(0, 600)
+        : limitPrintEditorLine(String(target.value || ""));
+      if (limitedValue !== target.value) target.value = limitedValue;
+      updateOdontoConsentField(fieldName, limitedValue, { persistLocation: fieldName === "lugarFirma" });
+      renderOdontoPrintPreviewList();
+    };
+  }
   refs.runBtn.onclick = () => {
     runOdontoPrintJob();
   };
+  if (refs.multiUploadBtn) {
+    refs.multiUploadBtn.onclick = async () => {
+      const file = refs.multiPdfInput?.files?.[0] || null;
+      if (!(file instanceof File)) {
+        alert("Seleccione un archivo PDF.");
+        return;
+      }
+      refs.multiUploadBtn.disabled = true;
+      try {
+        const saved = await uploadOdontoMultiPdf(file);
+        await fetchOdontoMultiDocsList();
+        if (saved.fileName) {
+          setOdontoMultiSelectedFileName(saved.fileName);
+        }
+        renderOdontoMultiDocList();
+        if (refs.multiPdfInput) refs.multiPdfInput.value = "";
+      } catch (err) {
+        alert(err?.message || "No se pudo guardar el PDF.");
+      } finally {
+        if (refs.multiUploadBtn) refs.multiUploadBtn.disabled = false;
+      }
+    };
+  }
+  if (refs.multiList) {
+    refs.multiList.onclick = async (event) => {
+      const button = event.target?.closest?.("button[data-action][data-file-name]");
+      const row = event.target?.closest?.(".odonto-multi-doc-item[data-file-name]");
+      const targetFileName = String(button?.dataset?.fileName || row?.dataset?.fileName || "").trim();
+      if (!targetFileName) return;
+
+      if (!button) {
+        setOdontoMultiSelectedFileName(targetFileName);
+        renderOdontoMultiDocList();
+        return;
+      }
+
+      const action = String(button.dataset.action || "").trim().toLowerCase();
+      if (action === "delete") {
+        const selectedDoc = odontoMultiDocs.find((doc) => doc.fileName === targetFileName);
+        const label = selectedDoc?.name || targetFileName;
+        let ok = false;
+        if (typeof window.showSystemConfirm === "function") {
+          const modalEl = refs.multiModal;
+          const prevVisibility = modalEl?.style?.visibility ?? "";
+          if (modalEl) modalEl.style.visibility = "hidden";
+          try {
+            ok = await window.showSystemConfirm(`Eliminar documento "${label}"?`);
+          } finally {
+            if (modalEl) modalEl.style.visibility = prevVisibility;
+          }
+        } else {
+          ok = confirm(`Eliminar documento "${label}"?`);
+        }
+        if (!ok) return;
+        try {
+          await deleteOdontoMultiPdf(targetFileName);
+          if (odontoMultiSelectedFileName === targetFileName) {
+            odontoMultiSelectedFileName = "";
+          }
+          await fetchOdontoMultiDocsList();
+          renderOdontoMultiDocList();
+        } catch (err) {
+          alert(err?.message || "No se pudo eliminar el documento.");
+        }
+      }
+    };
+  }
+  if (refs.multiRunBtn) {
+    refs.multiRunBtn.onclick = () => {
+      runOdontoMultiPrintJob();
+    };
+  }
 
   window.__closeOdontoPrintModal = closeOdontoPrintModal;
   window.__cleanupOdontoPrintFrame = cleanupOdontoPrintFrame;
+  window.__closeOdontoMultiPrintModal = closeOdontoMultiPrintModal;
+  window.__cleanupOdontoMultiPrintFrame = cleanupOdontoMultiPrintFrame;
 }
 function actualizarOdontogramaActual(idOdontograma) {
   const lbl = document.getElementById("odontogramaActualP");
@@ -4304,7 +5104,7 @@ function actualizarOdontogramaActual(idOdontograma) {
   if (!lbl) return;
 
   lbl.textContent = idActivo
-    ? `Odontograma activo (ID ${idActivo})`
+    ? `Activo (ID ${idActivo})`
     : "Sin odontograma";
 }
 function limpiarOdontogramaActivoEnVista(options = {}) {
@@ -5049,8 +5849,16 @@ function limpiarVistaPaciente() {
   if (typeof window.__cleanupOdontoPrintFrame === "function") {
     window.__cleanupOdontoPrintFrame();
   }
+  if (typeof window.__closeOdontoMultiPrintModal === "function") {
+    window.__closeOdontoMultiPrintModal();
+  }
+  if (typeof window.__cleanupOdontoMultiPrintFrame === "function") {
+    window.__cleanupOdontoMultiPrintFrame();
+  }
   window.__closeOdontoPrintModal = null;
   window.__cleanupOdontoPrintFrame = null;
+  window.__closeOdontoMultiPrintModal = null;
+  window.__cleanupOdontoMultiPrintFrame = null;
   setOdontoVisualMode(false, { restorePreviousLock: false });
 
   if (window.odontogramaAPI && typeof window.odontogramaAPI.reset === "function") {

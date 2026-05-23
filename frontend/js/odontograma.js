@@ -1747,11 +1747,29 @@ function recalcAllBridgesIfNeeded() {
         bridge.style.height = (bottom - top + 16) + "px";
     });
 }
+function scheduleBridgeRecalc(frameCount = 2) {
+    const nextFrames = Number(frameCount) > 0 ? Number(frameCount) : 1;
+    requestAnimationFrame(() => {
+        recalcAllBridgesIfNeeded();
+        if (nextFrames > 1) {
+            scheduleBridgeRecalc(nextFrames - 1);
+        }
+    });
+}
 document.querySelectorAll(".tooth-note").forEach(inp => {
     if (inp.dataset.bridgeRecalcBound === "1") return;
     inp.dataset.bridgeRecalcBound = "1";
-    inp.addEventListener("input", recalcAllBridgesIfNeeded);
+    inp.addEventListener("input", () => scheduleBridgeRecalc(2));
 });
+
+if (window.__odontogramaBridgeLayoutListener) {
+    window.removeEventListener("resize", window.__odontogramaBridgeLayoutListener);
+    window.removeEventListener("odontograma:layout-changed", window.__odontogramaBridgeLayoutListener);
+}
+window.__odontogramaBridgeLayoutListener = () => scheduleBridgeRecalc(3);
+window.addEventListener("resize", window.__odontogramaBridgeLayoutListener, { passive: true });
+window.addEventListener("odontograma:layout-changed", window.__odontogramaBridgeLayoutListener);
+window.__odontogramaBridgeLayoutRecalc = () => scheduleBridgeRecalc(3);
 /* =============LIMPIAR UNA PIEZA==== */
 function limpiarPieza(surface) {
     // 🚫 NO permitir limpiar si está bloqueado
@@ -2917,6 +2935,7 @@ function cargarOdontograma() {
         const inf = [31,32,33,34,35,36,37,38,41,42,43,44,45,46,47,48];
         inf.forEach(n => crearLineaPC(String(n), "#2693ff"));
     }
+    scheduleBridgeRecalc(3);
     enforceRealizadoOverlayPriority();
     odontogramaData.meta.fecha_cargado = new Date().toISOString();
 }

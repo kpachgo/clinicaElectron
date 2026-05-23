@@ -278,6 +278,12 @@
     outline: none;
     box-shadow: none;
 }
+/* Evita cursor de escritura "invisible" en tema claro del buscador de paciente. */
+body[data-theme="light"] #buscar-paciente-p {
+    color: #111827;
+    -webkit-text-fill-color: #111827;
+    caret-color: #111827;
+}
 /* =======================================================
    TEXTAREAS
 ======================================================= */
