@@ -1102,10 +1102,12 @@ body.odonto-print-modal-open {
 .paciente-card #odonto-summary-print-btn,
 .paciente-card #odonto-summary-assist-btn,
 .paciente-card #odonto-summary-consent-btn,
+.paciente-card #odonto-summary-ortho-consent-btn,
 .paciente-card #odonto-summary-multi-btn,
 .odonto-summary-header-actions #odonto-summary-print-btn,
 .odonto-summary-header-actions #odonto-summary-assist-btn,
 .odonto-summary-header-actions #odonto-summary-consent-btn,
+.odonto-summary-header-actions #odonto-summary-ortho-consent-btn,
 .odonto-summary-header-actions #odonto-summary-multi-btn,
 .odonto-summary-print-btn {
     border: 1px solid #b4c7e6;
@@ -1122,10 +1124,12 @@ body.odonto-print-modal-open {
 .paciente-card #odonto-summary-print-btn:hover,
 .paciente-card #odonto-summary-assist-btn:hover,
 .paciente-card #odonto-summary-consent-btn:hover,
+.paciente-card #odonto-summary-ortho-consent-btn:hover,
 .paciente-card #odonto-summary-multi-btn:hover,
 .odonto-summary-header-actions #odonto-summary-print-btn:hover,
 .odonto-summary-header-actions #odonto-summary-assist-btn:hover,
 .odonto-summary-header-actions #odonto-summary-consent-btn:hover,
+.odonto-summary-header-actions #odonto-summary-ortho-consent-btn:hover,
 .odonto-summary-header-actions #odonto-summary-multi-btn:hover,
 .odonto-summary-print-btn:hover {
     background: #edf4ff;
@@ -1135,10 +1139,12 @@ body.odonto-print-modal-open {
 .paciente-card #odonto-summary-print-btn:disabled,
 .paciente-card #odonto-summary-assist-btn:disabled,
 .paciente-card #odonto-summary-consent-btn:disabled,
+.paciente-card #odonto-summary-ortho-consent-btn:disabled,
 .paciente-card #odonto-summary-multi-btn:disabled,
 .odonto-summary-header-actions #odonto-summary-print-btn:disabled,
 .odonto-summary-header-actions #odonto-summary-assist-btn:disabled,
 .odonto-summary-header-actions #odonto-summary-consent-btn:disabled,
+.odonto-summary-header-actions #odonto-summary-ortho-consent-btn:disabled,
 .odonto-summary-header-actions #odonto-summary-multi-btn:disabled,
 .odonto-summary-print-btn:disabled {
     opacity: 0.6;
@@ -2009,10 +2015,12 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
 .dark-mode .paciente-card #odonto-summary-print-btn,
 .dark-mode .paciente-card #odonto-summary-assist-btn,
 .dark-mode .paciente-card #odonto-summary-consent-btn,
+.dark-mode .paciente-card #odonto-summary-ortho-consent-btn,
 .dark-mode .paciente-card #odonto-summary-multi-btn,
 .dark-mode .odonto-summary-header-actions #odonto-summary-print-btn,
 .dark-mode .odonto-summary-header-actions #odonto-summary-assist-btn,
 .dark-mode .odonto-summary-header-actions #odonto-summary-consent-btn,
+.dark-mode .odonto-summary-header-actions #odonto-summary-ortho-consent-btn,
 .dark-mode .odonto-summary-header-actions #odonto-summary-multi-btn,
 .dark-mode .odonto-summary-print-btn {
     background: #14233a;
@@ -2269,6 +2277,12 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
     text-align: justify;
 }
 
+.odonto-consent-list.is-bulleted {
+    list-style: disc;
+    padding-left: 16px;
+    gap: 2px;
+}
+
 .odonto-consent-observaciones-box {
     border-bottom: 1px solid #334155;
     min-height: 64px;
@@ -2329,13 +2343,55 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
     min-height: 38px;
 }
 
+.odonto-print-consent-page.is-ortho-consent .odonto-print-consent-header-text h2 {
+    font-size: 17px;
+    line-height: 1.14;
+}
+
+.odonto-print-consent-page.is-ortho-consent .odonto-print-consent-content {
+    font-size: 9.85px;
+    line-height: 1.18;
+    gap: 3px;
+}
+
+.odonto-print-consent-page.is-ortho-consent .odonto-consent-inline {
+    min-width: 68px;
+}
+
+.odonto-print-consent-page.is-ortho-consent .odonto-consent-inline.is-mid {
+    min-width: 34%;
+}
+
+.odonto-print-consent-page.is-ortho-consent .odonto-consent-line-text {
+    font-size: 9.95px;
+}
+
+.odonto-print-consent-page.is-ortho-consent .odonto-consent-paragraph {
+    font-size: 9.8px;
+}
+
+.odonto-print-consent-page.is-ortho-consent .odonto-consent-list {
+    gap: 1px;
+}
+
+.odonto-print-consent-page.is-ortho-consent .odonto-consent-observaciones-box {
+    min-height: 44px;
+}
+
+#odonto-print-preview-sheet .odonto-print-consent-page.is-ortho-consent .odonto-print-consent-content {
+    font-size: 9.2px;
+    line-height: 1.14;
+}
+
 .dark-mode .paciente-card #odonto-summary-print-btn:hover,
 .dark-mode .paciente-card #odonto-summary-assist-btn:hover,
 .dark-mode .paciente-card #odonto-summary-consent-btn:hover,
+.dark-mode .paciente-card #odonto-summary-ortho-consent-btn:hover,
 .dark-mode .paciente-card #odonto-summary-multi-btn:hover,
 .dark-mode .odonto-summary-header-actions #odonto-summary-print-btn:hover,
 .dark-mode .odonto-summary-header-actions #odonto-summary-assist-btn:hover,
 .dark-mode .odonto-summary-header-actions #odonto-summary-consent-btn:hover,
+.dark-mode .odonto-summary-header-actions #odonto-summary-ortho-consent-btn:hover,
 .dark-mode .odonto-summary-header-actions #odonto-summary-multi-btn:hover,
 .dark-mode .odonto-summary-print-btn:hover {
     background: #1b2f4d;
