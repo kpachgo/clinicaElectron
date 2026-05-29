@@ -27,6 +27,30 @@ function normalizeDigits(value) {
   return String(value ?? "").replace(/\D+/g, "");
 }
 
+function isValidIsoDate(value) {
+  const raw = String(value || "").trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const yyyy = Number(m[1]);
+  const mm = Number(m[2]);
+  const dd = Number(m[3]);
+  const dt = new Date(Date.UTC(yyyy, mm - 1, dd));
+  return (
+    Number.isFinite(dt.getTime()) &&
+    dt.getUTCFullYear() === yyyy &&
+    dt.getUTCMonth() === mm - 1 &&
+    dt.getUTCDate() === dd
+  );
+}
+
+function getLocalTodayISO() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function isSamePhone(a, b) {
   const aRaw = normalizeText(a);
   const bRaw = normalizeText(b);
@@ -47,6 +71,162 @@ async function getAgendaSnapshot(db, idAgenda) {
   );
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
+
+async function queryPacientePrecheckRows(db, options = {}) {
+  const whereSql = String(options?.whereSql || "").trim();
+  const whereParams = Array.isArray(options?.whereParams) ? options.whereParams : [];
+  const fechaReferencia = String(options?.fechaReferencia || "").trim();
+
+  const [rows] = await db.query(
+    `SELECT
+      p.idPaciente,
+      p.NombreP,
+      p.telefonoP,
+      IFNULL(p.estadoP, 1) AS estadoP,
+      p.tipoTratamientoP,
+      DATE_FORMAT(p.ultimaVisitaP, '%Y-%m-%d') AS ultimaVisitaP,
+      CASE
+        WHEN p.ultimaVisitaP IS NULL THEN NULL
+        ELSE GREATEST(
+          TIMESTAMPDIFF(MONTH, p.ultimaVisitaP, ?) - (
+            ? <= DATE_ADD(
+              p.ultimaVisitaP,
+              INTERVAL TIMESTAMPDIFF(MONTH, p.ultimaVisitaP, ?) MONTH
+            )
+          ),
+          0
+        )
+      END AS mesesAusencia
+     FROM paciente p
+     ${whereSql}`,
+    [fechaReferencia, fechaReferencia, fechaReferencia, ...whereParams]
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function resolvePacienteForAgendaPrecheck(db, options = {}) {
+  const idPaciente = Number(options?.idPaciente || 0);
+  const nombre = String(options?.nombre || "").trim();
+  const contacto = String(options?.contacto || "").trim();
+  const fechaReferencia = String(options?.fechaReferencia || "").trim();
+
+  if (Number.isInteger(idPaciente) && idPaciente > 0) {
+    const rows = await queryPacientePrecheckRows(db, {
+      whereSql: "WHERE p.idPaciente = ? LIMIT 1",
+      whereParams: [idPaciente],
+      fechaReferencia
+    });
+    if (!rows.length) {
+      return { matchStatus: "not_found", paciente: null };
+    }
+    return { matchStatus: "matched", paciente: rows[0] };
+  }
+
+  if (!nombre) {
+    return { matchStatus: "not_enough_data", paciente: null };
+  }
+
+  const candidatos = await queryPacientePrecheckRows(db, {
+    whereSql: "WHERE LOWER(TRIM(IFNULL(p.NombreP, ''))) = ? ORDER BY p.idPaciente ASC",
+    whereParams: [normalizeText(nombre)],
+    fechaReferencia
+  });
+
+  if (!candidatos.length) {
+    return { matchStatus: "not_found", paciente: null };
+  }
+
+  if (candidatos.length === 1) {
+    return { matchStatus: "matched", paciente: candidatos[0] };
+  }
+
+  if (contacto) {
+    const filtrados = candidatos.filter((row) => isSamePhone(row?.telefonoP, contacto));
+    if (filtrados.length === 1) {
+      return { matchStatus: "matched", paciente: filtrados[0] };
+    }
+  }
+
+  return { matchStatus: "ambiguous", paciente: null };
+}
+
+exports.precheckRegistro = async (req, res) => {
+  try {
+    const idPacienteRaw = req.body?.idPaciente;
+    const idPaciente = idPacienteRaw === "" || idPacienteRaw === null || idPacienteRaw === undefined
+      ? null
+      : Number(idPacienteRaw);
+    const nombre = String(req.body?.nombre || "").trim();
+    const contacto = String(req.body?.contacto || "").trim();
+    const fechaReferenciaRaw = String(req.body?.fechaReferencia || "").trim();
+    const fechaReferencia = fechaReferenciaRaw || getLocalTodayISO();
+
+    if (!isValidIsoDate(fechaReferencia)) {
+      return badRequest(res, "fechaReferencia invalida, use YYYY-MM-DD");
+    }
+    if (idPaciente !== null && (!Number.isInteger(idPaciente) || idPaciente <= 0)) {
+      return badRequest(res, "idPaciente invalido");
+    }
+    if (idPaciente === null && !nombre) {
+      return badRequest(res, "Nombre o idPaciente requerido");
+    }
+
+    const match = await resolvePacienteForAgendaPrecheck(pool, {
+      idPaciente: idPaciente || null,
+      nombre,
+      contacto,
+      fechaReferencia
+    });
+
+    if (match.matchStatus !== "matched" || !match.paciente) {
+      return res.json({
+        ok: true,
+        matchStatus: match.matchStatus,
+        alertRequired: false,
+        warnings: []
+      });
+    }
+
+    const paciente = match.paciente;
+    const tratamientoKey = normalizeText(paciente?.tipoTratamientoP);
+    const isOrtodoncia = tratamientoKey === "ortodoncia";
+    const isInactivo = Number(paciente?.estadoP || 1) !== 1;
+    const mesesAusencia = Number(paciente?.mesesAusencia);
+    const hasMoreThanThreeMonths = Number.isFinite(mesesAusencia) && mesesAusencia > 3;
+
+    const warnings = [];
+    if (isOrtodoncia && hasMoreThanThreeMonths) {
+      warnings.push(
+        `Paciente de Ortodoncia con ${mesesAusencia} meses sin asistir a controles mensuales.`
+      );
+    }
+    if (isInactivo) {
+      warnings.push("Paciente marcado como Inactivo.");
+    }
+
+    return res.json({
+      ok: true,
+      matchStatus: "matched",
+      alertRequired: warnings.length > 0,
+      warnings,
+      paciente: {
+        idPaciente: Number(paciente?.idPaciente || 0),
+        nombre: String(paciente?.NombreP || "").trim(),
+        telefono: String(paciente?.telefonoP || "").trim(),
+        estado: isInactivo ? "Inactivo" : "Activo",
+        tipoTratamiento: String(paciente?.tipoTratamientoP || "").trim() || "Sin registrar",
+        ultimaVisita: paciente?.ultimaVisitaP ? String(paciente.ultimaVisitaP).trim() : null,
+        mesesAusencia: Number.isFinite(mesesAusencia) ? mesesAusencia : null
+      },
+      reglas: {
+        ortodonciaSinAsistenciaMayorA3Meses: isOrtodoncia && hasMoreThanThreeMonths,
+        pacienteInactivo: isInactivo
+      }
+    });
+  } catch (error) {
+    return serverError(res, error, "Error al validar alertas de registro en agenda");
+  }
+};
 
 async function syncPacienteTelefonoFromAgenda(db, options = {}) {
   const agendaNombre = String(options?.agendaNombre || "").trim();

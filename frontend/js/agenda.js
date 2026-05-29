@@ -716,6 +716,10 @@
                 <span>Total tratamientos</span>
                 <strong id="agenda-day-summary-total">0</strong>
               </article>
+              <article class="agenda-day-summary-kpi">
+                <span>Pendientes de asistir</span>
+                <strong id="agenda-day-summary-pending">0</strong>
+              </article>
               <article class="agenda-day-summary-kpi is-muted">
                 <span>Franja mas cargada</span>
                 <strong id="agenda-day-summary-top-hour">-</strong>
@@ -881,6 +885,7 @@
     const daySummaryFechaEl = container.querySelector("#agenda-day-summary-fecha");
     const daySummaryScopeEl = container.querySelector("#agenda-day-summary-scope");
     const daySummaryTotalEl = container.querySelector("#agenda-day-summary-total");
+    const daySummaryPendingEl = container.querySelector("#agenda-day-summary-pending");
     const daySummaryTopHourEl = container.querySelector("#agenda-day-summary-top-hour");
     const daySummaryEstadosEl = container.querySelector("#agenda-day-summary-estados");
     const daySummaryViewTreatmentBtn = container.querySelector("#agenda-day-summary-view-treatment");
@@ -1117,6 +1122,7 @@
       const byEstado = new Map();
       const byHour = new Map();
       const byTratamiento = new Map();
+      let pendientesAsistir = 0;
       let sinHora = 0;
       const sinHoraTratamientos = new Set();
 
@@ -1148,6 +1154,9 @@
         });
         const hm = String(row?.hora || "").trim();
         const isConfirmado = estadoKey === "confirmado";
+        if (isConfirmado && !row?.presente) {
+          pendientesAsistir += 1;
+        }
         if (!isConfirmado) return;
         const m = hm.match(/^(\d{1,2}):(\d{2})$/);
         if (!m) {
@@ -1208,6 +1217,7 @@
 
       return {
         total: safeRows.length,
+        pendientesAsistir,
         estados,
         tratamientos,
         hours,
@@ -1236,6 +1246,9 @@
       const summary = computeAgendaDaySummary(buildAgendaDaySummaryBase());
       if (daySummaryTotalEl) {
         daySummaryTotalEl.textContent = String(summary.total || 0);
+      }
+      if (daySummaryPendingEl) {
+        daySummaryPendingEl.textContent = String(summary.pendientesAsistir || 0);
       }
       if (daySummaryTopHourEl) {
         daySummaryTopHourEl.textContent = summary.topHour
@@ -2085,6 +2098,56 @@
       });
     }
 
+    async function validarAlertaSeguimientoAntesDeRegistrar(payload = {}) {
+      const body = {
+        idPaciente: payload.idPaciente || null,
+        nombre: String(payload.nombre || "").trim(),
+        contacto: String(payload.contacto || "").trim(),
+        fechaReferencia: String(payload.fechaReferencia || "").trim()
+      };
+
+      if (!body.idPaciente && !body.nombre) return true;
+
+      try {
+        const res = await fetch("/api/agenda/precheck-registro", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        const json = await res.json();
+
+        if (!res.ok || !json?.ok) {
+          console.warn("Precheck de seguimiento no disponible", json?.message || res.statusText);
+          return true;
+        }
+
+        if (!json.alertRequired) {
+          return true;
+        }
+
+        const warnings = Array.isArray(json.warnings) ? json.warnings.filter(Boolean) : [];
+        if (!warnings.length) return true;
+
+        const paciente = json?.paciente || {};
+        const nombrePaciente = String(paciente?.nombre || body.nombre || "").trim();
+        const ultimaVisita = String(paciente?.ultimaVisita || "").trim();
+        const header = nombrePaciente
+          ? `Aviso de seguimiento para ${nombrePaciente}:`
+          : "Aviso de seguimiento:";
+        const detalle = warnings.map((msg) => `- ${String(msg)}`).join("\n");
+        const extra = ultimaVisita ? `\nUltima visita registrada: ${ultimaVisita}` : "";
+        const mensaje = `${header}\n${detalle}${extra}\n\nDesea continuar registrando la cita?`;
+
+        const confirmed = typeof window.showSystemConfirm === "function"
+          ? await window.showSystemConfirm(mensaje)
+          : confirm(mensaje);
+        return !!confirmed;
+      } catch (err) {
+        console.error("Error en precheck de seguimiento de agenda", err);
+        return true;
+      }
+    }
+
     // ==========================
     // GUARDAR CITA
     // ==========================
@@ -2158,6 +2221,23 @@
         const hora24 = to24(horaForzada);
         // preparar fecha DD/MM/YYYY
         const fechaDDMM = isoToDDMMYYYY(fechaISO);
+        const idPacientePrecheck = (() => {
+          if (!pacienteSeleccionadoAgenda) return null;
+          const mismoNombre =
+            normalizarTexto(nombre) === normalizarTexto(pacienteSeleccionadoAgenda.nombre);
+          if (!mismoNombre) return null;
+          const idNum = Number(pacienteSeleccionadoAgenda.idPaciente || 0);
+          return Number.isInteger(idNum) && idNum > 0 ? idNum : null;
+        })();
+        const continuarRegistro = await validarAlertaSeguimientoAntesDeRegistrar({
+          idPaciente: idPacientePrecheck,
+          nombre,
+          contacto,
+          fechaReferencia: fechaISO
+        });
+        if (!continuarRegistro) {
+          return;
+        }
 
         const res = await fetch("/api/agenda", {
           method: "POST",
