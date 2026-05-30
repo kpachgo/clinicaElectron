@@ -482,6 +482,10 @@
             <input type="checkbox" id="cola-toggle-numeracion">
             Numeracion
           </label>
+          <label class="cola-toggle-acciones" for="cola-toggle-acciones">
+            <input type="checkbox" id="cola-toggle-acciones">
+            Ocultar acciones
+          </label>
           <input class="ui-control ui-control-search" type="search" id="cola-search" placeholder="Buscar paciente o tratamiento">
           <select class="ui-control" id="cola-filter-estado">
             <option value="">Todos</option>
@@ -527,6 +531,7 @@
 
     const searchInput = container.querySelector("#cola-search");
     const toggleNumeracion = container.querySelector("#cola-toggle-numeracion");
+    const toggleAcciones = container.querySelector("#cola-toggle-acciones");
     const filterEstado = container.querySelector("#cola-filter-estado");
     const filterDoctor = container.querySelector("#cola-filter-doctor");
     const colaTable = container.querySelector(".cola-table");
@@ -558,16 +563,21 @@
     const colaUiStateKey = `ui_state_encola_${getUiStateUserId()}`;
     const colaUiState = {
       numeracion: false,
+      ocultarAcciones: true,
       ...loadSessionUiState(colaUiStateKey)
     };
 
     const persistColaUiState = () => {
       saveSessionUiState(colaUiStateKey, {
-        numeracion: !!toggleNumeracion?.checked
+        numeracion: !!toggleNumeracion?.checked,
+        ocultarAcciones: !!toggleAcciones?.checked
       });
     };
     if (toggleNumeracion) {
       toggleNumeracion.checked = !!colaUiState.numeracion;
+    }
+    if (toggleAcciones) {
+      toggleAcciones.checked = true;
     }
     if (btnMarkPresentes) {
       btnMarkPresentes.hidden = !canMarkPresentesAgenda();
@@ -597,6 +607,14 @@
     function aplicarVisibilidadNumeracion() {
       if (!colaTable) return;
       colaTable.classList.toggle("hide-numeracion", !numeracionActiva());
+    }
+    function accionesOcultasActivas() {
+      return !!toggleAcciones?.checked;
+    }
+    function aplicarVisibilidadAccionesGlobales() {
+      const ocultar = accionesOcultasActivas();
+      if (btnClearAtendidos) btnClearAtendidos.hidden = ocultar;
+      if (btnClearAll) btnClearAll.hidden = ocultar;
     }
 
     function getDoctorNombreById(doctorId) {
@@ -718,9 +736,11 @@
 
     function draw() {
       aplicarVisibilidadNumeracion();
+      aplicarVisibilidadAccionesGlobales();
       const texto = normalizarTexto(searchInput?.value);
       const estadoSel = String(filterEstado?.value || "");
       const doctorSel = String(filterDoctor?.value || "");
+      const ocultarAcciones = accionesOcultasActivas();
 
       const ordenada = colaData
         .slice()
@@ -1084,13 +1104,15 @@
           }
         });
 
-        if (isEnEspera) {
+        if (isEnEspera && !ocultarAcciones) {
           actions.appendChild(btnMoveUp);
           actions.appendChild(btnMoveDown);
         }
         actions.appendChild(btnBuscar);
-        actions.appendChild(btnToggle);
-        actions.appendChild(btnRemove);
+        if (!ocultarAcciones) {
+          actions.appendChild(btnToggle);
+          actions.appendChild(btnRemove);
+        }
         tdAcciones.appendChild(actions);
         tr.appendChild(tdAcciones);
 
@@ -1202,6 +1224,11 @@
     searchInput?.addEventListener("input", draw);
     toggleNumeracion?.addEventListener("change", () => {
       aplicarVisibilidadNumeracion();
+      draw();
+      persistColaUiState();
+    });
+    toggleAcciones?.addEventListener("change", () => {
+      aplicarVisibilidadAccionesGlobales();
       draw();
       persistColaUiState();
     });
@@ -1363,6 +1390,7 @@
     refreshTimer = window.setInterval(runBackgroundRefresh, AUTO_REFRESH_MS);
 
     aplicarVisibilidadNumeracion();
+    aplicarVisibilidadAccionesGlobales();
     persistColaUiState();
     recargarDoctores().finally(() => {
       recargar();

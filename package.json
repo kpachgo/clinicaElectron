@@ -1,6 +1,6 @@
 {
   "name": "clinica",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Sistema de clinica empaquetado con Electron",
   "author": "Clinica",
   "repository": {

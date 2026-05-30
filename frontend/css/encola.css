@@ -152,7 +152,8 @@
   flex-wrap: wrap;
 }
 
-.cola-toggle-numeracion {
+.cola-toggle-numeracion,
+.cola-toggle-acciones {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -164,7 +165,8 @@
   user-select: none;
 }
 
-.cola-toggle-numeracion input[type="checkbox"] {
+.cola-toggle-numeracion input[type="checkbox"],
+.cola-toggle-acciones input[type="checkbox"] {
   width: 14px;
   height: 14px;
   accent-color: #2563eb;

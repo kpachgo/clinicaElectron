@@ -17,10 +17,12 @@ permissions:
 jobs:
   build-macos-dmg:
     name: Build and publish macOS DMG (x64)
-    runs-on: macos-latest
+    runs-on: macos-13
+    timeout-minutes: 120
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      DEBUG: electron-builder*
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -78,16 +80,35 @@ jobs:
 
       - name: Detect macOS signing/notarization secrets
         run: |
-          if [ -n "${{ secrets.MAC_CERT_P12_BASE64 }}" ] && \
-             [ -n "${{ secrets.MAC_CERT_PASSWORD }}" ] && \
-             [ -n "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" ] && \
-             [ -n "${{ secrets.APPLE_API_KEY_ID }}" ] && \
-             [ -n "${{ secrets.APPLE_API_ISSUER }}" ]; then
+          has_cert_base64=0
+          has_cert_password=0
+          has_api_p8=0
+          has_api_key_id=0
+          has_api_issuer=0
+
+          [ -n "${{ secrets.MAC_CERT_P12_BASE64 }}" ] && has_cert_base64=1
+          [ -n "${{ secrets.MAC_CERT_PASSWORD }}" ] && has_cert_password=1
+          [ -n "${{ secrets.APPLE_API_KEY_P8_BASE64 }}" ] && has_api_p8=1
+          [ -n "${{ secrets.APPLE_API_KEY_ID }}" ] && has_api_key_id=1
+          [ -n "${{ secrets.APPLE_API_ISSUER }}" ] && has_api_issuer=1
+
+          total=$((has_cert_base64 + has_cert_password + has_api_p8 + has_api_key_id + has_api_issuer))
+
+          if [ "$total" -eq 5 ]; then
             echo "HAS_MAC_SIGNING=true" >> "$GITHUB_ENV"
             echo "macOS signing/notarization secrets detected. Build will be signed."
-          else
+          elif [ "$total" -eq 0 ]; then
             echo "HAS_MAC_SIGNING=false" >> "$GITHUB_ENV"
             echo "macOS signing/notarization secrets not found. Build will be unsigned (internal testing mode)."
+          else
+            echo "Incomplete macOS signing/notarization configuration."
+            echo "Provide all or none of these secrets:"
+            echo "- MAC_CERT_P12_BASE64"
+            echo "- MAC_CERT_PASSWORD"
+            echo "- APPLE_API_KEY_P8_BASE64"
+            echo "- APPLE_API_KEY_ID"
+            echo "- APPLE_API_ISSUER"
+            exit 1
           fi
 
       - name: Create backend .env from GitHub Secret
