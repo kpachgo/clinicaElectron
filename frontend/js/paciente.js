@@ -120,6 +120,31 @@ function isStaleRequest(key, seq) {
 function abortAllPacienteRequests() {
   Object.keys(pacienteRequestState).forEach((key) => invalidateRequest(key));
 }
+function clearPatientObservationNotificationInBell() {
+  if (typeof window.clearPatientObservationNotification === "function") {
+    window.clearPatientObservationNotification();
+  }
+}
+function pushPatientObservationNotificationToBell(paciente) {
+  const setter = window.setPatientObservationNotification;
+  if (typeof setter !== "function") return;
+
+  const observacion = String(paciente?.notasObservacionP || "").trim();
+  if (!observacion) {
+    clearPatientObservationNotificationInBell();
+    return;
+  }
+
+  const idPacienteRaw = Number(paciente?.idPaciente || 0);
+  const idPaciente = Number.isInteger(idPacienteRaw) && idPacienteRaw > 0 ? idPacienteRaw : null;
+  const nombrePaciente = String(paciente?.NombreP || "").trim() || "Paciente";
+
+  setter({
+    idPaciente,
+    nombrePaciente,
+    observacion
+  });
+}
 // UTILIDADES
 function toInputDate(fechaISO) {
   if (!fechaISO) return "";
@@ -2555,6 +2580,7 @@ async function cargarPaciente(idPaciente) {
     alert("Paciente invalido");
     return false;
   }
+  clearPatientObservationNotificationInBell();
 
   const req = beginRequest("detallePaciente");
   const localSeq = req.seq;
@@ -2649,6 +2675,7 @@ async function cargarPaciente(idPaciente) {
     ]);
     if (isStaleRequest("detallePaciente", localSeq)) return false;
     if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteCargado) return false;
+    pushPatientObservationNotificationToBell(p);
     setPacienteCambiosPendientes(false);
     return true;
     
@@ -6083,6 +6110,7 @@ function registrarEventoAutorizarCita() {
 // ============= FUNCION PARA LIMPIAR TODO LO DE LA VISTA PACIENTE ====
 function limpiarVistaPaciente() {
   abortAllPacienteRequests();
+  clearPatientObservationNotificationInBell();
   isSavingPaciente = false;
   isSavingCitaPaciente = false;
   isSavingFirmaPaciente = false;
