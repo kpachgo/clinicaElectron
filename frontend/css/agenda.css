@@ -1,6 +1,62 @@
 /* agenda.css - reglas especificas de Agenda */
 
 /* controles (fecha, buscador, boton registrar) */
+.agenda-save-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.28);
+  backdrop-filter: blur(2px);
+  pointer-events: auto;
+}
+
+.agenda-save-overlay[hidden] {
+  display: none;
+}
+
+.agenda-save-overlay-card {
+  min-width: 280px;
+  max-width: min(92vw, 420px);
+  padding: 20px 22px;
+  border-radius: 16px;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  background: var(--bg-white, #fff);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.agenda-save-overlay-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 3px solid rgba(37, 99, 235, 0.18);
+  border-top-color: #2563eb;
+  animation: agenda-save-spin 0.85s linear infinite;
+  flex: 0 0 auto;
+}
+
+.agenda-save-overlay-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: 0.01em;
+}
+
+@keyframes agenda-save-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+body.agenda-save-busy {
+  overflow: hidden;
+}
+
 .agenda-controls {
   display: flex;
   gap: 10px;
@@ -1203,6 +1259,20 @@ body.agenda-day-summary-open {
   border-color: #dc2626;
   background: rgba(127, 29, 29, 0.45);
   color: #fecaca;
+}
+
+.dark-mode .agenda-save-overlay {
+  background: rgba(2, 6, 23, 0.54);
+}
+
+.dark-mode .agenda-save-overlay-card {
+  background: #0f172a;
+  border-color: rgba(96, 165, 250, 0.22);
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.45);
+}
+
+.dark-mode .agenda-save-overlay-text {
+  color: #e2e8f0;
 }
 
 .dark-mode .filter-estado.filter-estado-no-results {

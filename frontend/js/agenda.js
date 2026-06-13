@@ -135,6 +135,45 @@
     if (!raw) return "";
     return raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   }
+  function normalizarTextoPegado(value) {
+    return String(value ?? "")
+      .replace(/[\u00A0\u2007\u202F]/g, " ")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function bindSanitizedPasteInput(inputEl) {
+    if (!inputEl || inputEl.dataset.cleanPasteBound === "1") return;
+    inputEl.dataset.cleanPasteBound = "1";
+
+    inputEl.addEventListener("paste", (e) => {
+      const clipboard = e.clipboardData || window.clipboardData;
+      if (!clipboard || typeof clipboard.getData !== "function") return;
+      const pastedText = clipboard.getData("text/plain") || clipboard.getData("Text") || "";
+      if (!pastedText) return;
+
+      e.preventDefault();
+      const currentValue = String(inputEl.value || "");
+      const start = Number.isInteger(inputEl.selectionStart) ? inputEl.selectionStart : currentValue.length;
+      const end = Number.isInteger(inputEl.selectionEnd) ? inputEl.selectionEnd : start;
+      const nextValue = normalizarTextoPegado(
+        `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`
+      );
+
+      inputEl.value = nextValue;
+      if (typeof inputEl.setSelectionRange === "function") {
+        inputEl.setSelectionRange(nextValue.length, nextValue.length);
+      }
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    inputEl.addEventListener("blur", () => {
+      const normalized = normalizarTextoPegado(inputEl.value);
+      if (normalized === inputEl.value) return;
+      inputEl.value = normalized;
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
   function normalizarBanderaContacto(value) {
     if (value === true) return true;
     if (value === false) return false;
@@ -544,6 +583,12 @@
   function renderAgenda(container) {
     container.innerHTML = `
       <div class="agenda-container">
+        <div id="agenda-save-overlay" class="agenda-save-overlay" hidden aria-hidden="true">
+          <div class="agenda-save-overlay-card" role="status" aria-live="polite" aria-atomic="true">
+            <div class="agenda-save-overlay-spinner" aria-hidden="true"></div>
+            <div id="agenda-save-overlay-text" class="agenda-save-overlay-text">Guardando cita...</div>
+          </div>
+        </div>
 
         <div class="agenda-header">
           <div class="agenda-controls">
@@ -780,6 +825,7 @@
     let agendaFetchController = null;
     let agendaFetchDate = "";
     let isCreatingAgenda = false;
+    let agendaCriticalSaveActive = false;
 
     async function cargarAgendaPorFecha(fechaISO) {
       const fechaObjetivo = String(fechaISO || "").trim();
@@ -856,6 +902,8 @@
     const agendaTable = container.querySelector(".agenda-table");
     const dateInput = container.querySelector("#agenda-date");
     const searchInput = container.querySelector("#agenda-search");
+    const agendaSaveOverlay = container.querySelector("#agenda-save-overlay");
+    const agendaSaveOverlayText = container.querySelector("#agenda-save-overlay-text");
     const agendaSearchScopeAlert = container.querySelector("#agenda-search-scope-alert");
     const estadoFilter = container.querySelector("#agenda-filter-estado");
     const estadoFilterAlert = container.querySelector("#agenda-filter-estado-alert");
@@ -894,6 +942,9 @@
     const daySummaryHoursWrap = container.querySelector(".agenda-day-summary-hours-wrap");
     const daySummaryTreatmentBody = container.querySelector("#agenda-day-summary-treatment-body");
     const daySummaryHoursBody = container.querySelector("#agenda-day-summary-hours-body");
+
+    bindSanitizedPasteInput(searchInput);
+
     const isRedes = isRedesRole();
     let agendaReprogramaBuffer = null;
     let agendaModalDesdeReprogramacion = false;
@@ -925,6 +976,42 @@
       const exists = Array.from(selectEl.options || []).some((opt) => opt.value === target);
       return exists ? target : "";
     };
+    function isAgendaCriticalSaveInProgress() {
+      return agendaCriticalSaveActive === true;
+    }
+    function setAgendaCriticalSaveState(active, message = "Guardando cita...") {
+      agendaCriticalSaveActive = active === true;
+      if (agendaSaveOverlay) {
+        agendaSaveOverlay.hidden = !agendaCriticalSaveActive;
+        agendaSaveOverlay.setAttribute("aria-hidden", agendaCriticalSaveActive ? "false" : "true");
+      }
+      if (agendaSaveOverlayText) {
+        agendaSaveOverlayText.textContent = String(message || "Guardando cita...");
+      }
+      if (btnGuardar) btnGuardar.disabled = agendaCriticalSaveActive || isCreatingAgenda;
+      if (btnCancelar) btnCancelar.disabled = agendaCriticalSaveActive;
+      if (regBtn) regBtn.disabled = agendaCriticalSaveActive;
+      if (pasteCitaBtn) pasteCitaBtn.disabled = agendaCriticalSaveActive || !agendaReprogramaBuffer;
+      if (clearReprogramaBtn) clearReprogramaBtn.disabled = agendaCriticalSaveActive || !agendaReprogramaBuffer;
+      if (modal) {
+        modal.setAttribute("aria-busy", agendaCriticalSaveActive ? "true" : "false");
+      }
+      document.body.classList.toggle("agenda-save-busy", agendaCriticalSaveActive);
+    }
+    async function fetchAgendaByIdForVerification(idAgenda, fechaFallbackISO) {
+      const idAgendaNum = Number(idAgenda || 0);
+      if (!Number.isInteger(idAgendaNum) || idAgendaNum <= 0) {
+        throw new Error("ID de agenda invalido al comprobar guardado");
+      }
+      const res = await fetch(`/api/agenda/${idAgendaNum}`, {
+        cache: "no-store"
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.ok || !json?.data) {
+        throw new Error(json?.message || "No se pudo comprobar la cita guardada");
+      }
+      return normalizarAgendaRow(json.data, fechaFallbackISO, true);
+    }
     const getAgendaUiStateSnapshot = () => ({
       numeracion: !!toggleNumeracionAgenda?.checked,
       sms: !!toggleSmsAgenda?.checked,
@@ -1609,9 +1696,11 @@
       }
     }
     reviewInasistenciaBtn?.addEventListener("click", () => {
+      if (isAgendaCriticalSaveInProgress()) return;
       abrirInasistenciaModal();
     });
     daySummaryBtn?.addEventListener("click", () => {
+      if (isAgendaCriticalSaveInProgress()) return;
       openDaySummaryModal();
     });
     daySummaryViewTreatmentBtn?.addEventListener("click", () => {
@@ -1703,6 +1792,7 @@
       const modalNombreSafe = modalNombre.cloneNode(true);
       modalNombre.replaceWith(modalNombreSafe);
       modalNombre = modalNombreSafe;
+      bindSanitizedPasteInput(modalNombre);
     }
     let modalComentario = document.querySelector("#modal-comentario");
     if (modalComentario) {
@@ -1873,6 +1963,7 @@
       actualizarUiReprogramacion();
     };
     const openAgendaModal = (prefill = null) => {
+      if (isAgendaCriticalSaveInProgress()) return;
       resetAgendaModalState();
       agendaModalDesdeReprogramacion = !!prefill;
       if (modalFecha && dateInput?.value) {
@@ -1899,6 +1990,7 @@
       }
     };
     const closeAgendaModal = () => {
+      if (isAgendaCriticalSaveInProgress()) return;
       if (modal) modal.classList.remove("show");
     };
     window.__agendaResetModalState = resetAgendaModalState;
@@ -2041,9 +2133,11 @@
     // ==========================
     // ---- Abrir modal ----
     regBtn.addEventListener("click", () => {
+    if (isAgendaCriticalSaveInProgress()) return;
     openAgendaModal();
     });
     pasteCitaBtn?.addEventListener("click", () => {
+      if (isAgendaCriticalSaveInProgress()) return;
       if (!agendaReprogramaBuffer) {
         alert("Primero copie una cita con el boton ++");
         return;
@@ -2051,10 +2145,12 @@
       openAgendaModal(agendaReprogramaBuffer);
     });
     clearReprogramaBtn?.addEventListener("click", () => {
+      if (isAgendaCriticalSaveInProgress()) return;
       limpiarBufferReprogramacion();
     });
     // ---- Cerrar modal ----
     btnCancelar.addEventListener("click", () => {
+      if (isAgendaCriticalSaveInProgress()) return;
       resetAgendaModalState();
       closeAgendaModal();
     });
@@ -2062,6 +2158,12 @@
      window.__agendaEscListener = true;
 
      document.addEventListener("keydown", e => {
+    if (window.currentView === "Agenda" && isAgendaCriticalSaveInProgress()) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+      }
+      return;
+    }
     if (e.key === "Escape") {
       if (typeof window.__agendaCloseInasistenciaModal === "function") {
         window.__agendaCloseInasistenciaModal();
@@ -2154,7 +2256,7 @@
     btnGuardar.addEventListener("click", async (ev) => {
       // prevenir comportamiento por defecto (por si hay un form)
       if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
-      if (isCreatingAgenda) return;
+      if (isCreatingAgenda || isAgendaCriticalSaveInProgress()) return;
 
       isCreatingAgenda = true;
       btnGuardar.disabled = true;
@@ -2239,6 +2341,7 @@
           return;
         }
 
+        setAgendaCriticalSaveState(true, "Guardando cita...");
         const res = await fetch("/api/agenda", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2261,20 +2364,9 @@
           throw new Error(json.message || "Error al crear cita");
         }
 
-        // usar ID REAL de BD
-        agendaData.unshift({
-          idAgendaAP: json.idAgendaAP,
-          nombre,
-          hora: hora24,
-          fecha: fechaDDMM,
-          _fechaISO: fechaISO,
-          contacto,
-          estado: estadoValue,
-          comentario,
-          sms: false,
-          llamada: false,
-          presente: false
-        });
+        setAgendaCriticalSaveState(true, "Comprobando guardado...");
+        const agendaVerificada = await fetchAgendaByIdForVerification(json.idAgendaAP, fechaISO);
+        agendaData.unshift(agendaVerificada);
 
         aplicarFiltros();
         if (agendaModalDesdeReprogramacion) {
@@ -2283,9 +2375,18 @@
         modal.classList.remove("show");
         resetAgendaModalState();
       } catch (err) {
-        alert("No se pudo crear la cita");
+        const rawMessage = String(err?.message || "").trim();
+        const verificationLikeError =
+          /comprobar|confirmar|verific/i.test(rawMessage) ||
+          /no encontrada/i.test(rawMessage);
+        alert(
+          verificationLikeError
+            ? "No se pudo comprobar si la cita quedo guardada. Verifique antes de reintentar."
+            : "No se pudo crear la cita"
+        );
         console.error(err);
       } finally {
+        setAgendaCriticalSaveState(false, "Guardando cita...");
         isCreatingAgenda = false;
         if (btnGuardar && btnGuardar.isConnected) {
           btnGuardar.disabled = false;
@@ -2297,6 +2398,7 @@
     const isAgendaModalOpen = () => !!modal?.classList.contains("show");
     const moverFechaAgenda = (deltaDays) => {
       if (!isAgendaViewActive()) return;
+      if (isAgendaCriticalSaveInProgress()) return;
       const fechaActual = String(dateInput?.value || "").trim() || getLocalTodayISO();
       const fechaNueva = shiftISODateByDays(fechaActual, deltaDays);
       if (!fechaNueva || fechaNueva === fechaActual) return;
@@ -2305,6 +2407,7 @@
     };
     const onAgendaDateShortcut = (e) => {
       if (!isAgendaViewActive()) return;
+      if (isAgendaCriticalSaveInProgress()) return;
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       if (isAgendaModalOpen()) return;
@@ -3355,8 +3458,20 @@
     persistAgendaUiState();
     drawRows(agendaData);
 
+    if (window.__setViewLeaveGuard) {
+      window.__setViewLeaveGuard(() => {
+        if (isAgendaCriticalSaveInProgress()) {
+          return false;
+        }
+        return true;
+      });
+    }
+
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
+        if (isAgendaCriticalSaveInProgress()) {
+          return;
+        }
         if (window.__agendaDateNavKeydownHandler) {
           document.removeEventListener("keydown", window.__agendaDateNavKeydownHandler);
           window.__agendaDateNavKeydownHandler = null;
@@ -3381,6 +3496,7 @@
         limpiarBufferReprogramacion();
         resetAgendaModalState();
         closeAgendaModal();
+        setAgendaCriticalSaveState(false, "Guardando cita...");
       });
     }
   }

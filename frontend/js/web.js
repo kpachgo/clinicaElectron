@@ -608,6 +608,7 @@ let licenseBellGlobalEventsBound = false;
 let lastLicenseWarningStatus = null;
 let licenseWarningRefreshSeq = 0;
 let licenseBellRefsWarned = false;
+let currentPatientBellNotice = null;
 
 function isTruthyFlag(rawValue) {
     if (rawValue === true || rawValue === 1) return true;
@@ -785,33 +786,45 @@ function setLicenseBellMetaLines(metaEl, lines) {
         });
 }
 
-function updateLicenseBellUi(statusData) {
-    const refs = getLicenseBellRefs();
-    const missingRefs = getMissingLicenseBellRefs(refs);
-    if (missingRefs.length > 0) {
-        warnMissingLicenseBellRefs(missingRefs);
-        return false;
-    }
+function normalizePatientBellNotice(rawNotice) {
+    const source = rawNotice && typeof rawNotice === "object" ? rawNotice : {};
+    const note = String(source.note ?? source.nota ?? "").trim();
+    if (!note) return null;
 
+    const patientId = Number(source.patientId ?? source.idPaciente ?? 0);
+    const patientName = String(source.patientName ?? source.nombre ?? "Paciente").trim() || "Paciente";
+
+    return {
+        patientId: Number.isInteger(patientId) && patientId > 0 ? patientId : null,
+        patientName,
+        note
+    };
+}
+
+function getLicenseAlertPresentation(statusData) {
     const normalizedStatus = normalizeLicenseStatusData(statusData);
     const usage = normalizedStatus.usage;
     const diasRestantes = usage.diasRestantes;
     const fechaVencimientoRaw = usage.fechaVencimiento || null;
     const fechaVencimientoTxt = formatVencimientoText(fechaVencimientoRaw);
-    const warningWindowDays = usage.warningWindowDays;
-    const proximaFromBackend = usage.proximaAVencer === true;
-    const proximaByRange = (
-        diasRestantes !== null &&
-        diasRestantes >= 0 &&
-        diasRestantes <= warningWindowDays
-    );
-    const proximaAVencer = proximaFromBackend || proximaByRange;
+    const visualWindowDays = LICENSE_WARNING_DEFAULT_WINDOW_DAYS;
+
+    const isExpired = diasRestantes !== null && diasRestantes < 0;
+    const isWarningByDays = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= visualWindowDays;
+    const isWarningFallback = diasRestantes === null && usage.proximaAVencer === true;
+    const isAlert = isExpired || isWarningByDays || isWarningFallback;
 
     let title = "Suscripcion";
     let message = "Sin alertas por el momento.";
     const metaLines = [];
 
-    if (proximaAVencer) {
+    if (isExpired) {
+        title = "Suscripcion vencida";
+        message = "La suscripcion ya vencio. Renueve para mantener habilitado el sistema.";
+        if (fechaVencimientoTxt) {
+            metaLines.push(`Vencio: ${fechaVencimientoTxt}`);
+        }
+    } else if (isAlert) {
         title = "Suscripcion proxima a vencer";
         message = String(usage.mensajeAviso || "Su suscripcion esta proxima a vencer.");
         if (diasRestantes !== null) {
@@ -820,36 +833,22 @@ function updateLicenseBellUi(statusData) {
         if (fechaVencimientoTxt) {
             metaLines.push(`Vence: ${fechaVencimientoTxt}`);
         }
-        metaLines.push(`Ventana de aviso: ${warningWindowDays} dias`);
-    } else if (diasRestantes !== null && diasRestantes < 0) {
-        title = "Suscripcion vencida";
-        message = "La suscripcion ya vencio. Renueve para mantener habilitado el sistema.";
-        if (fechaVencimientoTxt) {
-            metaLines.push(`Vencio: ${fechaVencimientoTxt}`);
-        }
-    } else if (fechaVencimientoTxt) {
-        message = `Suscripcion activa. Fecha de vencimiento: ${fechaVencimientoTxt}.`;
-        if (diasRestantes !== null) {
-            metaLines.push(`Dias restantes: ${diasRestantes}`);
-        }
+        metaLines.push(`Ventana visual: ${visualWindowDays} dias`);
     }
 
-    refs.title.textContent = title;
-    refs.message.textContent = message;
-    setLicenseBellMetaLines(refs.meta, metaLines);
-    refs.badge.hidden = !proximaAVencer;
-    refs.btn.classList.toggle("has-warning", proximaAVencer);
-    logLicenseDebug("campana renderizada", {
-        proximaAVencer,
+    return {
+        normalizedStatus,
+        usage,
         diasRestantes,
-        warningWindowDays,
-        fechaVencimiento: fechaVencimientoRaw,
-        mensajeAviso: usage.mensajeAviso
-    });
-    return true;
+        fechaVencimientoRaw,
+        isAlert,
+        title,
+        message,
+        metaLines
+    };
 }
 
-function updateLicenseBellUiUnavailable() {
+function renderLicenseBellUi(options = {}) {
     const refs = getLicenseBellRefs();
     const missingRefs = getMissingLicenseBellRefs(refs);
     if (missingRefs.length > 0) {
@@ -857,13 +856,72 @@ function updateLicenseBellUiUnavailable() {
         return false;
     }
 
-    refs.title.textContent = "Suscripcion";
-    refs.message.textContent = "No se pudo consultar el estado de suscripcion.";
-    setLicenseBellMetaLines(refs.meta, ["Intente de nuevo en unos segundos."]);
-    refs.badge.hidden = true;
-    refs.btn.classList.remove("has-warning");
-    logLicenseDebug("campana en estado no disponible");
+    const patientNotice = options.patientNotice !== undefined
+        ? normalizePatientBellNotice(options.patientNotice)
+        : currentPatientBellNotice;
+    const licenseStatus = options.licenseStatus !== undefined
+        ? options.licenseStatus
+        : lastLicenseWarningStatus;
+    const unavailable = options.unavailable === true;
+    const licenseAlert = licenseStatus ? getLicenseAlertPresentation(licenseStatus) : null;
+
+    let title = "Notificaciones";
+    let message = "Sin alertas por el momento.";
+    const metaLines = [];
+    let hasWarning = false;
+
+    if (patientNotice) {
+        title = "Nota del paciente";
+        message = patientNotice.note;
+        metaLines.push(`Paciente: ${patientNotice.patientName}`);
+        if (patientNotice.patientId) {
+            metaLines.push(`ID paciente: ${patientNotice.patientId}`);
+        }
+        if (licenseAlert?.isAlert) {
+            metaLines.push("Suscripcion: tambien requiere atencion");
+            metaLines.push(...licenseAlert.metaLines);
+        }
+        hasWarning = true;
+    } else if (licenseAlert?.isAlert) {
+        title = licenseAlert.title;
+        message = licenseAlert.message;
+        metaLines.push(...licenseAlert.metaLines);
+        hasWarning = true;
+    } else if (unavailable) {
+        title = "Suscripcion";
+        message = "No se pudo consultar el estado de suscripcion.";
+        metaLines.push("Intente de nuevo en unos segundos.");
+    }
+
+    refs.title.textContent = title;
+    refs.message.textContent = message;
+    setLicenseBellMetaLines(refs.meta, metaLines);
+    refs.badge.hidden = !hasWarning;
+    refs.btn.classList.toggle("has-warning", hasWarning);
+    refs.btn.setAttribute("aria-label", hasWarning ? "Notificaciones pendientes" : "Notificaciones");
+
+    logLicenseDebug("campana renderizada", {
+        patientNotice,
+        licenseAlert: licenseAlert
+            ? {
+                isAlert: licenseAlert.isAlert,
+                diasRestantes: licenseAlert.diasRestantes,
+                fechaVencimiento: licenseAlert.fechaVencimientoRaw,
+                mensajeAviso: licenseAlert.usage?.mensajeAviso || null
+            }
+            : null,
+        unavailable
+    });
     return true;
+}
+
+function updateLicenseBellUi(statusData) {
+    return renderLicenseBellUi({ licenseStatus: statusData, unavailable: false });
+}
+
+function updateLicenseBellUiUnavailable() {
+    logLicenseDebug("campana en estado no disponible");
+    return renderLicenseBellUi({ unavailable: true });
 }
 
 function getTodayLocalKey() {
@@ -880,9 +938,10 @@ function buildWarningSeenStorageKey(codigoLicencia) {
 }
 
 function maybeShowLicenseWarningPopup(statusData) {
-    const normalizedStatus = normalizeLicenseStatusData(statusData);
+    const licenseAlert = getLicenseAlertPresentation(statusData);
+    if (!licenseAlert.isAlert) return;
+    const normalizedStatus = licenseAlert.normalizedStatus;
     const usage = normalizedStatus.usage;
-    if (usage.proximaAVencer !== true) return;
 
     const codigoRef = String(normalizedStatus?.codigoLicenciaMasked || "sin-codigo").trim() || "sin-codigo";
     const storageKey = buildWarningSeenStorageKey(codigoRef);
@@ -949,9 +1008,21 @@ async function refreshLicenseWarning(options = {}) {
 
 function resetLicenseWarningUi() {
     lastLicenseWarningStatus = null;
-    updateLicenseBellUi(null);
+    currentPatientBellNotice = null;
+    renderLicenseBellUi({ licenseStatus: null, patientNotice: null, unavailable: false });
     closeLicenseBellPanel();
 }
+
+window.__setTopPatientObservationNotice = function (payload) {
+    currentPatientBellNotice = normalizePatientBellNotice(payload);
+    renderLicenseBellUi();
+    return Boolean(currentPatientBellNotice);
+};
+
+window.__clearTopPatientObservationNotice = function () {
+    currentPatientBellNotice = null;
+    renderLicenseBellUi();
+};
 
 /* =========================================================
    USER INFO (TOPBAR)

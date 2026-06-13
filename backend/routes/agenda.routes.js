@@ -29,6 +29,13 @@ router.get(
   agendaController.listarPorFecha
 );
 
+router.get(
+  "/:id",
+  authMiddleware,
+  roleMiddleware(ROLES_AGENDA),
+  agendaController.obtenerPorId
+);
+
 router.put(
   "/:id",
   authMiddleware,

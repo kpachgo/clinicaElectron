@@ -18,9 +18,11 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `13_agenda_contacto_bd.md`
 - `14_monitor_seguimiento.md`
 - `15_protocolo_seguridad.md`
+- `16_release_mac_runner_issue.md`
 
 ## Nota
 - El contexto de Paciente (`03_paciente.md`) incluye la parte de odontograma.
 - `13_agenda_contacto_bd.md` documenta la migracion de BD/SP para las marcas `SMS/Llamada` de Agenda.
 - `14_monitor_seguimiento.md` documenta la vista nueva en construccion (v1 visual con mock).
 - `15_protocolo_seguridad.md` documenta el modo global ON/OFF para ocultar Ortodoncia en SPs/vistas afectadas.
+- `16_release_mac_runner_issue.md` documenta la incidencia recurrente donde macOS queda en cola por publicar el workflow con `macos-13` en lugar de `macos-latest`.

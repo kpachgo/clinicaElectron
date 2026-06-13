@@ -165,6 +165,45 @@
       timer = setTimeout(() => fn(...args), delay);
     };
   }
+  function normalizarTextoPegado(value) {
+    return String(value ?? "")
+      .replace(/[\u00A0\u2007\u202F]/g, " ")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  function bindSanitizedPasteInput(inputEl) {
+    if (!inputEl || inputEl.dataset.cleanPasteBound === "1") return;
+    inputEl.dataset.cleanPasteBound = "1";
+
+    inputEl.addEventListener("paste", (e) => {
+      const clipboard = e.clipboardData || window.clipboardData;
+      if (!clipboard || typeof clipboard.getData !== "function") return;
+      const pastedText = clipboard.getData("text/plain") || clipboard.getData("Text") || "";
+      if (!pastedText) return;
+
+      e.preventDefault();
+      const currentValue = String(inputEl.value || "");
+      const start = Number.isInteger(inputEl.selectionStart) ? inputEl.selectionStart : currentValue.length;
+      const end = Number.isInteger(inputEl.selectionEnd) ? inputEl.selectionEnd : start;
+      const nextValue = normalizarTextoPegado(
+        `${currentValue.slice(0, start)}${pastedText}${currentValue.slice(end)}`
+      );
+
+      inputEl.value = nextValue;
+      if (typeof inputEl.setSelectionRange === "function") {
+        inputEl.setSelectionRange(nextValue.length, nextValue.length);
+      }
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    inputEl.addEventListener("blur", () => {
+      const normalized = normalizarTextoPegado(inputEl.value);
+      if (normalized === inputEl.value) return;
+      inputEl.value = normalized;
+      inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
   function getUiStateUserId() {
     try {
       const raw = sessionStorage.getItem("user");
@@ -1152,6 +1191,8 @@
     blindarInputAutofill(inputServicio, "cobro-servicio-search");
     blindarInputAutofill(cuentaSearch, "cobro-cuenta-search", { preserveValue: shouldPreserveCuentaSearch });
     blindarInputAutofill(inputDescuentoNombre, "cobro-descuento-nombre");
+    bindSanitizedPasteInput(inputPaciente);
+    bindSanitizedPasteInput(cuentaSearch);
 
     function normalizarCantidadConteo(input, { aplicar = false } = {}) {
       const denominacion = Number(input?.dataset?.bill || 0);

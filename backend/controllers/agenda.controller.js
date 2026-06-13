@@ -72,6 +72,27 @@ async function getAgendaSnapshot(db, idAgenda) {
   return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 }
 
+async function getAgendaById(db, idAgenda) {
+  const [rows] = await db.query(
+    `SELECT
+      idAgendaAP,
+      nombreAP,
+      horaAP,
+      DATE_FORMAT(fechaAP, '%Y-%m-%d') AS fechaAP,
+      contactoAP,
+      IFNULL(estadoAP, 'Pendiente') AS estadoAP,
+      comentarioAP,
+      IFNULL(smsAP, 0) AS smsAP,
+      IFNULL(llamadaAP, 0) AS llamadaAP,
+      IFNULL(presenteAP, 0) AS presenteAP
+     FROM agendapersona
+     WHERE idAgendaAP = ?
+     LIMIT 1`,
+    [idAgenda]
+  );
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
 async function queryPacientePrecheckRows(db, options = {}) {
   const whereSql = String(options?.whereSql || "").trim();
   const whereParams = Array.isArray(options?.whereParams) ? options.whereParams : [];
@@ -336,6 +357,27 @@ exports.buscarPorMes = async (req, res) => {
     });
   } catch (error) {
     return serverError(res, error, "Error al buscar agenda por mes");
+  }
+};
+
+exports.obtenerPorId = async (req, res) => {
+  try {
+    const idAgenda = Number(req.params?.id);
+    if (!Number.isInteger(idAgenda) || idAgenda <= 0) {
+      return badRequest(res, "ID de agenda invalido");
+    }
+
+    const row = await getAgendaById(pool, idAgenda);
+    if (!row) {
+      return notFound(res, "Cita de agenda no encontrada");
+    }
+
+    return res.json({
+      ok: true,
+      data: row
+    });
+  } catch (error) {
+    return serverError(res, error, "Error al obtener cita de agenda");
   }
 };
 

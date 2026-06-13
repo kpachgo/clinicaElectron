@@ -2649,6 +2649,21 @@ async function cargarPaciente(idPaciente) {
     ]);
     if (isStaleRequest("detallePaciente", localSeq)) return false;
     if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteCargado) return false;
+    const notaObservacionPaciente = String(p.notasObservacionP || "").trim();
+    if (notaObservacionPaciente) {
+      if (typeof window.__setTopPatientObservationNotice === "function") {
+        window.__setTopPatientObservationNotice({
+          patientId: idPacienteCargado,
+          patientName: String(p.NombreP || "Paciente").trim() || "Paciente",
+          note: notaObservacionPaciente
+        });
+      }
+      if (typeof window.playUiSound === "function") {
+        window.playUiSound("bell", { minIntervalMs: 0 });
+      }
+    } else if (typeof window.__clearTopPatientObservationNotice === "function") {
+      window.__clearTopPatientObservationNotice();
+    }
     setPacienteCambiosPendientes(false);
     return true;
     
@@ -2751,8 +2766,8 @@ const ODONTO_SUMMARY_LABELS = {
   I: "Implante",
   X_SIMPLE: "Extraccion simple",
   X_RR: "Extraccion resto radicular",
-  X_CORDAL_SIMPLE: "Extraccion cordal simple",
-  X_CIRUGIA: "Extraccion Cirugia",
+  X_CORDAL_SIMPLE: "Extraccion simple de cordal",
+  X_CIRUGIA: "Cirugia de cordal",
   X_EXTRACCION: "Extraccion",
   X_AUSENTE: "Pieza ausente",
   CR: "Cambio de relleno",
@@ -2828,8 +2843,8 @@ const ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL = "Extraccion simple";
 const ODONTO_PRINT_EXTRACTION_RR_LABEL = "Extraccion resto radicular";
 const ODONTO_PRINT_CORDAL_SIMPLE_PRICE = 100;
 const ODONTO_PRINT_CORDAL_SURGERY_PRICE = 150;
-const ODONTO_PRINT_CORDAL_SIMPLE_LABEL = "Extraccion cordal simple";
-const ODONTO_PRINT_CORDAL_SURGERY_LABEL = "Extraccion cordal cirugia";
+const ODONTO_PRINT_CORDAL_SIMPLE_LABEL = "Extraccion simple de cordal";
+const ODONTO_PRINT_CORDAL_SURGERY_LABEL = "Cirugia de cordal";
 const ODONTO_PRINT_ENDO_MONO_PRICE = 150;
 const ODONTO_PRINT_ENDO_MULTI_PRICE = 225;
 const ODONTO_PRINT_ENDO_MONO_LABEL = "Endodoncia mono radicular";
@@ -6426,6 +6441,9 @@ function limpiarVistaPaciente() {
   window.ultimoOdontogramaId = null;
   window.pacienteFotoPrincipalId = null;
   window.__pacienteLoading = false;
+  if (typeof window.__clearTopPatientObservationNotice === "function") {
+    window.__clearTopPatientObservationNotice();
+  }
   odontoLoadingActiveCount = 0;
   if (odontoLoadingShowTimer) {
     clearTimeout(odontoLoadingShowTimer);
