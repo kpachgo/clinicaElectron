@@ -265,34 +265,6 @@ function normalizeDigitsOnly(value) {
   return String(value || "").replace(/\D+/g, "");
 }
 
-function hasSamePhoneValue(a, b) {
-  const rawA = String(a || "").trim();
-  const rawB = String(b || "").trim();
-  if (rawA && rawB && rawA.toLowerCase() === rawB.toLowerCase()) return true;
-
-  const digitsA = normalizeDigitsOnly(rawA);
-  const digitsB = normalizeDigitsOnly(rawB);
-  return digitsA && digitsB && digitsA === digitsB;
-}
-
-function getCurrentMonthRangeLocal() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-  const toIsoDate = (date) => {
-    const yyyy = date.getFullYear();
-    const mm = String(date.getMonth() + 1).padStart(2, "0");
-    const dd = String(date.getDate()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
-  };
-
-  return {
-    startDate: toIsoDate(start),
-    nextMonthStartDate: toIsoDate(nextMonthStart)
-  };
-}
-
 function getCurrentLocalHHMM() {
   const now = new Date();
   const hh = String(now.getHours()).padStart(2, "0");
@@ -759,28 +731,6 @@ const monitorSeguimientoProximaCita = async (req, res) => {
   }
 };
 
-async function syncAgendaTelefonoFromPaciente(db, options = {}) {
-  const nombrePaciente = String(options?.nombrePaciente || "").trim();
-  const telefonoNuevo = String(options?.telefonoNuevo || "").trim();
-
-  if (!nombrePaciente || !telefonoNuevo) return { affectedRows: 0 };
-
-  const { startDate, nextMonthStartDate } = getCurrentMonthRangeLocal();
-
-  const [result] = await db.query(
-    `UPDATE agendapersona a
-     SET a.contactoAP = ?
-     WHERE a.fechaAP >= ?
-       AND a.fechaAP < ?
-       AND LOWER(TRIM(IFNULL(a.nombreAP, ''))) = LOWER(TRIM(?))`,
-    [telefonoNuevo, startDate, nextMonthStartDate, nombrePaciente]
-  );
-
-  return {
-    affectedRows: Number(result?.affectedRows || 0)
-  };
-}
-
 const guardarMonitorContacto = async (req, res) => {
   try {
     const idPaciente = Number(req.body?.idPaciente || 0);
@@ -983,7 +933,6 @@ const guardarPaciente = async (req, res) => {
       ? null
       : Number(p.idPaciente);
     const nombre = String(p?.NombreP || "").trim();
-    const telefonoNuevo = String(p?.telefonoP || "").trim();
 
     if (idPacienteNum !== null && (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0)) {
       return badRequest(res, "idPaciente invalido");
@@ -1001,27 +950,13 @@ const guardarPaciente = async (req, res) => {
       return badRequest(res, "ultimaVisitaP invalida");
     }
 
-    let pacienteAnterior = null;
-    if (Number.isInteger(idPacienteNum) && idPacienteNum > 0) {
-      const [pacienteRows] = await queryReadWithRetry(
-        `SELECT idPaciente, NombreP, telefonoP
-         FROM paciente
-         WHERE idPaciente = ?
-         LIMIT 1`,
-        [idPacienteNum]
-      );
-      pacienteAnterior = Array.isArray(pacienteRows) && pacienteRows.length > 0
-        ? pacienteRows[0]
-        : null;
-    }
-
     const [rows] = await pool.query(
       "CALL sp_paciente_guardar(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       [
         idPacienteNum,
         nombre,
         p.direccionP,
-        telefonoNuevo,
+        p.telefonoP,
         p.fechaRegistroP,
         p.estadoP ?? 1,
         p.fechaNacimientoP,
@@ -1049,31 +984,9 @@ const guardarPaciente = async (req, res) => {
       ]
     );
 
-    const pacienteGuardadoId = Number(rows?.[0]?.[0]?.idPaciente || 0);
-    const telefonoAnterior = String(pacienteAnterior?.telefonoP || "").trim();
-    const nombreBaseAgenda = String(pacienteAnterior?.NombreP || "").trim() || nombre;
-    const debeSyncAgenda =
-      Number.isInteger(idPacienteNum) &&
-      idPacienteNum > 0 &&
-      pacienteGuardadoId > 0 &&
-      telefonoNuevo &&
-      !hasSamePhoneValue(telefonoAnterior, telefonoNuevo);
-
-    if (debeSyncAgenda) {
-      try {
-        await syncAgendaTelefonoFromPaciente(pool, {
-          idPaciente: pacienteGuardadoId,
-          nombrePaciente: nombreBaseAgenda,
-          telefonoNuevo
-        });
-      } catch (syncErr) {
-        console.error("[paciente.guardarPaciente] No se pudo sincronizar telefono en agenda:", syncErr);
-      }
-    }
-
     res.json({
       ok: true,
-      idPaciente: pacienteGuardadoId
+      idPaciente: rows[0][0].idPaciente
     });
 
   } catch (err) {

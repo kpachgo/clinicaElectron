@@ -385,6 +385,16 @@ body[data-theme="light"] #buscar-paciente-p {
     border-bottom: 1px solid rgba(0,0,0,0.05);
     white-space: nowrap;
 }
+.citas-table tbody tr.cita-misma-fecha td {
+    padding-top: 2px;
+}
+.citas-table .cita-fecha-repetida {
+    color: transparent;
+}
+.citas-table .cita-fecha-placeholder {
+    display: inline-block;
+    min-width: 74px;
+}
 .citas-table .cita-inline-editor {
     box-sizing: border-box;
     border: 1px solid #cbd5e1;
@@ -1187,6 +1197,10 @@ body[data-theme="light"] #buscar-paciente-p {
 .dark-mode .citas-table td {
     color: var(--pac-table-text);
     border-bottom-color: rgba(148, 163, 184, 0.16);
+}
+
+.dark-mode .citas-table .cita-fecha-repetida {
+    color: transparent;
 }
 
 .dark-mode .citas-table .cita-inline-editor {

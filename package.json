@@ -1,11 +1,11 @@
 {
   "name": "clinica",
-  "version": "3.0.4",
+  "version": "3.0.6",
   "description": "Sistema de clinica empaquetado con Electron",
   "author": "Clinica",
   "repository": {
     "type": "git",
-    "url": "https://example.invalid/clinica-electron"
+    "url": "https://github.com/kpachgo/clinicaElectron.git"
   },
   "private": true,
   "main": "electron-app/main.js",

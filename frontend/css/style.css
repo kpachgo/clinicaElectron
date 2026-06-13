@@ -590,53 +590,6 @@ body {
     color: var(--text-muted);
 }
 
-.license-bell-patient-observation {
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--border-color);
-}
-
-.license-bell-patient-title {
-    margin: 0 0 4px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-}
-
-.license-bell-patient-name {
-    margin: 0 0 4px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-color);
-}
-
-.license-bell-patient-preview {
-    margin: 0;
-    font-size: 12px;
-    line-height: 1.35;
-    color: var(--text-color);
-}
-
-.license-bell-patient-details {
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--text-muted);
-}
-
-.license-bell-patient-details summary {
-    cursor: pointer;
-    user-select: none;
-}
-
-.license-bell-patient-full {
-    margin: 4px 0 0;
-    white-space: pre-wrap;
-    line-height: 1.35;
-    color: var(--text-color);
-}
-
 .dark-mode .license-bell-btn.has-warning {
     border-color: #7f1d1d;
     background: rgba(127, 29, 29, 0.35);

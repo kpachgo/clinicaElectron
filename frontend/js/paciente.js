@@ -120,31 +120,6 @@ function isStaleRequest(key, seq) {
 function abortAllPacienteRequests() {
   Object.keys(pacienteRequestState).forEach((key) => invalidateRequest(key));
 }
-function clearPatientObservationNotificationInBell() {
-  if (typeof window.clearPatientObservationNotification === "function") {
-    window.clearPatientObservationNotification();
-  }
-}
-function pushPatientObservationNotificationToBell(paciente) {
-  const setter = window.setPatientObservationNotification;
-  if (typeof setter !== "function") return;
-
-  const observacion = String(paciente?.notasObservacionP || "").trim();
-  if (!observacion) {
-    clearPatientObservationNotificationInBell();
-    return;
-  }
-
-  const idPacienteRaw = Number(paciente?.idPaciente || 0);
-  const idPaciente = Number.isInteger(idPacienteRaw) && idPacienteRaw > 0 ? idPacienteRaw : null;
-  const nombrePaciente = String(paciente?.NombreP || "").trim() || "Paciente";
-
-  setter({
-    idPaciente,
-    nombrePaciente,
-    observacion
-  });
-}
 // UTILIDADES
 function toInputDate(fechaISO) {
   if (!fechaISO) return "";
@@ -2580,7 +2555,6 @@ async function cargarPaciente(idPaciente) {
     alert("Paciente invalido");
     return false;
   }
-  clearPatientObservationNotificationInBell();
 
   const req = beginRequest("detallePaciente");
   const localSeq = req.seq;
@@ -2675,7 +2649,6 @@ async function cargarPaciente(idPaciente) {
     ]);
     if (isStaleRequest("detallePaciente", localSeq)) return false;
     if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteCargado) return false;
-    pushPatientObservationNotificationToBell(p);
     setPacienteCambiosPendientes(false);
     return true;
     
@@ -2772,8 +2745,12 @@ const ODONTO_SUMMARY_LABELS = {
   SFF: "Sellante",
   R: "Reconstruccion",
   E: "Endodoncia",
+  E_MONO: "Endodoncia mono radicular",
+  E_MULTI: "Endodoncia multiradicular",
   C: "Corona",
   I: "Implante",
+  X_SIMPLE: "Extraccion simple",
+  X_RR: "Extraccion resto radicular",
   X_CORDAL_SIMPLE: "Extraccion cordal simple",
   X_CIRUGIA: "Extraccion Cirugia",
   X_EXTRACCION: "Extraccion",
@@ -2788,10 +2765,14 @@ const ODONTO_SUMMARY_HIGHLIGHT_COLOR_FALLBACK = {
   SFF: "#2693ff",
   R: "#ff9800",
   E: "#ff9800",
+  E_MONO: "#ff9800",
+  E_MULTI: "#ff9800",
   C: "#ff9800",
   I: "#ff9800",
   CR: "#2693ff",
   F: "#ff3b30",
+  X_SIMPLE: "#ff3b30",
+  X_RR: "#ff3b30",
   X_CORDAL_SIMPLE: "#ff3b30",
   X_CIRUGIA: "#ff3b30",
   X_EXTRACCION: "#ff3b30"
@@ -2824,6 +2805,16 @@ const ODONTO_PRINT_PROMO_PRESETS = [
   "Promocion 2 Rellenos y Limpieza x $50",
   "Promocion 3 Rellenos x $50"
 ];
+const ODONTO_PRINT_TEXT_PRESETS = [
+  {
+    label: "Tratamiento de ortodoncia",
+    kind: "ortho",
+    lines: [
+      "24 Citas Mensuales de ortodoncia",
+      "Comprar cepillo y cera de ortodoncia"
+    ]
+  }
+];
 const ODONTO_ASSIST_PRESETS = [
   "Control de ortodoncia",
   "Extraccion dental simple",
@@ -2831,6 +2822,20 @@ const ODONTO_ASSIST_PRESETS = [
   "Limpieza dental"
 ];
 const ODONTO_PRINT_MAX_LINE_LENGTH = 128;
+const ODONTO_PRINT_EXTRACTION_SIMPLE_PRICE = 25;
+const ODONTO_PRINT_EXTRACTION_RR_PRICE = 50;
+const ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL = "Extraccion simple";
+const ODONTO_PRINT_EXTRACTION_RR_LABEL = "Extraccion resto radicular";
+const ODONTO_PRINT_CORDAL_SIMPLE_PRICE = 100;
+const ODONTO_PRINT_CORDAL_SURGERY_PRICE = 150;
+const ODONTO_PRINT_CORDAL_SIMPLE_LABEL = "Extraccion cordal simple";
+const ODONTO_PRINT_CORDAL_SURGERY_LABEL = "Extraccion cordal cirugia";
+const ODONTO_PRINT_ENDO_MONO_PRICE = 150;
+const ODONTO_PRINT_ENDO_MULTI_PRICE = 225;
+const ODONTO_PRINT_ENDO_MONO_LABEL = "Endodoncia mono radicular";
+const ODONTO_PRINT_ENDO_MULTI_LABEL = "Endodoncia multiradicular";
+const ODONTO_PRINT_ENDO_MONO_PIECES = new Set([11, 12, 13, 21, 22, 23, 31, 32, 33, 41, 42, 43]);
+const ODONTO_PRINT_ENDO_MULTI_PIECES = new Set([14, 15, 16, 17, 24, 25, 26, 27, 34, 35, 36, 37, 44, 45, 46, 47]);
 const ODONTO_PRINT_CONSENT_DEFAULTS = {
   lugarFirma: "San Salvador"
 };
@@ -2947,7 +2952,9 @@ function buildOdontogramaTreatmentSummary(data) {
     rawTreatment,
     markRl,
     hasCxInNota = false,
-    hasCordalSimpleInNota = false
+    isCordalPiece = false,
+    hasRrInNota = false,
+    currentPiece = 0
   ) => {
     const rawId = typeof rawTreatment === "string"
       ? rawTreatment
@@ -2958,6 +2965,21 @@ function buildOdontogramaTreatmentSummary(data) {
     if (!normalized) return markRl;
     if (ODONTO_SUMMARY_EXCLUDED.has(normalized)) return markRl;
     if (normalized === "RL") return true;
+    if (normalized === "E") {
+      if (ODONTO_PRINT_ENDO_MONO_PIECES.has(currentPiece)) {
+        bucket.add("E_MONO");
+        addColorToMap(colorBucket, "E_MONO", rawTreatment);
+        return markRl;
+      }
+      if (ODONTO_PRINT_ENDO_MULTI_PIECES.has(currentPiece)) {
+        bucket.add("E_MULTI");
+        addColorToMap(colorBucket, "E_MULTI", rawTreatment);
+        return markRl;
+      }
+      bucket.add(normalized);
+      addColorToMap(colorBucket, normalized, rawTreatment);
+      return markRl;
+    }
     if (normalized === "CX") {
       bucket.add("X_CIRUGIA");
       addColorToMap(colorBucket, "X_CIRUGIA", rawTreatment);
@@ -2965,17 +2987,27 @@ function buildOdontogramaTreatmentSummary(data) {
     }
     if (normalized === "X") {
       const resolvedX = resolveXSummaryTreatment(rawTreatment);
-      if (hasCordalSimpleInNota && resolvedX === "X_EXTRACCION") {
-        bucket.add("X_CORDAL_SIMPLE");
-        addColorToMap(colorBucket, "X_CORDAL_SIMPLE", rawTreatment);
-        return markRl;
-      }
       if (ODONTO_SUMMARY_EXCLUDED.has(resolvedX)) {
         return markRl;
       }
       if (hasCxInNota) {
         bucket.add("X_CIRUGIA");
         addColorToMap(colorBucket, "X_CIRUGIA", rawTreatment);
+        return markRl;
+      }
+      if (isCordalPiece && resolvedX === "X_EXTRACCION") {
+        bucket.add("X_CORDAL_SIMPLE");
+        addColorToMap(colorBucket, "X_CORDAL_SIMPLE", rawTreatment);
+        return markRl;
+      }
+      if (hasRrInNota && isOdontoPrintPricedExtractionPiece(currentPiece) && resolvedX === "X_EXTRACCION") {
+        bucket.add("X_RR");
+        addColorToMap(colorBucket, "X_RR", rawTreatment);
+        return markRl;
+      }
+      if (isOdontoPrintPricedExtractionPiece(currentPiece) && resolvedX === "X_EXTRACCION") {
+        bucket.add("X_SIMPLE");
+        addColorToMap(colorBucket, "X_SIMPLE", rawTreatment);
         return markRl;
       }
       bucket.add(resolvedX);
@@ -2997,7 +3029,8 @@ function buildOdontogramaTreatmentSummary(data) {
     const pieceColors = new Map();
     const nota = String(piezaData?.nota_input || "").toUpperCase();
     const hasCxInNota = /\bCX\b/.test(nota) || /EXTRACCION\s*CIRUGIA/.test(nota);
-    const hasSimpleCordalInNota = ODONTO_CORDAL_PIEZAS.has(pieza) && /\bS\b/.test(nota);
+    const isCordalPiece = ODONTO_CORDAL_PIEZAS.has(pieza);
+    const hasRrInNota = hasOdontoPrintRrToken(nota);
 
     const superficies = piezaData.superficies && typeof piezaData.superficies === "object"
       ? piezaData.superficies
@@ -3011,7 +3044,9 @@ function buildOdontogramaTreatmentSummary(data) {
           treatment,
           hasRl,
           hasCxInNota,
-          hasSimpleCordalInNota
+          isCordalPiece,
+          hasRrInNota,
+          pieza
         );
       });
     });
@@ -3026,7 +3061,9 @@ function buildOdontogramaTreatmentSummary(data) {
         treatment,
         hasRl,
         hasCxInNota,
-        hasSimpleCordalInNota
+        isCordalPiece,
+        hasRrInNota,
+        pieza
       );
     });
 
@@ -3241,6 +3278,11 @@ function getOdontoSummarySnapshot() {
     : null;
   return buildOdontogramaTreatmentSummary(data);
 }
+function getOdontogramaDataSnapshot() {
+  return window.odontogramaAPI && typeof window.odontogramaAPI.getData === "function"
+    ? window.odontogramaAPI.getData()
+    : null;
+}
 function getPacienteNombreForPrint() {
   const fromInput = String(document.getElementById("NombreP")?.value || "").trim();
   if (fromInput) return fromInput;
@@ -3343,6 +3385,209 @@ function buildPendingLine(item) {
   const precioTxt = precio == null ? "Precio no definido" : formatServicePrice(precio);
   return truncateForPrintLine(`${cantidad} ${nombre} ${precioTxt}`);
 }
+function isOdontoPrintPricedExtractionPiece(pieza) {
+  const pieceNumber = Number(pieza || 0);
+  if (!Number.isInteger(pieceNumber) || pieceNumber <= 0) return false;
+  const quadrant = Math.floor(pieceNumber / 10);
+  const position = pieceNumber % 10;
+  return quadrant >= 1 && quadrant <= 4 && position >= 1 && position <= 7;
+}
+function hasOdontoPrintRrToken(note) {
+  return /\bRR\b/.test(String(note || "").toUpperCase());
+}
+function buildOdontoPrintFixedPriceLine(cantidad, label, price) {
+  const count = Number(cantidad || 0);
+  if (!Number.isFinite(count) || count <= 0) return "";
+  return truncateForPrintLine(`${count} ${label} ${formatServicePrice(price)}`);
+}
+function splitOdontoPrintPiecesByPredicate(item, predicate) {
+  const piezas = Array.isArray(item?.piezas)
+    ? item.piezas.filter((pieza) => Number.isInteger(pieza) && pieza > 0)
+    : [];
+  const matchedPieces = [];
+  const remainingPieces = [];
+
+  piezas.forEach((pieza) => {
+    if (predicate(pieza)) {
+      matchedPieces.push(pieza);
+      return;
+    }
+    remainingPieces.push(pieza);
+  });
+
+  return {
+    matchedCount: matchedPieces.length,
+    matchedPieces,
+    remainingPieces
+  };
+}
+function splitOdontoPrintExtractionPieces(item, odontogramaData) {
+  const piezas = Array.isArray(item?.piezas)
+    ? item.piezas.filter((pieza) => Number.isInteger(pieza) && pieza > 0)
+    : [];
+  const rawPieces = odontogramaData && typeof odontogramaData === "object" && odontogramaData.piezas && typeof odontogramaData.piezas === "object"
+    ? odontogramaData.piezas
+    : {};
+  const result = {
+    simpleCount: 0,
+    rrCount: 0,
+    remainingPieces: []
+  };
+
+  piezas.forEach((pieza) => {
+    if (!isOdontoPrintPricedExtractionPiece(pieza)) {
+      result.remainingPieces.push(pieza);
+      return;
+    }
+    const note = String(rawPieces[String(pieza)]?.nota_input || rawPieces[pieza]?.nota_input || "");
+    if (hasOdontoPrintRrToken(note)) {
+      result.rrCount += 1;
+      return;
+    }
+    result.simpleCount += 1;
+  });
+
+  return result;
+}
+function buildPendingPrintItems(summary, odontogramaData) {
+  const pendientes = Array.isArray(summary?.pendientes) ? summary.pendientes : [];
+  const items = [];
+  const fixedBuckets = new Map();
+  const pushFixedBucket = (label, price, count) => {
+    const qty = Number(count || 0);
+    if (!Number.isFinite(qty) || qty <= 0) return;
+    const key = `${label}::${price}`;
+    if (!fixedBuckets.has(key)) {
+      fixedBuckets.set(key, { label, price, count: 0 });
+      items.push({ kind: "fixed-bucket", key });
+    }
+    fixedBuckets.get(key).count += qty;
+  };
+  const pushResidualLine = (text) => {
+    if (!text) return;
+    items.push({
+      kind: "pendiente",
+      text
+    });
+  };
+
+  pendientes.forEach((item) => {
+    const treatment = normalizeOdontoTreatmentId(item?.tratamiento);
+    if (treatment === "E_MONO") {
+      pushFixedBucket(ODONTO_PRINT_ENDO_MONO_LABEL, ODONTO_PRINT_ENDO_MONO_PRICE, Number(item?.cantidad || 0));
+      return;
+    }
+
+    if (treatment === "E_MULTI") {
+      pushFixedBucket(ODONTO_PRINT_ENDO_MULTI_LABEL, ODONTO_PRINT_ENDO_MULTI_PRICE, Number(item?.cantidad || 0));
+      return;
+    }
+
+    if (treatment === "E") {
+      const monoSplit = splitOdontoPrintPiecesByPredicate(item, (pieza) => ODONTO_PRINT_ENDO_MONO_PIECES.has(pieza));
+      pushFixedBucket(ODONTO_PRINT_ENDO_MONO_LABEL, ODONTO_PRINT_ENDO_MONO_PRICE, monoSplit.matchedCount);
+
+      const multiSplit = splitOdontoPrintPiecesByPredicate({
+        ...item,
+        cantidad: monoSplit.remainingPieces.length,
+        piezas: monoSplit.remainingPieces
+      }, (pieza) => ODONTO_PRINT_ENDO_MULTI_PIECES.has(pieza));
+      pushFixedBucket(ODONTO_PRINT_ENDO_MULTI_LABEL, ODONTO_PRINT_ENDO_MULTI_PRICE, multiSplit.matchedCount);
+
+      if (multiSplit.remainingPieces.length > 0) {
+        const text = buildPendingLine({
+          ...item,
+          cantidad: multiSplit.remainingPieces.length,
+          piezas: multiSplit.remainingPieces
+        });
+        pushResidualLine(text);
+      }
+      return;
+    }
+
+    if (treatment === "X_SIMPLE") {
+      pushFixedBucket(ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL, ODONTO_PRINT_EXTRACTION_SIMPLE_PRICE, Number(item?.cantidad || 0));
+      return;
+    }
+
+    if (treatment === "X_RR") {
+      pushFixedBucket(ODONTO_PRINT_EXTRACTION_RR_LABEL, ODONTO_PRINT_EXTRACTION_RR_PRICE, Number(item?.cantidad || 0));
+      return;
+    }
+
+    if (treatment === "X_CORDAL_SIMPLE") {
+      pushFixedBucket(
+        ODONTO_PRINT_CORDAL_SIMPLE_LABEL,
+        ODONTO_PRINT_CORDAL_SIMPLE_PRICE,
+        Number(item?.cantidad || 0)
+      );
+      return;
+    }
+
+    if (treatment === "X_CIRUGIA") {
+      const cordalSurgerySplit = splitOdontoPrintPiecesByPredicate(item, (pieza) => ODONTO_CORDAL_PIEZAS.has(pieza));
+      pushFixedBucket(
+        ODONTO_PRINT_CORDAL_SURGERY_LABEL,
+        ODONTO_PRINT_CORDAL_SURGERY_PRICE,
+        cordalSurgerySplit.matchedCount
+      );
+      if (cordalSurgerySplit.remainingPieces.length > 0) {
+        const text = buildPendingLine({
+          ...item,
+          cantidad: cordalSurgerySplit.remainingPieces.length,
+          piezas: cordalSurgerySplit.remainingPieces
+        });
+        pushResidualLine(text);
+      }
+      return;
+    }
+
+    if (treatment !== "X_EXTRACCION") {
+      pushResidualLine(buildPendingLine(item));
+      return;
+    }
+
+    const cordalSimpleSplit = splitOdontoPrintPiecesByPredicate(item, (pieza) => ODONTO_CORDAL_PIEZAS.has(pieza));
+    pushFixedBucket(
+      ODONTO_PRINT_CORDAL_SIMPLE_LABEL,
+      ODONTO_PRINT_CORDAL_SIMPLE_PRICE,
+      cordalSimpleSplit.matchedCount
+    );
+
+    const extractionSplit = splitOdontoPrintExtractionPieces({
+      ...item,
+      cantidad: cordalSimpleSplit.remainingPieces.length,
+      piezas: cordalSimpleSplit.remainingPieces
+    }, odontogramaData);
+    pushFixedBucket(
+      ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL,
+      ODONTO_PRINT_EXTRACTION_SIMPLE_PRICE,
+      extractionSplit.simpleCount
+    );
+    pushFixedBucket(
+      ODONTO_PRINT_EXTRACTION_RR_LABEL,
+      ODONTO_PRINT_EXTRACTION_RR_PRICE,
+      extractionSplit.rrCount
+    );
+
+    if (extractionSplit.remainingPieces.length > 0) {
+      const text = buildPendingLine({
+        ...item,
+        cantidad: extractionSplit.remainingPieces.length,
+        piezas: extractionSplit.remainingPieces
+      });
+      pushResidualLine(text);
+    }
+  });
+
+  return items.flatMap((entry) => {
+    if (entry?.kind !== "fixed-bucket") return [entry];
+    const bucket = fixedBuckets.get(entry.key);
+    if (!bucket) return [];
+    const text = buildOdontoPrintFixedPriceLine(bucket.count, bucket.label, bucket.price);
+    return text ? [{ kind: "pendiente", text }] : [];
+  });
+}
 async function ensureOdontoPrintServicePriceCache() {
   if (odontoPrintServicePriceCache instanceof Map) return odontoPrintServicePriceCache;
   if (odontoPrintServicePricePromise) return odontoPrintServicePricePromise;
@@ -3378,12 +3623,9 @@ async function ensureOdontoPrintServicePriceCache() {
   return odontoPrintServicePricePromise;
 }
 function buildOdontoPrintDraftFromCurrentSummary() {
+  const odontogramaData = getOdontogramaDataSnapshot();
   const summary = getOdontoSummarySnapshot();
-  const pendientes = Array.isArray(summary?.pendientes) ? summary.pendientes : [];
-  const items = pendientes.map((item) => ({
-    kind: "pendiente",
-    text: buildPendingLine(item)
-  })).filter((item) => item.text);
+  const items = buildPendingPrintItems(summary, odontogramaData);
 
   return {
     mode: ODONTO_PRINT_MODE_PENDIENTE,
@@ -3911,6 +4153,15 @@ function renderOdontoPrintPresetButtons() {
   if (!refs.presetList) return;
   refs.presetList.innerHTML = "";
 
+  ODONTO_PRINT_TEXT_PRESETS.forEach((preset, index) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "odonto-print-preset-btn";
+    btn.dataset.textPresetIndex = String(index);
+    btn.textContent = preset.label;
+    refs.presetList.appendChild(btn);
+  });
+
   ODONTO_PRINT_PROMO_PRESETS.forEach((promo) => {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -4062,11 +4313,15 @@ function renderOdontoPrintEditorList() {
 
   items.forEach((item, index) => {
     const row = document.createElement("div");
-    row.className = `odonto-print-editor-item${item.kind === "promo" ? " is-promo" : ""}`;
+    row.className = `odonto-print-editor-item${item.kind === "promo" || item.kind === "ortho" ? " is-promo" : ""}`;
 
     const badge = document.createElement("span");
     badge.className = "odonto-print-editor-badge";
-    badge.textContent = item.kind === "promo" ? "PROMO" : "PEND";
+    badge.textContent = item.kind === "promo"
+      ? "PROMO"
+      : item.kind === "ortho"
+        ? "ORTO"
+        : "PEND";
 
     const input = document.createElement("input");
     input.type = "text";
@@ -4185,9 +4440,30 @@ function addOdontoPrintItem(rawText, kind = "manual") {
     odontoPrintDraft = buildOdontoPrintDraftFromCurrentSummary();
   }
   odontoPrintDraft.items.push({
-    kind: kind === "promo" ? "promo" : "manual",
+    kind: kind === "promo" || kind === "ortho" ? kind : "manual",
     text
   });
+  renderOdontoPrintModal();
+}
+function addOdontoPrintItemsBatch(lines, kind = "manual") {
+  if (isOdontoPrintModeAsistencia() || isOdontoPrintModeConsentimiento() || isOdontoPrintModeConsentimientoOrtodoncia()) return;
+  const sourceLines = Array.isArray(lines) ? lines : [];
+  const preparedItems = sourceLines.map((line) => {
+    const preparedText = kind === "promo"
+      ? ensurePromoPrefix(line)
+      : line;
+    const text = limitPrintEditorLine(preparedText);
+    if (!normalizePrintLine(text)) return null;
+    return {
+      kind: kind === "promo" || kind === "ortho" ? kind : "manual",
+      text
+    };
+  }).filter(Boolean);
+  if (preparedItems.length === 0) return;
+  if (!odontoPrintDraft || !Array.isArray(odontoPrintDraft.items)) {
+    odontoPrintDraft = buildOdontoPrintDraftFromCurrentSummary();
+  }
+  odontoPrintDraft.items.push(...preparedItems);
   renderOdontoPrintModal();
 }
 function removeOdontoPrintItem(index) {
@@ -4209,7 +4485,7 @@ function buildOdontoPrintListHtml(items) {
     return '<li class="odonto-print-preview-item is-empty">Sin tratamientos pendientes</li>';
   }
   return items.map((item) => {
-    const klass = item?.kind === "promo"
+    const klass = item?.kind === "promo" || item?.kind === "ortho"
       ? "odonto-print-preview-item is-promo"
       : "odonto-print-preview-item";
     return `<li class="${klass}">${escapeHtml(truncateForPrintLine(item?.text))}</li>`;
@@ -5206,6 +5482,15 @@ function bindOdontoPrintFeature() {
     refs.promoBtn?.click();
   };
   refs.presetList.onclick = (event) => {
+    const textPresetBtn = event.target?.closest?.("button[data-text-preset-index]");
+    if (textPresetBtn) {
+      const index = Number(textPresetBtn.dataset.textPresetIndex);
+      const preset = Number.isInteger(index) ? ODONTO_PRINT_TEXT_PRESETS[index] : null;
+      if (preset?.lines) {
+        addOdontoPrintItemsBatch(preset.lines, preset.kind || "manual");
+      }
+      return;
+    }
     const button = event.target?.closest?.("button[data-promo]");
     if (!button) return;
     addOdontoPrintItem(button.dataset.promo, "promo");
@@ -5844,6 +6129,7 @@ function renderCitasPaciente() {
     );
 
   window.citasPacienteView = vista;
+  let lastVisibleFechaKey = "";
 
   vista.forEach((c, idx) => {
       const tr = document.createElement("tr");
@@ -5860,18 +6146,26 @@ function renderCitasPaciente() {
       );
       tr.dataset.idCita = idCita;
       const fechaTxt = fechaLegible(c.fechaCP);
+      const fechaKey = String(c.fechaCP || "").trim().slice(0, 10) || fechaTxt;
+      const showFecha = fechaKey !== lastVisibleFechaKey;
+      tr.classList.toggle("cita-misma-fecha", !showFecha);
+      if (showFecha) {
+        lastVisibleFechaKey = fechaKey;
+      }
       const procedimientoTxt = String(c.ProcedimientoCP || "");
       const tieneDoctor = Number(c.idDoctor || 0) > 0;
       const puedeVer = tieneDoctor && citaPuedeVerFirmaSello(c);
       const accionHtml = renderAccionCita(c, idCita);
-      const fechaHtml = typeof window.__rvRenderFecha === "function"
-        ? window.__rvRenderFecha(fechaTxt)
-        : fechaTxt;
+      const fechaHtml = showFecha
+        ? (typeof window.__rvRenderFecha === "function"
+          ? window.__rvRenderFecha(fechaTxt)
+          : fechaTxt)
+        : '<span class="cita-fecha-placeholder" aria-hidden="true">&nbsp;</span>';
       const procedimientoHtml = typeof window.__rvRenderProcedimiento === "function"
         ? window.__rvRenderProcedimiento(procedimientoTxt)
         : procedimientoTxt;
       tr.innerHTML = `
-        <td>${fechaHtml}</td>
+        <td class="${showFecha ? "" : "cita-fecha-repetida"}">${fechaHtml}</td>
         <td>${procedimientoHtml}</td>
         <td>$${c.valorCP}</td>
         <td>$${c.abonoCP}</td>
@@ -6110,7 +6404,6 @@ function registrarEventoAutorizarCita() {
 // ============= FUNCION PARA LIMPIAR TODO LO DE LA VISTA PACIENTE ====
 function limpiarVistaPaciente() {
   abortAllPacienteRequests();
-  clearPatientObservationNotificationInBell();
   isSavingPaciente = false;
   isSavingCitaPaciente = false;
   isSavingFirmaPaciente = false;

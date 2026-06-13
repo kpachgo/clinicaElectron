@@ -604,12 +604,10 @@ function bindSecurityProtocolShortcut() {
 ========================================================= */
 const LICENSE_WARNING_STORAGE_PREFIX = "license_warning_seen::";
 const LICENSE_WARNING_DEFAULT_WINDOW_DAYS = 3;
-const PATIENT_OBSERVATION_PREVIEW_MAX = 140;
 let licenseBellGlobalEventsBound = false;
 let lastLicenseWarningStatus = null;
 let licenseWarningRefreshSeq = 0;
 let licenseBellRefsWarned = false;
-let activePatientObservationNotification = null;
 
 function isTruthyFlag(rawValue) {
     if (rawValue === true || rawValue === 1) return true;
@@ -649,12 +647,7 @@ function getLicenseBellRefs() {
         panel,
         title: titleById || titleByClass || document.querySelector("#license-bell-panel .license-bell-title"),
         message: document.getElementById("license-bell-message"),
-        meta: document.getElementById("license-bell-meta"),
-        patientObservationSection: panel ? panel.querySelector("#license-bell-patient-observation") : null,
-        patientObservationName: panel ? panel.querySelector("#license-bell-patient-name") : null,
-        patientObservationPreview: panel ? panel.querySelector("#license-bell-patient-preview") : null,
-        patientObservationDetails: panel ? panel.querySelector("#license-bell-patient-details") : null,
-        patientObservationFull: panel ? panel.querySelector("#license-bell-patient-full") : null
+        meta: document.getElementById("license-bell-meta")
     };
 }
 
@@ -674,85 +667,6 @@ function warnMissingLicenseBellRefs(missing) {
     if (missing.length === 0 || licenseBellRefsWarned) return;
     licenseBellRefsWarned = true;
     console.warn(`[licencia-ui] No se encontraron elementos de campana: ${missing.join(", ")}`);
-}
-
-function buildPatientObservationPreview(text, maxLen = PATIENT_OBSERVATION_PREVIEW_MAX) {
-    const clean = String(text || "").replace(/\s+/g, " ").trim();
-    if (!clean) return "";
-    if (clean.length <= maxLen) return clean;
-    return `${clean.slice(0, Math.max(1, maxLen - 1)).trimEnd()}…`;
-}
-
-function normalizePatientObservationNotification(payload = {}) {
-    const observacion = String(payload?.observacion || "").trim();
-    if (!observacion) return null;
-
-    const idRaw = Number(payload?.idPaciente || 0);
-    const idPaciente = Number.isInteger(idRaw) && idRaw > 0 ? idRaw : null;
-    const nombrePaciente = String(payload?.nombrePaciente || "").trim() || "Paciente";
-
-    return {
-        idPaciente,
-        nombrePaciente,
-        observacion
-    };
-}
-
-function ensurePatientObservationUi(refs) {
-    if (!refs?.panel) return null;
-
-    let section = refs.patientObservationSection;
-    if (!section) {
-        section = document.createElement("section");
-        section.id = "license-bell-patient-observation";
-        section.className = "license-bell-patient-observation";
-        section.hidden = true;
-        section.innerHTML = `
-            <h5 class="license-bell-patient-title">Observacion de paciente</h5>
-            <p id="license-bell-patient-name" class="license-bell-patient-name"></p>
-            <p id="license-bell-patient-preview" class="license-bell-patient-preview"></p>
-            <details id="license-bell-patient-details" class="license-bell-patient-details">
-                <summary>Ver completo</summary>
-                <p id="license-bell-patient-full" class="license-bell-patient-full"></p>
-            </details>
-        `;
-        refs.panel.appendChild(section);
-    }
-
-    return {
-        section,
-        name: section.querySelector("#license-bell-patient-name"),
-        preview: section.querySelector("#license-bell-patient-preview"),
-        details: section.querySelector("#license-bell-patient-details"),
-        full: section.querySelector("#license-bell-patient-full")
-    };
-}
-
-function renderPatientObservationInBell(refs) {
-    const ui = ensurePatientObservationUi(refs);
-    if (!ui) return false;
-
-    const data = activePatientObservationNotification;
-    if (!data) {
-        ui.section.hidden = true;
-        return false;
-    }
-
-    const fullText = String(data.observacion || "").trim();
-    if (!fullText) {
-        ui.section.hidden = true;
-        return false;
-    }
-
-    const preview = buildPatientObservationPreview(fullText);
-    const hasMore = preview !== fullText;
-    ui.section.hidden = false;
-    ui.name.textContent = `Paciente: ${String(data.nombrePaciente || "Paciente")}`;
-    ui.preview.textContent = preview;
-    ui.full.textContent = fullText;
-    ui.details.hidden = !hasMore;
-    if (!hasMore) ui.details.open = false;
-    return true;
 }
 
 function closeLicenseBellPanel() {
@@ -871,13 +785,6 @@ function setLicenseBellMetaLines(metaEl, lines) {
         });
 }
 
-function setLicenseBellPrimarySectionVisibility(refs, visible) {
-    const show = !!visible;
-    if (refs?.title) refs.title.hidden = !show;
-    if (refs?.message) refs.message.hidden = !show;
-    if (refs?.meta) refs.meta.hidden = !show;
-}
-
 function updateLicenseBellUi(statusData) {
     const refs = getLicenseBellRefs();
     const missingRefs = getMissingLicenseBellRefs(refs);
@@ -903,7 +810,6 @@ function updateLicenseBellUi(statusData) {
     let title = "Suscripcion";
     let message = "Sin alertas por el momento.";
     const metaLines = [];
-    let showSubscriptionSection = true;
 
     if (proximaAVencer) {
         title = "Suscripcion proxima a vencer";
@@ -921,22 +827,20 @@ function updateLicenseBellUi(statusData) {
         if (fechaVencimientoTxt) {
             metaLines.push(`Vencio: ${fechaVencimientoTxt}`);
         }
-    } else {
-        showSubscriptionSection = false;
+    } else if (fechaVencimientoTxt) {
+        message = `Suscripcion activa. Fecha de vencimiento: ${fechaVencimientoTxt}.`;
+        if (diasRestantes !== null) {
+            metaLines.push(`Dias restantes: ${diasRestantes}`);
+        }
     }
-
-    const hasPatientObservation = renderPatientObservationInBell(refs);
-    const hasAnyAlert = proximaAVencer || hasPatientObservation;
 
     refs.title.textContent = title;
     refs.message.textContent = message;
     setLicenseBellMetaLines(refs.meta, metaLines);
-    setLicenseBellPrimarySectionVisibility(refs, showSubscriptionSection);
-    refs.badge.hidden = !hasAnyAlert;
-    refs.btn.classList.toggle("has-warning", hasAnyAlert);
+    refs.badge.hidden = !proximaAVencer;
+    refs.btn.classList.toggle("has-warning", proximaAVencer);
     logLicenseDebug("campana renderizada", {
         proximaAVencer,
-        hasPatientObservation,
         diasRestantes,
         warningWindowDays,
         fechaVencimiento: fechaVencimientoRaw,
@@ -953,51 +857,13 @@ function updateLicenseBellUiUnavailable() {
         return false;
     }
 
-    const hasPatientObservation = renderPatientObservationInBell(refs);
     refs.title.textContent = "Suscripcion";
     refs.message.textContent = "No se pudo consultar el estado de suscripcion.";
     setLicenseBellMetaLines(refs.meta, ["Intente de nuevo en unos segundos."]);
-    refs.badge.hidden = !hasPatientObservation;
-    refs.btn.classList.toggle("has-warning", hasPatientObservation);
+    refs.badge.hidden = true;
+    refs.btn.classList.remove("has-warning");
     logLicenseDebug("campana en estado no disponible");
     return true;
-}
-
-function rerenderLicenseBellKeepingCurrentStatus() {
-    if (lastLicenseWarningStatus) {
-        updateLicenseBellUi(lastLicenseWarningStatus);
-    } else {
-        updateLicenseBellUi(null);
-    }
-}
-
-function setPatientObservationNotification(payload = {}) {
-    const normalized = normalizePatientObservationNotification(payload);
-    if (!normalized) {
-        clearPatientObservationNotification();
-        return false;
-    }
-
-    const prev = activePatientObservationNotification;
-    const changed = !prev
-        || prev.idPaciente !== normalized.idPaciente
-        || prev.nombrePaciente !== normalized.nombrePaciente
-        || prev.observacion !== normalized.observacion;
-
-    activePatientObservationNotification = normalized;
-
-    if (changed && typeof window.playUiSound === "function") {
-        window.playUiSound("bell", { minIntervalMs: 450 });
-    }
-
-    rerenderLicenseBellKeepingCurrentStatus();
-    return true;
-}
-
-function clearPatientObservationNotification() {
-    if (!activePatientObservationNotification) return;
-    activePatientObservationNotification = null;
-    rerenderLicenseBellKeepingCurrentStatus();
 }
 
 function getTodayLocalKey() {
@@ -1083,7 +949,6 @@ async function refreshLicenseWarning(options = {}) {
 
 function resetLicenseWarningUi() {
     lastLicenseWarningStatus = null;
-    activePatientObservationNotification = null;
     updateLicenseBellUi(null);
     closeLicenseBellPanel();
 }
@@ -1329,8 +1194,6 @@ window.__setAppChromeVisible = setAppChromeVisible;
 window.__applyTheme = applyTheme;
 window.refreshLicenseWarning = refreshLicenseWarning;
 window.refreshSecurityProtocolStatus = refreshSecurityProtocolStatus;
-window.setPatientObservationNotification = setPatientObservationNotification;
-window.clearPatientObservationNotification = clearPatientObservationNotification;
 
 
 document.addEventListener("DOMContentLoaded", () => {
