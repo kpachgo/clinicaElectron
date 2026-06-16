@@ -51,6 +51,11 @@ let detalleCuentaCuentaFkColCache = {
   value: null,
   checkedAt: 0
 };
+const COLA_PACIENTE_ID_COL_CACHE_TTL_MS = 5 * 60 * 1000;
+let colaPacienteIdColCache = {
+  value: null,
+  checkedAt: 0
+};
 
 async function queryReadWithRetry(sql, params = [], options = {}) {
   const attempts = Number.isInteger(Number(options.attempts)) && Number(options.attempts) > 0
@@ -243,6 +248,27 @@ function normalizarFormaPago(rawValue) {
   return map[raw] || null;
 }
 
+function normalizarTextoCruce(value) {
+  const raw = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!raw) return "";
+  return raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function soloDigitos(value) {
+  return String(value || "").replace(/\D+/g, "");
+}
+
+function getTodayLocalISO() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function isLegacyStoredProcedureArgsError(err) {
   if (!err) return false;
   if (Number(err?.errno || 0) === 1318) return true;
@@ -305,6 +331,202 @@ async function queryReporteMensualPacientesSP({
       throw legacyErr;
     }
   }
+}
+
+async function hasColaPacienteIdCol(force = false) {
+  const now = Date.now();
+  if (!force && colaPacienteIdColCache.value !== null) {
+    const age = now - Number(colaPacienteIdColCache.checkedAt || 0);
+    if (age >= 0 && age < COLA_PACIENTE_ID_COL_CACHE_TTL_MS) {
+      return !!colaPacienteIdColCache.value;
+    }
+  }
+
+  const [rows] = await queryReadWithRetry(
+    `SELECT COUNT(*) AS total
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'cola_paciente'
+       AND COLUMN_NAME = 'idPaciente'`
+  );
+
+  const hasCol = Number(rows?.[0]?.total || 0) > 0;
+  colaPacienteIdColCache = {
+    value: hasCol,
+    checkedAt: now
+  };
+  return hasCol;
+}
+
+async function listarAtendidosColaPorFecha(fecha) {
+  const includeIdPaciente = await hasColaPacienteIdCol();
+  const idPacienteSql = includeIdPaciente ? "c.idPaciente AS idPaciente," : "NULL AS idPaciente,";
+  const [rows] = await queryReadWithRetry(
+    `SELECT
+      ${idPacienteSql}
+      c.nombrePaciente,
+      DATE_FORMAT(c.horaAgenda, '%H:%i') AS horaAgenda,
+      c.contacto
+     FROM cola_paciente c
+     WHERE c.fechaAgenda = ?
+       AND LOWER(TRIM(c.estado)) = 'atendido'
+     ORDER BY c.creadoEn ASC, c.idColaPaciente ASC`,
+    [fecha]
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function listarCuentasPorFechaResumen(fecha) {
+  const [rows] = await queryReadWithRetry(
+    "CALL sp_cuenta_listar_por_fecha(?)",
+    [fecha]
+  );
+  return firstResultSet(rows);
+}
+
+async function buscarPacientesPorNombre(nombrePaciente) {
+  const nombreSafe = String(nombrePaciente || "").trim();
+  if (!nombreSafe) return [];
+  const [rows] = await queryReadWithRetry(
+    `SELECT idPaciente, NombreP, telefonoP
+     FROM paciente
+     WHERE LOWER(TRIM(NombreP)) = LOWER(TRIM(?))`,
+    [nombreSafe]
+  );
+  return (Array.isArray(rows) ? rows : []).filter((row) => (
+    normalizarTextoCruce(row?.NombreP) === normalizarTextoCruce(nombreSafe)
+  ));
+}
+
+async function listarPacientesPorIds(idsPaciente) {
+  const ids = Array.from(new Set(
+    (Array.isArray(idsPaciente) ? idsPaciente : [])
+      .map((value) => Number(value || 0))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  ));
+  if (!ids.length) return new Map();
+
+  const [rows] = await queryReadWithRetry(
+    `SELECT idPaciente, NombreP, telefonoP
+     FROM paciente
+     WHERE idPaciente IN (?)`,
+    [ids]
+  );
+
+  const map = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const idPaciente = Number(row?.idPaciente || 0);
+    if (!idPaciente) return;
+    map.set(idPaciente, {
+      idPaciente,
+      NombreP: String(row?.NombreP || "").trim(),
+      telefonoP: String(row?.telefonoP || "").trim()
+    });
+  });
+  return map;
+}
+
+async function resolverPacientesFaltantes(faltantesBase) {
+  const rows = Array.isArray(faltantesBase) ? faltantesBase : [];
+  const directIds = rows
+    .map((item) => Number(item?.idPaciente || 0))
+    .filter((idPaciente) => Number.isInteger(idPaciente) && idPaciente > 0);
+  const pacientesPorId = await listarPacientesPorIds(directIds);
+  const cachePorNombre = new Map();
+  const resolvedRows = [];
+
+  for (const item of rows) {
+    const directId = Number(item?.idPaciente || 0);
+    if (Number.isInteger(directId) && directId > 0) {
+      const found = pacientesPorId.get(directId);
+      if (found) {
+        resolvedRows.push({
+          resolved: true,
+          idPaciente: found.idPaciente,
+          nombrePacienteResolved: found.NombreP || String(item?.nombrePaciente || "").trim() || "Paciente",
+          telefonoPacienteResolved: found.telefonoP || String(item?.contacto || "").trim()
+        });
+        continue;
+      }
+    }
+
+    const nombreKey = normalizarTextoCruce(item?.nombrePaciente);
+    if (!cachePorNombre.has(nombreKey)) {
+      cachePorNombre.set(nombreKey, await buscarPacientesPorNombre(item?.nombrePaciente));
+    }
+    const candidates = cachePorNombre.get(nombreKey) || [];
+    const contactoFila = soloDigitos(item?.contacto);
+    let finalCandidates = candidates;
+
+    if (finalCandidates.length > 1 && contactoFila) {
+      finalCandidates = finalCandidates.filter((candidate) => (
+        soloDigitos(candidate?.telefonoP) === contactoFila
+      ));
+    }
+
+    if (finalCandidates.length === 1) {
+      const match = finalCandidates[0];
+      resolvedRows.push({
+        resolved: true,
+        idPaciente: Number(match?.idPaciente || 0) || null,
+        nombrePacienteResolved: String(match?.NombreP || item?.nombrePaciente || "").trim() || "Paciente",
+        telefonoPacienteResolved: String(match?.telefonoP || item?.contacto || "").trim()
+      });
+      continue;
+    }
+
+    resolvedRows.push({
+      resolved: false,
+      idPaciente: null,
+      nombrePacienteResolved: String(item?.nombrePaciente || "").trim() || "Paciente",
+      telefonoPacienteResolved: String(item?.contacto || "").trim()
+    });
+  }
+
+  return resolvedRows;
+}
+
+async function listarUltimasCitasHoyPorPaciente(idsPaciente, fechaHoyIso) {
+  const ids = Array.from(new Set(
+    (Array.isArray(idsPaciente) ? idsPaciente : [])
+      .map((value) => Number(value || 0))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  ));
+  if (!ids.length) return new Map();
+
+  const [rows] = await queryReadWithRetry(
+    `SELECT
+      c.idPaciente,
+      c.idcitasPaciente,
+      DATE_FORMAT(c.fechaCP, '%Y-%m-%d') AS fechaCP,
+      c.ProcedimientoCP,
+      c.valorCP,
+      c.saldoCP
+     FROM citaspaciente c
+     INNER JOIN (
+       SELECT idPaciente, MAX(idcitasPaciente) AS maxId
+       FROM citaspaciente
+       WHERE fechaCP = ?
+         AND idPaciente IN (?)
+       GROUP BY idPaciente
+     ) latest ON latest.maxId = c.idcitasPaciente`,
+    [fechaHoyIso, ids]
+  );
+
+  const map = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const idPaciente = Number(row?.idPaciente || 0);
+    if (!idPaciente) return;
+    map.set(idPaciente, {
+      idPaciente,
+      idCitaPaciente: Number(row?.idcitasPaciente || 0) || null,
+      fechaCP: String(row?.fechaCP || "").trim(),
+      ProcedimientoCP: String(row?.ProcedimientoCP || "").trim(),
+      valorCP: redondear2(row?.valorCP || 0),
+      saldoCP: redondear2(row?.saldoCP || 0)
+    });
+  });
+  return map;
 }
 
 async function queryReporteMensualPacientesDirect({
@@ -423,6 +645,104 @@ const crear = async (req, res) => {
     if (conn) {
       conn.release();
     }
+  }
+};
+
+const listarFaltantesCobro = async (req, res) => {
+  try {
+    const fecha = String(req.query?.fecha || "").trim();
+    if (!fecha) {
+      return badRequest(res, "Fecha requerida");
+    }
+    if (!esFechaISOValida(fecha)) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
+
+    const [atendidosRows, cuentasRows] = await Promise.all([
+      listarAtendidosColaPorFecha(fecha),
+      listarCuentasPorFechaResumen(fecha)
+    ]);
+
+    const atendidosMap = new Map();
+    atendidosRows.forEach((item) => {
+      const key = normalizarTextoCruce(item?.nombrePaciente);
+      if (!key) return;
+
+      const existing = atendidosMap.get(key);
+      if (!existing) {
+        atendidosMap.set(key, {
+          key,
+          idPaciente: Number(item?.idPaciente || 0) || null,
+          nombrePaciente: String(item?.nombrePaciente || "").trim() || "-",
+          horaAgenda: String(item?.horaAgenda || "").trim(),
+          contacto: String(item?.contacto || "").trim()
+        });
+        return;
+      }
+
+      if (!existing.idPaciente) {
+        const idPaciente = Number(item?.idPaciente || 0);
+        if (Number.isInteger(idPaciente) && idPaciente > 0) {
+          existing.idPaciente = idPaciente;
+        }
+      }
+      if (!existing.horaAgenda && item?.horaAgenda) {
+        existing.horaAgenda = String(item.horaAgenda || "").trim();
+      }
+      if (!existing.contacto && item?.contacto) {
+        existing.contacto = String(item.contacto || "").trim();
+      }
+    });
+
+    const cobradosSet = new Set();
+    (Array.isArray(cuentasRows) ? cuentasRows : []).forEach((item) => {
+      const key = normalizarTextoCruce(item?.nombrePaciente);
+      if (key) cobradosSet.add(key);
+    });
+
+    const faltantesBase = Array.from(atendidosMap.values())
+      .filter((item) => !cobradosSet.has(item.key))
+      .sort((a, b) => String(a.nombrePaciente || "").localeCompare(String(b.nombrePaciente || ""), "es", { sensitivity: "base" }));
+
+    const resolvedRows = await resolverPacientesFaltantes(faltantesBase);
+    const idsPaciente = resolvedRows
+      .map((item) => Number(item?.idPaciente || 0))
+      .filter((idPaciente) => Number.isInteger(idPaciente) && idPaciente > 0);
+    const citasHoyByPaciente = await listarUltimasCitasHoyPorPaciente(idsPaciente, getTodayLocalISO());
+
+    const data = faltantesBase.map((item, index) => {
+      const resolved = resolvedRows[index] || {};
+      const idPaciente = Number(resolved?.idPaciente || 0) || null;
+      const citaHoy = idPaciente ? citasHoyByPaciente.get(idPaciente) : null;
+      const valorCitaHoy = redondear2(citaHoy?.valorCP || 0);
+      const saldoCitaHoy = redondear2(citaHoy?.saldoCP || 0);
+
+      return {
+        nombrePaciente: item.nombrePaciente,
+        horaAgenda: item.horaAgenda || "",
+        contacto: item.contacto || "",
+        resolved: resolved?.resolved === true,
+        idPaciente,
+        nombrePacienteResolved: String(resolved?.nombrePacienteResolved || item.nombrePaciente || "").trim() || "Paciente",
+        telefonoPacienteResolved: String(resolved?.telefonoPacienteResolved || item.contacto || "").trim(),
+        valorCitaHoy,
+        saldoCitaHoy,
+        montoSugerido: valorCitaHoy
+      };
+    });
+
+    return res.json({
+      ok: true,
+      resumen: {
+        atendidosCola: atendidosMap.size,
+        cobrados: cobradosSet.size,
+        faltantes: data.length,
+        fecha
+      },
+      data
+    });
+  } catch (err) {
+    return handleCuentaError(res, err, "Error al listar faltantes de cobro");
   }
 };
 // LISTAR CUENTAS POR FECHA
@@ -1000,6 +1320,7 @@ const eliminarDescuento = async (req, res) => {
 
 module.exports = {
   crear,
+  listarFaltantesCobro,
   listarPorFecha,
   buscarPorMes,
   actualizarDoctorCuenta,

@@ -15,6 +15,13 @@ router.post(
 
 // LISTAR CUENTAS (RESUMEN POR FECHA)
 router.get(
+  "/faltantes-cobro",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.listarFaltantesCobro
+);
+
+router.get(
   "/",
   auth,
   role(["Administrador", "Recepcion"]),

@@ -488,6 +488,67 @@
   opacity: 0.55;
 }
 
+.cobro-suggestion-card {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.08);
+}
+
+.cobro-suggestion-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.cobro-suggestion-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.cobro-suggestion-patient {
+  font-size: 12px;
+  color: #475569;
+  min-width: 0;
+  text-align: right;
+}
+
+.cobro-suggestion-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(191, 219, 254, 0.95);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.cobro-suggestion-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cobro-suggestion-inline strong {
+  font-size: 18px;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.cobro-suggestion-separator {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .cobro-buscador {
   position: relative;
 }
@@ -1209,6 +1270,29 @@ body.cobro-modal-open {
   color: #9a3412;
 }
 
+.faltante-cobro-suggestion {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.faltante-cobro-suggestion strong {
+  color: #0f172a;
+}
+
+.faltante-cobro-suggestion-separator {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.faltante-cobro-action-btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* descuentos */
 .descuento-header {
   display: flex;
@@ -1502,6 +1586,37 @@ body.cobro-modal-open {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.34);
 }
 
+.dark-mode .cobro-suggestion-card {
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.22) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border-color: rgba(96, 165, 250, 0.26);
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.28);
+}
+
+.dark-mode .cobro-suggestion-title {
+  color: #bfdbfe;
+}
+
+.dark-mode .cobro-suggestion-patient {
+  color: #cbd5e1;
+}
+
+.dark-mode .cobro-suggestion-inline {
+  background: rgba(15, 23, 42, 0.74);
+  border-color: #334155;
+}
+
+.dark-mode .cobro-suggestion-label {
+  color: #94a3b8;
+}
+
+.dark-mode .cobro-suggestion-inline strong {
+  color: #f8fafc;
+}
+
+.dark-mode .cobro-suggestion-separator {
+  color: #64748b;
+}
+
 .dark-mode .cobro-summary-title {
   color: #e2e8f0;
 }
@@ -1588,6 +1703,18 @@ body.cobro-modal-open {
 
 .dark-mode .faltantes-cobro-kpi.is-danger strong {
   color: #fdba74;
+}
+
+.dark-mode .faltante-cobro-suggestion {
+  color: #cbd5e1;
+}
+
+.dark-mode .faltante-cobro-suggestion strong {
+  color: #f8fafc;
+}
+
+.dark-mode .faltante-cobro-suggestion-separator {
+  color: #64748b;
 }
 
 .dark-mode .descuento-total-line {
@@ -1705,6 +1832,16 @@ body.cobro-modal-open {
   .cobro-selected-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .cobro-suggestion-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  .cobro-suggestion-patient {
+    text-align: left;
   }
 
   .cuenta-header .cuenta-controls {

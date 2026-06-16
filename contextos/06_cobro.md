@@ -97,15 +97,22 @@
 - Apertura: `#btn-abrir-faltantes-cobro`.
 - Contenedor: `#faltantes-cobro-modal`.
 - Fuente de datos:
-  - cuentas actuales del dia (`cuentasActuales`),
-  - `GET /api/cola?fecha=YYYY-MM-DD`.
+  - `GET /api/cuenta/faltantes-cobro?fecha=YYYY-MM-DD`.
 - Regla:
   - toma solo cola en estado `Atendido`,
   - compara por nombre normalizado (minusculas, trim, sin acentos),
   - faltante = atendido en cola que no aparece en cuentas cobradas.
 - Salida:
   - resumen `Atendidos en cola`, `Cobrados`, `Faltantes`,
-  - tabla con `Paciente`, `Hora`, `Contacto`.
+  - tabla con `Paciente`, `Hora`, `Contacto`, `Sugerencia`, `Accion`.
+- Enriquecimiento:
+  - intenta resolver `idPaciente` por columna directa si existe o por nombre/contacto,
+  - busca la ultima cita del paciente para la fecha actual del sistema,
+  - muestra `Valor` y `Saldo` de esa cita aunque sean `$0.00`.
+- Accion `Cobrar`:
+  - prepara la misma vista `Cobro` con el paciente seleccionado,
+  - muestra una tarjeta visual de sugerencia (`Valor cita hoy` / `Saldo cita hoy`),
+  - no agrega servicios automaticamente.
 - UX:
   - cierre por boton, backdrop y `Escape`,
   - mensajes explicitos para vacio/cargando/error de red.

@@ -13,6 +13,7 @@
   let reporteMensualDoctorActual = null;
   let faltantesCobroActual = [];
   let faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
+  let cobroSuggestionActual = null;
   let doctoresCuentaData = [];
   let cargarDoctoresCuentaPromise = null;
   const DOCTOR_COLOR_PALETTE = [
@@ -261,6 +262,19 @@
     return Math.round(n * 100) / 100;
   }
 
+  function normalizarCobroSuggestion(raw) {
+    const patientId = Number(raw?.patientId || raw?.idPaciente || 0);
+    if (!Number.isInteger(patientId) || patientId <= 0) return null;
+    return {
+      patientId,
+      patientName: String(raw?.patientName || raw?.nombrePaciente || "Paciente").trim() || "Paciente",
+      patientPhone: String(raw?.patientPhone || raw?.telefonoPacienteResolved || raw?.contacto || "").trim(),
+      valorCitaHoy: normalizarPrecio(raw?.valorCitaHoy, 0),
+      saldoCitaHoy: normalizarPrecio(raw?.saldoCitaHoy, 0),
+      montoSugerido: normalizarPrecio(raw?.montoSugerido, 0)
+    };
+  }
+
   function kpiIcon(tipo) {
     const base = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
     if (tipo === "total") {
@@ -459,6 +473,20 @@
             <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
             <input type="search" id="buscar-servicio" name="buscar-servicio-cobro" placeholder="Escriba al menos 2 letras para buscar servicio" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" disabled>
             <div id="lista-servicios" class="autocomplete-list"></div>
+          </div>
+        </div>
+
+        <div id="cobro-suggestion-card" class="cobro-suggestion-card" hidden>
+          <div class="cobro-suggestion-head">
+            <div class="cobro-suggestion-title">Sugerencia de cobro</div>
+            <div id="cobro-suggestion-patient" class="cobro-suggestion-patient">Paciente: -</div>
+          </div>
+          <div class="cobro-suggestion-inline">
+            <span class="cobro-suggestion-label">Valor cita hoy</span>
+            <strong id="cobro-suggestion-valor">$0.00</strong>
+            <span class="cobro-suggestion-separator" aria-hidden="true">•</span>
+            <span class="cobro-suggestion-label">Saldo cita hoy</span>
+            <strong id="cobro-suggestion-saldo">$0.00</strong>
           </div>
         </div>
 
@@ -717,6 +745,8 @@
                 <th>Paciente</th>
                 <th style="width:180px;">Hora</th>
                 <th style="width:180px;">Contacto</th>
+                <th style="width:240px;">Sugerencia</th>
+                <th style="width:120px; text-align:center;">Accion</th>
               </tr>
             </thead>
             <tbody id="faltantes-cobro-tbody"></tbody>
@@ -737,6 +767,10 @@
     const stepServicio = document.getElementById("step-servicio");
     const stepPago = document.getElementById("step-pago");
     const servicioBlock = document.getElementById("cobro-step-servicio-block");
+    const cobroSuggestionCard = document.getElementById("cobro-suggestion-card");
+    const cobroSuggestionPatient = document.getElementById("cobro-suggestion-patient");
+    const cobroSuggestionValor = document.getElementById("cobro-suggestion-valor");
+    const cobroSuggestionSaldo = document.getElementById("cobro-suggestion-saldo");
     const btnLimpiarPaciente = document.getElementById("btn-limpiar-paciente-cobro");
     const tbody = document.getElementById("cobro-tbody");
     const emptyState = document.getElementById("cobro-empty-state");
@@ -947,6 +981,32 @@
       cerrarCobroModal(faltantesCobroModal);
     }
 
+    function renderCobroSuggestion() {
+      const suggestion = normalizarCobroSuggestion(cobroSuggestionActual);
+      const currentPatientId = Number(pacienteActual?.idPaciente || 0);
+      const visible = !!suggestion && currentPatientId > 0 && currentPatientId === suggestion.patientId;
+
+      if (cobroSuggestionCard) {
+        cobroSuggestionCard.hidden = !visible;
+      }
+      if (!visible) return;
+
+      if (cobroSuggestionPatient) {
+        cobroSuggestionPatient.textContent = `Paciente: ${suggestion.patientName}`;
+      }
+      if (cobroSuggestionValor) {
+        cobroSuggestionValor.textContent = precioUSD(suggestion.valorCitaHoy);
+      }
+      if (cobroSuggestionSaldo) {
+        cobroSuggestionSaldo.textContent = precioUSD(suggestion.saldoCitaHoy);
+      }
+    }
+
+    function clearCobroSuggestion() {
+      cobroSuggestionActual = null;
+      renderCobroSuggestion();
+    }
+
     function restaurarHoverTotalesKpi() {
       if (!kpiTotalesCards.length) return;
       kpiTotalesCards.forEach((card) => card.classList.remove("is-kpi-active"));
@@ -1014,10 +1074,26 @@
       return `${hh}:${mm} ${period}`;
     }
 
+    function normalizarFaltanteCobroRow(raw) {
+      const idPaciente = Number(raw?.idPaciente || 0);
+      return {
+        nombrePaciente: String(raw?.nombrePaciente || "").trim() || "-",
+        horaAgenda: String(raw?.horaAgenda || "").trim(),
+        contacto: String(raw?.contacto || "").trim(),
+        resolved: raw?.resolved === true,
+        idPaciente: Number.isInteger(idPaciente) && idPaciente > 0 ? idPaciente : null,
+        nombrePacienteResolved: String(raw?.nombrePacienteResolved || raw?.nombrePaciente || "").trim() || "Paciente",
+        telefonoPacienteResolved: String(raw?.telefonoPacienteResolved || raw?.contacto || "").trim(),
+        valorCitaHoy: normalizarPrecio(raw?.valorCitaHoy, 0),
+        saldoCitaHoy: normalizarPrecio(raw?.saldoCitaHoy, 0),
+        montoSugerido: normalizarPrecio(raw?.montoSugerido, 0)
+      };
+    }
+
     function renderFaltantesCobro(lista, resumen, fecha) {
       if (!tbodyFaltantesCobro) return;
 
-      const rows = Array.isArray(lista) ? lista : [];
+      const rows = Array.isArray(lista) ? lista.map(normalizarFaltanteCobroRow) : [];
       const safeResumen = {
         atendidosCola: Number(resumen?.atendidosCola || 0),
         cobrados: Number(resumen?.cobrados || 0),
@@ -1035,18 +1111,40 @@
       if (!rows.length) {
         tbodyFaltantesCobro.innerHTML = `
           <tr>
-            <td colspan="3" style="text-align:center;color:#64748b">No hay faltantes por cobrar</td>
+            <td colspan="5" style="text-align:center;color:#64748b">No hay faltantes por cobrar</td>
           </tr>
         `;
         return;
       }
 
-      rows.forEach((row) => {
+      rows.forEach((row, index) => {
+        const suggestionHtml = `
+          <div class="faltante-cobro-suggestion">
+            <span><strong>Valor:</strong> ${escapeHtml(precioUSD(row.valorCitaHoy))}</span>
+            <span class="faltante-cobro-suggestion-separator" aria-hidden="true">•</span>
+            <span><strong>Saldo:</strong> ${escapeHtml(precioUSD(row.saldoCitaHoy))}</span>
+          </div>
+        `;
+        const disabledAttr = row.resolved && row.idPaciente ? "" : "disabled";
+        const actionTitle = row.resolved && row.idPaciente
+          ? "Preparar cobro"
+          : "No se pudo resolver el paciente de forma unica";
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${escapeHtml(row.nombrePaciente || "-")}</td>
           <td style="text-align:center">${escapeHtml(formatearHoraCola(row.horaAgenda))}</td>
           <td style="text-align:center">${escapeHtml(row.contacto || "-")}</td>
+          <td>${suggestionHtml}</td>
+          <td style="text-align:center">
+            <button
+              type="button"
+              class="btn-cobro-secondary faltante-cobro-action-btn"
+              data-row-index="${index}"
+              title="${escapeHtml(actionTitle)}"
+              aria-label="${escapeHtml(actionTitle)}"
+              ${disabledAttr}
+            >Cobrar</button>
+          </td>
         `;
         tbodyFaltantesCobro.appendChild(tr);
       });
@@ -1072,70 +1170,31 @@
       if (tbodyFaltantesCobro) {
         tbodyFaltantesCobro.innerHTML = `
           <tr>
-            <td colspan="3" style="text-align:center;color:#64748b">Cargando faltantes...</td>
+            <td colspan="5" style="text-align:center;color:#64748b">Cargando faltantes...</td>
           </tr>
         `;
       }
 
       try {
         const res = await fetch(
-          `/api/cola?fecha=${encodeURIComponent(fecha)}`,
+          `/api/cuenta/faltantes-cobro?fecha=${encodeURIComponent(fecha)}`,
           req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
         );
         const json = await res.json();
         if (isStaleRequest("faltantes", localSeq)) return;
         if (!res.ok || !json?.ok) {
-          throw new Error(json?.message || "No se pudo cargar En Cola");
+          throw new Error(json?.message || "No se pudo cargar faltantes de cobro");
         }
 
-        const colaDia = Array.isArray(json.data) ? json.data : [];
-        const atendidosMap = new Map();
-        colaDia.forEach((item) => {
-          const estado = String(item?.estado || "").trim().toLowerCase();
-          if (estado !== "atendido") return;
-
-          const key = normalizarTextoCruce(item?.nombrePaciente);
-          if (!key) return;
-
-          const existente = atendidosMap.get(key);
-          if (!existente) {
-            atendidosMap.set(key, {
-              key,
-              nombrePaciente: String(item?.nombrePaciente || "").trim() || "-",
-              horaAgenda: String(item?.horaAgenda || "").trim(),
-              contacto: String(item?.contacto || "").trim()
-            });
-            return;
-          }
-
-          if (!existente.horaAgenda && item?.horaAgenda) {
-            existente.horaAgenda = String(item.horaAgenda || "").trim();
-          }
-          if (!existente.contacto && item?.contacto) {
-            existente.contacto = String(item.contacto || "").trim();
-          }
-        });
-
-        const cobradosSet = new Set();
-        (cuentasActuales || []).forEach((item) => {
-          const key = normalizarTextoCruce(item?.nombrePaciente);
-          if (key) cobradosSet.add(key);
-        });
-
-        const faltantes = Array.from(atendidosMap.values())
-          .filter((item) => !cobradosSet.has(item.key))
-          .map(({ key, ...row }) => row)
-          .sort((a, b) => String(a.nombrePaciente || "").localeCompare(String(b.nombrePaciente || ""), "es", { sensitivity: "base" }));
-
-        faltantesCobroActual = faltantes;
+        faltantesCobroActual = Array.isArray(json.data) ? json.data.map(normalizarFaltanteCobroRow) : [];
         faltantesCobroResumenActual = {
-          atendidosCola: atendidosMap.size,
-          cobrados: cobradosSet.size,
-          faltantes: faltantes.length,
-          fecha
+          atendidosCola: Number(json?.resumen?.atendidosCola || 0),
+          cobrados: Number(json?.resumen?.cobrados || 0),
+          faltantes: Number(json?.resumen?.faltantes || faltantesCobroActual.length || 0),
+          fecha: String(json?.resumen?.fecha || fecha).trim() || fecha
         };
         if (isStaleRequest("faltantes", localSeq)) return;
-        renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, fecha);
+        renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, faltantesCobroResumenActual.fecha);
       } catch (err) {
         if (isAbortError(err) || isStaleRequest("faltantes", localSeq)) return;
         console.error(err);
@@ -1148,7 +1207,7 @@
         if (tbodyFaltantesCobro) {
           tbodyFaltantesCobro.innerHTML = `
             <tr>
-              <td colspan="3" style="text-align:center;color:#64748b">No se pudieron cargar los faltantes</td>
+              <td colspan="5" style="text-align:center;color:#64748b">No se pudieron cargar los faltantes</td>
             </tr>
           `;
         }
@@ -1272,6 +1331,7 @@
       const nombre = pacienteActual?.NombreP || "Sin seleccionar";
       pacienteTitulo.textContent = pacienteActual ? `Paciente: ${nombre}` : "Sin paciente seleccionado";
       resumenPaciente.textContent = nombre;
+      renderCobroSuggestion();
     }
 
     function actualizarEstadoFlujo() {
@@ -1429,9 +1489,77 @@
       refrescarTabla();
     }
 
+    function aplicarPacienteCobro(prefillPaciente, suggestion = null, options = {}) {
+      const idPaciente = Number(prefillPaciente?.idPaciente || 0);
+      if (!Number.isInteger(idPaciente) || idPaciente <= 0) return false;
+
+      pacienteActual = {
+        idPaciente,
+        NombreP: String(prefillPaciente?.NombreP || prefillPaciente?.nombrePaciente || "").trim() || "Paciente",
+        telefonoP: String(prefillPaciente?.telefonoP || prefillPaciente?.patientPhone || "").trim()
+      };
+
+      if (options.resetCart === true) {
+        cobroItems = [];
+      }
+
+      cobroSuggestionActual = suggestion ? normalizarCobroSuggestion(suggestion) : null;
+      inputPaciente.value = "";
+      inputServicio.value = "";
+      listaPacientes.innerHTML = "";
+      listaPacientes.style.display = "none";
+      listaServicios.innerHTML = "";
+      listaServicios.style.display = "none";
+      actualizarResumenPaciente();
+      refrescarTabla();
+      actualizarEstadoFlujo();
+
+      if (inputServicio && !inputServicio.disabled) {
+        inputServicio.focus();
+      }
+      return true;
+    }
+
+    async function prepararCobroDesdeFaltante(row) {
+      const normalizedRow = normalizarFaltanteCobroRow(row);
+      if (!normalizedRow.resolved || !normalizedRow.idPaciente) return;
+
+      const currentPatientId = Number(pacienteActual?.idPaciente || 0);
+      const switchingPatient = currentPatientId > 0 && currentPatientId !== normalizedRow.idPaciente;
+      const hasItems = Array.isArray(cobroItems) && cobroItems.length > 0;
+      const shouldResetCart = hasItems && (switchingPatient || !currentPatientId);
+
+      if (shouldResetCart) {
+        const question = "Se limpiara el cobro actual para preparar este paciente. Continuar?";
+        const ok = typeof window.showSystemConfirm === "function"
+          ? await window.showSystemConfirm(question)
+          : confirm(question);
+        if (!ok) return;
+      }
+
+      cerrarFaltantesCobroModal();
+      aplicarPacienteCobro(
+        {
+          idPaciente: normalizedRow.idPaciente,
+          NombreP: normalizedRow.nombrePacienteResolved,
+          telefonoP: normalizedRow.telefonoPacienteResolved
+        },
+        {
+          patientId: normalizedRow.idPaciente,
+          patientName: normalizedRow.nombrePacienteResolved,
+          patientPhone: normalizedRow.telefonoPacienteResolved,
+          valorCitaHoy: normalizedRow.valorCitaHoy,
+          saldoCitaHoy: normalizedRow.saldoCitaHoy,
+          montoSugerido: normalizedRow.montoSugerido
+        },
+        { resetCart: shouldResetCart }
+      );
+    }
+
     btnLimpiarPaciente.addEventListener("click", () => {
       pacienteActual = null;
       cobroItems = [];
+      clearCobroSuggestion();
       inputPaciente.value = "";
       inputServicio.value = "";
       listaPacientes.style.display = "none";
@@ -1464,6 +1592,10 @@
           div.className = "autocomplete-item";
           div.textContent = p.NombreP;
           div.onclick = () => {
+            const nextPatientId = Number(p?.idPaciente || 0);
+            if (Number(cobroSuggestionActual?.patientId || 0) !== nextPatientId) {
+              clearCobroSuggestion();
+            }
             pacienteActual = p;
             cobroItems = [];
             inputPaciente.value = "";
@@ -1529,6 +1661,13 @@
       actualizarEstadoFlujo();
       actualizarColorFormaPago();
     });
+    tbodyFaltantesCobro?.addEventListener("click", async (e) => {
+      const btn = e.target?.closest?.(".faltante-cobro-action-btn");
+      if (!btn || btn.disabled) return;
+      const index = Number(btn.dataset.rowIndex || -1);
+      if (!Number.isInteger(index) || index < 0 || index >= faltantesCobroActual.length) return;
+      await prepararCobroDesdeFaltante(faltantesCobroActual[index]);
+    });
 
     btnGuardar.addEventListener("click", async () => {
       if (isSavingCuenta || !isCobroViewActive()) return;
@@ -1588,6 +1727,7 @@
         alert("Cuenta guardada correctamente");
         cobroItems = [];
         pacienteActual = null;
+        cobroSuggestionActual = null;
         renderCobro(container);
         const nextInputFecha = document.getElementById("cuenta-date");
         if (nextInputFecha) {
@@ -2838,6 +2978,7 @@
     reporteMensualDoctorActual = null;
     faltantesCobroActual = [];
     faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
+    cobroSuggestionActual = null;
     doctoresCuentaData = [];
     cargarDoctoresCuentaPromise = null;
 
