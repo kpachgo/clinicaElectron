@@ -1,0 +1,145 @@
+name: Release Linux Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build and publish (example: v1.0.2)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-packages:
+    name: Build and publish Linux packages (x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      DEBUG: electron-builder*
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            electron-app/package-lock.json
+
+      - name: Install Linux packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev build-essential rpm
+          sudo gem install --no-document fpm
+          fpm --version
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm run install:backend
+
+      - name: Install electron app dependencies
+        run: npm --prefix electron-app ci
+
+      - name: Resolve release version from tag
+        run: |
+          TAG="${RELEASE_TAG}"
+          if [ -z "$TAG" ]; then
+            echo "RELEASE_TAG is empty"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([\-+][0-9A-Za-z\.-]+)?$'; then
+            echo "Invalid release tag format: '$TAG'. Expected vX.Y.Z"
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved RELEASE_VERSION=$VERSION"
+
+      - name: Align project version with release tag
+        run: |
+          if [ -z "${RELEASE_VERSION}" ]; then
+            echo "RELEASE_VERSION is empty"
+            exit 1
+          fi
+          RELEASE_VERSION="$RELEASE_VERSION" node -e "const fs=require('fs'); const files=['package.json','electron-app/package.json','runtime.package.json']; const v=process.env.RELEASE_VERSION; for (const f of files){ const j=JSON.parse(fs.readFileSync(f,'utf8')); j.version=v; fs.writeFileSync(f, JSON.stringify(j, null, 2)+'\n'); console.log('updated '+f+' -> '+v); }"
+
+      - name: Validate BACKEND_ENV secret exists
+        run: |
+          if [ -z "${{ secrets.BACKEND_ENV }}" ]; then
+            echo "Missing required secret: BACKEND_ENV"
+            exit 1
+          fi
+
+      - name: Create backend .env from GitHub Secret
+        run: |
+          printf '%s' "${{ secrets.BACKEND_ENV }}" > backend/.env
+          test -s backend/.env
+
+      - name: Show local electron-builder version
+        run: |
+          node -e "console.log(require('./node_modules/electron-builder/package.json').version)"
+
+      - name: Build Linux packages (x64)
+        run: npm run dist:linux -- --x64 --config.compression=store
+
+      - name: Validate Linux outputs exist
+        run: |
+          shopt -s nullglob
+          deb_files=(dist-electron/*.deb)
+          appimage_files=(dist-electron/*.AppImage)
+          if [ ${#deb_files[@]} -eq 0 ]; then
+            echo "No DEB generated in dist-electron/"
+            exit 1
+          fi
+          if [ ${#appimage_files[@]} -eq 0 ]; then
+            echo "No AppImage generated in dist-electron/"
+            exit 1
+          fi
+          ls -lh dist-electron/*.deb
+          ls -lh dist-electron/*.AppImage
+
+      - name: Validate runtime backend included in linux-unpacked
+        run: |
+          if ! find dist-electron -path "*/linux-unpacked/resources/runtime/backend/server.js" -print -quit | grep -q .; then
+            echo "runtime/backend/server.js not found inside linux-unpacked bundle"
+            exit 1
+          fi
+          find dist-electron -path "*/linux-unpacked/resources/runtime/backend/server.js" -print
+
+      - name: Upload Linux artifacts (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClinicaElectron-linux-release-${{ env.RELEASE_TAG }}
+          path: |
+            dist-electron/*.deb
+            dist-electron/*.AppImage
+            dist-electron/*.blockmap
+            dist-electron/latest-linux.yml
+          if-no-files-found: error
+
+      - name: Publish assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: |
+            dist-electron/*.deb
+            dist-electron/*.AppImage
+            dist-electron/*.blockmap
+            dist-electron/latest-linux.yml
+          fail_on_unmatched_files: false
+          generate_release_notes: true

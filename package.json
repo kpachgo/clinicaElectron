@@ -1,8 +1,11 @@
 {
   "name": "clinica",
-  "version": "3.0.8",
+  "version": "4.0.0",
   "description": "Sistema de clinica empaquetado con Electron",
-  "author": "Clinica",
+  "author": {
+    "name": "Clinica",
+    "email": "soporte@clinica.local"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/kpachgo/clinicaElectron.git"
@@ -20,7 +23,8 @@
     "dist": "electron-builder --publish never",
     "dist:win": "electron-builder --win --publish never",
     "dist:win:local": "electron-builder --win --x64 --publish never --config.win.signAndEditExecutable=false --config.forceCodeSigning=false",
-    "dist:mac": "electron-builder --mac --publish never"
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
   },
   "devDependencies": {
     "electron": "^37.2.0",
@@ -79,6 +83,15 @@
       "target": [
         "dmg",
         "zip"
+      ]
+    },
+    "linux": {
+      "icon": "frontend/img/icon-512.png",
+      "category": "Utility",
+      "maintainer": "Clinica <soporte@clinica.local>",
+      "target": [
+        "deb",
+        "AppImage"
       ]
     },
     "publish": [
