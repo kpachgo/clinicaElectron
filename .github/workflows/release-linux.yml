@@ -20,14 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
       DEBUG: electron-builder*
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
@@ -55,11 +54,19 @@ jobs:
       - name: Install electron app dependencies
         run: npm --prefix electron-app ci
 
-      - name: Resolve release version from tag
+      - name: Resolve release tag and version
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${RELEASE_TAG}"
+          TAG="${INPUT_TAG}"
           if [ -z "$TAG" ]; then
-            echo "RELEASE_TAG is empty"
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [ -z "$TAG" ] && [ -n "${GITHUB_REF}" ]; then
+            TAG="${GITHUB_REF##*/}"
+          fi
+          if [ -z "$TAG" ]; then
+            echo "Could not resolve release tag from workflow input or git ref"
             exit 1
           fi
           VERSION="${TAG#v}"
@@ -67,7 +74,9 @@ jobs:
             echo "Invalid release tag format: '$TAG'. Expected vX.Y.Z"
             exit 1
           fi
+          echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
           echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Resolved RELEASE_TAG=$TAG"
           echo "Resolved RELEASE_VERSION=$VERSION"
 
       - name: Align project version with release tag
@@ -95,7 +104,7 @@ jobs:
           node -e "console.log(require('./node_modules/electron-builder/package.json').version)"
 
       - name: Build Linux packages (x64)
-        run: npm run dist:linux -- --x64 --config.compression=store
+        run: npm run dist:linux -- --x64
 
       - name: Validate Linux outputs exist
         run: |
