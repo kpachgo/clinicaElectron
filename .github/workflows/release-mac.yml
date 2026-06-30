@@ -56,7 +56,7 @@ jobs:
             exit 1
           fi
           VERSION="${TAG#v}"
-          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([\-+][0-9A-Za-z\.-]+)?$'; then
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
             echo "Invalid release tag format: '$TAG'. Expected vX.Y.Z"
             exit 1
           fi
