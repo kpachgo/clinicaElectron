@@ -1073,6 +1073,11 @@
   font-size: 11px;
 }
 
+.cuenta-duplicate-patient {
+  font-weight: 800;
+  color: #991b1b;
+}
+
 .cuenta-doctor-cell {
   min-width: 190px;
 }
@@ -1647,6 +1652,10 @@ body.cobro-modal-open {
 .dark-mode .descuento-table tbody td {
   border-bottom-color: #223046;
   color: #dbe5f2;
+}
+
+.dark-mode .cuenta-duplicate-patient {
+  color: #fca5a5;
 }
 
 .dark-mode .cuenta-doctor-select {

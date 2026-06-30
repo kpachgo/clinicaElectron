@@ -1061,6 +1061,58 @@
       return raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     }
 
+    function getCuentaPacienteDuplicateKey(raw) {
+      const idPaciente = Number(raw?.idPaciente || raw?.patientId || 0);
+      if (Number.isInteger(idPaciente) && idPaciente > 0) {
+        return `id:${idPaciente}`;
+      }
+
+      const nombrePaciente = normalizarTextoCruce(
+        raw?.nombrePaciente || raw?.NombreP || raw?.patientName || ""
+      );
+      if (!nombrePaciente) return "";
+      return `name:${nombrePaciente}`;
+    }
+
+    function getCuentaPacienteIdentity(raw) {
+      const idPaciente = Number(raw?.idPaciente || raw?.patientId || 0);
+      return {
+        idPaciente: Number.isInteger(idPaciente) && idPaciente > 0 ? idPaciente : null,
+        nombrePaciente: normalizarTextoCruce(
+          raw?.nombrePaciente || raw?.NombreP || raw?.patientName || ""
+        )
+      };
+    }
+
+    function isSameCuentaPaciente(a, b) {
+      const left = getCuentaPacienteIdentity(a);
+      const right = getCuentaPacienteIdentity(b);
+
+      if (left.idPaciente && right.idPaciente) {
+        return left.idPaciente === right.idPaciente;
+      }
+
+      if (left.nombrePaciente && right.nombrePaciente) {
+        return left.nombrePaciente === right.nombrePaciente;
+      }
+
+      return false;
+    }
+
+    function buildCuentaPacienteDuplicateCounts(list) {
+      const counts = new Map();
+      (Array.isArray(list) ? list : []).forEach((item) => {
+        const key = getCuentaPacienteDuplicateKey(item);
+        if (!key) return;
+        counts.set(key, Number(counts.get(key) || 0) + 1);
+      });
+      return counts;
+    }
+
+    function pacienteYaTieneCobroEnLista(paciente, list) {
+      return (Array.isArray(list) ? list : []).some((item) => isSameCuentaPaciente(paciente, item));
+    }
+
     function formatearHoraCola(value) {
       const raw = String(value || "").trim();
       if (!raw) return "-";
@@ -1710,6 +1762,14 @@
         fecha: fechaCuenta,
         items: itemsPayload
       };
+
+      if (pacienteYaTieneCobroEnLista(pacienteActual, cuentasActuales)) {
+        const question = "Paciente ya se le cobro una vez. Proceder?";
+        const ok = typeof window.showSystemConfirm === "function"
+          ? await window.showSystemConfirm(question)
+          : confirm(question);
+        if (!ok) return;
+      }
 
       isSavingCuenta = true;
       btnGuardar.disabled = true;
@@ -2545,6 +2605,7 @@
       actualizarDashboardDia();
       aplicarVisibilidadColumnasCuenta();
       const tbodyCuenta = document.getElementById("cuenta-tbody");
+      const duplicateCounts = buildCuentaPacienteDuplicateCounts(cuentasActuales);
       tbodyCuenta.innerHTML = "";
 
       if (!list.length) {
@@ -2569,9 +2630,14 @@
         const cantidadText = Number.isFinite(cantidadRaw) ? String(cantidadRaw) : "-";
         const tratamientoHtml = renderProcedimientoVisual(c.procedimientos);
         const idDoctorCuenta = Number(c.idDoctorCuenta || 0) || null;
+        const duplicateKey = getCuentaPacienteDuplicateKey(c);
+        const isDuplicatePatient = duplicateKey && Number(duplicateCounts.get(duplicateKey) || 0) > 1;
+        const nombrePacienteHtml = isDuplicatePatient
+          ? `<strong class="cuenta-duplicate-patient">${escapeHtml(c.nombrePaciente || "-")}</strong>`
+          : escapeHtml(c.nombrePaciente || "-");
         tr.innerHTML = `
           <td class="cuenta-col-num">${index + 1}</td>
-          <td>${c.nombrePaciente}</td>
+          <td>${nombrePacienteHtml}</td>
           <td>$${Number(c.totalC).toFixed(2)}</td>
           <td>${formaPagoHtml}</td>
           <td style="text-align:center">${cantidadText}</td>

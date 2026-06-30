@@ -852,6 +852,11 @@ body.agenda-day-summary-open {
   border-left: 3px solid transparent;
 }
 
+.agenda-nombre-duplicado .agenda-duplicate-name {
+  font-weight: 800;
+  color: #991b1b;
+}
+
 .agenda-nombre-estado-confirmado {
   background: #dcfce7;
   border-left-color: #16a34a;
@@ -1333,6 +1338,10 @@ body.agenda-day-summary-open {
 
 .dark-mode .agenda-nombre-cell {
   color: #e2e8f0;
+}
+
+.dark-mode .agenda-nombre-duplicado .agenda-duplicate-name {
+  color: #fca5a5;
 }
 
 .dark-mode .agenda-nombre-estado-confirmado,

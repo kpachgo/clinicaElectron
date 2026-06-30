@@ -254,9 +254,55 @@
         return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path></svg>`;
     }
   }
-  function renderAgendaNombreCell(td, nombre) {
+  function renderAgendaNombreCell(td, nombre, options = {}) {
     if (!td) return;
-    td.textContent = String(nombre || "").trim();
+    const safeNombre = String(nombre || "").trim();
+    const isDuplicate = options?.duplicate === true;
+    td.classList.toggle("agenda-nombre-duplicado", isDuplicate);
+    if (isDuplicate) {
+      td.innerHTML = `<strong class="agenda-duplicate-name">${escapeHtml(safeNombre)}</strong>`;
+      return;
+    }
+    td.textContent = safeNombre;
+  }
+  function getAgendaFechaIsoItem(item) {
+    const fechaIso = String(item?._fechaISO || "").trim();
+    if (fechaIso) return fechaIso;
+    const fechaRaw = String(item?.fecha || "").trim();
+    if (!fechaRaw) return "";
+    if (fechaRaw.includes("/")) return ddmmyyyyToISO(fechaRaw);
+    return fechaRaw;
+  }
+  function getAgendaDuplicateIdentity(raw) {
+    return {
+      fechaISO: getAgendaFechaIsoItem(raw),
+      nombre: normalizarTextoCruce(raw?.nombre || raw?.nombreAP || ""),
+      contacto: soloDigitos(raw?.contacto || raw?.contactoAP || "")
+    };
+  }
+  function isSameAgendaDuplicateCandidate(a, b) {
+    const left = getAgendaDuplicateIdentity(a);
+    const right = getAgendaDuplicateIdentity(b);
+    if (!left.fechaISO || !right.fechaISO || left.fechaISO !== right.fechaISO) return false;
+    if (!left.nombre || !right.nombre || left.nombre !== right.nombre) return false;
+    if (left.contacto && right.contacto && left.contacto !== right.contacto) return false;
+    return true;
+  }
+  function buildAgendaDuplicateCounts(list) {
+    const rows = Array.isArray(list) ? list : [];
+    const counts = new Map();
+    rows.forEach((item) => {
+      const total = rows.reduce((acc, candidate) => (
+        acc + (isSameAgendaDuplicateCandidate(item, candidate) ? 1 : 0)
+      ), 0);
+      counts.set(item, total);
+    });
+    return counts;
+  }
+  function agendaItemYaExisteEnLista(item, list) {
+    return (Array.isArray(list) ? list : []).some((candidate) => (
+      isSameAgendaDuplicateCandidate(item, candidate)
+    ));
   }
   function renderFechaVisual(fechaTexto) {
     const txt = String(fechaTexto || "-").trim() || "-";
@@ -2323,6 +2369,21 @@
         const hora24 = to24(horaForzada);
         // preparar fecha DD/MM/YYYY
         const fechaDDMM = isoToDDMMYYYY(fechaISO);
+        const citaDuplicada = agendaItemYaExisteEnLista({
+          nombre,
+          fecha: fechaISO,
+          contacto
+        }, agendaData);
+        if (citaDuplicada) {
+          const question = "Este paciente ya esta registrada la cita. Registrar de nuevo?";
+          const okDuplicado = typeof window.showSystemConfirm === "function"
+            ? await window.showSystemConfirm(question)
+            : confirm(question);
+          if (!okDuplicado) {
+            return;
+          }
+        }
+
         const idPacientePrecheck = (() => {
           if (!pacienteSeleccionadoAgenda) return null;
           const mismoNombre =
@@ -2478,7 +2539,9 @@
 
     function renderCellValue(value) {
       if (campo === "nombre") {
-        renderAgendaNombreCell(td, value);
+        renderAgendaNombreCell(td, value, {
+          duplicate: agendaItemYaExisteEnLista(item, agendaData.filter((candidate) => candidate !== item))
+        });
       } else {
         td.textContent = value;
       }
@@ -2677,10 +2740,11 @@
     // =========================================
     // DIBUJAR TABLA
     // =========================================
-    function drawRows(list) {
+    function drawRows(list, duplicateSourceList = list) {
       tbody.innerHTML = "";
       aplicarVisibilidadNumeracionAgenda();
       aplicarVisibilidadContactadoAgenda();
+      const duplicateCounts = buildAgendaDuplicateCounts(duplicateSourceList);
 
       list.forEach((item, index) => {
         const tr = document.createElement("tr");
@@ -2770,7 +2834,9 @@
 
         // Nombre
         const tdNombre = document.createElement("td");
-        renderAgendaNombreCell(tdNombre, item.nombre);
+        renderAgendaNombreCell(tdNombre, item.nombre, {
+          duplicate: Number(duplicateCounts.get(item) || 0) > 1
+        });
         tdNombre.classList.add("editable");
         aplicarRefuerzoVisualNombre(tdNombre, item.estado);
         tdNombre.addEventListener("dblclick", () => editarTexto(tdNombre, item, "nombre"));
@@ -3391,14 +3457,14 @@
         } else {
           setAgendaSearchScopeAlert(true, `Resultado del mes (${mesLabelSafe}): no hay coincidencias en otras fechas.`);
         }
-        drawRows(listaMes);
+        drawRows(listaMes, agendaMesResultados);
       } else {
         if (texto && listaLocal.length === 0 && dispararFallback) {
           setAgendaSearchScopeAlert(true, `Resultado del mes (${mesLabelSafe}): buscando en otras fechas...`);
         } else {
           setAgendaSearchScopeAlert(false);
         }
-        drawRows(listaLocal);
+        drawRows(listaLocal, agendaData);
       }
       refreshDaySummaryIfOpen();
 
