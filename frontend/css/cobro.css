@@ -1228,8 +1228,21 @@ body.cobro-modal-open {
   min-width: 640px;
 }
 
+.cobro-modal-faltantes {
+  padding: 24px;
+}
+
+.cobro-modal-dialog-faltantes {
+  width: min(1320px, 100%);
+  padding: 24px;
+}
+
+.cobro-modal-dialog-faltantes .cobro-modal-header {
+  margin-bottom: 18px;
+}
+
 .faltantes-cobro-meta {
-  margin-bottom: 10px;
+  margin-bottom: 14px;
   font-size: 12px;
   color: #475569;
   font-weight: 700;
@@ -1238,14 +1251,14 @@ body.cobro-modal-open {
 .faltantes-cobro-resumen {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 14px;
+  margin-bottom: 18px;
 }
 
 .faltantes-cobro-kpi {
   border: 1px solid #dbe5f0;
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 12px 14px;
   background: #f8fafc;
   display: flex;
   flex-direction: column;
@@ -1261,9 +1274,63 @@ body.cobro-modal-open {
 }
 
 .faltantes-cobro-kpi strong {
-  font-size: 21px;
+  font-size: 22px;
   line-height: 1.1;
   color: #0f172a;
+}
+
+.faltantes-cobro-table-wrap {
+  margin-top: 0;
+}
+
+.faltantes-cobro-table {
+  min-width: 1240px;
+  table-layout: fixed;
+}
+
+.faltantes-cobro-table thead th,
+.faltantes-cobro-table tbody td {
+  padding: 12px 10px;
+  line-height: 1.4;
+  vertical-align: top;
+}
+
+.faltantes-cobro-table tbody tr {
+  height: auto;
+}
+
+.faltantes-cobro-table .faltantes-col-paciente {
+  width: 20%;
+}
+
+.faltantes-cobro-table .faltantes-col-hora {
+  width: 9%;
+  text-align: center;
+}
+
+.faltantes-cobro-table .faltantes-col-procedimiento {
+  width: 46%;
+}
+
+.faltantes-cobro-table .faltantes-col-sugerencia {
+  width: 17%;
+}
+
+.faltantes-cobro-table .faltantes-col-accion {
+  width: 8%;
+  text-align: center;
+}
+
+.faltantes-cobro-table tbody td:first-child {
+  word-break: break-word;
+}
+
+.faltantes-cobro-table thead th:nth-child(1),
+.faltantes-cobro-table tbody td:nth-child(1),
+.faltantes-cobro-table thead th:nth-child(2),
+.faltantes-cobro-table tbody td:nth-child(2) {
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 .faltantes-cobro-kpi.is-danger {
@@ -1282,6 +1349,7 @@ body.cobro-modal-open {
   gap: 6px;
   font-size: 12px;
   color: #334155;
+  line-height: 1.25;
 }
 
 .faltante-cobro-suggestion strong {
@@ -1293,9 +1361,72 @@ body.cobro-modal-open {
   font-size: 11px;
 }
 
+.faltante-procedimiento-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.faltante-procedimiento-cell.is-expanded {
+  display: block;
+}
+
+.faltante-procedimiento-content {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  line-height: 1.25;
+  color: #334155;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.faltante-procedimiento-content.is-expanded {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+  margin-bottom: 2px;
+}
+
+.faltante-procedimiento-toggle {
+  align-self: flex-start;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.faltante-procedimiento-toggle:hover {
+  text-decoration: underline;
+}
+
+.faltante-procedimiento-toggle:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .faltante-cobro-action-btn[disabled] {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.dark-mode .faltante-procedimiento-content {
+  color: #cbd5e1;
+}
+
+.dark-mode .faltante-procedimiento-toggle {
+  color: #93c5fd;
 }
 
 /* descuentos */
@@ -1714,6 +1845,11 @@ body.cobro-modal-open {
   color: #fdba74;
 }
 
+.dark-mode .faltantes-cobro-table thead th,
+.dark-mode .faltantes-cobro-table tbody td {
+  border-bottom-color: #223046;
+}
+
 .dark-mode .faltante-cobro-suggestion {
   color: #cbd5e1;
 }
@@ -1724,6 +1860,10 @@ body.cobro-modal-open {
 
 .dark-mode .faltante-cobro-suggestion-separator {
   color: #64748b;
+}
+
+.dark-mode .faltante-procedimiento-content {
+  color: #cbd5e1;
 }
 
 .dark-mode .descuento-total-line {
@@ -1916,6 +2056,15 @@ body.cobro-modal-open {
   .cobro-modal-dialog {
     max-height: calc(100vh - 24px);
     padding: 12px;
+  }
+
+  .cobro-modal-faltantes {
+    padding: 12px;
+  }
+
+  .cobro-modal-dialog-faltantes {
+    width: min(100%, 100%);
+    padding: 14px;
   }
 
   .cobro-modal-header {

@@ -105,3 +105,12 @@
    - `dist-electron/*.exe.blockmap` (opcional)
 4. Subir manual al release existente (mismo tag, por ejemplo `v1.0.2`):
    - GitHub Releases -> Edit release -> Attach binaries -> subir `.exe`.
+
+## Nota Linux
+- El flujo oficial de Linux ya quedo documentado aparte en:
+  - `17_release_linux_github_actions.md`
+- Puntos clave aprendidos:
+  - lanzar corrida nueva con `Run workflow` desde `main`
+  - no usar `Re-run jobs` si el problema fue del workflow
+  - usar tag exacto `vX.Y.Z`
+  - para Linux final, preferir GitHub Actions sobre build local en Windows

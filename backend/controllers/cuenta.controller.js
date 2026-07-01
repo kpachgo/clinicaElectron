@@ -725,6 +725,7 @@ const listarFaltantesCobro = async (req, res) => {
         idPaciente,
         nombrePacienteResolved: String(resolved?.nombrePacienteResolved || item.nombrePaciente || "").trim() || "Paciente",
         telefonoPacienteResolved: String(resolved?.telefonoPacienteResolved || item.contacto || "").trim(),
+        procedimientoCitaHoy: String(citaHoy?.ProcedimientoCP || "").trim(),
         valorCitaHoy,
         saldoCitaHoy,
         montoSugerido: valorCitaHoy

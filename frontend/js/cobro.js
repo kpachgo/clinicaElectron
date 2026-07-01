@@ -12,6 +12,7 @@
   let reporteMensualFormaPagoActual = "";
   let reporteMensualDoctorActual = null;
   let faltantesCobroActual = [];
+  let faltantesCobroExpandedRows = new Set();
   let faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
   let cobroSuggestionActual = null;
   let doctoresCuentaData = [];
@@ -711,9 +712,9 @@
       </div>
     </div>
 
-    <div id="faltantes-cobro-modal" class="cobro-modal" hidden>
+    <div id="faltantes-cobro-modal" class="cobro-modal cobro-modal-faltantes" hidden>
       <div class="cobro-modal-backdrop" data-cobro-modal-close="1"></div>
-      <div class="cobro-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="faltantes-cobro-modal-title">
+      <div class="cobro-modal-dialog cobro-modal-dialog-faltantes" role="dialog" aria-modal="true" aria-labelledby="faltantes-cobro-modal-title">
         <div class="cobro-modal-header">
           <h3 id="faltantes-cobro-modal-title">Faltantes de cobro (En Cola)</h3>
           <button id="btn-cerrar-faltantes-cobro" class="btn-cobro-secondary" type="button">Cerrar</button>
@@ -738,15 +739,15 @@
           </article>
         </div>
 
-        <div class="cuenta-table-wrap">
-          <table class="cuenta-table">
+        <div class="cuenta-table-wrap faltantes-cobro-table-wrap">
+          <table class="cuenta-table faltantes-cobro-table">
             <thead>
               <tr>
-                <th>Paciente</th>
-                <th style="width:180px;">Hora</th>
-                <th style="width:180px;">Contacto</th>
-                <th style="width:240px;">Sugerencia</th>
-                <th style="width:120px; text-align:center;">Accion</th>
+                <th class="faltantes-col-paciente">Paciente</th>
+                <th class="faltantes-col-hora">Hora</th>
+                <th class="faltantes-col-procedimiento">Procedimiento</th>
+                <th class="faltantes-col-sugerencia">Sugerencia</th>
+                <th class="faltantes-col-accion">Accion</th>
               </tr>
             </thead>
             <tbody id="faltantes-cobro-tbody"></tbody>
@@ -978,6 +979,7 @@
     }
 
     function cerrarFaltantesCobroModal() {
+      faltantesCobroExpandedRows = new Set();
       cerrarCobroModal(faltantesCobroModal);
     }
 
@@ -1128,6 +1130,7 @@
 
     function normalizarFaltanteCobroRow(raw) {
       const idPaciente = Number(raw?.idPaciente || 0);
+      const procedimientoCitaHoy = String(raw?.procedimientoCitaHoy || "").trim();
       return {
         nombrePaciente: String(raw?.nombrePaciente || "").trim() || "-",
         horaAgenda: String(raw?.horaAgenda || "").trim(),
@@ -1136,6 +1139,8 @@
         idPaciente: Number.isInteger(idPaciente) && idPaciente > 0 ? idPaciente : null,
         nombrePacienteResolved: String(raw?.nombrePacienteResolved || raw?.nombrePaciente || "").trim() || "Paciente",
         telefonoPacienteResolved: String(raw?.telefonoPacienteResolved || raw?.contacto || "").trim(),
+        procedimientoCitaHoy,
+        procedimientoExpandible: procedimientoCitaHoy.length > 50,
         valorCitaHoy: normalizarPrecio(raw?.valorCitaHoy, 0),
         saldoCitaHoy: normalizarPrecio(raw?.saldoCitaHoy, 0),
         montoSugerido: normalizarPrecio(raw?.montoSugerido, 0)
@@ -1163,13 +1168,31 @@
       if (!rows.length) {
         tbodyFaltantesCobro.innerHTML = `
           <tr>
-            <td colspan="5" style="text-align:center;color:#64748b">No hay faltantes por cobrar</td>
+            <td colspan="6" style="text-align:center;color:#64748b">No hay faltantes por cobrar</td>
           </tr>
         `;
         return;
       }
 
       rows.forEach((row, index) => {
+        const isExpanded = faltantesCobroExpandedRows.has(index);
+        const procedimientoTexto = row.procedimientoCitaHoy || "";
+        const procedimientoVisible = row.procedimientoExpandible && !isExpanded
+          ? `${procedimientoTexto.slice(0, 50)}...`
+          : procedimientoTexto;
+        const procedimientoHtml = procedimientoVisible
+          ? escapeHtml(procedimientoVisible)
+          : "-";
+        const procedimientoToggleHtml = row.procedimientoExpandible
+          ? `
+            <button
+              type="button"
+              class="faltante-procedimiento-toggle"
+              data-expand-index="${index}"
+              aria-expanded="${isExpanded ? "true" : "false"}"
+            >${isExpanded ? "Contraer" : "Expandir"}</button>
+          `
+          : "";
         const suggestionHtml = `
           <div class="faltante-cobro-suggestion">
             <span><strong>Valor:</strong> ${escapeHtml(precioUSD(row.valorCitaHoy))}</span>
@@ -1185,7 +1208,14 @@
         tr.innerHTML = `
           <td>${escapeHtml(row.nombrePaciente || "-")}</td>
           <td style="text-align:center">${escapeHtml(formatearHoraCola(row.horaAgenda))}</td>
-          <td style="text-align:center">${escapeHtml(row.contacto || "-")}</td>
+          <td>
+            <div class="faltante-procedimiento-cell${isExpanded ? " is-expanded" : ""}">
+              <div class="faltante-procedimiento-content${isExpanded ? " is-expanded" : ""}">
+                ${procedimientoHtml}
+              </div>
+              ${procedimientoToggleHtml}
+            </div>
+          </td>
           <td>${suggestionHtml}</td>
           <td style="text-align:center">
             <button
@@ -1207,12 +1237,14 @@
       const fecha = String(inputFecha?.value || "").trim();
       if (!fecha) {
         faltantesCobroActual = [];
+        faltantesCobroExpandedRows = new Set();
         faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
         renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, "");
         return;
       }
       const req = beginRequest("faltantes");
       const localSeq = req.seq;
+      faltantesCobroExpandedRows = new Set();
 
       renderFaltantesCobro(
         [],
@@ -1222,7 +1254,7 @@
       if (tbodyFaltantesCobro) {
         tbodyFaltantesCobro.innerHTML = `
           <tr>
-            <td colspan="5" style="text-align:center;color:#64748b">Cargando faltantes...</td>
+            <td colspan="6" style="text-align:center;color:#64748b">Cargando faltantes...</td>
           </tr>
         `;
       }
@@ -1259,7 +1291,7 @@
         if (tbodyFaltantesCobro) {
           tbodyFaltantesCobro.innerHTML = `
             <tr>
-              <td colspan="5" style="text-align:center;color:#64748b">No se pudieron cargar los faltantes</td>
+              <td colspan="6" style="text-align:center;color:#64748b">No se pudieron cargar los faltantes</td>
             </tr>
           `;
         }
@@ -1714,6 +1746,18 @@
       actualizarColorFormaPago();
     });
     tbodyFaltantesCobro?.addEventListener("click", async (e) => {
+      const toggleBtn = e.target?.closest?.(".faltante-procedimiento-toggle");
+      if (toggleBtn) {
+        const index = Number(toggleBtn.dataset.expandIndex || -1);
+        if (!Number.isInteger(index) || index < 0 || index >= faltantesCobroActual.length) return;
+        if (faltantesCobroExpandedRows.has(index)) {
+          faltantesCobroExpandedRows.delete(index);
+        } else {
+          faltantesCobroExpandedRows.add(index);
+        }
+        renderFaltantesCobro(faltantesCobroActual, faltantesCobroResumenActual, faltantesCobroResumenActual.fecha);
+        return;
+      }
       const btn = e.target?.closest?.(".faltante-cobro-action-btn");
       if (!btn || btn.disabled) return;
       const index = Number(btn.dataset.rowIndex || -1);
@@ -3043,6 +3087,7 @@
     reporteMensualFormaPagoActual = "";
     reporteMensualDoctorActual = null;
     faltantesCobroActual = [];
+    faltantesCobroExpandedRows = new Set();
     faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
     cobroSuggestionActual = null;
     doctoresCuentaData = [];
@@ -3073,6 +3118,7 @@
         reporteMensualFormaPagoActual = "";
         reporteMensualDoctorActual = null;
         faltantesCobroActual = [];
+        faltantesCobroExpandedRows = new Set();
         faltantesCobroResumenActual = { atendidosCola: 0, cobrados: 0, faltantes: 0, fecha: "" };
         doctoresCuentaData = [];
         cargarDoctoresCuentaPromise = null;
