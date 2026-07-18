@@ -838,13 +838,13 @@ body[data-theme="princess"] .odonto-summary-empty {
   color: #9a6b88;
 }
 
-body[data-theme="princess"] .paciente-card #odonto-summary-print-btn {
+body[data-theme="princess"] .paciente-card .odonto-summary-print-btn {
   background: #ffd2e8;
   border-color: #ff9cce;
   color: #631f50;
 }
 
-body[data-theme="princess"] .paciente-card #odonto-summary-print-btn:hover {
+body[data-theme="princess"] .paciente-card .odonto-summary-print-btn:hover {
   background: #ffc5e2;
   border-color: #ff69b4;
 }

@@ -197,6 +197,28 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+function odontoActionIcon(kind) {
+  const base = 'class="odonto-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
+  switch (kind) {
+    case "print":
+      return `<svg ${base}><path d="M7 8V4h10v4"/><rect x="5" y="14" width="14" height="6" rx="2"/><rect x="3" y="8" width="18" height="8" rx="2"/></svg>`;
+    case "stack":
+      return `<svg ${base}><path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 12l8 4 8-4"/><path d="M4 17l8 4 8-4"/></svg>`;
+    case "file":
+      return `<svg ${base}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`;
+    case "shield":
+      return `<svg ${base}><path d="M12 3l7 3v6c0 5-3.5 7.5-7 9-3.5-1.5-7-4-7-9V6l7-3z"/><path d="M9 12h6"/></svg>`;
+    case "spark":
+      return `<svg ${base}><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15z"/></svg>`;
+    case "sliders":
+      return `<svg ${base}><path d="M4 6h8"/><path d="M16 6h4"/><circle cx="14" cy="6" r="2"/><path d="M4 12h4"/><path d="M12 12h8"/><circle cx="8" cy="12" r="2"/><path d="M4 18h10"/><path d="M18 18h2"/><circle cx="16" cy="18" r="2"/></svg>`;
+    default:
+      return `<svg ${base}><circle cx="12" cy="12" r="8"/></svg>`;
+  }
+}
+function odontoActionButton(label, iconKind, id) {
+  return `<button id="${id}" class="odonto-summary-print-btn" type="button"><span class="odonto-summary-btn-icon">${odontoActionIcon(iconKind)}</span><span>${escapeHtml(label)}</span></button>`;
+}
 function esDoctorRegistroFisicoCita(cita) {
   if (Number(cita?.esRegistroFisico || 0) === 1) return true;
   return normalizarTextoSimple(cita?.nombreDoctor) === "registro fisico";
@@ -1264,11 +1286,17 @@ function renderPaciente(container) {
           <div class="odonto-summary-header">
             <h6 class="odonto-summary-title">Resumen de tratamientos</h6>
             <div class="odonto-summary-header-actions">
-              <button id="odonto-summary-print-btn" class="odonto-summary-print-btn" type="button">Imprimir pendiente</button>
-              <button id="odonto-summary-assist-btn" class="odonto-summary-print-btn" type="button">Asistencia</button>
-              <button id="odonto-summary-consent-btn" class="odonto-summary-print-btn" type="button">Consentimiento endodoncia</button>
-              <button id="odonto-summary-ortho-consent-btn" class="odonto-summary-print-btn" type="button">Consentimiento ortodoncia</button>
-              <button id="odonto-summary-multi-btn" class="odonto-summary-print-btn" type="button">Imprimir varios</button>
+              <div class="odonto-summary-action-group">
+                <span class="odonto-summary-group-label">Impresiones</span>
+                ${odontoActionButton("Imprimir pendiente", "print", "odonto-summary-print-btn")}
+                ${odontoActionButton("Imprimir varios", "stack", "odonto-summary-multi-btn")}
+              </div>
+              <div class="odonto-summary-action-group">
+                <span class="odonto-summary-group-label">Documentos</span>
+                ${odontoActionButton("Asistencia", "file", "odonto-summary-assist-btn")}
+                ${odontoActionButton("Consentimiento endodoncia", "shield", "odonto-summary-consent-btn")}
+                ${odontoActionButton("Consentimiento ortodoncia", "spark", "odonto-summary-ortho-consent-btn")}
+              </div>
             </div>
           </div>
           <div class="odonto-summary-grid">
@@ -1295,7 +1323,10 @@ function renderPaciente(container) {
               <section class="odonto-print-editor">
                 <h6>Edicion rapida</h6>
                 <div class="odonto-print-company-editor">
-                  <button id="odonto-print-company-toggle-btn" class="odonto-print-company-toggle-btn" type="button" aria-expanded="false">Editar cabecera local</button>
+                  <div class="odonto-print-config-actions">
+                    <button id="odonto-print-company-toggle-btn" class="odonto-print-company-toggle-btn" type="button" aria-expanded="false"><span class="odonto-summary-btn-icon">${odontoActionIcon("file")}</span><span>Editar cabecera local</span></button>
+                    <button id="odonto-print-price-toggle-btn" class="odonto-print-company-toggle-btn" type="button" aria-expanded="false"><span class="odonto-summary-btn-icon">${odontoActionIcon("sliders")}</span><span>Definir precios locales</span></button>
+                  </div>
                   <div id="odonto-print-company-editor-body" hidden>
                     <div class="odonto-assist-editor-row">
                       <label for="odonto-print-company-sucursal-input">Sucursal y direccion</label>
@@ -1335,6 +1366,21 @@ function renderPaciente(container) {
                       <button id="odonto-print-company-reset-btn" type="button">Restablecer</button>
                     </div>
                     <small class="odonto-print-company-editor-note">Se guarda solo en este equipo y navegador.</small>
+                  </div>
+                  <div id="odonto-print-price-editor-body" hidden>
+                    <small class="odonto-print-company-editor-note">Estos precios solo afectan Imprimir pendiente y se guardan solo en este equipo y navegador.</small>
+                    <section class="odonto-price-group">
+                      <h6>Tratamientos fijos de impresion</h6>
+                      <div id="odonto-price-fixed-list" class="odonto-price-list"></div>
+                    </section>
+                    <section class="odonto-price-group">
+                      <h6>Servicios</h6>
+                      <div id="odonto-price-service-list" class="odonto-price-list"></div>
+                    </section>
+                    <div class="odonto-print-company-editor-actions odonto-price-editor-actions">
+                      <button id="odonto-price-save-btn" type="button">Guardar local</button>
+                      <button id="odonto-price-reset-all-btn" type="button">Restablecer todo</button>
+                    </div>
                   </div>
                 </div>
 
@@ -2798,6 +2844,7 @@ const ODONTO_PRINT_COMPANY_DEFAULT_CONFIG = {
   telefono: "Tel. 6061-3992"
 };
 const ODONTO_PRINT_COMPANY_STORAGE_KEY = "odonto_print_company_config_v1";
+const ODONTO_PRINT_PRICE_STORAGE_KEY = "odonto_print_price_overrides_v1";
 const ODONTO_PRINT_BRANDING_STORAGE_KEY = "odonto_print_branding_config_v1";
 const ODONTO_PRINT_CONSENT_LOCATION_STORAGE_KEY = "odonto_print_consent_location_v1";
 const ODONTO_PRINT_BRANDING_DEFAULTS = {
@@ -2807,8 +2854,11 @@ const ODONTO_PRINT_BRANDING_DEFAULTS = {
 };
 let odontoPrintCompanyConfig = { ...ODONTO_PRINT_COMPANY_DEFAULT_CONFIG };
 let odontoPrintCompanyConfigLoaded = false;
+let odontoPrintPriceOverrides = { services: {}, fixed: {} };
+let odontoPrintPriceOverridesLoaded = false;
 let odontoPrintBrandingConfig = { ...ODONTO_PRINT_BRANDING_DEFAULTS };
 let odontoPrintBrandingLoaded = false;
+let odontoPrintServiceCatalog = [];
 const ODONTO_PRINT_MODE_PENDIENTE = "pendiente";
 const ODONTO_PRINT_MODE_ASISTENCIA = "asistencia";
 const ODONTO_PRINT_MODE_CONSENTIMIENTO = "consentimiento_endodoncia";
@@ -2849,6 +2899,18 @@ const ODONTO_PRINT_ENDO_MONO_PRICE = 150;
 const ODONTO_PRINT_ENDO_MULTI_PRICE = 225;
 const ODONTO_PRINT_ENDO_MONO_LABEL = "Endodoncia mono radicular";
 const ODONTO_PRINT_ENDO_MULTI_LABEL = "Endodoncia multiradicular";
+const ODONTO_PRINT_FIXED_PRICE_DEFINITIONS = [
+  { key: "extraction_simple", label: ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL, fallbackPrice: ODONTO_PRINT_EXTRACTION_SIMPLE_PRICE },
+  { key: "extraction_rr", label: ODONTO_PRINT_EXTRACTION_RR_LABEL, fallbackPrice: ODONTO_PRINT_EXTRACTION_RR_PRICE },
+  { key: "cordal_simple", label: ODONTO_PRINT_CORDAL_SIMPLE_LABEL, fallbackPrice: ODONTO_PRINT_CORDAL_SIMPLE_PRICE },
+  { key: "cordal_surgery", label: ODONTO_PRINT_CORDAL_SURGERY_LABEL, fallbackPrice: ODONTO_PRINT_CORDAL_SURGERY_PRICE },
+  { key: "endo_mono", label: ODONTO_PRINT_ENDO_MONO_LABEL, fallbackPrice: ODONTO_PRINT_ENDO_MONO_PRICE },
+  { key: "endo_multi", label: ODONTO_PRINT_ENDO_MULTI_LABEL, fallbackPrice: ODONTO_PRINT_ENDO_MULTI_PRICE }
+];
+const ODONTO_PRINT_CORE_SERVICE_PRICE_DEFINITIONS = [
+  { name: "Relleno Pequeno" },
+  { name: "Relleno Grande" }
+];
 const ODONTO_PRINT_ENDO_MONO_PIECES = new Set([11, 12, 13, 21, 22, 23, 31, 32, 33, 41, 42, 43]);
 const ODONTO_PRINT_ENDO_MULTI_PIECES = new Set([14, 15, 16, 17, 24, 25, 26, 27, 34, 35, 36, 37, 44, 45, 46, 47]);
 const ODONTO_PRINT_CONSENT_DEFAULTS = {
@@ -3376,8 +3438,7 @@ function getOdontoPrintServicePrice(nombreServicio) {
   const lookup = normalizeTextForLookup(nombreServicio);
   if (!lookup || !(odontoPrintServicePriceCache instanceof Map)) return null;
   if (!odontoPrintServicePriceCache.has(lookup)) return null;
-  const value = Number(odontoPrintServicePriceCache.get(lookup));
-  return Number.isFinite(value) && value >= 0 ? value : null;
+  return parseOdontoPriceValue(odontoPrintServicePriceCache.get(lookup));
 }
 function getPrintableTreatmentLabel(item) {
   const code = normalizeOdontoTreatmentId(item?.tratamiento);
@@ -3396,7 +3457,7 @@ function buildPendingLine(item) {
   if (!Number.isFinite(cantidad) || cantidad <= 0) return "";
   const nombreBase = getPrintableTreatmentLabel(item);
   const nombre = getPrintableTreatmentPlural(nombreBase, cantidad);
-  const precio = getOdontoPrintServicePrice(nombreBase);
+  const precio = getOdontoPrintEffectiveServicePrice(nombreBase);
   const precioTxt = precio == null ? "Precio no definido" : formatServicePrice(precio);
   return truncateForPrintLine(`${cantidad} ${nombre} ${precioTxt}`);
 }
@@ -3468,15 +3529,16 @@ function buildPendingPrintItems(summary, odontogramaData) {
   const pendientes = Array.isArray(summary?.pendientes) ? summary.pendientes : [];
   const items = [];
   const fixedBuckets = new Map();
-  const pushFixedBucket = (label, price, count) => {
+  const pushFixedBucket = (key, label, fallbackPrice, count) => {
     const qty = Number(count || 0);
     if (!Number.isFinite(qty) || qty <= 0) return;
-    const key = `${label}::${price}`;
-    if (!fixedBuckets.has(key)) {
-      fixedBuckets.set(key, { label, price, count: 0 });
-      items.push({ kind: "fixed-bucket", key });
+    const price = getOdontoPrintEffectiveFixedPrice(key, fallbackPrice);
+    const bucketKey = `${key}::${price}`;
+    if (!fixedBuckets.has(bucketKey)) {
+      fixedBuckets.set(bucketKey, { label, price, count: 0 });
+      items.push({ kind: "fixed-bucket", key: bucketKey });
     }
-    fixedBuckets.get(key).count += qty;
+    fixedBuckets.get(bucketKey).count += qty;
   };
   const pushResidualLine = (text) => {
     if (!text) return;
@@ -3489,25 +3551,25 @@ function buildPendingPrintItems(summary, odontogramaData) {
   pendientes.forEach((item) => {
     const treatment = normalizeOdontoTreatmentId(item?.tratamiento);
     if (treatment === "E_MONO") {
-      pushFixedBucket(ODONTO_PRINT_ENDO_MONO_LABEL, ODONTO_PRINT_ENDO_MONO_PRICE, Number(item?.cantidad || 0));
+      pushFixedBucket("endo_mono", ODONTO_PRINT_ENDO_MONO_LABEL, ODONTO_PRINT_ENDO_MONO_PRICE, Number(item?.cantidad || 0));
       return;
     }
 
     if (treatment === "E_MULTI") {
-      pushFixedBucket(ODONTO_PRINT_ENDO_MULTI_LABEL, ODONTO_PRINT_ENDO_MULTI_PRICE, Number(item?.cantidad || 0));
+      pushFixedBucket("endo_multi", ODONTO_PRINT_ENDO_MULTI_LABEL, ODONTO_PRINT_ENDO_MULTI_PRICE, Number(item?.cantidad || 0));
       return;
     }
 
     if (treatment === "E") {
       const monoSplit = splitOdontoPrintPiecesByPredicate(item, (pieza) => ODONTO_PRINT_ENDO_MONO_PIECES.has(pieza));
-      pushFixedBucket(ODONTO_PRINT_ENDO_MONO_LABEL, ODONTO_PRINT_ENDO_MONO_PRICE, monoSplit.matchedCount);
+      pushFixedBucket("endo_mono", ODONTO_PRINT_ENDO_MONO_LABEL, ODONTO_PRINT_ENDO_MONO_PRICE, monoSplit.matchedCount);
 
       const multiSplit = splitOdontoPrintPiecesByPredicate({
         ...item,
         cantidad: monoSplit.remainingPieces.length,
         piezas: monoSplit.remainingPieces
       }, (pieza) => ODONTO_PRINT_ENDO_MULTI_PIECES.has(pieza));
-      pushFixedBucket(ODONTO_PRINT_ENDO_MULTI_LABEL, ODONTO_PRINT_ENDO_MULTI_PRICE, multiSplit.matchedCount);
+      pushFixedBucket("endo_multi", ODONTO_PRINT_ENDO_MULTI_LABEL, ODONTO_PRINT_ENDO_MULTI_PRICE, multiSplit.matchedCount);
 
       if (multiSplit.remainingPieces.length > 0) {
         const text = buildPendingLine({
@@ -3521,17 +3583,18 @@ function buildPendingPrintItems(summary, odontogramaData) {
     }
 
     if (treatment === "X_SIMPLE") {
-      pushFixedBucket(ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL, ODONTO_PRINT_EXTRACTION_SIMPLE_PRICE, Number(item?.cantidad || 0));
+      pushFixedBucket("extraction_simple", ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL, ODONTO_PRINT_EXTRACTION_SIMPLE_PRICE, Number(item?.cantidad || 0));
       return;
     }
 
     if (treatment === "X_RR") {
-      pushFixedBucket(ODONTO_PRINT_EXTRACTION_RR_LABEL, ODONTO_PRINT_EXTRACTION_RR_PRICE, Number(item?.cantidad || 0));
+      pushFixedBucket("extraction_rr", ODONTO_PRINT_EXTRACTION_RR_LABEL, ODONTO_PRINT_EXTRACTION_RR_PRICE, Number(item?.cantidad || 0));
       return;
     }
 
     if (treatment === "X_CORDAL_SIMPLE") {
       pushFixedBucket(
+        "cordal_simple",
         ODONTO_PRINT_CORDAL_SIMPLE_LABEL,
         ODONTO_PRINT_CORDAL_SIMPLE_PRICE,
         Number(item?.cantidad || 0)
@@ -3542,6 +3605,7 @@ function buildPendingPrintItems(summary, odontogramaData) {
     if (treatment === "X_CIRUGIA") {
       const cordalSurgerySplit = splitOdontoPrintPiecesByPredicate(item, (pieza) => ODONTO_CORDAL_PIEZAS.has(pieza));
       pushFixedBucket(
+        "cordal_surgery",
         ODONTO_PRINT_CORDAL_SURGERY_LABEL,
         ODONTO_PRINT_CORDAL_SURGERY_PRICE,
         cordalSurgerySplit.matchedCount
@@ -3564,6 +3628,7 @@ function buildPendingPrintItems(summary, odontogramaData) {
 
     const cordalSimpleSplit = splitOdontoPrintPiecesByPredicate(item, (pieza) => ODONTO_CORDAL_PIEZAS.has(pieza));
     pushFixedBucket(
+      "cordal_simple",
       ODONTO_PRINT_CORDAL_SIMPLE_LABEL,
       ODONTO_PRINT_CORDAL_SIMPLE_PRICE,
       cordalSimpleSplit.matchedCount
@@ -3575,11 +3640,13 @@ function buildPendingPrintItems(summary, odontogramaData) {
       piezas: cordalSimpleSplit.remainingPieces
     }, odontogramaData);
     pushFixedBucket(
+      "extraction_simple",
       ODONTO_PRINT_EXTRACTION_SIMPLE_LABEL,
       ODONTO_PRINT_EXTRACTION_SIMPLE_PRICE,
       extractionSplit.simpleCount
     );
     pushFixedBucket(
+      "extraction_rr",
       ODONTO_PRINT_EXTRACTION_RR_LABEL,
       ODONTO_PRINT_EXTRACTION_RR_PRICE,
       extractionSplit.rrCount
@@ -3609,6 +3676,7 @@ async function ensureOdontoPrintServicePriceCache() {
 
   odontoPrintServicePricePromise = (async () => {
     const cache = new Map();
+    let catalogRows = [];
     const endpoints = ["/api/servicio/precios", "/api/servicio"];
     try {
       for (let i = 0; i < endpoints.length; i += 1) {
@@ -3618,10 +3686,11 @@ async function ensureOdontoPrintServicePriceCache() {
         const json = await res.json();
         if (!json?.ok) continue;
         const rows = Array.isArray(json.data) ? json.data : [];
+        catalogRows = rows;
         rows.forEach((row) => {
           const nombre = normalizeTextForLookup(row?.nombreS);
-          const precio = Number(row?.precioS);
-          if (!nombre || !Number.isFinite(precio) || precio < 0) return;
+          const precio = parseOdontoPriceValue(row?.precioS ?? row?.precio);
+          if (!nombre || precio == null) return;
           cache.set(nombre, precio);
         });
         if (cache.size > 0) break;
@@ -3630,6 +3699,7 @@ async function ensureOdontoPrintServicePriceCache() {
       console.error("Error cargando precios de servicios para impresion", err);
     } finally {
       odontoPrintServicePriceCache = cache;
+      odontoPrintServiceCatalog = buildOdontoPrintServiceCatalog(catalogRows);
       odontoPrintServicePricePromise = null;
     }
     return cache;
@@ -3845,6 +3915,267 @@ function getOdontoPrintCompanyConfig() {
   loadOdontoPrintCompanyConfig();
   return normalizeOdontoPrintCompanyConfig(odontoPrintCompanyConfig);
 }
+function normalizeOdontoPrintPriceOverrideEntries(rawEntries = {}) {
+  const source = rawEntries && typeof rawEntries === "object" ? rawEntries : {};
+  const normalized = {};
+  Object.keys(source).forEach((rawKey) => {
+    const key = String(rawKey || "").trim();
+    if (!key) return;
+    const value = Number(source[rawKey]);
+    if (!Number.isFinite(value) || value < 0) return;
+    normalized[key] = Math.round(value * 100) / 100;
+  });
+  return normalized;
+}
+function normalizeOdontoPrintPriceOverrides(rawConfig) {
+  const source = rawConfig && typeof rawConfig === "object" ? rawConfig : {};
+  return {
+    services: normalizeOdontoPrintPriceOverrideEntries(source.services),
+    fixed: normalizeOdontoPrintPriceOverrideEntries(source.fixed)
+  };
+}
+function loadOdontoPrintPriceOverrides() {
+  if (odontoPrintPriceOverridesLoaded) return;
+  odontoPrintPriceOverridesLoaded = true;
+  try {
+    const raw = localStorage.getItem(ODONTO_PRINT_PRICE_STORAGE_KEY);
+    if (!raw) {
+      odontoPrintPriceOverrides = { services: {}, fixed: {} };
+      return;
+    }
+    odontoPrintPriceOverrides = normalizeOdontoPrintPriceOverrides(JSON.parse(raw));
+  } catch {
+    odontoPrintPriceOverrides = { services: {}, fixed: {} };
+  }
+}
+function saveOdontoPrintPriceOverrides(rawConfig) {
+  odontoPrintPriceOverrides = normalizeOdontoPrintPriceOverrides(rawConfig);
+  try {
+    localStorage.setItem(
+      ODONTO_PRINT_PRICE_STORAGE_KEY,
+      JSON.stringify(odontoPrintPriceOverrides)
+    );
+  } catch {
+    // ignore storage failures
+  }
+}
+function resetOdontoPrintPriceOverrides() {
+  odontoPrintPriceOverrides = { services: {}, fixed: {} };
+  try {
+    localStorage.removeItem(ODONTO_PRINT_PRICE_STORAGE_KEY);
+  } catch {
+    // ignore storage failures
+  }
+}
+function getOdontoPrintPriceOverrides() {
+  loadOdontoPrintPriceOverrides();
+  return normalizeOdontoPrintPriceOverrides(odontoPrintPriceOverrides);
+}
+function formatOdontoPlainPrice(price) {
+  const amount = Number(price);
+  if (!Number.isFinite(amount) || amount < 0) return "No definido";
+  return `$${amount.toFixed(2)}`;
+}
+function parseOdontoPriceValue(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string" && !value.trim()) return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100) / 100;
+}
+function getOdontoPrintDefaultServiceCatalog() {
+  return ODONTO_PRINT_CORE_SERVICE_PRICE_DEFINITIONS.map((entry) => ({
+    name: String(entry?.name || "").trim(),
+    lookup: normalizeTextForLookup(entry?.name),
+    price: null
+  })).filter((entry) => entry.lookup);
+}
+function buildOdontoPrintServiceCatalog(rows = []) {
+  const catalogMap = new Map();
+  getOdontoPrintDefaultServiceCatalog().forEach((entry) => {
+    catalogMap.set(entry.lookup, entry);
+  });
+  rows.forEach((row) => {
+    const name = String(row?.nombreS || "").trim();
+    const lookup = normalizeTextForLookup(name);
+    const price = parseOdontoPriceValue(row?.precioS ?? row?.precio);
+    if (!lookup) return;
+    const current = catalogMap.get(lookup) || {
+      name,
+      lookup,
+      price: null
+    };
+    if (name) current.name = name;
+    if (price != null) current.price = price;
+    catalogMap.set(lookup, current);
+  });
+  const preferredLookups = new Set(
+    ODONTO_PRINT_CORE_SERVICE_PRICE_DEFINITIONS.map((entry) => normalizeTextForLookup(entry?.name))
+  );
+  return Array.from(catalogMap.values()).sort((left, right) => {
+    const leftPreferred = preferredLookups.has(left.lookup) ? 0 : 1;
+    const rightPreferred = preferredLookups.has(right.lookup) ? 0 : 1;
+    if (leftPreferred !== rightPreferred) return leftPreferred - rightPreferred;
+    return String(left.name || "").localeCompare(String(right.name || ""), "es", { sensitivity: "base" });
+  });
+}
+function getOdontoPrintFixedPriceDefinition(key) {
+  return ODONTO_PRINT_FIXED_PRICE_DEFINITIONS.find((entry) => entry.key === key) || null;
+}
+function getOdontoPrintEffectiveServicePrice(nombreServicio, fallbackPrice = null) {
+  const lookup = normalizeTextForLookup(nombreServicio);
+  const parsedFallbackPrice = parseOdontoPriceValue(fallbackPrice);
+  const basePrice = parsedFallbackPrice != null
+    ? parsedFallbackPrice
+    : getOdontoPrintServicePrice(nombreServicio);
+  const overrides = getOdontoPrintPriceOverrides();
+  if (lookup && Object.prototype.hasOwnProperty.call(overrides.services, lookup)) {
+    return Number(overrides.services[lookup]);
+  }
+  return basePrice;
+}
+function getOdontoPrintEffectiveFixedPrice(key, fallbackPrice) {
+  const definition = getOdontoPrintFixedPriceDefinition(key);
+  const parsedFallbackPrice = parseOdontoPriceValue(fallbackPrice);
+  const definitionFallbackPrice = parseOdontoPriceValue(definition?.fallbackPrice);
+  const basePrice = parsedFallbackPrice != null
+    ? parsedFallbackPrice
+    : definitionFallbackPrice;
+  const overrides = getOdontoPrintPriceOverrides();
+  if (key && Object.prototype.hasOwnProperty.call(overrides.fixed, key)) {
+    return Number(overrides.fixed[key]);
+  }
+  return basePrice;
+}
+function buildOdontoPrintPriceCatalog() {
+  const overrides = getOdontoPrintPriceOverrides();
+  const fixedRows = ODONTO_PRINT_FIXED_PRICE_DEFINITIONS.map((entry) => ({
+    kind: "fixed",
+    key: entry.key,
+    label: entry.label,
+    basePrice: entry.fallbackPrice,
+    overridePrice: Object.prototype.hasOwnProperty.call(overrides.fixed, entry.key)
+      ? Number(overrides.fixed[entry.key])
+      : null,
+    effectivePrice: getOdontoPrintEffectiveFixedPrice(entry.key, entry.fallbackPrice)
+  }));
+  const serviceRows = buildOdontoPrintServiceCatalog(
+    odontoPrintServiceCatalog.map((entry) => ({
+      nombreS: entry.name,
+      precioS: entry.price
+    }))
+  ).map((entry) => ({
+    kind: "service",
+    key: entry.lookup,
+    label: entry.name,
+    basePrice: parseOdontoPriceValue(entry.price),
+    overridePrice: Object.prototype.hasOwnProperty.call(overrides.services, entry.lookup)
+      ? Number(overrides.services[entry.lookup])
+      : null,
+    effectivePrice: getOdontoPrintEffectiveServicePrice(entry.name, entry.price)
+  }));
+  return {
+    fixedRows,
+    serviceRows
+  };
+}
+function buildOdontoPrintPriceRowHtml(row) {
+  const baseLabel = row.basePrice == null ? "Base: No definido" : `Base: ${formatOdontoPlainPrice(row.basePrice)}`;
+  const effectiveLabel = row.overridePrice == null
+    ? `Actual: ${row.basePrice == null ? "No definido" : formatOdontoPlainPrice(row.effectivePrice)}`
+    : `Actual local: ${formatOdontoPlainPrice(row.effectivePrice)}`;
+  const editableValue = row.overridePrice != null
+    ? row.overridePrice
+    : row.basePrice;
+  const inputValue = editableValue == null ? "" : String(editableValue);
+  const placeholder = row.basePrice == null ? "Sin precio base" : row.basePrice.toFixed(2);
+  return `
+    <div class="odonto-price-row" data-price-kind="${escapeHtml(row.kind)}" data-price-key="${escapeHtml(row.key)}">
+      <div class="odonto-price-row-main">
+        <strong>${escapeHtml(row.label)}</strong>
+        <span>${escapeHtml(baseLabel)}</span>
+        <span>${escapeHtml(effectiveLabel)}</span>
+      </div>
+      <input
+        class="form-control odonto-price-input"
+        type="number"
+        min="0"
+        step="0.01"
+        data-price-input="1"
+        value="${escapeHtml(inputValue)}"
+        placeholder="${escapeHtml(placeholder)}"
+      >
+      <button type="button" class="odonto-price-reset-btn" data-price-reset="1"${row.overridePrice == null ? " disabled" : ""}>Restablecer</button>
+    </div>
+  `;
+}
+function renderOdontoPrintPriceModal() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.priceFixedList || !refs.priceServiceList) return;
+  const catalog = buildOdontoPrintPriceCatalog();
+  refs.priceFixedList.innerHTML = catalog.fixedRows.map(buildOdontoPrintPriceRowHtml).join("");
+  refs.priceServiceList.innerHTML = catalog.serviceRows.map(buildOdontoPrintPriceRowHtml).join("");
+}
+function setOdontoPriceEditorExpanded(expanded) {
+  const refs = getOdontoPrintRefs();
+  const shouldExpand = expanded === true;
+  if (refs.priceEditorBody) refs.priceEditorBody.hidden = !shouldExpand;
+  if (refs.priceToggleBtn) {
+    refs.priceToggleBtn.setAttribute("aria-expanded", shouldExpand ? "true" : "false");
+  }
+}
+function syncOdontoModalBodyState() {
+  const refs = getOdontoPrintRefs();
+  const hasOpenModal = Boolean(
+    (refs.modal && !refs.modal.hidden) ||
+    (refs.multiModal && !refs.multiModal.hidden)
+  );
+  document.body.classList.toggle("odonto-print-modal-open", hasOpenModal);
+}
+function collectOdontoPrintPriceOverridesFromDom() {
+  const refs = getOdontoPrintRefs();
+  const nextConfig = {
+    services: {},
+    fixed: {}
+  };
+  const rows = [
+    ...(refs.priceFixedList?.querySelectorAll?.(".odonto-price-row") || []),
+    ...(refs.priceServiceList?.querySelectorAll?.(".odonto-price-row") || [])
+  ];
+  rows.forEach((row) => {
+    const kind = String(row?.dataset?.priceKind || "").trim();
+    const key = String(row?.dataset?.priceKey || "").trim();
+    const input = row?.querySelector?.("[data-price-input]");
+    const rawValue = String(input?.value || "").trim();
+    if (!kind || !key || !rawValue) return;
+    const value = Number(rawValue);
+    if (!Number.isFinite(value) || value < 0) return;
+    if (kind === "fixed") {
+      const base = getOdontoPrintFixedPriceDefinition(key)?.fallbackPrice ?? null;
+      if (base != null && Math.abs(value - Number(base)) < 0.0001) return;
+      nextConfig.fixed[key] = Math.round(value * 100) / 100;
+      return;
+    }
+    const serviceEntry = odontoPrintServiceCatalog.find((entry) => entry.lookup === key) || null;
+    const base = serviceEntry && Number.isFinite(Number(serviceEntry.price)) ? Number(serviceEntry.price) : null;
+    if (base != null && Math.abs(value - base) < 0.0001) return;
+    nextConfig.services[key] = Math.round(value * 100) / 100;
+  });
+  return nextConfig;
+}
+function refreshOdontoPendingPrintPreviewIfOpen() {
+  const refs = getOdontoPrintRefs();
+  if (!refs.modal || refs.modal.hidden) return;
+  if (getOdontoPrintDraftMode(odontoPrintDraft) !== ODONTO_PRINT_MODE_PENDIENTE) return;
+  const preservedExtras = Array.isArray(odontoPrintDraft?.items)
+    ? odontoPrintDraft.items.filter((item) => item?.kind !== "pendiente")
+    : [];
+  odontoPrintDraft = buildOdontoPrintDraftFromCurrentSummary();
+  if (Array.isArray(odontoPrintDraft?.items) && preservedExtras.length > 0) {
+    odontoPrintDraft.items.push(...preservedExtras);
+  }
+  renderOdontoPrintModal();
+}
 function normalizeOdontoPrintConsentConfig(rawConfig) {
   const fallback = { ...ODONTO_PRINT_CONSENT_DEFAULTS };
   if (!rawConfig || typeof rawConfig !== "object") {
@@ -3987,7 +4318,9 @@ function getOdontoPrintRefs() {
     standardEditor: document.getElementById("odonto-print-standard-editor"),
     assistEditor: document.getElementById("odonto-assist-editor"),
     companyToggleBtn: document.getElementById("odonto-print-company-toggle-btn"),
+    priceToggleBtn: document.getElementById("odonto-print-price-toggle-btn"),
     companyEditorBody: document.getElementById("odonto-print-company-editor-body"),
+    priceEditorBody: document.getElementById("odonto-print-price-editor-body"),
     companySucursalInput: document.getElementById("odonto-print-company-sucursal-input"),
     companyTelefonoInput: document.getElementById("odonto-print-company-telefono-input"),
     logoInput: document.getElementById("odonto-print-logo-input"),
@@ -4000,6 +4333,10 @@ function getOdontoPrintRefs() {
     watermarkOpacityValue: document.getElementById("odonto-print-watermark-opacity-value"),
     companySaveBtn: document.getElementById("odonto-print-company-save-btn"),
     companyResetBtn: document.getElementById("odonto-print-company-reset-btn"),
+    priceSaveBtn: document.getElementById("odonto-price-save-btn"),
+    priceResetAllBtn: document.getElementById("odonto-price-reset-all-btn"),
+    priceFixedList: document.getElementById("odonto-price-fixed-list"),
+    priceServiceList: document.getElementById("odonto-price-service-list"),
     addItemInput: document.getElementById("odonto-print-item-input"),
     addItemBtn: document.getElementById("odonto-print-item-add-btn"),
     editorList: document.getElementById("odonto-print-items-editor"),
@@ -4092,7 +4429,7 @@ function closeOdontoPrintModal() {
   const refs = getOdontoPrintRefs();
   if (!refs.modal) return;
   refs.modal.hidden = true;
-  document.body.classList.remove("odonto-print-modal-open");
+  syncOdontoModalBodyState();
   odontoPrintDraft = null;
   odontoPrintMode = ODONTO_PRINT_MODE_PENDIENTE;
   odontoPrintIsPrinting = false;
@@ -4129,6 +4466,7 @@ function closeOdontoPrintModal() {
   if (refs.orthoConsentFechaAnioInput) refs.orthoConsentFechaAnioInput.value = "";
   if (refs.logoInput) refs.logoInput.value = "";
   setOdontoPrintCompanyEditorExpanded(false);
+  setOdontoPriceEditorExpanded(false);
   if (refs.runBtn) refs.runBtn.disabled = false;
 }
 function syncOdontoPrintCompanyHeader() {
@@ -4426,6 +4764,7 @@ function renderOdontoPrintModal() {
   const isAsistencia = mode === ODONTO_PRINT_MODE_ASISTENCIA;
   const isConsent = mode === ODONTO_PRINT_MODE_CONSENTIMIENTO;
   const isOrthoConsent = mode === ODONTO_PRINT_MODE_CONSENTIMIENTO_ORTODONCIA;
+  const isPendiente = !isAsistencia && !isConsent && !isOrthoConsent;
   if (refs.modalTitle) {
     refs.modalTitle.textContent = isConsent
       ? "Consentimiento endodoncia"
@@ -4439,8 +4778,13 @@ function renderOdontoPrintModal() {
     refs.modal.classList.toggle("is-assist-mode", isAsistencia);
     refs.modal.classList.toggle("is-consent-mode", isConsent || isOrthoConsent);
   }
+  if (refs.priceToggleBtn) refs.priceToggleBtn.hidden = !isPendiente;
+  if (refs.priceEditorBody && !isPendiente) refs.priceEditorBody.hidden = true;
   syncOdontoPrintCompanyHeader();
   syncOdontoPrintBrandingUi();
+  if (isPendiente && refs.priceEditorBody && !refs.priceEditorBody.hidden) {
+    renderOdontoPrintPriceModal();
+  }
   renderOdontoPrintEditorList();
   renderOdontoPrintPreviewList();
 }
@@ -5026,8 +5370,9 @@ async function openOdontoPrintModalByMode(mode = ODONTO_PRINT_MODE_PENDIENTE) {
   }
   renderOdontoPrintModal();
   setOdontoPrintCompanyEditorExpanded(false);
+  setOdontoPriceEditorExpanded(false);
   refs.modal.hidden = false;
-  document.body.classList.add("odonto-print-modal-open");
+  syncOdontoModalBodyState();
 }
 function formatBytesCompact(bytes) {
   const num = Number(bytes || 0);
@@ -5188,7 +5533,7 @@ function closeOdontoMultiPrintModal() {
   const refs = getOdontoPrintRefs();
   if (!refs.multiModal) return;
   refs.multiModal.hidden = true;
-  document.body.classList.remove("odonto-print-modal-open");
+  syncOdontoModalBodyState();
   cleanupOdontoMultiPrintFrame();
   odontoMultiPrintIsPrinting = false;
   if (refs.multiRunBtn) refs.multiRunBtn.disabled = false;
@@ -5199,7 +5544,7 @@ async function openOdontoMultiPrintModal() {
   const refs = getOdontoPrintRefs();
   if (!refs.multiModal) return;
   refs.multiModal.hidden = false;
-  document.body.classList.add("odonto-print-modal-open");
+  syncOdontoModalBodyState();
   try {
     await fetchOdontoMultiDocsList();
   } catch (err) {
@@ -5316,8 +5661,17 @@ function runOdontoMultiPrintJob() {
 }
 function bindOdontoPrintFeature() {
   const refs = getOdontoPrintRefs();
-  if (!refs.modal || !refs.printBtn || !refs.assistBtn || !refs.consentBtn || !refs.orthoConsentBtn || !refs.multiBtn || !refs.multiModal) return;
+  if (
+    !refs.modal ||
+    !refs.printBtn ||
+    !refs.assistBtn ||
+    !refs.consentBtn ||
+    !refs.orthoConsentBtn ||
+    !refs.multiBtn ||
+    !refs.multiModal
+  ) return;
   loadOdontoPrintCompanyConfig();
+  loadOdontoPrintPriceOverrides();
   loadOdontoPrintBrandingConfig();
   loadOdontoPrintConsentConfig();
 
@@ -5326,6 +5680,7 @@ function bindOdontoPrintFeature() {
   syncOdontoPrintCompanyHeader();
   syncOdontoPrintBrandingUi();
   setOdontoPrintCompanyEditorExpanded(false);
+  setOdontoPriceEditorExpanded(false);
   void (async () => {
     const remoteLogoUrl = await fetchPrintBrandingLogoFromServer();
     if (!remoteLogoUrl) return;
@@ -5391,6 +5746,18 @@ function bindOdontoPrintFeature() {
     refs.companyToggleBtn.onclick = () => {
       const expanded = refs.companyToggleBtn?.getAttribute("aria-expanded") === "true";
       setOdontoPrintCompanyEditorExpanded(!expanded);
+    };
+  }
+  if (refs.priceToggleBtn) {
+    refs.priceToggleBtn.onclick = async () => {
+      const expanded = refs.priceToggleBtn?.getAttribute("aria-expanded") === "true";
+      if (!expanded) {
+        odontoPrintServicePriceCache = null;
+        odontoPrintServicePricePromise = null;
+        await ensureOdontoPrintServicePriceCache();
+        renderOdontoPrintPriceModal();
+      }
+      setOdontoPriceEditorExpanded(!expanded);
     };
   }
   if (refs.companySaveBtn) {
@@ -5464,11 +5831,77 @@ function bindOdontoPrintFeature() {
       renderOdontoPrintPreviewList();
     };
   }
+  if (refs.priceSaveBtn) {
+    refs.priceSaveBtn.onclick = () => {
+      saveOdontoPrintPriceOverrides(collectOdontoPrintPriceOverridesFromDom());
+      renderOdontoPrintPriceModal();
+      refreshOdontoPendingPrintPreviewIfOpen();
+    };
+  }
+  if (refs.priceResetAllBtn) {
+    refs.priceResetAllBtn.onclick = () => {
+      resetOdontoPrintPriceOverrides();
+      renderOdontoPrintPriceModal();
+      refreshOdontoPendingPrintPreviewIfOpen();
+    };
+  }
   refs.modal.onclick = (event) => {
     if (event.target?.closest?.("[data-odonto-print-close]")) {
       closeOdontoPrintModal();
     }
   };
+  if (refs.priceFixedList) {
+    refs.priceFixedList.onclick = (event) => {
+      const resetBtn = event.target?.closest?.("[data-price-reset]");
+      if (!resetBtn) return;
+      const row = resetBtn.closest(".odonto-price-row");
+      const input = row?.querySelector?.("[data-price-input]");
+      if (!(input instanceof HTMLInputElement)) return;
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+  }
+  if (refs.priceServiceList) {
+    refs.priceServiceList.onclick = (event) => {
+      const resetBtn = event.target?.closest?.("[data-price-reset]");
+      if (!resetBtn) return;
+      const row = resetBtn.closest(".odonto-price-row");
+      const input = row?.querySelector?.("[data-price-input]");
+      if (!(input instanceof HTMLInputElement)) return;
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+  }
+  if (refs.priceFixedList) {
+    refs.priceFixedList.oninput = (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement)) return;
+      if (!input.matches("[data-price-input]")) return;
+      const nextValue = String(input.value || "").trim();
+      if (!nextValue) return;
+      const num = Number(nextValue);
+      if (!Number.isFinite(num) || num < 0) {
+        input.value = "";
+        return;
+      }
+      input.value = String(Math.round(num * 100) / 100);
+    };
+  }
+  if (refs.priceServiceList) {
+    refs.priceServiceList.oninput = (event) => {
+      const input = event.target;
+      if (!(input instanceof HTMLInputElement)) return;
+      if (!input.matches("[data-price-input]")) return;
+      const nextValue = String(input.value || "").trim();
+      if (!nextValue) return;
+      const num = Number(nextValue);
+      if (!Number.isFinite(num) || num < 0) {
+        input.value = "";
+        return;
+      }
+      input.value = String(Math.round(num * 100) / 100);
+    };
+  }
   if (refs.multiModal) {
     refs.multiModal.onclick = (event) => {
       if (event.target?.closest?.("[data-odonto-multi-close]")) {

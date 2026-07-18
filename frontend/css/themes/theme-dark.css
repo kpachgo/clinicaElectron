@@ -198,13 +198,13 @@ body[data-theme="dark"].dark-mode .odonto-summary-empty {
   color: #8ea0b7;
 }
 
-body[data-theme="dark"].dark-mode .paciente-card #odonto-summary-print-btn {
+body[data-theme="dark"].dark-mode .paciente-card .odonto-summary-print-btn {
   background: #14233a;
   border-color: #365172;
   color: #dbeafe;
 }
 
-body[data-theme="dark"].dark-mode .paciente-card #odonto-summary-print-btn:hover {
+body[data-theme="dark"].dark-mode .paciente-card .odonto-summary-print-btn:hover {
   background: #1b2f4d;
   border-color: #4e76ab;
 }

@@ -614,13 +614,13 @@ body[data-theme="vampire"].dark-mode .odonto-summary-empty {
   color: #9da5b4;
 }
 
-body[data-theme="vampire"].dark-mode .paciente-card #odonto-summary-print-btn {
+body[data-theme="vampire"].dark-mode .paciente-card .odonto-summary-print-btn {
   background: #252526;
   border-color: #3c3c3c;
   color: #d4d4d4;
 }
 
-body[data-theme="vampire"].dark-mode .paciente-card #odonto-summary-print-btn:hover {
+body[data-theme="vampire"].dark-mode .paciente-card .odonto-summary-print-btn:hover {
   background: #2a2d2e;
   border-color: #007acc;
 }

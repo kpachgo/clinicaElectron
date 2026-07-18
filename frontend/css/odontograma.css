@@ -1094,21 +1094,33 @@ body.odonto-print-modal-open {
 }
 
 .odonto-summary-header-actions {
-    display: inline-flex;
-    align-items: center;
+    display: flex;
+    align-items: flex-start;
+    flex-wrap: wrap;
     gap: 8px;
 }
 
-.paciente-card #odonto-summary-print-btn,
-.paciente-card #odonto-summary-assist-btn,
-.paciente-card #odonto-summary-consent-btn,
-.paciente-card #odonto-summary-ortho-consent-btn,
-.paciente-card #odonto-summary-multi-btn,
-.odonto-summary-header-actions #odonto-summary-print-btn,
-.odonto-summary-header-actions #odonto-summary-assist-btn,
-.odonto-summary-header-actions #odonto-summary-consent-btn,
-.odonto-summary-header-actions #odonto-summary-ortho-consent-btn,
-.odonto-summary-header-actions #odonto-summary-multi-btn,
+.odonto-summary-action-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid #dbe5f2;
+    border-radius: 14px;
+    background: #f8fbff;
+}
+
+.odonto-summary-group-label {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #5b6b81;
+}
+
+.paciente-card .odonto-summary-print-btn,
+.odonto-summary-header-actions .odonto-summary-print-btn,
 .odonto-summary-print-btn {
     border: 1px solid #b4c7e6;
     background: #ffffff;
@@ -1119,33 +1131,33 @@ body.odonto-print-modal-open {
     font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.paciente-card #odonto-summary-print-btn:hover,
-.paciente-card #odonto-summary-assist-btn:hover,
-.paciente-card #odonto-summary-consent-btn:hover,
-.paciente-card #odonto-summary-ortho-consent-btn:hover,
-.paciente-card #odonto-summary-multi-btn:hover,
-.odonto-summary-header-actions #odonto-summary-print-btn:hover,
-.odonto-summary-header-actions #odonto-summary-assist-btn:hover,
-.odonto-summary-header-actions #odonto-summary-consent-btn:hover,
-.odonto-summary-header-actions #odonto-summary-ortho-consent-btn:hover,
-.odonto-summary-header-actions #odonto-summary-multi-btn:hover,
+.odonto-summary-btn-icon,
+.odonto-action-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.odonto-action-icon {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+}
+
+.paciente-card .odonto-summary-print-btn:hover,
+.odonto-summary-header-actions .odonto-summary-print-btn:hover,
 .odonto-summary-print-btn:hover {
     background: #edf4ff;
     border-color: #94b4e2;
 }
 
-.paciente-card #odonto-summary-print-btn:disabled,
-.paciente-card #odonto-summary-assist-btn:disabled,
-.paciente-card #odonto-summary-consent-btn:disabled,
-.paciente-card #odonto-summary-ortho-consent-btn:disabled,
-.paciente-card #odonto-summary-multi-btn:disabled,
-.odonto-summary-header-actions #odonto-summary-print-btn:disabled,
-.odonto-summary-header-actions #odonto-summary-assist-btn:disabled,
-.odonto-summary-header-actions #odonto-summary-consent-btn:disabled,
-.odonto-summary-header-actions #odonto-summary-ortho-consent-btn:disabled,
-.odonto-summary-header-actions #odonto-summary-multi-btn:disabled,
+.paciente-card .odonto-summary-print-btn:disabled,
+.odonto-summary-header-actions .odonto-summary-print-btn:disabled,
 .odonto-summary-print-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
@@ -1292,8 +1304,20 @@ body.odonto-print-modal-open {
 }
 
 .odonto-print-company-toggle-btn {
-    width: 100%;
     text-align: left;
+}
+
+.odonto-print-config-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.odonto-print-config-actions .odonto-print-company-toggle-btn {
+    width: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 #odonto-print-company-editor-body {
@@ -1311,6 +1335,79 @@ body.odonto-print-modal-open {
     margin-top: 8px;
     font-size: 11px;
     color: #475569;
+}
+
+.odonto-price-editor {
+    margin-bottom: 0;
+}
+
+#odonto-print-price-editor-body {
+    margin-top: 10px;
+}
+
+.odonto-price-group + .odonto-price-group {
+    margin-top: 14px;
+}
+
+.odonto-price-group h6 {
+    margin-bottom: 10px;
+}
+
+.odonto-price-list {
+    display: grid;
+    gap: 8px;
+}
+
+.odonto-price-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(110px, 150px) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid #d6deeb;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.odonto-price-row-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.odonto-price-row-main strong,
+.odonto-price-row-main span {
+    word-break: break-word;
+}
+
+.odonto-price-row-main span {
+    font-size: 12px;
+    color: #5b6b81;
+}
+
+.odonto-price-input {
+    min-width: 0;
+}
+
+#odonto-print-modal .odonto-price-reset-btn {
+    border: 1px solid #c4d1e7;
+    background: #f6f9ff;
+    color: #1e3a8a;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+#odonto-print-modal .odonto-price-reset-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.odonto-price-editor-actions {
+    margin-top: 12px;
 }
 
 .odonto-print-logo-upload-row {
@@ -2012,20 +2109,21 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
     }
 }
 
-.dark-mode .paciente-card #odonto-summary-print-btn,
-.dark-mode .paciente-card #odonto-summary-assist-btn,
-.dark-mode .paciente-card #odonto-summary-consent-btn,
-.dark-mode .paciente-card #odonto-summary-ortho-consent-btn,
-.dark-mode .paciente-card #odonto-summary-multi-btn,
-.dark-mode .odonto-summary-header-actions #odonto-summary-print-btn,
-.dark-mode .odonto-summary-header-actions #odonto-summary-assist-btn,
-.dark-mode .odonto-summary-header-actions #odonto-summary-consent-btn,
-.dark-mode .odonto-summary-header-actions #odonto-summary-ortho-consent-btn,
-.dark-mode .odonto-summary-header-actions #odonto-summary-multi-btn,
+.dark-mode .paciente-card .odonto-summary-print-btn,
+.dark-mode .odonto-summary-header-actions .odonto-summary-print-btn,
 .dark-mode .odonto-summary-print-btn {
     background: #14233a;
     border-color: #365172;
     color: #dbeafe;
+}
+
+.dark-mode .odonto-summary-action-group {
+    border-color: #304660;
+    background: #102033;
+}
+
+.dark-mode .odonto-summary-group-label {
+    color: #9db6d4;
 }
 
 .odonto-print-assist-sheet {
@@ -2383,16 +2481,8 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
     line-height: 1.14;
 }
 
-.dark-mode .paciente-card #odonto-summary-print-btn:hover,
-.dark-mode .paciente-card #odonto-summary-assist-btn:hover,
-.dark-mode .paciente-card #odonto-summary-consent-btn:hover,
-.dark-mode .paciente-card #odonto-summary-ortho-consent-btn:hover,
-.dark-mode .paciente-card #odonto-summary-multi-btn:hover,
-.dark-mode .odonto-summary-header-actions #odonto-summary-print-btn:hover,
-.dark-mode .odonto-summary-header-actions #odonto-summary-assist-btn:hover,
-.dark-mode .odonto-summary-header-actions #odonto-summary-consent-btn:hover,
-.dark-mode .odonto-summary-header-actions #odonto-summary-ortho-consent-btn:hover,
-.dark-mode .odonto-summary-header-actions #odonto-summary-multi-btn:hover,
+.dark-mode .paciente-card .odonto-summary-print-btn:hover,
+.dark-mode .odonto-summary-header-actions .odonto-summary-print-btn:hover,
 .dark-mode .odonto-summary-print-btn:hover {
     background: #1b2f4d;
     border-color: #4e76ab;
@@ -2473,6 +2563,21 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
 .dark-mode .odonto-print-company-editor {
     border-color: #35557d;
     background: #12253e;
+}
+
+.dark-mode .odonto-price-row {
+    border-color: #35557d;
+    background: #102236;
+}
+
+.dark-mode .odonto-price-row-main span {
+    color: #9db6d4;
+}
+
+.dark-mode #odonto-print-modal .odonto-price-reset-btn {
+    background: #14233a;
+    border-color: #365172;
+    color: #dbeafe;
 }
 
 .dark-mode .odonto-print-company-editor-note {
@@ -2569,6 +2674,32 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
         min-height: 390px;
         max-height: 390px;
     }
+
+    .odonto-summary-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .odonto-summary-header-actions {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .odonto-summary-action-group {
+        width: 100%;
+    }
+
+    .odonto-summary-header-actions .odonto-summary-print-btn {
+        flex: 0 1 auto;
+        max-width: 100%;
+        text-align: center;
+    }
+
+    .odonto-price-row {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 760px) {
@@ -2599,18 +2730,18 @@ body.odonto-print-inline-force #odonto-print-inline-host .odonto-print-doc-page 
         width: 190px;
     }
 
-    .odonto-summary-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
     .odonto-summary-header-actions {
         width: 100%;
     }
 
+    .odonto-summary-action-group {
+        padding: 8px;
+    }
+
     .odonto-summary-header-actions .odonto-summary-print-btn {
-        flex: 1;
+        flex: 1 1 220px;
         text-align: center;
+        justify-content: center;
     }
 
     .odonto-print-company-left strong {
