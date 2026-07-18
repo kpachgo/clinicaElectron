@@ -32,6 +32,7 @@ app.get("/health", (req, res) => {
 
 // Rutas API
 app.use("/api/licencia", require("./routes/licencia.routes"));
+app.use("/api/configuracion-db", require("./routes/dbConnectionConfig.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));
 app.use("/api/agenda", licenciaMiddleware.requireLicensedAccess, require("./routes/agenda.routes"));
 app.use("/api/seguridad-protocolo", licenciaMiddleware.requireLicensedAccess, require("./routes/seguridadProtocolo.routes"));

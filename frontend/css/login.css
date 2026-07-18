@@ -388,6 +388,165 @@
     margin-top: 10px;
 }
 
+.db-config-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 48px 18px;
+    background: rgba(15, 23, 42, 0.62);
+    overflow: auto;
+}
+
+.db-config-modal {
+    width: min(760px, 100%);
+    background: var(--login-panel-bg);
+    border: 1px solid var(--login-panel-border);
+    border-radius: 12px;
+    box-shadow: var(--login-panel-shadow);
+    color: var(--text-color);
+}
+
+.db-config-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 22px 14px;
+    border-bottom: 1px solid var(--login-register-separator);
+}
+
+.db-config-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+.db-config-header p {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.db-config-close {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--login-input-border);
+    border-radius: 8px;
+    color: var(--text-color);
+    background: var(--login-input-bg);
+    cursor: pointer;
+}
+
+.db-config-close:hover {
+    border-color: var(--blue);
+}
+
+.db-config-body {
+    padding: 18px 22px 22px;
+}
+
+.db-config-loading {
+    color: var(--text-muted);
+    font-size: 14px;
+    text-align: center;
+}
+
+.db-config-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 14px;
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid var(--login-input-border);
+    border-radius: 10px;
+    background: var(--login-input-bg);
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.db-config-auth-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.db-config-auth-card {
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--login-input-border);
+    border-radius: 10px;
+}
+
+.db-config-auth-card.is-disabled {
+    opacity: 0.66;
+}
+
+.db-config-grid {
+    display: grid;
+    grid-template-columns: 1fr 160px;
+    gap: 0 14px;
+}
+
+.db-config-field-full {
+    grid-column: 1 / -1;
+}
+
+.db-config-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.db-config-check input {
+    width: 16px;
+    height: 16px;
+}
+
+.db-config-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.db-config-feedback {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.db-config-feedback.is-ok {
+    border: 1px solid var(--login-notice-border);
+    background: var(--login-notice-bg);
+    color: var(--login-notice-text);
+}
+
+.db-config-feedback.is-error {
+    border: 1px solid #fca5a5;
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.dark-mode .db-config-feedback.is-error {
+    border-color: #ef4444;
+    background: #7f1d1d;
+    color: #fecaca;
+}
+
 @media (max-width: 600px) {
     .login-container {
         padding-top: 60px;
@@ -411,6 +570,17 @@
     }
 
     .password-recovery-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .db-config-overlay {
+        padding-top: 24px;
+    }
+
+    .db-config-summary,
+    .db-config-auth-grid,
+    .db-config-grid,
+    .db-config-actions {
         grid-template-columns: 1fr;
     }
 }

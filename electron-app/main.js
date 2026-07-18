@@ -55,6 +55,7 @@ let updaterEnabled = false;
 let updateCheckStarted = false;
 let updateDownloadedInfo = null;
 let devNoCachePoliciesInstalled = false;
+let backendRestartTimer = null;
 
 function readBooleanFlag(name, defaultValue) {
   const raw = String(process.env[name] || "").trim().toLowerCase();
@@ -367,6 +368,10 @@ async function stopExistingBackendOnPortInDev() {
 
 function startBackendWithNpm() {
   if (backendProcess) return;
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer);
+    backendRestartTimer = null;
+  }
 
   const runtimeDir = getRuntimeDir();
   const npmCommand = getNpmCommand();
@@ -414,18 +419,41 @@ function startBackendWithNpm() {
 
   backendProcess.on("exit", (code, signal) => {
     const shouldFallback = !isQuitting && !backendReady && !fallbackAttempted;
+    const shouldRestart = !isQuitting && backendReady && backendStartedByElectron;
     logLine("[ELECTRON]", `Proceso backend finalizado (code=${code}, signal=${signal || "none"})`);
     backendProcess = null;
     if (shouldFallback) {
       fallbackAttempted = true;
       logLine("[ELECTRON]", "npm start se cerro antes de estar saludable; probando fallback con Node embebido.");
       startBackendWithElectronNode();
+      return;
+    }
+    if (shouldRestart) {
+      logLine("[ELECTRON]", "Backend finalizo despues del arranque; reiniciando.");
+      backendReady = false;
+      backendRestartTimer = setTimeout(() => {
+        backendRestartTimer = null;
+        fallbackAttempted = false;
+        startBackendWithNpm();
+        waitForServerReady(HEALTH_TIMEOUT_MS).then((ready) => {
+          backendReady = ready;
+          if (ready) {
+            logLine("[ELECTRON]", "Backend reiniciado y saludable.");
+            return;
+          }
+          logLine("[ELECTRON]", "Backend reiniciado pero no respondio en /health.");
+        });
+      }, 900);
     }
   });
 }
 
 function startBackendWithElectronNode() {
   if (backendProcess) return;
+  if (backendRestartTimer) {
+    clearTimeout(backendRestartTimer);
+    backendRestartTimer = null;
+  }
 
   const runtimeDir = getRuntimeDir();
   const serverEntry = path.join(runtimeDir, "backend", "server.js");
@@ -451,8 +479,25 @@ function startBackendWithElectronNode() {
     logLine("[BACKEND-FALLBACK:ERR]", chunk.toString("utf8"));
   });
   backendProcess.on("exit", (code, signal) => {
+    const shouldRestart = !isQuitting && backendReady && backendStartedByElectron;
     logLine("[ELECTRON]", `Fallback backend finalizado (code=${code}, signal=${signal || "none"})`);
     backendProcess = null;
+    if (shouldRestart) {
+      logLine("[ELECTRON]", "Fallback backend finalizo despues del arranque; reiniciando.");
+      backendReady = false;
+      backendRestartTimer = setTimeout(() => {
+        backendRestartTimer = null;
+        startBackendWithElectronNode();
+        waitForServerReady(HEALTH_TIMEOUT_MS).then((ready) => {
+          backendReady = ready;
+          if (ready) {
+            logLine("[ELECTRON]", "Fallback backend reiniciado y saludable.");
+            return;
+          }
+          logLine("[ELECTRON]", "Fallback backend reiniciado pero no respondio en /health.");
+        });
+      }, 900);
+    }
   });
 }
 

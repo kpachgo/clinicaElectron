@@ -18,6 +18,10 @@
     return e.ctrlKey && e.shiftKey && isSpace;
   }
 
+  function isShortcutOpenDbConfig(e) {
+    return e.ctrlKey && e.shiftKey && String(e.key || "").toLowerCase() === "c";
+  }
+
   function renderIcon(name, className) {
     const registry = window.__uiIcons;
     if (!registry || typeof registry.get !== "function") return "";
@@ -36,6 +40,415 @@
 
   function isAbortError(err) {
     return String(err?.name || "") === "AbortError";
+  }
+
+  async function readJsonResponse(res) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  async function fetchDbConfigStatus() {
+    const res = await fetch(`/api/configuracion-db/estado?_ts=${Date.now()}`, {
+      cache: "no-store"
+    });
+    const data = await readJsonResponse(res);
+    if (!res.ok || !data?.ok) {
+      throw new Error(data?.message || "No se pudo leer configuracion");
+    }
+    return data.data || {};
+  }
+
+  function closeDbConfigModal() {
+    const current = document.querySelector(".db-config-overlay");
+    if (current) current.remove();
+  }
+
+  function attachDbConfigShortcut() {
+    if (window.__loginDbConfigShortcutHandler) {
+      document.removeEventListener("keydown", window.__loginDbConfigShortcutHandler, true);
+    }
+
+    window.__loginDbConfigShortcutHandler = (e) => {
+      if (!isShortcutOpenDbConfig(e)) return;
+      e.preventDefault();
+      void openDbConfigModal();
+    };
+    document.addEventListener("keydown", window.__loginDbConfigShortcutHandler, true);
+  }
+
+  function detachDbConfigShortcut() {
+    if (!window.__loginDbConfigShortcutHandler) return;
+    document.removeEventListener("keydown", window.__loginDbConfigShortcutHandler, true);
+    window.__loginDbConfigShortcutHandler = null;
+  }
+
+  function setDbConfigFeedback(modal, type, message) {
+    const feedback = modal.querySelector("#db-config-feedback");
+    if (!feedback) return;
+    feedback.textContent = message || "";
+    feedback.className = `db-config-feedback ${type === "ok" ? "is-ok" : "is-error"}`;
+    feedback.hidden = !message;
+  }
+
+  function setOptionalConnectionValue(connection, key, value) {
+    const text = String(value || "").trim();
+    if (text) connection[key] = text;
+  }
+
+  function getDbConnectionPayload(modal) {
+    const connection = {};
+    const passwordValue = String(modal.querySelector("#db-config-password")?.value || "");
+    const portValue = String(modal.querySelector("#db-config-port")?.value || "").trim();
+    const sslValue = String(modal.querySelector("#db-config-ssl")?.value || "");
+
+    setOptionalConnectionValue(connection, "host", modal.querySelector("#db-config-host")?.value);
+    setOptionalConnectionValue(connection, "user", modal.querySelector("#db-config-user")?.value);
+    setOptionalConnectionValue(connection, "database", modal.querySelector("#db-config-database")?.value);
+
+    if (portValue) {
+      connection.port = Number(portValue);
+    }
+
+    if (passwordValue) {
+      connection.password = passwordValue;
+    }
+
+    if (sslValue === "on") {
+      connection.ssl = true;
+    } else if (sslValue === "off") {
+      connection.ssl = false;
+    }
+
+    return {
+      connection
+    };
+  }
+
+  async function waitForBackendAfterRestart(timeoutMs = 60000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const res = await fetch(`/health?_ts=${Date.now()}`, {
+          cache: "no-store"
+        });
+        if (res.ok) return true;
+      } catch {
+        // Backend can be down while Electron restarts it.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+    }
+    return false;
+  }
+
+  function renderDbConfigForm(modal, status, sessionToken) {
+    const body = modal.querySelector(".db-config-body");
+    const connection = status?.connection || {};
+    body.innerHTML = `
+      <div class="db-config-summary">
+        <span><strong>Origen:</strong> ${escapeHtml(status?.source || "env")}</span>
+        <span><strong>Archivo externo:</strong> ${status?.hasExternalConfig ? "si" : "no"}</span>
+        <span><strong>Host:</strong> ${connection.hasHost ? "**********" : "no configurado"}</span>
+        <span><strong>Puerto:</strong> ${connection.hasPort ? "**********" : "no configurado"}</span>
+        <span><strong>Usuario:</strong> ${connection.hasUser ? "**********" : "no configurado"}</span>
+        <span><strong>Base de datos:</strong> ${connection.hasDatabase ? "**********" : "no configurada"}</span>
+        <span><strong>Contrasena:</strong> ${connection.hasPassword ? "**********" : "no configurada"}</span>
+      </div>
+
+      <div class="db-config-grid">
+        <div class="login-field">
+          <label for="db-config-host">Host</label>
+          <input class="ui-control" id="db-config-host" type="password" placeholder="${connection.hasHost ? "**********" : "Nuevo host"}">
+        </div>
+        <div class="login-field">
+          <label for="db-config-port">Puerto</label>
+          <input class="ui-control" id="db-config-port" type="password" inputmode="numeric" placeholder="${connection.hasPort ? "**********" : "3306"}">
+        </div>
+        <div class="login-field">
+          <label for="db-config-user">Usuario</label>
+          <input class="ui-control" id="db-config-user" type="password" placeholder="${connection.hasUser ? "**********" : "Usuario"}">
+        </div>
+        <div class="login-field">
+          <label for="db-config-password">Contrasena</label>
+          <input class="ui-control" id="db-config-password" type="password" placeholder="${connection.hasPassword ? "**********" : "Contrasena"}">
+        </div>
+        <div class="login-field db-config-field-full">
+          <label for="db-config-database">Base de datos</label>
+          <input class="ui-control" id="db-config-database" type="password" placeholder="${connection.hasDatabase ? "**********" : "Base de datos"}">
+        </div>
+        <div class="login-field db-config-field-full">
+          <label for="db-config-ssl">SSL</label>
+          <select class="ui-control" id="db-config-ssl">
+            <option value="">Mantener configuracion actual</option>
+            <option value="on">Activar SSL</option>
+            <option value="off">Desactivar SSL</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="db-config-actions">
+        <button id="db-config-test" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+          ${renderIcon("shield-check", "ui-toolbar-icon")}
+          <span>Probar conexion</span>
+        </button>
+        <button id="db-config-save" class="btn-login ui-toolbar-btn is-primary" type="button">
+          ${renderIcon("arrow-path", "ui-toolbar-icon")}
+          <span>Guardar y reiniciar</span>
+        </button>
+      </div>
+      <div id="db-config-feedback" class="db-config-feedback" hidden></div>
+    `;
+
+    const btnTest = modal.querySelector("#db-config-test");
+    const btnSave = modal.querySelector("#db-config-save");
+
+    btnTest.addEventListener("click", async () => {
+      btnTest.disabled = true;
+      btnSave.disabled = true;
+      setDbConfigFeedback(modal, "ok", "Probando conexion...");
+      try {
+        const res = await fetch("/api/configuracion-db/probar", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-DB-Config-Token": sessionToken
+          },
+          body: JSON.stringify(getDbConnectionPayload(modal))
+        });
+        const data = await readJsonResponse(res);
+        if (!res.ok || !data?.ok) {
+          setDbConfigFeedback(modal, "error", data?.message || "No se pudo conectar");
+          return;
+        }
+        setDbConfigFeedback(modal, "ok", data.message || "Conexion correcta");
+      } catch (err) {
+        console.error(err);
+        setDbConfigFeedback(modal, "error", "No se pudo probar la conexion");
+      } finally {
+        btnTest.disabled = false;
+        btnSave.disabled = false;
+      }
+    });
+
+    btnSave.addEventListener("click", async () => {
+      btnTest.disabled = true;
+      btnSave.disabled = true;
+      setDbConfigFeedback(modal, "ok", "Guardando configuracion...");
+      try {
+        const saveRes = await fetch("/api/configuracion-db/guardar", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-DB-Config-Token": sessionToken
+          },
+          body: JSON.stringify(getDbConnectionPayload(modal))
+        });
+        const saveData = await readJsonResponse(saveRes);
+        if (!saveRes.ok || !saveData?.ok) {
+          setDbConfigFeedback(modal, "error", saveData?.message || "No se pudo guardar");
+          btnTest.disabled = false;
+          btnSave.disabled = false;
+          return;
+        }
+
+        setDbConfigFeedback(modal, "ok", "Reiniciando conexion...");
+        await fetch("/api/configuracion-db/reiniciar", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-DB-Config-Token": sessionToken
+          },
+          body: JSON.stringify({})
+        }).catch(() => {});
+
+        const ready = await waitForBackendAfterRestart();
+        if (!ready) {
+          setDbConfigFeedback(modal, "error", "Configuracion guardada, pero el backend no volvio a responder");
+          return;
+        }
+
+        setDbConfigFeedback(modal, "ok", "Conexion reiniciada correctamente");
+        setTimeout(() => {
+          closeDbConfigModal();
+          void mountLogin({ forceStatus: true });
+        }, 500);
+      } catch (err) {
+        console.error(err);
+        setDbConfigFeedback(modal, "error", "No se pudo guardar la conexion");
+        btnTest.disabled = false;
+        btnSave.disabled = false;
+      }
+    });
+  }
+
+  function renderDbConfigAuth(modal, status) {
+    const body = modal.querySelector(".db-config-body");
+    const connection = status?.connection || {};
+    body.innerHTML = `
+      <div class="db-config-summary">
+        <span><strong>Origen:</strong> ${escapeHtml(status?.source || "env")}</span>
+        <span><strong>Host:</strong> ${connection.hasHost ? "**********" : "no configurado"}</span>
+        <span><strong>BD:</strong> ${connection.hasDatabase ? "**********" : "no configurada"}</span>
+        <span><strong>PIN local:</strong> ${status?.hasMaintenancePin ? "configurado" : "no configurado"}</span>
+      </div>
+
+      <div class="db-config-auth-grid">
+        <div class="db-config-auth-card ${status?.hasMaintenancePin ? "" : "is-disabled"}">
+          <h3 class="hidden-register-title">PIN local</h3>
+          <div class="login-field">
+            <label for="db-config-pin">PIN</label>
+            <input class="ui-control" id="db-config-pin" type="password" ${status?.hasMaintenancePin ? "" : "disabled"}>
+          </div>
+          <button id="db-config-auth-pin" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button" ${status?.hasMaintenancePin ? "" : "disabled"}>
+            ${renderIcon("key", "ui-toolbar-icon")}
+            <span>Autorizar con PIN</span>
+          </button>
+        </div>
+
+        <div class="db-config-auth-card">
+          <h3 class="hidden-register-title">Administrador</h3>
+          <div class="login-field">
+            <label for="db-config-admin-user">Correo</label>
+            <input class="ui-control" id="db-config-admin-user" type="email" placeholder="correo@dominio.com">
+          </div>
+          <div class="login-field">
+            <label for="db-config-admin-pass">Contrasena</label>
+            <input class="ui-control" id="db-config-admin-pass" type="password">
+          </div>
+          <div class="login-field" ${status?.hasMaintenancePin ? "hidden" : ""}>
+            <label for="db-config-new-pin">Nuevo PIN local</label>
+            <input class="ui-control" id="db-config-new-pin" type="password" placeholder="Minimo 6 caracteres">
+          </div>
+          <button id="db-config-auth-admin" class="btn-login ui-toolbar-btn is-primary" type="button">
+            ${renderIcon("shield-check", "ui-toolbar-icon")}
+            <span>Autorizar administrador</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="db-config-feedback" class="db-config-feedback" hidden></div>
+    `;
+
+    const btnPin = modal.querySelector("#db-config-auth-pin");
+    const btnAdmin = modal.querySelector("#db-config-auth-admin");
+    const pinInput = modal.querySelector("#db-config-pin");
+    const adminUserInput = modal.querySelector("#db-config-admin-user");
+    const adminPassInput = modal.querySelector("#db-config-admin-pass");
+    const newPinInput = modal.querySelector("#db-config-new-pin");
+
+    async function postAuthorize(payload) {
+      btnPin.disabled = true;
+      btnAdmin.disabled = true;
+      setDbConfigFeedback(modal, "ok", "Autorizando...");
+      try {
+        const res = await fetch("/api/configuracion-db/autorizar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await readJsonResponse(res);
+        if (!res.ok || !data?.ok) {
+          setDbConfigFeedback(modal, "error", data?.message || "No se pudo autorizar");
+          return;
+        }
+
+        renderDbConfigForm(modal, data.status || status, data.data?.token);
+      } catch (err) {
+        console.error(err);
+        setDbConfigFeedback(modal, "error", "No se pudo autorizar configuracion");
+      } finally {
+        if (btnPin.isConnected) btnPin.disabled = status?.hasMaintenancePin !== true;
+        if (btnAdmin.isConnected) btnAdmin.disabled = false;
+      }
+    }
+
+    btnPin?.addEventListener("click", () => {
+      void postAuthorize({
+        mode: "pin",
+        pin: String(pinInput?.value || "")
+      });
+    });
+
+    btnAdmin.addEventListener("click", () => {
+      void postAuthorize({
+        mode: "admin",
+        correo: String(adminUserInput?.value || "").trim(),
+        password: String(adminPassInput?.value || ""),
+        newPin: String(newPinInput?.value || "")
+      });
+    });
+
+    [pinInput, adminPassInput, newPinInput].forEach((input) => {
+      input?.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        if (input === pinInput) {
+          btnPin?.click();
+          return;
+        }
+        btnAdmin.click();
+      });
+    });
+
+    setTimeout(() => {
+      if (status?.hasMaintenancePin) {
+        pinInput?.focus();
+      } else {
+        adminUserInput?.focus();
+      }
+    }, 50);
+  }
+
+  async function openDbConfigModal() {
+    closeDbConfigModal();
+
+    const modal = document.createElement("div");
+    modal.className = "db-config-overlay";
+    modal.innerHTML = `
+      <div class="db-config-modal" role="dialog" aria-modal="true" aria-labelledby="db-config-title">
+        <div class="db-config-header">
+          <div>
+            <h2 id="db-config-title">Conexion de base de datos</h2>
+            <p>Configuracion local de mantenimiento</p>
+          </div>
+          <button id="db-config-close" class="db-config-close" type="button" aria-label="Cerrar">
+            ${renderIcon("x-mark", "ui-toolbar-icon")}
+          </button>
+        </div>
+        <div class="db-config-body">
+          <div class="db-config-loading">Cargando configuracion...</div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.querySelector("#db-config-close")?.addEventListener("click", closeDbConfigModal);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeDbConfigModal();
+    });
+
+    try {
+      const status = await fetchDbConfigStatus();
+      renderDbConfigAuth(modal, status);
+    } catch (err) {
+      console.error(err);
+      const body = modal.querySelector(".db-config-body");
+      body.innerHTML = `
+        <div class="db-config-feedback is-error">
+          No se pudo cargar configuracion de conexion.
+        </div>
+      `;
+    }
   }
 
   async function fetchLicenseStatus(options = {}) {
@@ -213,6 +626,8 @@
         btnActivate.click();
       }
     });
+
+    attachDbConfigShortcut();
   }
 
   function renderUsageBlockedScreen(container, state = {}) {
@@ -248,6 +663,8 @@
     btnRefresh.addEventListener("click", () => {
       void mountLogin({ forceStatus: true });
     });
+
+    attachDbConfigShortcut();
   }
 
   function renderLogin(container) {
@@ -1065,9 +1482,11 @@
         document.removeEventListener("keydown", window.__loginHiddenShortcutHandler, true);
         window.__loginHiddenShortcutHandler = null;
       }
+      detachDbConfigShortcut();
     }
 
     attachShortcut();
+    attachDbConfigShortcut();
   }
 
   async function mountLogin(options = {}) {
