@@ -26,29 +26,79 @@ async function existeColumnaEstadoDoctor() {
   return Array.isArray(rows) && rows.length > 0;
 }
 
+function mapDoctorRows(rows, tieneColumnaEstado) {
+  return (rows || []).map((row) => {
+    const estadoD = tieneColumnaEstado ? normalizarEstadoDoctor(row.estadoD) : 1;
+    return {
+      ...row,
+      estadoD,
+      estadoNombre: estadoD === 1 ? "Activo" : "Inactivo"
+    };
+  });
+}
+
+async function obtenerDoctorVinculadoPorUsuario(idUsuario) {
+  const [rows] = await pool.query(
+    `SELECT idDoctor
+       FROM usuario
+      WHERE idUsuario = ?
+      LIMIT 1`,
+    [idUsuario]
+  );
+  return Number(rows?.[0]?.idDoctor || 0);
+}
+
+async function validarAccesoDoctorPropio(req, idDoctor) {
+  if (req.user?.rol !== "Doctor") return true;
+
+  const idUsuario = Number(req.user?.idUsuario || 0);
+  if (!idUsuario) return false;
+
+  const idDoctorVinculado = await obtenerDoctorVinculadoPorUsuario(idUsuario);
+  return Boolean(idDoctorVinculado && idDoctorVinculado === idDoctor);
+}
+
 
 // ✅ LISTAR DOCTORES
 const listar = async (req, res) => {
   try {
     const tieneColumnaEstado = await existeColumnaEstadoDoctor();
+    if (req.user?.rol === "Doctor") {
+      const idUsuario = Number(req.user?.idUsuario || 0);
+      if (!idUsuario) {
+        return res.json({ ok: true, data: [] });
+      }
+
+      const [rowsDoctor] = await pool.query(
+        tieneColumnaEstado
+          ? `SELECT d.idDoctor, d.nombreD, d.TelefonoD, d.FirmaD, d.SelloD, d.estadoD
+               FROM usuario u
+               INNER JOIN doctor d ON d.idDoctor = u.idDoctor
+              WHERE u.idUsuario = ?
+              LIMIT 1`
+          : `SELECT d.idDoctor, d.nombreD, d.TelefonoD, d.FirmaD, d.SelloD
+               FROM usuario u
+               INNER JOIN doctor d ON d.idDoctor = u.idDoctor
+              WHERE u.idUsuario = ?
+              LIMIT 1`,
+        [idUsuario]
+      );
+
+      return res.json({
+        ok: true,
+        data: mapDoctorRows(rowsDoctor, tieneColumnaEstado)
+      });
+    }
+
     const [rows] = await pool.query(
       tieneColumnaEstado
         ? "SELECT idDoctor, nombreD, TelefonoD, FirmaD, SelloD, estadoD FROM doctor"
         : "SELECT idDoctor, nombreD, TelefonoD, FirmaD, SelloD FROM doctor"
     );
 
-    const data = (rows || []).map((row) => {
-      const estadoD = tieneColumnaEstado ? normalizarEstadoDoctor(row.estadoD) : 1;
-      return {
-        ...row,
-        estadoD,
-        estadoNombre: estadoD === 1 ? "Activo" : "Inactivo"
-      };
-    });
-
     res.json({
       ok: true,
-      data
+      data: mapDoctorRows(rows, tieneColumnaEstado)
     });
   } catch (err) {
     return serverError(res, err, "Error al listar doctores");
@@ -115,6 +165,14 @@ const subirSello = async (req, res) => {
       return badRequest(res, "ID de doctor invalido");
     }
 
+    const puedeEditar = await validarAccesoDoctorPropio(req, idDoctor);
+    if (!puedeEditar) {
+      return res.status(403).json({
+        ok: false,
+        message: "Solo puede actualizar el sello de su propio doctor"
+      });
+    }
+
     if (!req.file) {
       return badRequest(res, "Archivo requerido");
     }
@@ -138,6 +196,149 @@ const subirSello = async (req, res) => {
     return serverError(res, err, "Error al subir sello");
   }
 };
+
+const validarAccesoMediaDoctor = async (req, res, next) => {
+  try {
+    const idDoctor = Number(req.params?.id || 0);
+    if (!Number.isInteger(idDoctor) || idDoctor <= 0) {
+      return badRequest(res, "ID de doctor invalido");
+    }
+
+    const puedeEditar = await validarAccesoDoctorPropio(req, idDoctor);
+    if (!puedeEditar) {
+      return res.status(403).json({
+        ok: false,
+        message: "Solo puede actualizar firma/sello de su propio doctor"
+      });
+    }
+
+    return next();
+  } catch (err) {
+    return serverError(res, err, "Error al validar acceso de doctor");
+  }
+};
+
+const actualizarFirma = async (req, res) => {
+  try {
+    const idDoctor = Number(req.params?.id || 0);
+    const firmaBase64 = req.body?.firmaBase64;
+    if (!Number.isInteger(idDoctor) || idDoctor <= 0) {
+      return badRequest(res, "ID de doctor invalido");
+    }
+
+    const puedeEditar = await validarAccesoDoctorPropio(req, idDoctor);
+    if (!puedeEditar) {
+      return res.status(403).json({
+        ok: false,
+        message: "Solo puede actualizar la firma de su propio doctor"
+      });
+    }
+
+    const firmaBuffer = parsePngBase64(firmaBase64);
+    if (!firmaBuffer) {
+      return badRequest(res, "Formato de firma invalido");
+    }
+
+    const fileName = `firma_${idDoctor}.png`;
+    await writeBufferFile(imgDocsDir, fileName, firmaBuffer);
+    const rutaFirma = `/img/docs/${fileName}`;
+
+    const [result] = await pool.query(
+      "UPDATE doctor SET FirmaD = ? WHERE idDoctor = ?",
+      [rutaFirma, idDoctor]
+    );
+    if (!result?.affectedRows) {
+      return notFound(res, "Doctor no encontrado");
+    }
+
+    return res.json({
+      ok: true,
+      firma: rutaFirma
+    });
+  } catch (err) {
+    return serverError(res, err, "Error al actualizar firma");
+  }
+};
+
+const listarPendientesAutorizacion = async (req, res) => {
+  try {
+    if (req.user?.rol !== "Doctor") {
+      return res.status(403).json({
+        ok: false,
+        message: "Solo doctores pueden consultar pendientes"
+      });
+    }
+
+    const idUsuario = Number(req.user?.idUsuario || 0);
+    if (!idUsuario) {
+      return res.status(403).json({
+        ok: false,
+        message: "Usuario no autorizado"
+      });
+    }
+
+    const idDoctor = await obtenerDoctorVinculadoPorUsuario(idUsuario);
+    if (!idDoctor) {
+      return res.json({ ok: true, data: [], doctorVinculado: false });
+    }
+
+    const limit = Number(req.query?.limit || 20);
+    const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20;
+    const [rows] = await pool.query(
+      "CALL sp_doctor_citas_pendientes_autorizacion(?,?)",
+      [idDoctor, safeLimit]
+    );
+
+    return res.json({
+      ok: true,
+      data: firstResultSet(rows),
+      doctorVinculado: true
+    });
+  } catch (err) {
+    return serverError(res, err, "Error al listar pendientes de autorizacion");
+  }
+};
+
+const autorizarTodosPendientes = async (req, res) => {
+  try {
+    if (req.user?.rol !== "Doctor") {
+      return res.status(403).json({
+        ok: false,
+        message: "Solo doctores pueden autorizar pendientes"
+      });
+    }
+
+    const idUsuario = Number(req.user?.idUsuario || 0);
+    if (!idUsuario) {
+      return res.status(403).json({
+        ok: false,
+        message: "Usuario no autorizado"
+      });
+    }
+
+    const idDoctor = await obtenerDoctorVinculadoPorUsuario(idUsuario);
+    if (!idDoctor) {
+      return res.status(403).json({
+        ok: false,
+        message: "Doctor no vinculado"
+      });
+    }
+
+    const [rows] = await pool.query(
+      "CALL sp_doctor_citas_pendientes_autorizar_todos(?,?)",
+      [idDoctor, idUsuario]
+    );
+    const result = firstRow(rows) || {};
+    const autorizadas = Number(result.affectedRows || 0);
+
+    return res.json({
+      ok: true,
+      autorizadas
+    });
+  } catch (err) {
+    return serverError(res, err, "Error al autorizar pendientes");
+  }
+};
 // ============================
 // 🦷 LISTAR DOCTORES (SELECT)
 // ============================
@@ -146,9 +347,21 @@ const listarSelect = async (req, res) => {
     const soloActivos = ["1", "true", "yes", "on"].includes(
       String(req.query?.soloActivos || "").trim().toLowerCase()
     );
+    const soloVinculado = ["1", "true", "yes", "on"].includes(
+      String(req.query?.soloVinculado || "").trim().toLowerCase()
+    );
     const tieneColumnaEstado = await existeColumnaEstadoDoctor();
 
-    if (req.user?.rol === "Doctor" && req.user?.idUsuario) {
+    if (req.user?.rol === "Doctor" && soloVinculado) {
+      const idUsuario = Number(req.user?.idUsuario || 0);
+      if (!idUsuario) {
+        return res.json({
+          ok: true,
+          data: [],
+          doctorVinculado: false
+        });
+      }
+
       const [rowsVinculados] = await pool.query(
         tieneColumnaEstado
           ? `SELECT d.idDoctor, d.nombreD, d.estadoD
@@ -161,7 +374,7 @@ const listarSelect = async (req, res) => {
              INNER JOIN doctor d ON d.idDoctor = u.idDoctor
              WHERE u.idUsuario = ?
              LIMIT 1`,
-        [req.user.idUsuario]
+        [idUsuario]
       );
 
       if (Array.isArray(rowsVinculados) && rowsVinculados.length > 0) {
@@ -180,15 +393,9 @@ const listarSelect = async (req, res) => {
         });
       }
 
-      const [rowsFallback] = await pool.query(
-        soloActivos && tieneColumnaEstado
-          ? "CALL sp_doctor_listar_select_activos()"
-          : "CALL sp_doctor_listar_select()"
-      );
-
       return res.json({
         ok: true,
-        data: firstResultSet(rowsFallback),
+        data: [],
         doctorVinculado: false
       });
     }
@@ -288,6 +495,27 @@ const obtenerPorId = async (req, res) => {
       return badRequest(res, "ID de doctor invalido");
     }
 
+    if (req.user?.rol === "Doctor") {
+      const contexto = String(req.query?.contexto || req.query?.context || "").trim().toLowerCase();
+      const esContextoClinico = contexto === "paciente" || contexto === "clinico" || contexto === "clinical";
+      if (!esContextoClinico) {
+        const idUsuario = Number(req.user?.idUsuario || 0);
+        if (!idUsuario) {
+          return res.status(403).json({
+            ok: false,
+            message: "Usuario no autorizado"
+          });
+        }
+        const idDoctorVinculado = await obtenerDoctorVinculadoPorUsuario(idUsuario);
+        if (!idDoctorVinculado || idDoctorVinculado !== idDoctor) {
+          return res.status(403).json({
+            ok: false,
+            message: "Solo puede ver su propio doctor"
+          });
+        }
+      }
+    }
+
     const [rows] = await pool.query(
       "CALL sp_doctor_get_by_id(?)",
       [idDoctor]
@@ -315,6 +543,10 @@ module.exports = {
   listar,
   crear,
   subirSello,
+  validarAccesoMediaDoctor,
+  actualizarFirma,
+  listarPendientesAutorizacion,
+  autorizarTodosPendientes,
   listarSelect,
   actualizarEstado,
   obtenerPorId

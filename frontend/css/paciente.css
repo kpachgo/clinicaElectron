@@ -1,6 +1,46 @@
 /* =======================================================
    CONTENEDOR PRINCIPAL
 ======================================================= */
+:root {
+    --pac-table-head-bg: rgba(248, 251, 255, 0.96);
+    --pac-table-row-bg: #ffffff;
+    --pac-table-row-alt-bg: #f8fbff;
+    --pac-table-row-hover-bg: #eef6ff;
+    --pac-table-row-border: #edf3fa;
+    --pac-table-wrap-border: #d8e4f2;
+    --pac-table-head-text: #64748b;
+    --pac-table-text: #0f172a;
+    --pac-load-ring-empty: #dbe7f5;
+    --pac-load-ring-value: #1eab3a;
+}
+
+body[data-theme="vampire"].dark-mode {
+    --pac-table-head-bg: #252526;
+    --pac-table-row-bg: #1e1e1e;
+    --pac-table-row-alt-bg: #222222;
+    --pac-table-row-hover-bg: #2a2d2e;
+    --pac-table-row-border: #303030;
+    --pac-table-wrap-border: #3c3c3c;
+    --pac-table-head-text: #d4d4d4;
+    --pac-table-text: #e6edf3;
+    --pac-table-hover: var(--pac-table-row-hover-bg);
+    --pac-load-ring-empty: #343434;
+    --pac-load-ring-value: #7c3aed;
+}
+
+body[data-theme="princess"] {
+    --pac-table-head-bg: #ffe8f4;
+    --pac-table-row-bg: #fff7fc;
+    --pac-table-row-alt-bg: #fff0f8;
+    --pac-table-row-hover-bg: #ffe3f2;
+    --pac-table-row-border: rgba(214, 51, 154, 0.16);
+    --pac-table-wrap-border: rgba(214, 51, 154, 0.24);
+    --pac-table-head-text: #9d1b64;
+    --pac-table-text: #2d1230;
+    --pac-load-ring-empty: #ffd3ea;
+    --pac-load-ring-value: #d6339a;
+}
+
 .paciente-container {
     width: 100%;
     padding: 20px;
@@ -18,6 +58,205 @@
     box-shadow: rgba(0, 0, 0, 0.05) 0px 3px 6px;
     position: relative;
 }
+.paciente-busqueda {
+    transform-origin: top center;
+    overflow: visible;
+    max-height: 220px;
+    transition:
+        opacity .28s ease,
+        transform .34s cubic-bezier(.16, 1, .3, 1),
+        max-height .34s cubic-bezier(.16, 1, .3, 1),
+        margin-bottom .34s cubic-bezier(.16, 1, .3, 1),
+        padding-top .34s cubic-bezier(.16, 1, .3, 1),
+        padding-bottom .34s cubic-bezier(.16, 1, .3, 1),
+        border-color .28s ease;
+}
+.paciente-container.paciente-search-collapsed .paciente-busqueda {
+    opacity: 0;
+    transform: translateY(-18px) scale(.985);
+    max-height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-color: transparent;
+    pointer-events: none;
+}
+.paciente-container.paciente-search-collapsed .paciente-busqueda .p-row,
+.paciente-container.paciente-search-collapsed .paciente-busqueda .paciente-titulo {
+    visibility: hidden;
+}
+.paciente-detail-shell[hidden] {
+    display: none !important;
+}
+.paciente-load-progress[hidden] {
+    display: none !important;
+}
+.paciente-load-progress {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 132px;
+    margin: 4px 0 18px;
+    opacity: 0;
+    transform: translateY(8px) scale(.98);
+    pointer-events: none;
+}
+.paciente-load-progress.is-visible {
+    animation: paciente-loader-in .24s ease-out both;
+}
+.paciente-load-progress.is-hiding {
+    animation: paciente-loader-out .22s ease-in both;
+}
+.paciente-load-ring {
+    width: 104px;
+    height: 104px;
+    overflow: visible;
+    filter: drop-shadow(0 10px 22px rgba(15, 23, 42, 0.10));
+}
+.paciente-load-ring-empty {
+    stroke: var(--pac-load-ring-empty);
+}
+.paciente-load-ring-value {
+    stroke: var(--pac-load-ring-value);
+    stroke-linecap: round;
+    transform: rotate(-90deg);
+    transform-origin: 52px 52px;
+    transition: stroke-dashoffset .72s cubic-bezier(.16, 1, .3, 1);
+}
+.paciente-detail-shell {
+    transform-origin: top center;
+    overflow: clip;
+    will-change: transform, opacity, clip-path, filter;
+}
+.paciente-detail-shell.is-visible {
+    animation: paciente-shell-reveal .72s cubic-bezier(.16, 1, .3, 1) both;
+}
+.paciente-detail-shell.is-exiting {
+    pointer-events: none;
+    animation: paciente-shell-hide .38s cubic-bezier(.7, 0, .84, 0) both;
+}
+.paciente-detail-shell .paciente-card {
+    opacity: 0;
+    transform: translateY(24px);
+    will-change: transform, opacity;
+}
+.paciente-detail-shell.is-visible .paciente-card {
+    animation: paciente-card-drift-in .64s cubic-bezier(.16, 1, .3, 1) both;
+}
+.paciente-detail-shell.is-visible .paciente-card:nth-child(1) { animation-delay: .06s; }
+.paciente-detail-shell.is-visible .paciente-card:nth-child(2) { animation-delay: .12s; }
+.paciente-detail-shell.is-visible .paciente-card:nth-child(3) { animation-delay: .18s; }
+.paciente-detail-shell.is-visible .paciente-card:nth-child(4) { animation-delay: .24s; }
+.paciente-detail-shell.is-visible .paciente-card:nth-child(5) { animation-delay: .30s; }
+.paciente-detail-shell.is-visible .paciente-card:nth-child(6) { animation-delay: .36s; }
+.paciente-detail-shell.is-visible .paciente-card:nth-child(7) { animation-delay: .42s; }
+.paciente-detail-shell.is-exiting .paciente-card {
+    opacity: 1;
+}
+@keyframes paciente-loader-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+@keyframes paciente-loader-out {
+    from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-6px) scale(.98);
+    }
+}
+@keyframes paciente-shell-reveal {
+    from {
+        opacity: 0;
+        clip-path: inset(0 0 100% 0 round 12px);
+        transform: translateY(-8px);
+        filter: saturate(.96);
+    }
+    55% {
+        opacity: 1;
+        clip-path: inset(0 0 22% 0 round 12px);
+        transform: translateY(0);
+    }
+    to {
+        opacity: 1;
+        clip-path: inset(0 0 0 0 round 12px);
+        transform: translateY(0);
+        filter: saturate(1);
+    }
+}
+@keyframes paciente-shell-hide {
+    from {
+        opacity: 1;
+        clip-path: inset(0 0 0 0 round 12px);
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        clip-path: inset(0 0 100% 0 round 12px);
+        transform: translateY(-10px);
+    }
+}
+@keyframes paciente-card-drift-in {
+    from {
+        opacity: 0;
+        transform: translateY(24px);
+    }
+    70% {
+        opacity: 1;
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@supports not (clip-path: inset(0 0 0 0 round 12px)) {
+    .paciente-detail-shell.is-visible {
+        animation-name: paciente-shell-fade-in;
+    }
+    .paciente-detail-shell.is-exiting {
+        animation-name: paciente-shell-fade-out;
+    }
+}
+@keyframes paciente-shell-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+@keyframes paciente-shell-fade-out {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .paciente-detail-shell,
+    .paciente-detail-shell .paciente-card,
+    .paciente-load-progress {
+        animation: none !important;
+        opacity: 1;
+        transform: none;
+    }
+    .paciente-load-ring-value {
+        transition: none;
+    }
+}
 /* =======================================================
    TÍTULOS
 ======================================================= */
@@ -31,7 +270,7 @@
    BOTONES GENERALES
    (ya NO afecta a btn-ver-doctor)
 ======================================================= */
-.paciente-card button:not(.btn-ver-doctor):not(.btn-cita-paciente):not(.btn-firma):not(.btn-autorizar-cita),
+.paciente-card button:not(.btn-ver-doctor):not(.btn-cita-paciente):not(.btn-firma):not(.btn-autorizar-cita):not(.btn-eliminar-cita),
 .paciente-busqueda button {
     padding: 6px 12px;
     background: #f5f7fa;
@@ -41,7 +280,7 @@
     cursor: pointer;
     transition: 0.2s ease;
 }
-.paciente-card button:not(.btn-ver-doctor):not(.btn-cita-paciente):not(.btn-firma):not(.btn-autorizar-cita):hover,
+.paciente-card button:not(.btn-ver-doctor):not(.btn-cita-paciente):not(.btn-firma):not(.btn-autorizar-cita):not(.btn-eliminar-cita):hover,
 .paciente-busqueda button:hover {
     background: #e8f0ff;
     border-color: #b7ceff;
@@ -337,13 +576,165 @@ body[data-theme="light"] #buscar-paciente-p {
 ======================================================= */
 .citas-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: flex-start;
     margin-bottom: 14px;
     gap: 12px;
 }
 .citas-header .form-control {
-    width: 40%;
+    flex: 1 1 420px;
+    max-width: 675px;
+    min-width: 240px;
+}
+.citas-header-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-left: auto;
+}
+.citas-firma-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 7px 12px;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    background: #f0fdf4;
+    color: #166534;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+}
+.citas-delete-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 7px 12px;
+    border: 1px solid var(--pac-danger-border, #fecaca);
+    border-radius: 8px;
+    background: var(--pac-danger-soft-bg, #fff7f7);
+    color: var(--pac-danger-text, #b91c1c);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+}
+.citas-delete-toggle[hidden] {
+    display: none;
+}
+.citas-firma-toggle input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 2px solid #1eab3a;
+    border-radius: 4px;
+    background: #ffffff;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    display: inline-grid;
+    place-content: center;
+    transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.citas-delete-toggle input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    border: 2px solid var(--pac-danger-text, #dc2626);
+    border-radius: 4px;
+    background: #ffffff;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    display: inline-grid;
+    place-content: center;
+    transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.citas-firma-toggle input::before {
+    content: "";
+    width: 8px;
+    height: 5px;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+    transform: rotate(-45deg) scale(0);
+    transform-origin: center;
+    transition: transform .14s ease;
+}
+.citas-delete-toggle input::before {
+    content: "";
+    width: 8px;
+    height: 5px;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+    transform: rotate(-45deg) scale(0);
+    transform-origin: center;
+    transition: transform .14s ease;
+}
+.citas-firma-toggle input:checked {
+    border-color: #1eab3a;
+    background: #1eab3a;
+}
+.citas-delete-toggle input:checked {
+    border-color: var(--pac-danger-text, #dc2626);
+    background: var(--pac-danger-text, #dc2626);
+}
+.citas-firma-toggle input:checked::before {
+    transform: rotate(-45deg) scale(1);
+}
+.citas-delete-toggle input:checked::before {
+    transform: rotate(-45deg) scale(1);
+}
+.citas-firma-toggle:hover {
+    border-color: #86efac;
+    background: #dcfce7;
+}
+.citas-delete-toggle:hover {
+    border-color: var(--pac-danger-hover-border, #fca5a5);
+    background: var(--pac-danger-hover-bg, #fee2e2);
+}
+.citas-firma-toggle:has(input:checked) {
+    border-color: #1eab3a;
+    background: #dcfce7;
+    color: #14532d;
+    box-shadow: 0 0 0 2px rgba(30, 171, 58, 0.08);
+}
+.citas-delete-toggle:has(input:checked) {
+    border-color: var(--pac-danger-text, #dc2626);
+    background: var(--pac-danger-soft-bg, #fee2e2);
+    color: var(--pac-danger-text, #991b1b);
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.08);
+}
+.citas-firma-toggle.is-security-forced {
+    border-color: #1eab3a;
+    background: #dcfce7;
+    color: #14532d;
+    cursor: default;
+    box-shadow: 0 0 0 2px rgba(30, 171, 58, 0.08);
+}
+.citas-firma-toggle.is-security-forced input,
+.citas-firma-toggle.is-security-forced input:disabled {
+    cursor: default;
+    opacity: 1;
+}
+@media (max-width: 760px) {
+    .citas-header {
+        flex-wrap: wrap;
+    }
+    .citas-header .form-control {
+        flex-basis: 100%;
+        max-width: none;
+    }
+    .citas-header-actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-end;
+    }
 }
 /* =======================================================
    TABLA DE CITAS
@@ -403,6 +794,99 @@ body[data-theme="light"] #buscar-paciente-p {
 }
 .citas-table tbody tr:hover {
     background: rgba(0,0,0,0.03);
+}
+
+.paciente-container .citas-table-wrap {
+    overflow-x: auto;
+    overflow-y: visible;
+    border: 1px solid var(--pac-table-wrap-border);
+    border-radius: 12px;
+    background: var(--pac-table-row-bg);
+}
+
+.paciente-container .citas-table {
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 800px;
+}
+
+.paciente-container .citas-table th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 6px 9px;
+    line-height: 1.12;
+    background: var(--pac-table-head-bg);
+    color: var(--pac-table-head-text);
+    border-bottom: 1px solid var(--pac-table-row-border);
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.paciente-container .citas-table td {
+    padding: 5px 7px;
+    line-height: 1.15;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--pac-table-text);
+    background: var(--pac-table-row-bg);
+    border-bottom: 1px solid var(--pac-table-row-border);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.paciente-container .citas-table tbody tr {
+    height: 34px;
+}
+
+.paciente-container .citas-table tbody tr.cita-grupo-par td {
+    background: var(--pac-table-row-bg);
+}
+
+.paciente-container .citas-table tbody tr.cita-grupo-impar td {
+    background: var(--pac-table-row-alt-bg);
+}
+
+.paciente-container .citas-table tbody tr.cita-misma-fecha td {
+    padding-top: 5px;
+}
+
+.paciente-container .citas-table tbody tr:hover {
+    background: transparent;
+}
+
+.paciente-container .citas-table tbody tr:hover td {
+    background: var(--pac-table-row-hover-bg);
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .citas-table-wrap,
+body[data-theme="princess"] .paciente-container .citas-table-wrap {
+    border-color: var(--pac-table-wrap-border);
+    background: var(--pac-table-row-bg);
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .citas-table th,
+body[data-theme="princess"] .paciente-container .citas-table th {
+    background: var(--pac-table-head-bg);
+    color: var(--pac-table-head-text);
+    border-bottom-color: var(--pac-table-row-border);
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .citas-table td,
+body[data-theme="princess"] .paciente-container .citas-table td {
+    color: var(--pac-table-text);
+    border-bottom-color: var(--pac-table-row-border);
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .citas-table tbody tr:hover,
+body[data-theme="princess"] .paciente-container .citas-table tbody tr:hover {
+    background: transparent;
+}
+
+body[data-theme="vampire"].dark-mode .paciente-container .citas-table tbody tr:hover td,
+body[data-theme="princess"] .paciente-container .citas-table tbody tr:hover td {
+    background: var(--pac-table-row-hover-bg);
 }
 /* =======================================================
    RESPONSIVE
@@ -833,10 +1317,109 @@ body[data-theme="light"] #buscar-paciente-p {
   background: #dbeafe;
   color: #1d4ed8;
 }
+.cita-estado-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #138a2e;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(19, 138, 46, 0.12);
+}
 .cita-accion-wrap {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+.paciente-card .btn-eliminar-cita {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--pac-danger-border, #fecaca);
+  border-radius: 8px;
+  background: var(--pac-danger-soft-bg, #fee2e2);
+  color: var(--pac-danger-text, #dc2626);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+.paciente-card .btn-eliminar-cita:hover {
+  background: var(--pac-danger-hover-bg, #fecaca);
+  border-color: var(--pac-danger-hover-border, #fca5a5);
+  transform: translateY(-1px);
+}
+.paciente-card .btn-eliminar-cita:disabled {
+  cursor: wait;
+  opacity: 0.65;
+  transform: none;
+}
+.btn-eliminar-cita-icon {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2.2;
+}
+.cita-accion-delete-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+.cita-accion-cell {
+  min-width: 64px;
+  text-align: center;
+}
+.cita-accion-firma-sello {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+  white-space: normal;
+}
+.cita-doctor-media-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.cita-doctor-media-item {
+  width: 88px;
+}
+.cita-doctor-media-label {
+  display: block;
+  margin-bottom: 3px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.cita-doctor-media-box {
+  width: 88px;
+  height: 52px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.cita-doctor-media-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.cita-doctor-media-empty {
+  padding: 4px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
 }
 .autorizar-cita-subtitle {
   margin: -12px 0 14px;
@@ -856,6 +1439,7 @@ body[data-theme="light"] #buscar-paciente-p {
 
 .paciente-card .btn-ver-doctor:focus-visible,
 .paciente-card .btn-autorizar-cita:focus-visible,
+.paciente-card .btn-eliminar-cita:focus-visible,
 .paciente-card .btn-cita-paciente:focus-visible,
 .btn-foto-agregar:focus-visible,
 .btn-foto-eliminar:focus-visible,
@@ -1129,6 +1713,14 @@ body[data-theme="light"] #buscar-paciente-p {
     --pac-input-placeholder: #8ea0b7;
     --pac-table-text: #d8e2f0;
     --pac-table-hover: rgba(148, 163, 184, 0.12);
+    --pac-table-head-bg: rgba(17, 24, 39, 0.96);
+    --pac-table-row-bg: #0f172a;
+    --pac-table-row-alt-bg: #111c2f;
+    --pac-table-row-hover-bg: #17243a;
+    --pac-table-row-border: #1f2d42;
+    --pac-table-wrap-border: #2a3a52;
+    --pac-table-head-text: #9fb0c5;
+    --pac-table-text: #dbe5f2;
     --pac-chip-bg: #233149;
     --pac-chip-text: #cfddf1;
     --pac-avatar-bg: #182334;
@@ -1235,6 +1827,69 @@ body[data-theme="light"] #buscar-paciente-p {
 .dark-mode #paciente-foto-principal-ayuda,
 .dark-mode .foto-fecha,
 .dark-mode .autorizar-cita-subtitle {
+    color: var(--pac-muted);
+}
+
+.dark-mode .citas-firma-toggle {
+    border-color: var(--pac-input-border);
+    background: var(--pac-input-bg);
+    color: var(--pac-input-text);
+}
+
+.dark-mode .citas-delete-toggle {
+    border-color: rgba(248, 113, 113, 0.36);
+    background: rgba(127, 29, 29, 0.16);
+    color: #fecaca;
+}
+
+.dark-mode .citas-firma-toggle:hover,
+.dark-mode .citas-firma-toggle:has(input:checked),
+.dark-mode .citas-firma-toggle.is-security-forced {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.16);
+    color: #bbf7d0;
+}
+
+.dark-mode .citas-delete-toggle:hover,
+.dark-mode .citas-delete-toggle:has(input:checked) {
+    border-color: #f87171;
+    background: rgba(248, 113, 113, 0.18);
+    color: #fee2e2;
+}
+
+.dark-mode .citas-firma-toggle input {
+    background: #0f172a;
+}
+
+.dark-mode .citas-delete-toggle input {
+    background: #0f172a;
+    border-color: #f87171;
+}
+
+.dark-mode .citas-firma-toggle input:checked {
+    border-color: #22c55e;
+    background: #22c55e;
+}
+
+.dark-mode .citas-delete-toggle input:checked {
+    border-color: #ef4444;
+    background: #ef4444;
+}
+
+.dark-mode .citas-firma-toggle.is-security-forced input:disabled {
+    opacity: 1;
+}
+
+.dark-mode .cita-doctor-media-label {
+    color: var(--pac-muted);
+}
+
+.dark-mode .cita-doctor-media-box {
+    border-color: var(--pac-input-border);
+    background: var(--pac-input-bg);
+}
+
+.dark-mode .cita-doctor-media-empty {
     color: var(--pac-muted);
 }
 

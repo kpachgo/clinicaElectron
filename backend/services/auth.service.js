@@ -65,8 +65,9 @@ async function login(correo, password) {
     };
 }
 
-async function crearUsuario({ correo, passwordHash, nombre, cargo, idRol, idDoctor }) {
-    const [rows] = await db.query(
+async function crearUsuario({ correo, passwordHash, nombre, cargo, idRol, idDoctor }, conn = null) {
+    const executor = conn || db;
+    const [rows] = await executor.query(
         "CALL sp_usuario_crear(?, ?, ?, ?, ?, ?)",
         [
             correo,
@@ -98,8 +99,51 @@ async function obtenerRolPorId(idRol) {
 }
 
 async function listarDoctoresRegistro() {
-    const [rows] = await db.query("CALL sp_doctor_listar_select()");
-    return rows?.[0] || [];
+    const [rows] = await db.query(
+        `SELECT
+            d.idDoctor,
+            d.nombreD,
+            d.TelefonoD
+         FROM doctor d
+         LEFT JOIN usuario u ON u.idDoctor = d.idDoctor
+         WHERE u.idUsuario IS NULL
+         ORDER BY d.nombreD ASC`
+    );
+    return rows || [];
+}
+
+async function bloquearDoctorPorId(idDoctor, conn) {
+    const executor = conn || db;
+    const [rows] = await executor.query(
+        `SELECT idDoctor
+         FROM doctor
+         WHERE idDoctor = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [idDoctor]
+    );
+    return rows?.[0] || null;
+}
+
+async function doctorEstaAsignado(idDoctor, conn = null) {
+    const executor = conn || db;
+    const [rows] = await executor.query(
+        `SELECT idUsuario
+         FROM usuario
+         WHERE idDoctor = ?
+         LIMIT 1`,
+        [idDoctor]
+    );
+    return !!rows?.[0];
+}
+
+async function crearDoctorBasico({ nombre, telefono }, conn = null) {
+    const executor = conn || db;
+    const [result] = await executor.query(
+        "INSERT INTO doctor (nombreD, TelefonoD) VALUES (?, ?)",
+        [nombre, telefono || null]
+    );
+    return result?.insertId || null;
 }
 
 async function obtenerUsuarioRecuperacionPorCorreo(correo) {
@@ -141,6 +185,18 @@ async function cambiarPasswordPorIdUsuario(idUsuario, passwordHash, conn = null)
          WHERE idUsuario = ?`,
         [passwordHash, idUsuario]
     );
+}
+
+async function obtenerPasswordHashPorIdUsuario(idUsuario) {
+    const [rows] = await db.query(
+        `SELECT passwordU
+         FROM usuario
+         WHERE idUsuario = ?
+         LIMIT 1`,
+        [idUsuario]
+    );
+
+    return String(rows?.[0]?.passwordU || "");
 }
 
 async function configurarPreguntaSeguridadPorIdUsuario(
@@ -256,8 +312,12 @@ module.exports = {
     crearUsuario,
     listarRolesRegistro,
     listarDoctoresRegistro,
+    bloquearDoctorPorId,
+    doctorEstaAsignado,
+    crearDoctorBasico,
     obtenerRolPorId,
     obtenerUsuarioRecuperacionPorCorreo,
+    obtenerPasswordHashPorIdUsuario,
     cambiarPasswordPorIdUsuario,
     configurarPreguntaSeguridadPorIdUsuario,
     validarRespuestaSeguridad,

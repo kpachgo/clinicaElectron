@@ -362,6 +362,51 @@ DELIMITER ;
 /*!50003 SET character_set_client  = @saved_cs_client */ ;
 /*!50003 SET character_set_results = @saved_cs_results */ ;
 /*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `sp_cita_paciente_eliminar` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`%` PROCEDURE `sp_cita_paciente_eliminar`(
+  IN p_idCitasPaciente INT
+)
+BEGIN
+  DECLARE v_idPaciente INT;
+  DECLARE v_affectedRows INT DEFAULT 0;
+
+  SELECT idPaciente
+  INTO v_idPaciente
+  FROM citaspaciente
+  WHERE idcitasPaciente = p_idCitasPaciente
+  LIMIT 1;
+
+  DELETE FROM citaspaciente
+  WHERE idcitasPaciente = p_idCitasPaciente;
+
+  SET v_affectedRows = ROW_COUNT();
+
+  IF v_idPaciente IS NOT NULL THEN
+    UPDATE paciente
+    SET ultimaVisitaP = (
+      SELECT MAX(fechaCP)
+      FROM citaspaciente
+      WHERE idPaciente = v_idPaciente
+    )
+    WHERE idPaciente = v_idPaciente;
+  END IF;
+
+  SELECT v_affectedRows AS affectedRows;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
 /*!50003 DROP PROCEDURE IF EXISTS `sp_cita_paciente_crear` */;
 /*!50003 SET @saved_cs_client      = @@character_set_client */ ;
 /*!50003 SET @saved_cs_results     = @@character_set_results */ ;
@@ -470,7 +515,25 @@ BEGIN
         OR IFNULL(c.estadoAutorizacionCP, 'PENDIENTE') = 'AUTORIZADA'
       THEN 1
       ELSE 0
-    END AS puedeVerDoctor
+    END AS puedeVerDoctor,
+    CASE
+      WHEN c.doctorId IS NOT NULL
+        AND (
+          LOWER(TRIM(IFNULL(d.nombreD, ''))) = 'registro fisico'
+          OR IFNULL(c.estadoAutorizacionCP, 'PENDIENTE') = 'AUTORIZADA'
+        )
+      THEN d.FirmaD
+      ELSE NULL
+    END AS FirmaD,
+    CASE
+      WHEN c.doctorId IS NOT NULL
+        AND (
+          LOWER(TRIM(IFNULL(d.nombreD, ''))) = 'registro fisico'
+          OR IFNULL(c.estadoAutorizacionCP, 'PENDIENTE') = 'AUTORIZADA'
+        )
+      THEN d.SelloD
+      ELSE NULL
+    END AS SelloD
   FROM citaspaciente c
   LEFT JOIN doctor d ON d.idDoctor = c.doctorId
   WHERE c.idPaciente = p_idPaciente
@@ -573,6 +636,7 @@ CREATE DEFINER=`root`@`%` PROCEDURE `sp_cuenta_listar_por_fecha`(
 )
 BEGIN
     DECLARE v_hasDoctorCol INT DEFAULT 0;
+    DECLARE v_protocol_enabled TINYINT DEFAULT 0;
 
     SELECT COUNT(*)
       INTO v_hasDoctorCol
@@ -580,6 +644,12 @@ BEGIN
     WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_NAME = 'detallecuenta'
       AND COLUMN_NAME = 'idDoctor';
+
+    SELECT IFNULL(enabled, 0)
+      INTO v_protocol_enabled
+    FROM seguridad_protocolo_config
+    WHERE id = 1
+    LIMIT 1;
 
     IF v_hasDoctorCol > 0 THEN
       SELECT
@@ -608,6 +678,10 @@ BEGIN
       INNER JOIN servicio s ON s.idServicio = dc.idServicio
       LEFT JOIN doctor d ON d.idDoctor = dc.idDoctor
       WHERE c.fechaC = p_fecha
+        AND (
+          v_protocol_enabled = 0
+          OR LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'odontologia'
+        )
       GROUP BY c.idCuenta
       ORDER BY c.idCuenta DESC;
     ELSE
@@ -627,6 +701,10 @@ BEGIN
       INNER JOIN detallecuenta dc ON dc.idC = c.idCuenta
       INNER JOIN servicio s ON s.idServicio = dc.idServicio
       WHERE c.fechaC = p_fecha
+        AND (
+          v_protocol_enabled = 0
+          OR LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'odontologia'
+        )
       GROUP BY c.idCuenta
       ORDER BY c.idCuenta DESC;
     END IF;
@@ -994,6 +1072,83 @@ BEGIN
     SelloD
   FROM doctor
   WHERE idDoctor = p_idDoctor;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `sp_doctor_citas_pendientes_autorizacion` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`%` PROCEDURE `sp_doctor_citas_pendientes_autorizacion`(
+  IN p_idDoctor INT,
+  IN p_limit INT
+)
+BEGIN
+  DECLARE v_limit INT DEFAULT 20;
+
+  SET v_limit = IFNULL(p_limit, 20);
+  IF v_limit < 1 THEN
+    SET v_limit = 20;
+  END IF;
+  IF v_limit > 100 THEN
+    SET v_limit = 100;
+  END IF;
+
+  SELECT
+    c.idcitasPaciente,
+    c.idPaciente,
+    p.NombreP AS nombrePaciente,
+    c.fechaCP,
+    c.ProcedimientoCP,
+    c.valorCP,
+    c.abonoCP,
+    c.saldoCP
+  FROM citaspaciente c
+  INNER JOIN paciente p ON p.idPaciente = c.idPaciente
+  WHERE c.doctorId = p_idDoctor
+    AND IFNULL(c.estadoAutorizacionCP, 'PENDIENTE') <> 'AUTORIZADA'
+  ORDER BY c.fechaCP DESC, c.idcitasPaciente DESC
+  LIMIT v_limit;
+END ;;
+DELIMITER ;
+/*!50003 SET sql_mode              = @saved_sql_mode */ ;
+/*!50003 SET character_set_client  = @saved_cs_client */ ;
+/*!50003 SET character_set_results = @saved_cs_results */ ;
+/*!50003 SET collation_connection  = @saved_col_connection */ ;
+/*!50003 DROP PROCEDURE IF EXISTS `sp_doctor_citas_pendientes_autorizar_todos` */;
+/*!50003 SET @saved_cs_client      = @@character_set_client */ ;
+/*!50003 SET @saved_cs_results     = @@character_set_results */ ;
+/*!50003 SET @saved_col_connection = @@collation_connection */ ;
+/*!50003 SET character_set_client  = utf8mb4 */ ;
+/*!50003 SET character_set_results = utf8mb4 */ ;
+/*!50003 SET collation_connection  = utf8mb4_0900_ai_ci */ ;
+/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
+/*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
+DELIMITER ;;
+CREATE DEFINER=`root`@`%` PROCEDURE `sp_doctor_citas_pendientes_autorizar_todos`(
+  IN p_idDoctor INT,
+  IN p_autorizadoPorUsuarioId INT
+)
+BEGIN
+  UPDATE citaspaciente
+  SET
+    estadoAutorizacionCP = 'AUTORIZADA',
+    metodoAutorizacionCP = 'AUTO_DOCTOR',
+    autorizadoPorUsuarioId = p_autorizadoPorUsuarioId,
+    fechaAutorizacionCP = NOW()
+  WHERE doctorId = p_idDoctor
+    AND IFNULL(estadoAutorizacionCP, 'PENDIENTE') <> 'AUTORIZADA';
+
+  SELECT ROW_COUNT() AS affectedRows;
 END ;;
 DELIMITER ;
 /*!50003 SET sql_mode              = @saved_sql_mode */ ;

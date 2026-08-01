@@ -6,6 +6,14 @@
   --servicios-edit-bg: #ffffff;
   --servicios-edit-text: #0f172a;
   --servicios-edit-border: #cbd5e1;
+  --servicios-table-head-bg: rgba(248, 251, 255, 0.96);
+  --servicios-table-row-bg: #ffffff;
+  --servicios-table-row-alt-bg: #f8fbff;
+  --servicios-table-row-hover-bg: #eef6ff;
+  --servicios-table-row-border: #edf3fa;
+  --servicios-table-wrap-border: #d8e4f2;
+  --servicios-table-head-text: #64748b;
+  --servicios-table-text: #0f172a;
 }
 
 .dark-mode {
@@ -14,6 +22,46 @@
   --servicios-edit-bg: #0b1220;
   --servicios-edit-text: #e2e8f0;
   --servicios-edit-border: #334155;
+  --servicios-table-head-bg: rgba(17, 24, 39, 0.96);
+  --servicios-table-row-bg: #0f172a;
+  --servicios-table-row-alt-bg: #111c2f;
+  --servicios-table-row-hover-bg: #17243a;
+  --servicios-table-row-border: #1f2d42;
+  --servicios-table-wrap-border: #2a3a52;
+  --servicios-table-head-text: #9fb0c5;
+  --servicios-table-text: #dbe5f2;
+}
+
+body[data-theme="vampire"].dark-mode {
+  --servicios-row-hover: #2a2d2e;
+  --servicios-cell-hover: #303436;
+  --servicios-edit-bg: #252526;
+  --servicios-edit-text: #e6edf3;
+  --servicios-edit-border: #3c3c3c;
+  --servicios-table-head-bg: #252526;
+  --servicios-table-row-bg: #1e1e1e;
+  --servicios-table-row-alt-bg: #222222;
+  --servicios-table-row-hover-bg: #2a2d2e;
+  --servicios-table-row-border: #303030;
+  --servicios-table-wrap-border: #3c3c3c;
+  --servicios-table-head-text: #d4d4d4;
+  --servicios-table-text: #e6edf3;
+}
+
+body[data-theme="princess"] {
+  --servicios-row-hover: #ffe3f2;
+  --servicios-cell-hover: #ffd2ea;
+  --servicios-edit-bg: #fff7fc;
+  --servicios-edit-text: #2d1230;
+  --servicios-edit-border: rgba(214, 51, 154, 0.24);
+  --servicios-table-head-bg: #ffe8f4;
+  --servicios-table-row-bg: #fff7fc;
+  --servicios-table-row-alt-bg: #fff0f8;
+  --servicios-table-row-hover-bg: #ffe3f2;
+  --servicios-table-row-border: rgba(214, 51, 154, 0.16);
+  --servicios-table-wrap-border: rgba(214, 51, 154, 0.24);
+  --servicios-table-head-text: #9d1b64;
+  --servicios-table-text: #2d1230;
 }
 
 .servicios-container {
@@ -50,20 +98,52 @@
 }
 
 .servicios-table-wrap {
-  border-top: 1px solid var(--border-color, #e5e7eb);
-  padding-top: 10px;
-  overflow-x: auto;
+  border: 1px solid var(--servicios-table-wrap-border);
+  border-radius: 12px;
+  margin-top: 12px;
+  padding-top: 0;
+  background: var(--servicios-table-row-bg);
+  overflow: auto;
 }
 
 .servicios-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 12px;
 }
 
-.servicios-table thead th,
+.servicios-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 6px 9px;
+  line-height: 1.12;
+  background: var(--servicios-table-head-bg);
+  color: var(--servicios-table-head-text);
+  border-bottom: 1px solid var(--servicios-table-row-border);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.servicios-table tbody tr {
+  height: 34px;
+}
+
 .servicios-table tbody td {
+  padding: 5px 7px;
+  line-height: 1.15;
+  border-bottom: 1px solid var(--servicios-table-row-border);
+  background: var(--servicios-table-row-bg);
+  color: var(--servicios-table-text);
   font-size: 12px;
-  padding: 3px 6px;
-  line-height: 1.1;
+  vertical-align: middle;
+}
+
+.servicios-table tbody tr:nth-child(even) td {
+  background: var(--servicios-table-row-alt-bg);
 }
 
 .servicios-table .serv-precio {
@@ -121,8 +201,8 @@
 }
 
 /* Hover completo en la fila */
-.servicios-table tbody tr:hover {
-  background-color: var(--servicios-row-hover);
+.servicios-table tbody tr:hover td {
+  background-color: var(--servicios-table-row-hover-bg);
   transition: background-color 0.15s ease-in-out;
 }
 

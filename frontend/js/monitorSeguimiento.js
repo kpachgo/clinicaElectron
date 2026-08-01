@@ -352,23 +352,12 @@
         <div class="ms-header">
           <div class="ms-title-wrap">
             <h2 class="ms-title">Monitor de Seguimiento</h2>
-            <p class="ms-subtitle">Vista visual de ausencias por ultima visita (v2 backend)</p>
+            <p class="ms-subtitle">Ausencias por ultima visita y seguimiento de contacto</p>
           </div>
+        </div>
 
-          <div class="ms-controls ui-toolbar">
-            <label class="ms-toggle-numeracion" for="ms-toggle-numeracion">
-              <input type="checkbox" id="ms-toggle-numeracion">
-              Numeracion
-            </label>
-            <label class="ms-toggle-sms" for="ms-toggle-sms">
-              <input type="checkbox" id="ms-toggle-sms">
-              SMS
-            </label>
-            <label class="ms-toggle-llamada" for="ms-toggle-llamada">
-              <input type="checkbox" id="ms-toggle-llamada">
-              Llamada
-            </label>
-
+        <div class="ms-controls">
+          <div class="ms-control-row ms-control-row-primary">
             <label class="ms-control-field" for="ms-fecha-corte">
               <span>Fecha de corte</span>
               <input id="ms-fecha-corte" class="ui-control" type="date">
@@ -402,6 +391,20 @@
             </label>
             <button id="ms-clear" class="ui-toolbar-btn is-neutral" type="button">Limpiar filtros</button>
           </div>
+          <div class="ms-control-row ms-control-row-flags">
+            <label class="ms-toggle-numeracion" for="ms-toggle-numeracion">
+              <input type="checkbox" id="ms-toggle-numeracion">
+              Numeracion
+            </label>
+            <label class="ms-toggle-sms" for="ms-toggle-sms">
+              <input type="checkbox" id="ms-toggle-sms">
+              SMS
+            </label>
+            <label class="ms-toggle-llamada" for="ms-toggle-llamada">
+              <input type="checkbox" id="ms-toggle-llamada">
+              Llamada
+            </label>
+          </div>
         </div>
 
         <div id="ms-kpi-grid" class="ms-kpi-grid"></div>
@@ -422,10 +425,10 @@
                 <th class="ms-col-accion">Accion</th>
                 <th>Telefono</th>
                 <th>Ultima visita</th>
-                <th style="text-align:center; width:140px;">Meses ausencia</th>
-                <th style="width:150px;">Tratamiento</th>
-                <th style="width:130px;">Estado</th>
-                <th style="width:150px;">Segmento</th>
+                <th>Meses ausencia</th>
+                <th>Tratamiento</th>
+                <th>Estado</th>
+                <th>Segmento</th>
               </tr>
             </thead>
             <tbody id="ms-tbody"></tbody>
@@ -686,7 +689,7 @@
               </div>
             </td>
             <td class="ms-col-num">${rowNumber}</td>
-            <td>${escapeHtml(row.NombreP || "-")}</td>
+            <td class="ms-col-paciente">${escapeHtml(row.NombreP || "-")}</td>
             <td class="ms-col-accion">
               <div class="ms-row-actions">
                 <button
@@ -713,12 +716,12 @@
                 </button>
               </div>
             </td>
-            <td>${escapeHtml(row.telefonoP || "-")}</td>
-            <td>${escapeHtml(formatDateShort(row.ultimaVisitaP))}</td>
-            <td style="text-align:center;">${row.mesesAusencia}</td>
-            <td><span class="ms-chip is-tratamiento">${escapeHtml(row.tipoTratamientoP || "Sin registrar")}</span></td>
-            <td><span class="ms-chip ${estadoClass}">${row.estadoLabel}</span></td>
-            <td><span class="ms-chip ${segmentoClass}">${row.segmentoLabel}</span></td>
+            <td class="ms-col-telefono">${escapeHtml(row.telefonoP || "-")}</td>
+            <td class="ms-col-ultima">${escapeHtml(formatDateShort(row.ultimaVisitaP))}</td>
+            <td class="ms-col-meses">${row.mesesAusencia}</td>
+            <td class="ms-col-tratamiento"><span class="ms-chip is-tratamiento">${escapeHtml(row.tipoTratamientoP || "Sin registrar")}</span></td>
+            <td class="ms-col-estado"><span class="ms-chip ${estadoClass}">${row.estadoLabel}</span></td>
+            <td class="ms-col-segmento"><span class="ms-chip ${segmentoClass}">${row.segmentoLabel}</span></td>
           </tr>
         `;
       }).join("");

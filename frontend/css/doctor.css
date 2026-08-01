@@ -1,5 +1,49 @@
 /* doctor.css - reglas especificas de Doctores */
 
+:root {
+  --doctor-table-head-bg: rgba(248, 251, 255, 0.96);
+  --doctor-table-row-bg: #ffffff;
+  --doctor-table-row-alt-bg: #f8fbff;
+  --doctor-table-row-hover-bg: #eef6ff;
+  --doctor-table-row-border: #edf3fa;
+  --doctor-table-wrap-border: #d8e4f2;
+  --doctor-table-head-text: #64748b;
+  --doctor-table-text: #0f172a;
+}
+
+.dark-mode {
+  --doctor-table-head-bg: rgba(17, 24, 39, 0.96);
+  --doctor-table-row-bg: #0f172a;
+  --doctor-table-row-alt-bg: #111c2f;
+  --doctor-table-row-hover-bg: #17243a;
+  --doctor-table-row-border: #1f2d42;
+  --doctor-table-wrap-border: #2a3a52;
+  --doctor-table-head-text: #9fb0c5;
+  --doctor-table-text: #dbe5f2;
+}
+
+body[data-theme="vampire"].dark-mode {
+  --doctor-table-head-bg: #252526;
+  --doctor-table-row-bg: #1e1e1e;
+  --doctor-table-row-alt-bg: #222222;
+  --doctor-table-row-hover-bg: #2a2d2e;
+  --doctor-table-row-border: #303030;
+  --doctor-table-wrap-border: #3c3c3c;
+  --doctor-table-head-text: #d4d4d4;
+  --doctor-table-text: #e6edf3;
+}
+
+body[data-theme="princess"] {
+  --doctor-table-head-bg: #ffe8f4;
+  --doctor-table-row-bg: #fff7fc;
+  --doctor-table-row-alt-bg: #fff0f8;
+  --doctor-table-row-hover-bg: #ffe3f2;
+  --doctor-table-row-border: rgba(214, 51, 154, 0.16);
+  --doctor-table-wrap-border: rgba(214, 51, 154, 0.24);
+  --doctor-table-head-text: #9d1b64;
+  --doctor-table-text: #2d1230;
+}
+
 .doctor-container {
   font-family: var(--font-family-base);
   width: 98%;
@@ -36,19 +80,73 @@
 /* tabla */
 .doctor-table-wrap {
   max-height: 420px;
-  overflow-y: auto;
-  border-top: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
+  overflow: auto;
+  border: 1px solid var(--doctor-table-wrap-border);
+  border-radius: 12px;
+  background: var(--doctor-table-row-bg);
   margin-top: 12px;
 }
 
-.doctor-table { min-width: 700px; }
+.doctor-table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
 
 .doctor-table thead th {
   position: sticky;
   top: 0;
-  background: transparent;
   z-index: 2;
+  padding: 6px 9px;
+  line-height: 1.12;
+  background: var(--doctor-table-head-bg);
+  color: var(--doctor-table-head-text);
+  border-bottom: 1px solid var(--doctor-table-row-border);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.doctor-table tbody tr {
+  min-height: 34px;
+}
+
+.doctor-table tbody td {
+  padding: 5px 7px;
+  line-height: 1.15;
+  border-bottom: 1px solid var(--doctor-table-row-border);
+  background: var(--doctor-table-row-bg);
+  color: var(--doctor-table-text);
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.doctor-table tbody tr:nth-child(even) td {
+  background: var(--doctor-table-row-alt-bg);
+}
+
+.doctor-table tbody tr:hover td {
+  background: var(--doctor-table-row-hover-bg);
+}
+
+body[data-theme="princess"] .doctor-table-wrap {
+  border-color: var(--doctor-table-wrap-border);
+  background: var(--doctor-table-row-bg);
+}
+
+body[data-theme="princess"] .doctor-table thead th {
+  background: var(--doctor-table-head-bg);
+  color: var(--doctor-table-head-text);
+}
+
+body[data-theme="princess"] .doctor-table tbody td {
+  color: var(--doctor-table-text);
+}
+
+body[data-theme="princess"] .doctor-table tbody tr:hover td {
+  background: var(--doctor-table-row-hover-bg);
 }
 
 /* botones fila */
@@ -94,6 +192,172 @@
 
 .doctor-table .ui-action-btn.is-warning {
   background: #d97706;
+}
+
+.doctor-row-actions {
+  white-space: nowrap;
+}
+
+.doctor-row-actions .ui-action-btn {
+  margin-right: 6px;
+}
+
+.doctor-row-actions .ui-action-btn:last-child {
+  margin-right: 0;
+}
+
+.doctor-media-preview {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 92px;
+}
+
+.doctor-media-preview-label {
+  color: var(--text-muted, #64748b);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.doctor-media-preview-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 108px;
+  height: 64px;
+  border: 1px solid #d8e2ef;
+  border-radius: 7px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.doctor-media-preview-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.doctor-media-preview-empty {
+  color: #64748b;
+  font-size: 12px;
+  font-style: italic;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.doctor-pendientes-section {
+  margin-top: 18px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 14px;
+}
+
+.doctor-pendientes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.doctor-pendientes-header h3 {
+  margin: 0;
+  color: var(--text-color);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.doctor-pendientes-header p {
+  margin: 3px 0 0;
+  color: var(--text-muted, #64748b);
+  font-size: 12px;
+}
+
+.doctor-pendientes-wrap {
+  max-height: 360px;
+  position: relative;
+}
+
+.doctor-pendientes-table {
+  min-width: 980px;
+}
+
+.doctor-pendientes-table td:nth-child(4) {
+  max-width: 360px;
+  white-space: normal;
+}
+
+.doctor-pendientes-loader[hidden] {
+  display: none !important;
+}
+
+.doctor-pendientes-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  background: rgba(248, 250, 252, 0.76);
+  backdrop-filter: blur(2px);
+}
+
+.doctor-pendientes-loader-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border: 1px solid #cfe0f5;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #123d7a;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+
+.doctor-pendientes-loader-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 3px solid #cfe0f5;
+  border-top-color: #16a34a;
+  animation: doctor-pendientes-spin 0.8s linear infinite;
+}
+
+.doctor-pendientes-wrap.is-loading .doctor-pendientes-table {
+  pointer-events: none;
+}
+
+.ui-toolbar-btn.is-loading {
+  cursor: wait;
+}
+
+@keyframes doctor-pendientes-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.doctor-password-modal-content input {
+  width: 100%;
+}
+
+.doctor-password-message {
+  min-height: 18px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.doctor-password-message.is-error {
+  color: #dc2626;
+}
+
+.doctor-password-message.is-success {
+  color: #16a34a;
 }
 
 .doctor-file-input {

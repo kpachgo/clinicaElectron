@@ -114,7 +114,7 @@ themeBtn?.addEventListener("click", () => {
 ========================================================= */
 const ROLE_VIEWS = {
     Administrador: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro"],
-    Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Servicios", "Cobro"],
+    Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro"],
     Redes: ["Agenda", "Monitor de Seguimiento"],
     Doctor: ["Paciente", "En Cola", "Doctores"],
     Asistente: ["Paciente", "En Cola"]
@@ -327,7 +327,7 @@ window.fetch = function (url, options = {}) {
         .then((response) => {
             resetNetworkErrorTracker({ hideOverlay: true });
             maybePlayMutationSound(response, method, requestUrl);
-            if (!response.ok && typeof window.notifyServerHttpError === "function") {
+            if (!response.ok && !suppressConnectionAlert && typeof window.notifyServerHttpError === "function") {
                 window.notifyServerHttpError(response.status, requestUrl);
             }
             return response;
@@ -399,6 +399,7 @@ function resetSecurityProtocolState() {
         updatedAt: null
     };
     renderSecurityProtocolIndicator();
+    emitSecurityProtocolChanged();
 }
 
 function renderSecurityProtocolIndicator() {
@@ -433,6 +434,12 @@ function renderSecurityProtocolIndicator() {
     chip.textContent = enabled ? "ON" : "OFF";
 }
 
+function emitSecurityProtocolChanged() {
+    window.dispatchEvent(new CustomEvent("security-protocol:changed", {
+        detail: { ...securityProtocolState }
+    }));
+}
+
 function normalizeProtocolRow(raw) {
     return {
         enabled: Number(raw?.enabled) === 1 ? 1 : 0,
@@ -465,6 +472,7 @@ async function refreshSecurityProtocolStatus(options = {}) {
                 securityProtocolState.available = false;
                 securityProtocolState.loaded = true;
                 renderSecurityProtocolIndicator();
+                emitSecurityProtocolChanged();
                 if (!silent && typeof window.showSystemMessage === "function") {
                     window.showSystemMessage(
                         "Falta migracion del protocolo de seguridad en BD.",
@@ -483,6 +491,7 @@ async function refreshSecurityProtocolStatus(options = {}) {
             loaded: true
         };
         renderSecurityProtocolIndicator();
+        emitSecurityProtocolChanged();
         return securityProtocolState;
     } catch (err) {
         console.error(err);
@@ -515,6 +524,7 @@ async function setSecurityProtocolStatus(enabled) {
         loaded: true
     };
     renderSecurityProtocolIndicator();
+    emitSecurityProtocolChanged();
     return data;
 }
 
@@ -1032,17 +1042,28 @@ function renderTopUser() {
     const user = getCurrentUser();
     if (!user) return;
 
+    const avatarEl = document.getElementById("top-user-avatar");
     const nameEl = document.getElementById("top-user-name");
     const emailEl = document.getElementById("top-user-email");
+    const userName = String(user?.nombre ?? "Usuario").trim() || "Usuario";
 
-    if (nameEl) nameEl.textContent = user?.nombre ?? "Usuario";
+    if (avatarEl) {
+        const parts = userName.split(/\s+/).filter(Boolean);
+        const initials = parts.length > 1
+            ? `${parts[0][0] || ""}${parts[1][0] || ""}`
+            : userName.slice(0, 2);
+        avatarEl.textContent = initials.toUpperCase();
+    }
+    if (nameEl) nameEl.textContent = userName;
     if (emailEl) emailEl.textContent = user?.correo ?? "";
 
 }
 function clearTopUser() {
+    const avatarEl = document.getElementById("top-user-avatar");
     const nameEl = document.getElementById("top-user-name");
     const emailEl = document.getElementById("top-user-email");
 
+    if (avatarEl) avatarEl.textContent = "";
     if (nameEl) nameEl.textContent = "";
     if (emailEl) emailEl.textContent = "";
 }
@@ -1083,7 +1104,7 @@ async function runSpaViewTransition(renderFn) {
 
 function syncActiveAccordion(viewName) {
     document.querySelectorAll(".accordion").forEach((btn) => {
-        const name = btn.querySelector(".label")?.innerText.trim();
+        const name = String(btn.dataset?.view || btn.querySelector(".label")?.innerText || "").trim();
         btn.classList.toggle("active", name === viewName);
     });
 }
@@ -1187,7 +1208,7 @@ async function loadView(name, options = {}) {
 // ---------- menu lateral ----------
 function applyMenuPermissions() {
     document.querySelectorAll(".accordion").forEach(btn => {
-        const name = btn.querySelector(".label")?.innerText.trim();
+        const name = String(btn.dataset?.view || btn.querySelector(".label")?.innerText || "").trim();
 
         if (!canAccessView(name)) {
             btn.style.display = "none";
@@ -1265,6 +1286,9 @@ window.__setAppChromeVisible = setAppChromeVisible;
 window.__applyTheme = applyTheme;
 window.refreshLicenseWarning = refreshLicenseWarning;
 window.refreshSecurityProtocolStatus = refreshSecurityProtocolStatus;
+window.getSecurityProtocolState = function () {
+    return { ...securityProtocolState };
+};
 
 
 document.addEventListener("DOMContentLoaded", () => {

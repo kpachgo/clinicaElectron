@@ -1,6 +1,6 @@
 {
   "name": "clinica",
-  "version": "4.0.1",
+  "version": "4.0.3",
   "description": "Sistema de clinica empaquetado con Electron",
   "author": {
     "name": "Clinica",
@@ -36,6 +36,7 @@
     "asar": true,
     "files": [
       "**/*",
+      "!backend/.env",
       "!node_modules/clinica{,/**}"
     ],
     "extraResources": [
@@ -45,7 +46,7 @@
         "filter": [
           "**/*",
           "node_modules{,/**}",
-          ".env"
+          "!.env"
         ]
       },
       {
@@ -72,6 +73,7 @@
       "app": "electron-app",
       "output": "dist-electron"
     },
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "win": {
       "icon": "incisoft.ico",
       "target": [

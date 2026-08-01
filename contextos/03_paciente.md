@@ -28,7 +28,19 @@
 4. Carga historial de odontogramas y ultimo odontograma del paciente.
 5. Edicion y guardado de datos del paciente.
 6. Gestion de fotos (subir/listar/eliminar/foto principal).
-7. Gestion de citas (crear/editar inline/listar/autorizar).
+7. Gestion de citas (crear/editar inline/listar/autorizar/eliminar).
+- UX de carga:
+  - al montar la vista solo queda visible el buscador.
+  - el resto del contenido vive dentro de `#paciente-detail-shell`.
+  - al cargar o crear paciente, el buscador se colapsa para dar espacio al expediente.
+  - si el usuario hace scroll hacia arriba dentro de la vista, el buscador vuelve a aparecer.
+  - durante la carga se muestra `#paciente-load-progress`, un progress circular SVG sin texto basado en `stroke-dashoffset`.
+  - el progreso avanza por hitos conservadores: inicio, datos/fotos/citas, historial, ultimo odontograma y cierre.
+  - al seleccionar/cargar paciente, el shell aparece con animacion moderna tipo slide/expand y tarjetas en cascada.
+  - el reveal usa `clip-path` + `transform` en lugar de animar `max-height`, para evitar tirones en expedientes largos.
+  - `Nuevo Paciente` reutiliza la misma animacion de entrada despues de preparar el formulario.
+  - `Limpiar Paciente` ejecuta salida animada y vuelve al estado de solo buscador.
+  - la animacion respeta `prefers-reduced-motion`.
 
 ## Odontograma en la vista Paciente
 
@@ -48,6 +60,58 @@
   - `#ppf-message`
   - `#ppr-message`
   - `#alerta-bloqueo`
+
+### Impresiones y documentos
+- En `Resumen de tratamientos`, las acciones se agrupan asi:
+  - `Impresiones:` botones `Pendiente`, `Asistencia`, `Varios`, `Exp`.
+  - `Consentimientos:` botones `Endodoncia`, `Ortodoncia`.
+  - boton icono `Configuracion` (`#odonto-summary-config-btn`) para editar cabecera/logo global de impresion.
+- Los botones de estos grupos usan estilo compacto, cercano al tamano de las pills del resumen.
+- La configuracion global de impresion centraliza sucursal/direccion, telefono, logo y marca de agua.
+  - Usa `odonto_print_company_config_v1` y `odonto_print_branding_config_v1`.
+  - El logo se reemplaza con `/api/paciente/print-branding/logo`.
+  - Aplica a documentos generados (`Pendiente`, `Asistencia`, `Exp`, consentimientos).
+  - `Varios` imprime PDFs subidos tal cual, sin modificar cabecera/logo.
+  - Ya no existe edicion de cabecera dentro de cada modal de documento.
+  - No mueve precios locales; la configuracion de precios sigue dentro de `Pendiente`.
+
+### Impresion de expediente
+- En `Resumen de tratamientos`, grupo `Impresiones`, existe boton `Exp`.
+- Imprime directo sin modal previo.
+- Requiere paciente cargado.
+- Usa los valores actuales visibles en pantalla, aunque no se hayan guardado todavia.
+- Sincroniza el odontograma actual en memoria antes de generar la hoja imprimible.
+- Incluye:
+  - datos personales,
+  - datos clinicos,
+  - endodoncia/cirugia,
+  - odontograma visual,
+  - resumen de tratamientos pendientes y realizados,
+  - diagnostico final y notas,
+  - firma del paciente/encargado solo si existe,
+  - registro de citas.
+- No usa logo de fondo/marca de agua, aunque si mantiene logo en cabecera si esta configurado.
+- El odontograma se imprime ampliado y en modo solo lectura.
+- El CSS de impresion del expediente evita cortes al inicio de paginas nuevas repitiendo padding/borde de la hoja.
+- Registro de citas impreso:
+  - columnas: fecha, procedimiento, doctor, firma y sello.
+  - no imprime `valor`, `abono` ni `saldo`.
+  - aplica la misma regla de notas/observaciones de la tabla visible: fecha repetida + montos en `0` + sin doctor oculta fecha, doctor, firma y sello, dejando solo el procedimiento.
+  - las filas del expediente tambien se agrupan por fecha (`cita-grupo-par` / `cita-grupo-impar`) para conservar continuidad visual.
+  - firma/sello del doctor solo aparecen para citas autorizadas o autorizadas en fisico.
+  - citas pendientes no muestran firma/sello.
+- Borrado de citas:
+  - existe endpoint `DELETE /api/paciente/cita/:id`.
+  - solo rol `Administrador` puede eliminar; Doctor, Asistente y Recepcion no deben ver la accion y el backend responde `403` si fuerzan la llamada.
+  - en UI el Administrador debe activar manualmente el checkbox `Borrar` en el encabezado de Registro de Citas; inicia apagado por defecto y no se persiste entre sesiones.
+  - mientras `Borrar` esta apagado, los iconos de eliminar no se renderizan aunque el usuario sea Administrador.
+  - usa `sp_cita_paciente_eliminar` y borra el registro real de `citaspaciente`.
+  - al eliminar, la tabla visible recalcula grupos por fecha para mantener el zebra por grupo.
+  - las notas/observaciones de fecha repetida tambien pueden eliminarse por admin, pero siguen sin mostrar `$0`, `-` ni chip `Sin doctor`.
+- Firma/sello en expediente:
+  - usa la firma/sello actuales del registro del doctor devueltos por el listado de citas.
+  - si el doctor reemplaza firma o sello, las citas historicas autorizadas mostraran el archivo nuevo al volver a listar/imprimir.
+- No incluye Registro de Fotografias.
 
 ### Modos y reglas de edicion
 - Modo normal: click/tap en superficie abre menu de tratamientos.
@@ -155,6 +219,18 @@
 - La edicion se habilita de nuevo al cargar un paciente (`cargarPaciente(...)`) o al iniciar alta nueva desde `Nuevo Paciente` (`setPacienteEdicionHabilitada(true)`).
 
 ## Citas de paciente
+- UX tabla 2026-08-01:
+  - solo `Registro de Citas` (`.citas-table`) fue migrada al patron compacto unificado,
+  - contenedor con borde completo y radio 12px,
+  - encabezado sticky uppercase de 10px,
+  - filas de ~34px con padding 5px/7px y zebra blanco/gris suave,
+  - colores controlados por tokens `--pac-table-*` para compatibilidad con `dark`, `vampire` y `princess`,
+  - el zebra se agrupa por fecha (`cita-grupo-par` / `cita-grupo-impar`) para que citas/notas del mismo dia compartan fondo,
+  - una fila de fecha repetida con `valorCP`, `abonoCP`, `saldoCP` en `0` y sin doctor se trata como nota/observacion: oculta valor, abono, saldo, doctor y accion, pero conserva el procedimiento,
+  - intencion: si una asistente registra una cita cobrable y luego se agrega otra fila el mismo dia solo como observacion clinica (ej. pieza queda en observacion), esa segunda fila debe sentirse visualmente como continuacion de la cita original, no como cobro ni cita independiente,
+  - las notas/observaciones de fecha repetida no muestran `$0`, `$0.00`, `-`, `Sin doctor`, firma ni sello; internamente conservan la fecha y los ceros para trazabilidad,
+  - si una fila de fecha repetida tiene precio, abono, saldo o doctor asignado, se renderiza como cita normal y no se ocultan sus columnas,
+  - no tocar seccion de odontograma, `odontograma.css`, selectores `odonto*`, `tooth*` ni `#odontograma-wrapper` al hacer ajustes de tablas.
 - Crear cita: modal `#modal-cita-paciente` y `POST /api/paciente/cita`.
 - Editar cita inline: `PUT /api/paciente/cita/:id`.
 - Listar citas: `GET /api/paciente/:id/citas`.
@@ -162,13 +238,29 @@
 - Reglas UI relevantes:
   - `Procedimiento` en cita tiene limite de `500` caracteres (validado frontend/backend).
   - Select de doctor se llena con `GET /api/doctor/select?soloActivos=1`.
-  - Si usuario logueado es `Doctor` y tiene doctor vinculado unico, el select queda preseleccionado y bloqueado.
+  - Si usuario logueado es `Doctor`, el select usa `soloVinculado=1`; si tiene doctor vinculado unico, queda preseleccionado y bloqueado.
+  - Backend blinda la creacion de cita:
+    - rol `Doctor` solo puede registrar con su propio doctor vinculado,
+    - si no envia doctor, backend asigna automaticamente su doctor vinculado,
+    - si intenta enviar otro `doctorId`, responde `403`,
+    - `Administrador`, `Recepcion` y `Asistente` pueden seleccionar cualquier doctor activo.
+  - Checkbox `Ver firma/sello` en encabezado de Registro de Citas:
+    - se guarda por sesion/usuario en `sessionStorage`.
+    - cuando esta activo, la columna `Accion` muestra firma y sello para citas autorizadas sin chip `Autorizado`.
+    - citas pendientes siguen mostrando solo `Pendiente` + `Autorizar`.
+    - si el Protocolo de Seguridad global esta activo, queda marcado y bloqueado como visible mientras dure el protocolo, sin sobrescribir la preferencia guardada de sesion.
+  - Checkbox `Borrar` en encabezado de Registro de Citas:
+    - solo se muestra a `Administrador`.
+    - activa/desactiva los iconos de eliminar de todas las filas.
+    - siempre inicia apagado para reducir borrados accidentales.
   - La columna `Accion` muestra estado:
     - `Sin doctor`
-    - `Autorizado en fisico`
-    - `Autorizado`
+    - check verde compacto para `Autorizado` y `Autorizado en fisico` cuando `Ver firma/sello` esta apagado
     - `Pendiente` + boton `Autorizar`
   - Boton `Ver` (firma/sello del doctor) queda deshabilitado mientras la cita no este autorizada.
+  - Boton `Ver` consulta `/api/doctor/:id?contexto=paciente`, permitiendo que un doctor logueado vea la ficha del doctor asociado a una cita/expediente aunque no sea su propio registro.
+  - Boton `Ver` se oculta cuando `Ver firma/sello` esta activo para evitar duplicar firma/sello.
+  - La firma/sello visible usa los archivos actuales del doctor, aunque el doctor este inactivo.
 
 ## Regla de autorizacion (backend)
 - Si la cita se crea sin doctor asignado, queda autorizada automaticamente (`SIN_DOCTOR`).
@@ -278,6 +370,15 @@
 - `GET /api/odontograma/ultimo/:idPaciente`
 - `GET /api/odontograma/historial/:idPaciente`
 - `GET /api/odontograma/version/:idOdontograma`
+
+## Migraciones recientes de citas
+- `backend/sql/2026-08-01_cita_paciente_eliminar.sql`
+  - crea `sp_cita_paciente_eliminar`.
+  - habilita borrado real de citas desde backend solo para flujo Administrador.
+- `backend/sql/2026-07-30_cita_firma_sello_visible.sql`
+  - actualiza `sp_cita_paciente_listar`.
+  - devuelve `FirmaD` y `SelloD` solo cuando la cita tiene doctor y esta autorizada o es `registro fisico`.
+  - citas sin doctor o pendientes devuelven esos campos en `NULL`.
 
 ## Protocolo de seguridad global (2026-04-16)
 - Esta vista queda afectada en los endpoints de lectura de paciente.

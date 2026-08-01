@@ -27,6 +27,12 @@
   - `Asistente`
 
 ## UX y filtros (v2)
+- Rediseño visual 2026-08-01:
+  - adopta el mismo patron compacto del tema blanco aplicado en Agenda.
+  - estructura: titulo limpio, banda de filtros, KPIs bajos, chips de filtros, tabla densa y paginacion compacta.
+  - mantiene compatibilidad con `light`, `dark`, `vampire` y `princess` usando variables `--ms-*`.
+  - la tabla conserva columnas/toggles existentes, pero reduce altura de filas y botones de accion para alinear densidad visual.
+  - ajuste posterior: tabla con filas de aprox. `34px`, zebra blanco/gris suave y columna `Paciente` sin bold forzado.
 - Controles superiores:
   - `Fecha de corte` (editable, default = hoy),
   - buscador por nombre/telefono,

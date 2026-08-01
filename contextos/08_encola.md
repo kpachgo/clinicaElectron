@@ -5,6 +5,13 @@
   - Toolbar: clases `ui-toolbar`, `ui-control`, `ui-toolbar-btn` (texto + icono).
   - Tabla: `ui-table-wrap-compact` + `ui-table-compact`.
   - Acciones por fila: `ui-action-group` + `ui-action-btn` (icon-only).
+- UX tabla 2026-08-01:
+  - tabla migrada al patron compacto unificado usado por Agenda/Seguimiento/Cobros/Servicios,
+  - contenedor con borde completo y radio 12px,
+  - encabezado sticky uppercase de 10px,
+  - filas de ~34px con padding 5px/7px y zebra blanco/gris suave,
+  - colores controlados por tokens `--cola-table-*` / `--cola-row-*` para compatibilidad con `dark`, `vampire` y `princess`,
+  - el estado se mantiene principalmente en chips/selects; el hover de fila queda neutral para igualar el resto del sistema.
 - Iconos (Heroicons inline) se obtienen desde `window.__uiIcons` (`frontend/js/uiIcons.js`), sin CDN.
 - Incluye logica de reordenamiento manual persistente para pacientes en `En espera`.
 
@@ -30,6 +37,8 @@
    - `Atendido`: por `creadoEn` ascendente.
 4. Permite filtrar por texto (nombre/tratamiento) y estado.
 5. Permite asignar doctor por fila (select) con datos cargados desde `/api/doctor/select`.
+   - Si el usuario logueado es `Doctor`, En Cola tambien recibe el catalogo completo para poder ver/asignar el doctor correspondiente a cada paciente.
+   - La restriccion de ver solo el doctor propio aplica a la vista `Doctores`, no al select clinico de En Cola.
 6. Permite filtrar por doctor desde la barra superior (`Todos`, `Sin doctor`, o doctor especifico).
 7. Los selects de doctor (fila y filtro) usan color por `doctorId` para diferenciacion visual rapida.
 8. Permite cambiar estado:

@@ -18,6 +18,28 @@ body[data-theme="vampire"] {
   --table-row-hover: rgba(0, 122, 204, 0.12);
   color-scheme: dark;
 
+  --app-primary: #007acc;
+  --app-primary-dark: #9cdcfe;
+  --app-secondary: #4ec9b0;
+  --app-background: #1e1e1e;
+  --app-surface: #252526;
+  --app-border: #3c3c3c;
+  --app-text: #d4d4d4;
+  --app-text-muted: #9da5b4;
+  --app-content-accent: rgba(0, 122, 204, 0.08);
+  --app-topbar-bg: rgba(37, 37, 38, 0.94);
+  --app-topbar-border: rgba(60, 60, 60, 0.95);
+  --app-topbar-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+  --app-topbar-scrolled-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
+  --app-nav-hover-bg: #2a2d2e;
+  --app-nav-hover-border: #3c3c3c;
+  --app-nav-active-bg: #094771;
+  --app-nav-active-border: #007acc;
+  --app-nav-active-shadow: 0 10px 24px rgba(0, 122, 204, 0.16);
+  --app-control-bg: rgba(31, 31, 31, 0.88);
+  --app-avatar-bg: linear-gradient(135deg, #007acc, #4ec9b0);
+  --app-avatar-shadow: 0 10px 22px rgba(0, 122, 204, 0.24);
+
   --ms-accent: #007acc;
   --ms-surface: #1f1f1f;
   --ms-border: #3c3c3c;
@@ -83,20 +105,14 @@ body[data-theme="vampire"] {
   --ms-contacto-llamada-bg: #1f3a2a;
   --ms-contacto-llamada-border: #2f5f47;
   --ms-contacto-llamada-text: #4ec9b0;
+  --ms-table-head-bg: #252526;
+  --ms-table-row-bg: #1e1e1e;
+  --ms-table-row-alt-bg: #222222;
+  --ms-table-row-border: #303030;
 }
 
 /* Ajustes de croma para que se sienta mas VS Code */
-body[data-theme="vampire"] .topbar .sidebar-menu .accordion:hover {
-  background: #2a2d2e;
-}
-
-body[data-theme="vampire"] .topbar .sidebar-menu .accordion.active {
-  background: #094771;
-  color: #ffffff;
-  box-shadow: inset 0 -2px 0 #007acc;
-}
-
-body[data-theme="vampire"] .top-right > .icon:hover,
+body[data-theme="vampire"] .top-icon-btn:hover,
 body[data-theme="vampire"] .theme-btn:hover {
   background: #2a2d2e;
   border-color: #007acc;

@@ -26,6 +26,14 @@
         return svg('<path d="M8 3h6l4 4v14H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"></path><path d="M14 3v5h5"></path><path d="M10 12h6M10 16h6"></path>', className);
       case "shield-check":
         return svg('<path d="M12 3 5 6v6c0 5 3.5 8 7 9 3.5-1 7-4 7-9V6l-7-3Z"></path><path d="m9 12 2 2 4-4"></path>', className);
+      case "user":
+        return svg('<path d="M20 21a8 8 0 0 0-16 0"></path><circle cx="12" cy="7" r="4"></circle>', className);
+      case "lock-closed":
+        return svg('<rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path>', className);
+      case "sparkles":
+        return svg('<path d="M12 3l1.5 4.2L18 9l-4.5 1.8L12 15l-1.5-4.2L6 9l4.5-1.8L12 3Z"></path><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14Z"></path>', className);
+      case "tooth":
+        return svg('<path d="M7.7 3.8c1.4-.6 2.7.1 4.3.8 1.6-.7 2.9-1.4 4.3-.8 2.4 1 3.1 4.5 1.7 8.3-.8 2.2-1.2 5.8-2.8 7.1-1 .8-2-.1-2.3-1.4-.3-1-.4-2.6-.9-2.6s-.6 1.6-.9 2.6c-.4 1.3-1.3 2.2-2.3 1.4-1.6-1.3-2-4.9-2.8-7.1-1.4-3.8-.7-7.3 1.7-8.3Z"></path><path d="M10.5 5.1c.9.5 2.1.5 3 0"></path>', className);
       case "question-mark-circle":
         return svg('<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 1 1 4.3 1.7c-.7.7-1.3 1-1.3 2"></path><path d="M12 16h.01"></path>', className);
       case "key":

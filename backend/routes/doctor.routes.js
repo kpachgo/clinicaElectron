@@ -32,23 +32,46 @@ function uploadSelloWithJsonErrors(req, res, next) {
 router.get(
   "/",
   authMiddleware,
-  roleMiddleware(["Administrador", "Doctor"]),
+  roleMiddleware(["Administrador", "Recepcion", "Doctor"]),
   doctorController.listar
 );
 
 router.post(
   "/",
   authMiddleware,
-  roleMiddleware(["Administrador", "Doctor"]),
+  roleMiddleware(["Administrador", "Recepcion"]),
   doctorController.crear
 );
 
 router.post(
   "/:id/sello",
   authMiddleware,
-  roleMiddleware(["Administrador", "Doctor"]),
+  roleMiddleware(["Administrador", "Recepcion", "Doctor"]),
+  doctorController.validarAccesoMediaDoctor,
   uploadSelloWithJsonErrors,
   doctorController.subirSello
+);
+
+router.post(
+  "/:id/firma",
+  authMiddleware,
+  roleMiddleware(["Administrador", "Recepcion", "Doctor"]),
+  doctorController.validarAccesoMediaDoctor,
+  doctorController.actualizarFirma
+);
+
+router.get(
+  "/pendientes-autorizacion",
+  authMiddleware,
+  roleMiddleware(["Doctor"]),
+  doctorController.listarPendientesAutorizacion
+);
+
+router.post(
+  "/pendientes-autorizacion/autorizar-todos",
+  authMiddleware,
+  roleMiddleware(["Doctor"]),
+  doctorController.autorizarTodosPendientes
 );
 
 // ============================

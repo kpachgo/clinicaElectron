@@ -16,6 +16,12 @@
   - listados por fecha y por mes devuelven solo registros que se puedan asociar a paciente `Odontologia`.
 - Monitor de seguimiento:
   - fuerza filtro de tratamiento a `odontologia` aunque frontend envie `all`.
+- Cobro:
+  - `Cuentas del dia` (`GET /api/cuenta?fecha=...`) no devuelve cuentas de pacientes asociados a `Ortodoncia`.
+  - si la fecha solo tiene cuentas de `Ortodoncia`, la tabla queda vacia.
+- Paciente:
+  - en `Registro de Citas`, el checkbox `Ver firma/sello` queda activo y bloqueado mientras el protocolo esta ON.
+  - al apagar el protocolo, vuelve a respetar la preferencia guardada por sesion/usuario.
 
 ## Lo que NO hace
 - No borra pacientes ni citas.
@@ -43,6 +49,9 @@
   - `sp_paciente_monitor_seguimiento_listar`
   - `sp_paciente_monitor_seguimiento_totales`
   - `sp_paciente_monitor_contacto_guardar`
+- Ajuste posterior:
+  - `backend/sql/2026-07-30_cobro_protocolo_seguridad.sql`
+  - actualiza `sp_cuenta_listar_por_fecha` para respetar el protocolo en Cobro.
 
 ## Backend (API de control de protocolo)
 - Ruta base:

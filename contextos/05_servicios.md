@@ -5,6 +5,12 @@
   - Toolbar: `ui-toolbar`, `ui-control`, `ui-toolbar-btn`.
   - Tabla: `ui-table-wrap-compact`, `ui-table-compact`.
   - Acciones por fila: `ui-action-btn` (icon-only).
+- UX tabla 2026-08-01:
+  - tabla migrada al patron compacto unificado usado por Agenda/Seguimiento/Cobros,
+  - contenedor con borde completo y radio 12px,
+  - encabezado sticky uppercase de 10px,
+  - filas de ~34px con padding 5px/7px y zebra blanco/gris suave,
+  - colores controlados por tokens `--servicios-table-*` para compatibilidad con `dark`, `vampire` y `princess`.
 - Iconos Heroicons inline desde `window.__uiIcons` (`frontend/js/uiIcons.js`), sin CDN.
 - Sin cambios en logica, endpoints, SQL ni payloads.
 

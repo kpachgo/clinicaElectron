@@ -16,6 +16,28 @@ body[data-theme="dark"] {
   --success-hover: #15803d;
   color-scheme: dark;
 
+  --app-primary: #60a5fa;
+  --app-primary-dark: #bfdbfe;
+  --app-secondary: #22d3ee;
+  --app-background: #0b1220;
+  --app-surface: #0f172a;
+  --app-border: #26354a;
+  --app-text: #e8f1ff;
+  --app-text-muted: #9eb2cc;
+  --app-content-accent: rgba(96, 165, 250, 0.09);
+  --app-topbar-bg: rgba(15, 23, 42, 0.9);
+  --app-topbar-border: rgba(38, 53, 74, 0.9);
+  --app-topbar-shadow: 0 14px 34px rgba(0, 0, 0, 0.36);
+  --app-topbar-scrolled-shadow: 0 16px 38px rgba(0, 0, 0, 0.42);
+  --app-nav-hover-bg: #111f36;
+  --app-nav-hover-border: #26354a;
+  --app-nav-active-bg: #102b52;
+  --app-nav-active-border: #1e4f8f;
+  --app-nav-active-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  --app-control-bg: rgba(17, 24, 39, 0.86);
+  --app-avatar-bg: linear-gradient(135deg, #2563eb, #60a5fa);
+  --app-avatar-shadow: 0 10px 22px rgba(37, 99, 235, 0.32);
+
   --ms-accent: #60a5fa;
   --ms-surface: #0f172a;
   --ms-border: #253246;

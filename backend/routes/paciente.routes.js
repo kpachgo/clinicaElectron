@@ -169,6 +169,12 @@ router.put(
   role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
   controller.actualizarCitaPaciente
 );
+router.delete(
+  "/cita/:id",
+  auth,
+  role(["Administrador"]),
+  controller.eliminarCitaPaciente
+);
 router.post(
   "/cita/:id/autorizar",
   auth,

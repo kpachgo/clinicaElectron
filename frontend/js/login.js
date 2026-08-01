@@ -2,6 +2,7 @@
 (function () {
   let loginMountSeq = 0;
   let loginStatusController = null;
+  const DB_CONFIG_GATE_PASSWORD = "D@nielito100pre";
 
   function abortLoginStatusRequest() {
     if (!loginStatusController) return;
@@ -83,7 +84,7 @@
     window.__loginDbConfigShortcutHandler = (e) => {
       if (!isShortcutOpenDbConfig(e)) return;
       e.preventDefault();
-      void openDbConfigModal();
+      void openDbConfigGateModal();
     };
     document.addEventListener("keydown", window.__loginDbConfigShortcutHandler, true);
   }
@@ -100,6 +101,77 @@
     feedback.textContent = message || "";
     feedback.className = `db-config-feedback ${type === "ok" ? "is-ok" : "is-error"}`;
     feedback.hidden = !message;
+  }
+
+  function openDbConfigGateModal() {
+    closeDbConfigModal();
+
+    const modal = document.createElement("div");
+    modal.className = "db-config-overlay";
+    modal.innerHTML = `
+      <div class="db-config-modal db-config-gate-modal" role="dialog" aria-modal="true" aria-labelledby="db-config-gate-title">
+        <div class="db-config-header">
+          <div>
+            <h2 id="db-config-gate-title">Acceso de mantenimiento</h2>
+            <p>Ingrese la contrasena para cambiar servidor.</p>
+          </div>
+          <button id="db-config-gate-close" class="db-config-close" type="button" aria-label="Cerrar">
+            ${renderIcon("x-mark", "ui-toolbar-icon")}
+          </button>
+        </div>
+        <div class="db-config-body">
+          <div class="login-field db-config-field-full">
+            <label for="db-config-gate-password">Contrasena</label>
+            <input class="ui-control" id="db-config-gate-password" type="password" autocomplete="off">
+          </div>
+          <div class="db-config-actions">
+            <button id="db-config-gate-cancel" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+              ${renderIcon("x-mark", "ui-toolbar-icon")}
+              <span>Cancelar</span>
+            </button>
+            <button id="db-config-gate-submit" class="btn-login ui-toolbar-btn is-primary" type="button">
+              ${renderIcon("key", "ui-toolbar-icon")}
+              <span>Continuar</span>
+            </button>
+          </div>
+          <div id="db-config-feedback" class="db-config-feedback" hidden></div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const input = modal.querySelector("#db-config-gate-password");
+    const close = () => closeDbConfigModal();
+    const submit = () => {
+      const password = String(input?.value || "");
+      if (password !== DB_CONFIG_GATE_PASSWORD) {
+        setDbConfigFeedback(modal, "error", "Contrasena incorrecta");
+        input?.focus();
+        input?.select();
+        return;
+      }
+      closeDbConfigModal();
+      void openDbConfigModal();
+    };
+
+    modal.querySelector("#db-config-gate-close")?.addEventListener("click", close);
+    modal.querySelector("#db-config-gate-cancel")?.addEventListener("click", close);
+    modal.querySelector("#db-config-gate-submit")?.addEventListener("click", submit);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) close();
+    });
+    input?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submit();
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        close();
+      }
+    });
+
+    setTimeout(() => input?.focus(), 50);
   }
 
   function setOptionalConnectionValue(connection, key, value) {
@@ -157,8 +229,9 @@
     const connection = status?.connection || {};
     body.innerHTML = `
       <div class="db-config-summary">
-        <span><strong>Origen:</strong> ${escapeHtml(status?.source || "env")}</span>
-        <span><strong>Archivo externo:</strong> ${status?.hasExternalConfig ? "si" : "no"}</span>
+        <span><strong>Origen:</strong> ${escapeHtml(status?.displaySource || status?.source || "env")}</span>
+        <span><strong>Protegida:</strong> ${status?.protectedConfig ? "si" : "no"}</span>
+        ${status?.configStatus === "invalid" ? `<span><strong>Estado:</strong> ${escapeHtml(status?.configMessage || "configuracion danada")}</span>` : ""}
         <span><strong>Host:</strong> ${connection.hasHost ? "**********" : "no configurado"}</span>
         <span><strong>Puerto:</strong> ${connection.hasPort ? "**********" : "no configurado"}</span>
         <span><strong>Usuario:</strong> ${connection.hasUser ? "**********" : "no configurado"}</span>
@@ -297,7 +370,8 @@
     const connection = status?.connection || {};
     body.innerHTML = `
       <div class="db-config-summary">
-        <span><strong>Origen:</strong> ${escapeHtml(status?.source || "env")}</span>
+        <span><strong>Origen:</strong> ${escapeHtml(status?.displaySource || status?.source || "env")}</span>
+        <span><strong>Protegida:</strong> ${status?.protectedConfig ? "si" : "no"}</span>
         <span><strong>Host:</strong> ${connection.hasHost ? "**********" : "no configurado"}</span>
         <span><strong>BD:</strong> ${connection.hasDatabase ? "**********" : "no configurada"}</span>
         <span><strong>PIN local:</strong> ${status?.hasMaintenancePin ? "configurado" : "no configurado"}</span>
@@ -670,17 +744,28 @@
   function renderLogin(container) {
     container.innerHTML = `
       <div class="login-container">
-        <div class="login-box">
-          <h2>Iniciar sesion</h2>
-
-          <div class="login-field">
-            <label>Usuario</label>
-            <input class="ui-control" type="text" id="login-user" placeholder="Correo">
+        <div class="login-box login-box-main">
+          <div class="login-brand">
+            <div class="login-brand-mark" aria-hidden="true">
+              ${renderIcon("sparkles", "login-brand-sparkle")}
+              ${renderIcon("tooth", "login-brand-tooth")}
+            </div>
           </div>
 
-          <div class="login-field">
-            <label>Contrasena</label>
-            <input class="ui-control" type="password" id="login-pass" placeholder="Contrasena">
+          <div class="login-field login-field-icon">
+            <label for="login-user">Usuario</label>
+            <div class="login-input-shell">
+              ${renderIcon("user", "login-input-icon")}
+              <input class="ui-control" type="text" id="login-user" placeholder="Correo">
+            </div>
+          </div>
+
+          <div class="login-field login-field-icon">
+            <label for="login-pass">Contrasena</label>
+            <div class="login-input-shell">
+              ${renderIcon("lock-closed", "login-input-icon")}
+              <input class="ui-control" type="password" id="login-pass" placeholder="Contrasena">
+            </div>
           </div>
 
           <div class="login-actions">
@@ -822,11 +907,29 @@
                 </select>
               </div>
 
-              <div class="hidden-register-field hidden-register-field-full">
-                <label for="reg-iddoctor">Doctor (opcional)</label>
-                <select class="ui-control" id="reg-iddoctor">
-                  <option value="">Sin doctor</option>
-                </select>
+              <div id="reg-doctor-panel" class="hidden-register-field hidden-register-field-full hidden-register-doctor-panel" hidden>
+                <label>Doctor</label>
+                <div class="hidden-register-mode-row" role="radiogroup" aria-label="Modo de doctor">
+                  <label class="hidden-register-radio">
+                    <input type="radio" name="reg-doctor-mode" value="existing" checked>
+                    <span>Usar doctor existente</span>
+                  </label>
+                  <label class="hidden-register-radio">
+                    <input type="radio" name="reg-doctor-mode" value="new">
+                    <span>Crear doctor nuevo</span>
+                  </label>
+                </div>
+
+                <div id="reg-doctor-existing-wrap">
+                  <select class="ui-control" id="reg-iddoctor">
+                    <option value="">Seleccione doctor disponible</option>
+                  </select>
+                </div>
+
+                <div id="reg-doctor-new-wrap" class="hidden-register-doctor-new-grid" hidden>
+                  <input class="ui-control" type="text" id="reg-doctor-nuevo-nombre" placeholder="Nombre doctor">
+                  <input class="ui-control" type="text" id="reg-doctor-nuevo-telefono" placeholder="Telefono doctor">
+                </div>
               </div>
             </div>
 
@@ -886,6 +989,12 @@
     const regRespuestaSeguridad = container.querySelector("#reg-respuesta-seguridad");
     const regIdRol = container.querySelector("#reg-idrol");
     const regIdDoctor = container.querySelector("#reg-iddoctor");
+    const regDoctorPanel = container.querySelector("#reg-doctor-panel");
+    const regDoctorModeInputs = Array.from(container.querySelectorAll('input[name="reg-doctor-mode"]'));
+    const regDoctorExistingWrap = container.querySelector("#reg-doctor-existing-wrap");
+    const regDoctorNewWrap = container.querySelector("#reg-doctor-new-wrap");
+    const regDoctorNuevoNombre = container.querySelector("#reg-doctor-nuevo-nombre");
+    const regDoctorNuevoTelefono = container.querySelector("#reg-doctor-nuevo-telefono");
     let registroCatalogosCargados = false;
     let registroCatalogosPromise = null;
     let loginInFlight = false;
@@ -896,6 +1005,49 @@
     let noticeTimer = null;
 
     setTimeout(() => userInput.focus(), 50);
+
+    function getRegistroRolNombre() {
+      const selected = regIdRol?.selectedOptions?.[0];
+      return String(selected?.dataset?.roleName || selected?.textContent || "")
+        .replace(/\([^)]*\)\s*$/, "")
+        .trim();
+    }
+
+    function isRegistroRolDoctor() {
+      return getRegistroRolNombre().toLowerCase() === "doctor";
+    }
+
+    function getRegistroDoctorMode() {
+      const selected = regDoctorModeInputs.find((input) => input.checked);
+      return selected?.value || "existing";
+    }
+
+    function resetRegistroDoctorFields() {
+      if (regIdDoctor) regIdDoctor.value = "";
+      if (regDoctorNuevoNombre) regDoctorNuevoNombre.value = "";
+      if (regDoctorNuevoTelefono) regDoctorNuevoTelefono.value = "";
+    }
+
+    function syncRegistroDoctorVisibility({ clearOnHide = false } = {}) {
+      const esDoctor = isRegistroRolDoctor();
+      if (regDoctorPanel) regDoctorPanel.hidden = !esDoctor;
+
+      if (!esDoctor) {
+        if (clearOnHide) resetRegistroDoctorFields();
+        return;
+      }
+
+      const mode = getRegistroDoctorMode();
+      if (regDoctorExistingWrap) regDoctorExistingWrap.hidden = mode !== "existing";
+      if (regDoctorNewWrap) regDoctorNewWrap.hidden = mode !== "new";
+
+      if (mode === "existing") {
+        if (regDoctorNuevoNombre) regDoctorNuevoNombre.value = "";
+        if (regDoctorNuevoTelefono) regDoctorNuevoTelefono.value = "";
+      } else if (regIdDoctor) {
+        regIdDoctor.value = "";
+      }
+    }
 
     async function cargarCatalogosRegistro() {
       if (registroCatalogosCargados) return true;
@@ -922,10 +1074,13 @@
             const opt = document.createElement("option");
             opt.value = String(r.idRol);
             opt.textContent = `${r.nombreR} (${r.idRol})`;
+            opt.dataset.roleName = String(r.nombreR || "");
             regIdRol.appendChild(opt);
           });
 
-          regIdDoctor.innerHTML = '<option value="">Sin doctor</option>';
+          regIdDoctor.innerHTML = doctores.length
+            ? '<option value="">Seleccione doctor disponible</option>'
+            : '<option value="">Sin doctores disponibles</option>';
           doctores.forEach((d) => {
             const opt = document.createElement("option");
             const doctorId = d.idDoctor ?? d.IDDoctor ?? d.iddoctor;
@@ -936,6 +1091,7 @@
           });
 
           registroCatalogosCargados = true;
+          syncRegistroDoctorVisibility();
           return true;
         } catch (err) {
           if (isAbortError(err)) return false;
@@ -959,6 +1115,7 @@
       registroMsg.hidden = !msg;
       registroMsg.textContent = msg;
       await cargarCatalogosRegistro();
+      syncRegistroDoctorVisibility();
       setTimeout(() => regCorreo.focus(), 50);
     }
 
@@ -974,6 +1131,11 @@
       if (regRespuestaSeguridad) regRespuestaSeguridad.value = "";
       regIdRol.value = "";
       regIdDoctor.value = "";
+      regDoctorModeInputs.forEach((input) => {
+        input.checked = input.value === "existing";
+      });
+      resetRegistroDoctorFields();
+      syncRegistroDoctorVisibility({ clearOnHide: true });
     }
 
     function mostrarNotificacionExito(msg) {
@@ -1057,6 +1219,13 @@
     }
 
     btnRegistroCancelar.addEventListener("click", ocultarRegistro);
+    regIdRol?.addEventListener("change", () => {
+      resetRegistroDoctorFields();
+      syncRegistroDoctorVisibility({ clearOnHide: true });
+    });
+    regDoctorModeInputs.forEach((input) => {
+      input.addEventListener("change", () => syncRegistroDoctorVisibility());
+    });
     btnOpenRecovery?.addEventListener("click", () => {
       if (recoveryBox?.hidden) {
         openRecoveryBox();
@@ -1372,8 +1541,10 @@
       const preguntaSeguridad = String(regPreguntaSeguridad?.value || "").trim();
       const respuestaSeguridad = String(regRespuestaSeguridad?.value || "").trim();
       const idRol = Number(regIdRol.value);
-      const idDoctorRaw = regIdDoctor.value;
-      const idDoctor = idDoctorRaw === "" ? null : Number(idDoctorRaw);
+      const esRolDoctor = isRegistroRolDoctor();
+      const doctorMode = getRegistroDoctorMode();
+      let idDoctor = null;
+      let doctorNuevo = null;
 
       if (!correo || !password || !passwordConfirm || !nombre || !idRol) {
         registroMsg.textContent = "Complete los campos obligatorios";
@@ -1401,6 +1572,30 @@
         return;
       }
 
+      if (esRolDoctor && doctorMode === "existing") {
+        const idDoctorRaw = regIdDoctor.value;
+        idDoctor = idDoctorRaw === "" ? null : Number(idDoctorRaw);
+        if (!idDoctor || Number.isNaN(idDoctor)) {
+          registroMsg.textContent = "Seleccione un doctor disponible";
+          registroMsg.hidden = false;
+          return;
+        }
+      }
+
+      if (esRolDoctor && doctorMode === "new") {
+        const nombreDoctorNuevo = String(regDoctorNuevoNombre?.value || "").trim();
+        const telefonoDoctorNuevo = String(regDoctorNuevoTelefono?.value || "").trim();
+        if (!nombreDoctorNuevo) {
+          registroMsg.textContent = "Ingrese el nombre del doctor nuevo";
+          registroMsg.hidden = false;
+          return;
+        }
+        doctorNuevo = {
+          nombre: nombreDoctorNuevo,
+          telefono: telefonoDoctorNuevo || null
+        };
+      }
+
       registroInFlight = true;
       btnRegistroGuardar.disabled = true;
       try {
@@ -1413,6 +1608,7 @@
             nombre,
             idRol,
             idDoctor,
+            doctorNuevo,
             preguntaSeguridad: hasPreguntaSeguridad ? preguntaSeguridad : null,
             respuestaSeguridad: hasRespuestaSeguridad ? respuestaSeguridad : null
           })
@@ -1427,6 +1623,7 @@
         }
 
         ocultarRegistro();
+        registroCatalogosCargados = false;
         mostrarNotificacionExito(`Usuario creado. ID: ${data.idUsuario || "N/D"}`);
       } catch (err) {
         if (isAbortError(err)) return;

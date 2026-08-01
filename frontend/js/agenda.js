@@ -38,6 +38,99 @@
     const nextD = String(movedDate.getUTCDate()).padStart(2, "0");
     return `${nextY}-${nextM}-${nextD}`;
   }
+  function parseISODateParts(iso) {
+    const match = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    return {
+      year: Number(match[1]),
+      month: Number(match[2]),
+      day: Number(match[3])
+    };
+  }
+  function buildISODate(year, month, day) {
+    const y = String(year).padStart(4, "0");
+    const m = String(month).padStart(2, "0");
+    const d = String(day).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  function getDaysInMonth(year, month) {
+    return new Date(Date.UTC(year, month, 0)).getUTCDate();
+  }
+  function shiftISODateByMonths(iso, deltaMonths) {
+    const parts = parseISODateParts(iso) || parseISODateParts(getLocalTodayISO());
+    const current = new Date(Date.UTC(parts.year, parts.month - 1 + Number(deltaMonths || 0), 1));
+    const year = current.getUTCFullYear();
+    const month = current.getUTCMonth() + 1;
+    const maxDay = getDaysInMonth(year, month);
+    return buildISODate(year, month, Math.min(parts.day, maxDay));
+  }
+  function formatAgendaMonthLabel(iso) {
+    const parts = parseISODateParts(iso);
+    if (!parts) return "";
+    const monthNames = [
+      "Enero",
+      "Febrero",
+      "Marzo",
+      "Abril",
+      "Mayo",
+      "Junio",
+      "Julio",
+      "Agosto",
+      "Septiembre",
+      "Octubre",
+      "Noviembre",
+      "Diciembre"
+    ];
+    return `${monthNames[parts.month - 1]} ${parts.year}`;
+  }
+  function formatAgendaDayLabel(iso) {
+    const parts = parseISODateParts(iso);
+    if (!parts) return "";
+    const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+    const weekdays = ["Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado"];
+    const months = [
+      "enero",
+      "febrero",
+      "marzo",
+      "abril",
+      "mayo",
+      "junio",
+      "julio",
+      "agosto",
+      "septiembre",
+      "octubre",
+      "noviembre",
+      "diciembre"
+    ];
+    return `${weekdays[date.getUTCDay()]}, ${parts.day} de ${months[parts.month - 1]} de ${parts.year}`;
+  }
+  function formatAgendaCompactDateLabel(iso) {
+    const parts = parseISODateParts(iso);
+    if (!parts) return "";
+    const months = [
+      "enero",
+      "febrero",
+      "marzo",
+      "abril",
+      "mayo",
+      "junio",
+      "julio",
+      "agosto",
+      "septiembre",
+      "octubre",
+      "noviembre",
+      "diciembre"
+    ];
+    return `${parts.day} ${months[parts.month - 1]} ${parts.year}`;
+  }
+  function getAgendaTimeParts(hm) {
+    const formatted = formatTime12(String(hm || "00:00"));
+    const parts = formatted.split(/\s+/);
+    return {
+      hour: parts[0] || formatted,
+      period: String(parts[1] || "").toUpperCase()
+    };
+  }
   function isEditingFocusableControl(el) {
     if (!el || !(el instanceof HTMLElement)) return false;
     if (el.isContentEditable) return true;
@@ -207,6 +300,15 @@
 
     let start = selStart;
     let end = selStart;
+    if (
+      start > 0 &&
+      start === end &&
+      !isTokenChar(value[start - 1]) &&
+      isTokenChar(value[start - 2])
+    ) {
+      start--;
+      end--;
+    }
     while (start > 0 && isTokenChar(value[start - 1])) start--;
     while (end < value.length && isTokenChar(value[end])) end++;
 
@@ -234,12 +336,28 @@
         return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path><path d="M3.75 6.75h.008v.008H3.75V6.75Zm0 5.25h.008v.008H3.75V12Zm0 5.25h.008v.008H3.75v-.008Z"></path></svg>`;
       case "chart-bar":
         return `<svg ${base}><path d="M3.75 20.25h16.5"></path><path d="M7.5 18v-6.75m4.5 6.75V6.75m4.5 11.25v-4.5"></path></svg>`;
+      case "calendar-days":
+        return `<svg ${base}><path d="M6.75 3v2.25M17.25 3v2.25M3.75 8.25h16.5M5.25 5.25h13.5c.828 0 1.5.672 1.5 1.5v12A1.5 1.5 0 0 1 18.75 20.25H5.25a1.5 1.5 0 0 1-1.5-1.5v-12c0-.828.672-1.5 1.5-1.5Z"></path><path d="M8.25 12h.008v.008H8.25V12Zm3.75 0h.008v.008H12V12Zm3.75 0h.008v.008H15.75V12Zm-7.5 3.75h.008v.008H8.25v-.008Zm3.75 0h.008v.008H12v-.008Z"></path></svg>`;
+      case "chevron-left":
+        return `<svg ${base}><path d="m15 18-6-6 6-6"></path></svg>`;
+      case "chevron-right":
+        return `<svg ${base}><path d="m9 18 6-6-6-6"></path></svg>`;
+      case "check-circle":
+        return `<svg ${base}><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.2 2.2 4.8-4.8"></path></svg>`;
+      case "clock":
+        return `<svg ${base}><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3 1.8"></path></svg>`;
+      case "funnel":
+        return `<svg ${base}><path d="M3.75 5.25h16.5L14 12.45v5.05l-4 1.75v-6.8L3.75 5.25Z"></path></svg>`;
       case "document-duplicate":
         return `<svg ${base}><path d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125H6.375a1.125 1.125 0 0 1-1.125-1.125V8.25c0-.621.504-1.125 1.125-1.125H9.75"></path><path d="M15 3.75H9.75a1.5 1.5 0 0 0-1.5 1.5v8.25c0 .828.672 1.5 1.5 1.5H15a1.5 1.5 0 0 0 1.5-1.5V5.25A1.5 1.5 0 0 0 15 3.75Z"></path></svg>`;
       case "currency-dollar":
         return `<svg ${base}><path d="M12 3v18m0-18c-2.25 0-3.75 1.5-3.75 3.375S9.75 9.75 12 9.75s3.75 1.5 3.75 3.375S14.25 16.5 12 16.5m0-13.5c2.25 0 3.75 1.5 3.75 3.375M12 16.5c-2.25 0-3.75-1.5-3.75-3.375"></path></svg>`;
       case "magnifying-glass":
         return `<svg ${base}><path d="m21 21-4.35-4.35"></path><circle cx="11" cy="11" r="6.5"></circle></svg>`;
+      case "eye":
+        return `<svg ${base}><path d="M2.25 12s3.75-6 9.75-6 9.75 6 9.75 6-3.75 6-9.75 6-9.75-6-9.75-6Z"></path><circle cx="12" cy="12" r="2.25"></circle></svg>`;
+      case "ellipsis-horizontal":
+        return `<svg ${base}><path d="M6.75 12h.01M12 12h.01M17.25 12h.01"></path></svg>`;
       case "trash":
         return `<svg ${base}><path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0V4.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201V5.393m7.5 0a48.667 48.667 0 0 0-7.5 0"></path></svg>`;
       case "plus":
@@ -636,107 +754,208 @@
           </div>
         </div>
 
+        <section class="agenda-modern-hero" aria-label="Resumen de agenda">
+          <div class="agenda-hero-copy">
+            <h1>Agenda de citas</h1>
+            <p id="agenda-hero-date">-</p>
+          </div>
+        </section>
+
         <div class="agenda-header">
           <div class="agenda-controls">
             <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
             <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
 
-            <label class="agenda-toggle-numeracion" for="agenda-toggle-numeracion">
-              <input type="checkbox" id="agenda-toggle-numeracion">
-              Numeracion
-            </label>
+            <div class="agenda-control-row agenda-control-row-primary">
+              <button id="agenda-today" class="agenda-date-today" type="button">Hoy</button>
 
-            <label class="agenda-toggle-sms" for="agenda-toggle-sms">
-              <input type="checkbox" id="agenda-toggle-sms">
-              SMS
-            </label>
+              <div class="agenda-view-toggle" role="group" aria-label="Vista de agenda">
+                <button id="agenda-view-day" class="agenda-view-btn is-active" type="button">Dia</button>
+                <button id="agenda-view-month" class="agenda-view-btn" type="button">
+                  ${getAgendaHeroIcon("calendar-days")}
+                  Mes
+                </button>
+              </div>
 
-            <label class="agenda-toggle-llamada" for="agenda-toggle-llamada">
-              <input type="checkbox" id="agenda-toggle-llamada">
-              Llamada
-            </label>
+              <div class="agenda-date-nav" aria-label="Fecha de agenda">
+                <button id="agenda-date-prev" class="agenda-date-nav-btn" type="button" aria-label="Fecha anterior">
+                  ${getAgendaHeroIcon("chevron-left")}
+                </button>
+                <label class="agenda-date-field" for="agenda-date">
+                  ${getAgendaHeroIcon("calendar-days")}
+                  <input type="date" id="agenda-date">
+                  <span id="agenda-date-label">-</span>
+                </label>
+                <button id="agenda-date-next" class="agenda-date-nav-btn" type="button" aria-label="Fecha siguiente">
+                  ${getAgendaHeroIcon("chevron-right")}
+                </button>
+              </div>
 
-            <label class="agenda-toggle-presente" for="agenda-toggle-presente">
-              <input type="checkbox" id="agenda-toggle-presente">
-              Presente
-            </label>
+              <button
+                id="agenda-review-ina"
+                class="agenda-soft-icon-btn"
+                type="button"
+                title="Revisar inasistencias"
+                aria-label="Revisar inasistencias"
+              >
+                ${getAgendaHeroIcon("queue-list")}
+              </button>
+              <button
+                id="agenda-day-summary-open"
+                class="agenda-soft-icon-btn"
+                type="button"
+                title="Resumen del dia"
+                aria-label="Abrir resumen del dia"
+              >
+                ${getAgendaHeroIcon("chart-bar")}
+              </button>
 
-            <input type="date" id="agenda-date">
-
-            <input type="search" id="agenda-search" name="agenda-search-paciente" placeholder="Buscar Paciente" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-
-            <button id="agenda-register" class="btn-cobrar" style="background:#1eab3a">
-              Registrar Cita
-            </button>
-
-            <button id="agenda-paste-cita" class="btn-cobrar agenda-btn-reprogramar-pegar" disabled hidden>
-              Pegar Cita
-            </button>
-
-            <button id="agenda-clear-reprograma" class="btn-cobrar agenda-btn-reprogramar-cancelar" disabled hidden>
-              Cancelar
-            </button>
-
-            <div class="agenda-filter-estado-wrap">
-              <select id="agenda-filter-estado" class="filter-estado">
-                <option value="">Todos</option>
-                <option value="Pendiente">Pendiente</option>
-                <option value="Confirmado">Confirmado</option>
-                <option value="Cancelado">Cancelado</option>
-                <option value="Reprogramado">Reprogramado</option>
-                <option value="No contesta">No contesta</option>
-                <option value="IGS">IGS</option>
-              </select>
-              <span id="agenda-filter-estado-alert" class="agenda-filter-estado-alert" hidden></span>
+              <div class="agenda-hero-metrics agenda-control-metrics" aria-live="polite">
+                <article class="agenda-metric-card is-total">
+                  <span class="agenda-metric-icon">${getAgendaHeroIcon("calendar-days")}</span>
+                  <strong id="agenda-stat-total">0</strong>
+                  <small>Total</small>
+                </article>
+                <article class="agenda-metric-card is-confirmed">
+                  <span class="agenda-metric-icon">${getAgendaHeroIcon("check-circle")}</span>
+                  <strong id="agenda-stat-confirmadas">0</strong>
+                  <small>Confirmadas</small>
+                </article>
+                <article class="agenda-metric-card is-rescheduled">
+                  <span class="agenda-metric-icon">${getAgendaHeroIcon("clock")}</span>
+                  <strong id="agenda-stat-reprogramadas">0</strong>
+                  <small>Reprog.</small>
+                </article>
+                <article class="agenda-metric-card is-pending">
+                  <span class="agenda-metric-icon">${getAgendaHeroIcon("funnel")}</span>
+                  <strong id="agenda-stat-pendientes">0</strong>
+                  <small>Pendientes</small>
+                </article>
+              </div>
             </div>
 
-            <select id="agenda-filter-contacto" class="filter-estado">
-              <option value="">Contacto: Todos</option>
-              <option value="none">Sin contacto</option>
-              <option value="sms">Con SMS</option>
-              <option value="llamada">Con Llamada</option>
-              <option value="both">Con ambos</option>
-            </select>
-            <button
-              id="agenda-review-ina"
-              class="btn-cobrar agenda-btn-inasistencia"
-              type="button"
-              title="Revisar inasistencias"
-              aria-label="Revisar inasistencias"
-            >
-              ${getAgendaHeroIcon("queue-list")}
-            </button>
-            <button
-              id="agenda-day-summary-open"
-              class="btn-cobrar agenda-btn-day-summary"
-              type="button"
-              title="Resumen del dia"
-              aria-label="Abrir resumen del dia"
-            >
-              ${getAgendaHeroIcon("chart-bar")}
-            </button>
+            <div class="agenda-control-row agenda-control-row-filters">
+              <label class="agenda-search-field" for="agenda-search">
+                ${getAgendaHeroIcon("magnifying-glass")}
+                <input type="search" id="agenda-search" name="agenda-search-paciente" placeholder="Buscar paciente, telefono o tratamiento..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+              </label>
 
-            <span id="agenda-reprograma-status" class="agenda-reprograma-status" aria-live="polite"></span>
+              <div class="agenda-filter-estado-wrap">
+                <label class="agenda-select-shell" for="agenda-filter-estado">
+                  <span class="agenda-select-dot"></span>
+                  Estado:
+                  <select id="agenda-filter-estado" class="filter-estado">
+                    <option value="">Todos</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Confirmado">Confirmado</option>
+                    <option value="Cancelado">Cancelado</option>
+                    <option value="Reprogramado">Reprogramado</option>
+                    <option value="No contesta">No contesta</option>
+                    <option value="IGS">IGS</option>
+                  </select>
+                </label>
+                <span id="agenda-filter-estado-alert" class="agenda-filter-estado-alert" hidden></span>
+              </div>
 
+              <label class="agenda-select-shell" for="agenda-filter-contacto">
+                ${getAgendaHeroIcon("phone")}
+                Contacto:
+                <select id="agenda-filter-contacto" class="filter-estado">
+                  <option value="">Todos</option>
+                  <option value="none">Sin contacto</option>
+                  <option value="sms">Con SMS</option>
+                  <option value="llamada">Con Llamada</option>
+                  <option value="both">Con ambos</option>
+                </select>
+              </label>
+
+              <button id="agenda-register" class="agenda-primary-btn agenda-filter-primary-btn" type="button">
+                ${getAgendaHeroIcon("plus")}
+                <span>Nueva cita</span>
+              </button>
+            </div>
+
+            <div class="agenda-control-row agenda-control-row-flags">
+              <label class="agenda-toggle-numeracion" for="agenda-toggle-numeracion">
+                <input type="checkbox" id="agenda-toggle-numeracion">
+                Numeracion
+              </label>
+
+              <label class="agenda-toggle-sms" for="agenda-toggle-sms">
+                <input type="checkbox" id="agenda-toggle-sms">
+                SMS
+              </label>
+
+              <label class="agenda-toggle-llamada" for="agenda-toggle-llamada">
+                <input type="checkbox" id="agenda-toggle-llamada">
+                Llamada
+              </label>
+
+              <label class="agenda-toggle-presente" for="agenda-toggle-presente">
+                <input type="checkbox" id="agenda-toggle-presente">
+                Presente
+              </label>
+
+              <button id="agenda-paste-cita" class="btn-cobrar agenda-btn-reprogramar-pegar" disabled hidden>
+                Pegar Cita
+              </button>
+
+              <button id="agenda-clear-reprograma" class="btn-cobrar agenda-btn-reprogramar-cancelar" disabled hidden>
+                Cancelar
+              </button>
+
+              <span id="agenda-reprograma-status" class="agenda-reprograma-status" aria-live="polite"></span>
+            </div>
           </div>
         </div>
 
         <div id="agenda-search-scope-alert" class="agenda-search-scope-alert" hidden></div>
 
+        <section id="agenda-month-view" class="agenda-month-view" hidden aria-label="Calendario mensual de agenda">
+          <div class="agenda-month-header">
+            <div>
+              <h2 id="agenda-month-title">Mes</h2>
+              <p id="agenda-month-subtitle">Seleccione un dia para ver su agenda.</p>
+            </div>
+            <div class="agenda-month-actions">
+              <button id="agenda-month-prev" class="agenda-month-nav-btn" type="button" title="Mes anterior" aria-label="Mes anterior">
+                &lt;
+              </button>
+              <button id="agenda-month-today" class="agenda-month-today-btn" type="button">
+                Hoy
+              </button>
+              <button id="agenda-month-next" class="agenda-month-nav-btn" type="button" title="Mes siguiente" aria-label="Mes siguiente">
+                &gt;
+              </button>
+              <span id="agenda-month-total" class="agenda-month-total">0 tratamientos</span>
+            </div>
+          </div>
+          <div class="agenda-month-weekdays" aria-hidden="true">
+            <span>Lun</span>
+            <span>Mar</span>
+            <span>Mie</span>
+            <span>Jue</span>
+            <span>Vie</span>
+            <span>Sab</span>
+            <span>Dom</span>
+          </div>
+          <div id="agenda-month-grid" class="agenda-month-grid"></div>
+          <div id="agenda-month-status" class="agenda-month-status" aria-live="polite"></div>
+        </section>
+
         <div class="agenda-table-wrap">
           <table class="agenda-table">
             <thead>
               <tr>
-                <th hidden>IdAgendaAP</th>
                 <th class="agenda-col-contacto">Contactado</th>
                 <th class="agenda-col-num">#</th>
-                <th>Nombre</th>
-                <th>Hora</th>
-                <th>Fecha</th>
-                <th>Contacto</th>
-                <th>Estado</th>
+                <th class="agenda-col-nombre">Nombre</th>
+                <th class="agenda-col-hora">Hora</th>
+                <th class="agenda-col-fecha">Fecha</th>
+                <th class="agenda-col-telefono">Contacto</th>
+                <th class="agenda-col-estado">Estado</th>
                 <th class="agenda-col-comentario">Comentario</th>
-                <th style="text-align:center">Acciones</th>
+                <th class="agenda-col-acciones" style="text-align:center">Acciones</th>
               </tr>
             </thead>
             <tbody id="agenda-tbody"></tbody>
@@ -946,7 +1165,28 @@
     // ===========REFERENCIAS==============
     const tbody = container.querySelector("#agenda-tbody");
     const agendaTable = container.querySelector(".agenda-table");
+    const agendaTableWrap = container.querySelector(".agenda-table-wrap");
     const dateInput = container.querySelector("#agenda-date");
+    const agendaHeroDate = container.querySelector("#agenda-hero-date");
+    const agendaDateLabel = container.querySelector("#agenda-date-label");
+    const agendaTodayBtn = container.querySelector("#agenda-today");
+    const agendaDatePrevBtn = container.querySelector("#agenda-date-prev");
+    const agendaDateNextBtn = container.querySelector("#agenda-date-next");
+    const agendaStatTotal = container.querySelector("#agenda-stat-total");
+    const agendaStatConfirmadas = container.querySelector("#agenda-stat-confirmadas");
+    const agendaStatReprogramadas = container.querySelector("#agenda-stat-reprogramadas");
+    const agendaStatPendientes = container.querySelector("#agenda-stat-pendientes");
+    const agendaViewDayBtn = container.querySelector("#agenda-view-day");
+    const agendaViewMonthBtn = container.querySelector("#agenda-view-month");
+    const agendaMonthView = container.querySelector("#agenda-month-view");
+    const agendaMonthTitle = container.querySelector("#agenda-month-title");
+    const agendaMonthSubtitle = container.querySelector("#agenda-month-subtitle");
+    const agendaMonthTotal = container.querySelector("#agenda-month-total");
+    const agendaMonthGrid = container.querySelector("#agenda-month-grid");
+    const agendaMonthStatus = container.querySelector("#agenda-month-status");
+    const agendaMonthPrevBtn = container.querySelector("#agenda-month-prev");
+    const agendaMonthNextBtn = container.querySelector("#agenda-month-next");
+    const agendaMonthTodayBtn = container.querySelector("#agenda-month-today");
     const searchInput = container.querySelector("#agenda-search");
     const agendaSaveOverlay = container.querySelector("#agenda-save-overlay");
     const agendaSaveOverlayText = container.querySelector("#agenda-save-overlay-text");
@@ -991,11 +1231,48 @@
 
     bindSanitizedPasteInput(searchInput);
 
+    function updateAgendaDateChrome() {
+      const fechaISO = String(dateInput?.value || "").trim();
+      const label = formatAgendaDayLabel(fechaISO) || "-";
+      if (agendaHeroDate) {
+        agendaHeroDate.innerHTML = `${getAgendaHeroIcon("calendar-days")} ${escapeHtml(label)}`;
+      }
+      if (agendaDateLabel) {
+        agendaDateLabel.textContent = formatAgendaCompactDateLabel(fechaISO) || "-";
+      }
+    }
+
+    function updateAgendaMetrics(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      const countByState = (state) => list.filter((item) => (
+        normalizarTexto(String(item?.estado || "Pendiente")) === state
+      )).length;
+
+      if (agendaStatTotal) agendaStatTotal.textContent = String(list.length);
+      if (agendaStatConfirmadas) agendaStatConfirmadas.textContent = String(countByState("confirmado"));
+      if (agendaStatReprogramadas) agendaStatReprogramadas.textContent = String(countByState("reprogramado"));
+      if (agendaStatPendientes) agendaStatPendientes.textContent = String(countByState("pendiente"));
+    }
+
+    function setAgendaDateAndRefresh(nextDate) {
+      const fechaNueva = String(nextDate || "").trim();
+      if (!fechaNueva || !dateInput) return;
+      dateInput.value = fechaNueva;
+      updateAgendaDateChrome();
+      dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
     const isRedes = isRedesRole();
     let agendaReprogramaBuffer = null;
     let agendaModalDesdeReprogramacion = false;
     let agendaMesResultados = null;
     let agendaMesBusquedaToken = 0;
+    let agendaViewMode = "dia";
+    let agendaMonthRows = [];
+    let agendaMonthCacheKey = "";
+    let agendaMonthLoading = false;
+    let agendaMonthFetchSeq = 0;
+    let agendaMonthFetchController = null;
     let inasistenciaRows = [];
     let inasistenciaSelectedIds = new Set();
     let inasistenciaLoading = false;
@@ -1014,8 +1291,10 @@
       search: "",
       estado: "",
       contacto: "",
+      vista: "dia",
       ...loadSessionUiState(agendaUiStateKey)
     };
+    agendaViewMode = agendaUiState.vista === "mes" ? "mes" : "dia";
     const getSelectSafeValue = (selectEl, value) => {
       if (!selectEl) return "";
       const target = String(value || "").trim();
@@ -1065,7 +1344,8 @@
       presente: !!togglePresenteAgenda?.checked,
       search: String(searchInput?.value || ""),
       estado: String(estadoFilter?.value || ""),
-      contacto: String(contactoFilter?.value || "")
+      contacto: String(contactoFilter?.value || ""),
+      vista: agendaViewMode === "mes" ? "mes" : "dia"
     });
     const persistAgendaUiState = () => {
       saveSessionUiState(agendaUiStateKey, getAgendaUiStateSnapshot());
@@ -1176,9 +1456,29 @@
       return !!toggleNumeracionAgenda?.checked;
     }
 
+    function sincronizarColumnasOpcionalesAgenda() {
+      if (!agendaTable) return;
+
+      const contactadoCount = [
+        smsAgendaActivo(),
+        llamadaAgendaActiva(),
+        presenteAgendaActivo()
+      ].filter(Boolean).length;
+
+      agendaTable.classList.toggle("num-visible", numeracionAgendaActiva());
+      agendaTable.classList.remove(
+        "contactado-count-0",
+        "contactado-count-1",
+        "contactado-count-2",
+        "contactado-count-3"
+      );
+      agendaTable.classList.add(`contactado-count-${contactadoCount}`);
+    }
+
     function aplicarVisibilidadNumeracionAgenda() {
       if (!agendaTable) return;
       agendaTable.classList.toggle("hide-numeracion", !numeracionAgendaActiva());
+      sincronizarColumnasOpcionalesAgenda();
     }
 
     function smsAgendaActivo() {
@@ -1201,6 +1501,198 @@
       agendaTable.classList.toggle("hide-contacto-llamada", !llamadaVisible);
       agendaTable.classList.toggle("hide-contacto-presente", !presenteVisible);
       agendaTable.classList.toggle("hide-contactado", !smsVisible && !llamadaVisible && !presenteVisible);
+      sincronizarColumnasOpcionalesAgenda();
+    }
+
+    function getAgendaMonthKey(fechaISO) {
+      const parts = parseISODateParts(fechaISO);
+      if (!parts) return "";
+      return `${parts.year}-${String(parts.month).padStart(2, "0")}`;
+    }
+
+    function setAgendaMonthStatus(message = "", tone = "info") {
+      if (!agendaMonthStatus) return;
+      const text = String(message || "").trim();
+      agendaMonthStatus.textContent = text;
+      agendaMonthStatus.hidden = !text;
+      agendaMonthStatus.classList.toggle("is-error", tone === "error");
+      agendaMonthStatus.classList.toggle("is-loading", tone === "loading");
+    }
+
+    function setAgendaViewMode(mode, opts = {}) {
+      const nextMode = mode === "mes" ? "mes" : "dia";
+      agendaViewMode = nextMode;
+
+      if (agendaViewDayBtn) {
+        const active = nextMode === "dia";
+        agendaViewDayBtn.classList.toggle("is-active", active);
+        agendaViewDayBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      if (agendaViewMonthBtn) {
+        const active = nextMode === "mes";
+        agendaViewMonthBtn.classList.toggle("is-active", active);
+        agendaViewMonthBtn.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      if (agendaTableWrap) {
+        agendaTableWrap.hidden = nextMode === "mes";
+        agendaTableWrap.classList.toggle("agenda-view-hidden", nextMode === "mes");
+        agendaTableWrap.classList.toggle("is-entering", nextMode === "dia");
+        if (nextMode === "dia") {
+          window.setTimeout(() => {
+            if (agendaTableWrap?.isConnected) agendaTableWrap.classList.remove("is-entering");
+          }, 320);
+        }
+      }
+      if (agendaMonthView) {
+        agendaMonthView.hidden = nextMode !== "mes";
+        agendaMonthView.classList.toggle("is-entering", nextMode === "mes");
+        if (nextMode === "mes") {
+          window.setTimeout(() => {
+            if (agendaMonthView?.isConnected) agendaMonthView.classList.remove("is-entering");
+          }, 360);
+        }
+      }
+
+      if (!opts.skipPersist) persistAgendaUiState();
+      if (nextMode === "mes") {
+        cargarAgendaMesCalendario(String(dateInput?.value || "").trim() || getLocalTodayISO());
+      } else {
+        aplicarFiltros();
+      }
+    }
+
+    function renderAgendaMonthCalendar() {
+      if (!agendaMonthGrid || !agendaMonthView) return;
+
+      const fechaISO = String(dateInput?.value || "").trim() || getLocalTodayISO();
+      const parts = parseISODateParts(fechaISO) || parseISODateParts(getLocalTodayISO());
+      const todayISO = getLocalTodayISO();
+      const selectedISO = fechaISO;
+      const daysInMonth = getDaysInMonth(parts.year, parts.month);
+      const firstDay = new Date(Date.UTC(parts.year, parts.month - 1, 1));
+      const blanksBefore = (firstDay.getUTCDay() + 6) % 7;
+      const filteredRows = filtrarYOrdenar(agendaMonthRows, false);
+      const rowsByDate = new Map();
+      updateAgendaDateChrome();
+      updateAgendaMetrics(filteredRows);
+
+      filteredRows.forEach((item) => {
+        const iso = getAgendaFechaIsoItem(item);
+        if (!iso) return;
+        if (!rowsByDate.has(iso)) rowsByDate.set(iso, []);
+        rowsByDate.get(iso).push(item);
+      });
+
+      if (agendaMonthTitle) agendaMonthTitle.textContent = formatAgendaMonthLabel(fechaISO) || "Mes";
+      if (agendaMonthSubtitle) {
+        agendaMonthSubtitle.textContent = agendaMonthLoading
+          ? "Cargando agenda mensual..."
+          : "Seleccione un dia para abrir su agenda.";
+      }
+      if (agendaMonthTotal) {
+        const total = filteredRows.length;
+        agendaMonthTotal.textContent = `${total} ${total === 1 ? "tratamiento" : "tratamientos"}`;
+      }
+
+      const cells = [];
+      for (let i = 0; i < blanksBefore; i++) {
+        cells.push(`<div class="agenda-month-day is-empty" aria-hidden="true"></div>`);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const iso = buildISODate(parts.year, parts.month, day);
+        const dayRows = rowsByDate.get(iso) || [];
+        const count = dayRows.length;
+        const sample = dayRows
+          .slice(0, 2)
+          .map((item) => String(item.comentario || "").trim())
+          .filter(Boolean);
+        const extra = count > sample.length ? count - sample.length : 0;
+        const selectedClass = iso === selectedISO ? " is-selected" : "";
+        const todayClass = iso === todayISO ? " is-today" : "";
+        const hasItemsClass = count > 0 ? " has-items" : "";
+        const label = `${day} de ${formatAgendaMonthLabel(iso)}: ${count} ${count === 1 ? "tratamiento" : "tratamientos"}`;
+
+        cells.push(`
+          <button
+            class="agenda-month-day${selectedClass}${todayClass}${hasItemsClass}"
+            type="button"
+            data-fecha="${iso}"
+            aria-label="${escapeHtml(label)}"
+          >
+            <span class="agenda-month-day-number">${day}</span>
+            <span class="agenda-month-count">${count}</span>
+            <span class="agenda-month-count-label">${count === 1 ? "tratamiento" : "tratamientos"}</span>
+            <span class="agenda-month-samples">
+              ${sample.map((txt) => `<em>${escapeHtml(txt)}</em>`).join("")}
+              ${extra > 0 ? `<em>+${extra} mas</em>` : ""}
+            </span>
+          </button>
+        `);
+      }
+
+      const totalCells = Math.ceil((blanksBefore + daysInMonth) / 7) * 7;
+      for (let i = blanksBefore + daysInMonth; i < totalCells; i++) {
+        cells.push(`<div class="agenda-month-day is-empty" aria-hidden="true"></div>`);
+      }
+
+      agendaMonthGrid.innerHTML = cells.join("");
+    }
+
+    async function cargarAgendaMesCalendario(fechaISO) {
+      if (agendaViewMode !== "mes") return;
+      const fechaObjetivo = String(fechaISO || "").trim();
+      if (!fechaObjetivo) return;
+
+      const key = getAgendaMonthKey(fechaObjetivo);
+      if (key && agendaMonthCacheKey === key && Array.isArray(agendaMonthRows)) {
+        renderAgendaMonthCalendar();
+        return;
+      }
+
+      if (agendaMonthFetchController) {
+        try {
+          agendaMonthFetchController.abort();
+        } catch {
+          // ignore abort failures
+        }
+      }
+
+      const localSeq = ++agendaMonthFetchSeq;
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      agendaMonthFetchController = controller;
+      agendaMonthLoading = true;
+      setAgendaMonthStatus("Cargando agenda mensual...", "loading");
+      renderAgendaMonthCalendar();
+
+      try {
+        const options = controller ? { signal: controller.signal } : undefined;
+        const res = await fetch(`/api/agenda/mes?fecha=${encodeURIComponent(fechaObjetivo)}`, options);
+        const json = await res.json();
+        if (localSeq !== agendaMonthFetchSeq) return;
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "No se pudo cargar la agenda mensual");
+        }
+
+        const data = Array.isArray(json.data) ? json.data : [];
+        agendaMonthRows = data.map((item) => normalizarAgendaRow(item, fechaObjetivo, false));
+        agendaMonthCacheKey = key;
+        setAgendaMonthStatus("");
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+        if (localSeq !== agendaMonthFetchSeq) return;
+        console.error("Error cargando calendario mensual de agenda", err);
+        agendaMonthRows = [];
+        agendaMonthCacheKey = "";
+        setAgendaMonthStatus(err?.message || "No se pudo cargar la agenda mensual", "error");
+      } finally {
+        if (localSeq === agendaMonthFetchSeq) {
+          agendaMonthLoading = false;
+          if (agendaMonthFetchController === controller) agendaMonthFetchController = null;
+          renderAgendaMonthCalendar();
+        }
+      }
     }
     function formatearHoraInasistencia(value) {
       const raw = String(value || "").trim();
@@ -1897,8 +2389,16 @@
       const info = tokenInfoOverride
         || agendaComentarioTokenInfo
         || getTokenInfoFromCaret(modalComentario);
-      const start = Number.isInteger(info?.start) ? info.start : value.length;
-      const end = Number.isInteger(info?.end) ? info.end : start;
+      let start = Number.isInteger(info?.start) ? info.start : value.length;
+      let end = Number.isInteger(info?.end) ? info.end : start;
+      const tokenActual = getTokenInfoFromCaret(modalComentario);
+      const queryInfo = String(info?.query || "").trim();
+      const queryEnRango = String(value.slice(start, end) || "").trim();
+
+      if (queryInfo && normalizarTexto(queryEnRango) !== normalizarTexto(queryInfo)) {
+        start = Number.isInteger(tokenActual?.start) ? tokenActual.start : value.length;
+        end = Number.isInteger(tokenActual?.end) ? tokenActual.end : start;
+      }
 
       const nextValue = value.slice(0, start) + nombreServicio + value.slice(end);
       const nextPos = start + nombreServicio.length;
@@ -2428,6 +2928,10 @@
         setAgendaCriticalSaveState(true, "Comprobando guardado...");
         const agendaVerificada = await fetchAgendaByIdForVerification(json.idAgendaAP, fechaISO);
         agendaData.unshift(agendaVerificada);
+        agendaMonthCacheKey = "";
+        if (agendaViewMode === "mes") {
+          await cargarAgendaMesCalendario(fechaISO);
+        }
 
         aplicarFiltros();
         if (agendaModalDesdeReprogramacion) {
@@ -2457,11 +2961,22 @@
     // =============FECHA ACTUAL (FILTRO)===========
     const isAgendaViewActive = () => !!container?.isConnected && window.currentView === "Agenda";
     const isAgendaModalOpen = () => !!modal?.classList.contains("show");
+    const toggleAgendaViewModeRapido = () => {
+      if (agendaViewMode === "mes") {
+        setAgendaViewMode("dia");
+        const fechaISO = String(dateInput?.value || "").trim();
+        if (fechaISO) cargarAgendaPorFecha(fechaISO);
+        return;
+      }
+      setAgendaViewMode("mes");
+    };
     const moverFechaAgenda = (deltaDays) => {
       if (!isAgendaViewActive()) return;
       if (isAgendaCriticalSaveInProgress()) return;
       const fechaActual = String(dateInput?.value || "").trim() || getLocalTodayISO();
-      const fechaNueva = shiftISODateByDays(fechaActual, deltaDays);
+      const fechaNueva = agendaViewMode === "mes"
+        ? shiftISODateByMonths(fechaActual, deltaDays)
+        : shiftISODateByDays(fechaActual, deltaDays);
       if (!fechaNueva || fechaNueva === fechaActual) return;
       dateInput.value = fechaNueva;
       dateInput.dispatchEvent(new Event("change", { bubbles: true }));
@@ -2470,14 +2985,21 @@
       if (!isAgendaViewActive()) return;
       if (isAgendaCriticalSaveInProgress()) return;
       if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       if (isAgendaModalOpen()) return;
 
       const activeEl = document.activeElement;
       if (activeEl && activeEl !== dateInput && isEditingFocusableControl(activeEl)) return;
 
-      e.preventDefault();
-      moverFechaAgenda(e.key === "ArrowLeft" ? -1 : 1);
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        moverFechaAgenda(e.key === "ArrowLeft" ? -1 : 1);
+        return;
+      }
+
+      if (String(e.key || "").toLowerCase() === "m") {
+        e.preventDefault();
+        toggleAgendaViewModeRapido();
+      }
     };
     if (window.__agendaDateNavKeydownHandler) {
       document.removeEventListener("keydown", window.__agendaDateNavKeydownHandler);
@@ -2486,15 +3008,31 @@
     document.addEventListener("keydown", onAgendaDateShortcut);
 
     dateInput.value = getLocalTodayISO();
+    updateAgendaDateChrome();
     actualizarUiReprogramacion();
-    cargarAgendaPorFecha(dateInput.value);
+    setAgendaViewMode(agendaViewMode, { skipPersist: true });
+    if (agendaViewMode === "dia") {
+      cargarAgendaPorFecha(dateInput.value);
+    }
     dateInput.addEventListener("change", () => {
-    if (!dateInput.value) return;
-    agendaMesResultados = null;
-    agendaMesBusquedaToken++;
-    actualizarUiReprogramacion();
-    cargarAgendaPorFecha(dateInput.value);
+      if (!dateInput.value) return;
+      agendaMesResultados = null;
+      agendaMesBusquedaToken++;
+      updateAgendaDateChrome();
+      actualizarUiReprogramacion();
+      if (agendaViewMode === "mes") {
+        cargarAgendaMesCalendario(dateInput.value);
+        renderAgendaMonthCalendar();
+      } else {
+        cargarAgendaPorFecha(dateInput.value);
+      }
     });
+    agendaTodayBtn?.addEventListener("click", () => {
+      if (isAgendaCriticalSaveInProgress()) return;
+      setAgendaDateAndRefresh(getLocalTodayISO());
+    });
+    agendaDatePrevBtn?.addEventListener("click", () => moverFechaAgenda(-1));
+    agendaDateNextBtn?.addEventListener("click", () => moverFechaAgenda(1));
     // ============FUNCIONES DE EDICION EN TABLA================
     function editarFecha(td, item) {
       const input = document.createElement("input");
@@ -2514,6 +3052,7 @@
         const [yy, mm, dd] = iso.split("-");
         item.fecha = `${dd}/${mm}/${yy}`;
         item._fechaISO = iso;
+        agendaMonthCacheKey = "";
 
         td.innerHTML = renderFechaVisual(item.fecha);
         aplicarFiltros();
@@ -2609,7 +3148,7 @@
     function editarHora(td, item) {
       const input = document.createElement("input");
       input.type = "text";
-      input.value = td.textContent;
+      input.value = formatTime12(item.hora);
       input.className = "comment-edit";
 
       td.textContent = "";
@@ -2623,7 +3162,13 @@
       function closeEditor(hora24) {
         if (isClosed) return;
         isClosed = true;
-        td.textContent = formatTime12(hora24);
+        const horaParts = getAgendaTimeParts(hora24);
+        td.innerHTML = `
+          <span class="agenda-time-pill">
+            <strong>${escapeHtml(horaParts.hour)}</strong>
+            <small>${escapeHtml(horaParts.period)}</small>
+          </span>
+        `;
         aplicarRefuerzoVisualHora(td, hora24);
       }
 
@@ -2662,7 +3207,13 @@
           }
         } catch (err) {
           item.hora = valorOriginal;
-          td.textContent = formatTime12(valorOriginal);
+          const horaParts = getAgendaTimeParts(valorOriginal);
+          td.innerHTML = `
+            <span class="agenda-time-pill">
+              <strong>${escapeHtml(horaParts.hour)}</strong>
+              <small>${escapeHtml(horaParts.period)}</small>
+            </span>
+          `;
           aplicarRefuerzoVisualHora(td, valorOriginal);
           alert("No se pudo guardar el cambio de hora");
           console.error(err);
@@ -2744,6 +3295,8 @@
       tbody.innerHTML = "";
       aplicarVisibilidadNumeracionAgenda();
       aplicarVisibilidadContactadoAgenda();
+      updateAgendaDateChrome();
+      updateAgendaMetrics(list);
       const duplicateCounts = buildAgendaDuplicateCounts(duplicateSourceList);
 
       list.forEach((item, index) => {
@@ -2824,47 +3377,50 @@
         contactoWrap.appendChild(flagLlamada);
         contactoWrap.appendChild(flagPresente);
         tdContactoMarcadores.appendChild(contactoWrap);
-        tr.appendChild(tdContactoMarcadores);
 
         // Numeracion
         const tdNum = document.createElement("td");
         tdNum.textContent = String(index + 1);
         tdNum.classList.add("agenda-col-num");
-        tr.appendChild(tdNum);
 
         // Nombre
         const tdNombre = document.createElement("td");
+        tdNombre.classList.add("agenda-col-nombre");
         renderAgendaNombreCell(tdNombre, item.nombre, {
           duplicate: Number(duplicateCounts.get(item) || 0) > 1
         });
         tdNombre.classList.add("editable");
         aplicarRefuerzoVisualNombre(tdNombre, item.estado);
         tdNombre.addEventListener("dblclick", () => editarTexto(tdNombre, item, "nombre"));
-        tr.appendChild(tdNombre);
         // Hora
         const tdHora = document.createElement("td");
-        tdHora.textContent = formatTime12(item.hora);
+        const horaParts = getAgendaTimeParts(item.hora);
+        tdHora.innerHTML = `
+          <span class="agenda-time-pill">
+            <strong>${escapeHtml(horaParts.hour)}</strong>
+            <small>${escapeHtml(horaParts.period)}</small>
+          </span>
+        `;
         tdHora.classList.add("editable");
         aplicarRefuerzoVisualHora(tdHora, item.hora);
         tdHora.addEventListener("dblclick", () => editarHora(tdHora, item));
-        tr.appendChild(tdHora);
 
         // Fecha
         const tdFecha = document.createElement("td");
+        tdFecha.classList.add("agenda-col-fecha");
         tdFecha.innerHTML = renderFechaVisual(item.fecha);
         tdFecha.classList.add("editable");
         tdFecha.addEventListener("dblclick", () => editarFecha(tdFecha, item));
-        tr.appendChild(tdFecha);
 
         // Contacto
         const tdContacto = document.createElement("td");
         tdContacto.textContent = item.contacto;
-        tdContacto.classList.add("editable");
+        tdContacto.classList.add("editable", "agenda-col-telefono");
         tdContacto.addEventListener("dblclick", () => editarTexto(tdContacto, item, "contacto"));
-        tr.appendChild(tdContacto);
 
         // Estado
         const tdEstado = document.createElement("td");
+        tdEstado.classList.add("agenda-col-estado");
         const sel = renderEstadoSelect(item.estado);
         sel.addEventListener("change", async () => {
         const nuevoEstado = sel.value || "Pendiente";
@@ -2899,7 +3455,6 @@
         requestAnimationFrame(() => {
         sel.className = "select-estado " + estadoClassName(item.estado);
         });
-        tr.appendChild(tdEstado);
 
         // Comentario
         const tdComentario = document.createElement("td");
@@ -2976,7 +3531,6 @@
           input.addEventListener("blur", save);
         });
         tdComentario.appendChild(span);
-        tr.appendChild(tdComentario);
 
         // Acciones (iconos compactos)
         const tdAcciones = document.createElement("td");
@@ -3273,6 +3827,8 @@
 
             const idxDia = agendaData.findIndex(x => Number(x.idAgendaAP) === idAgenda);
             if (idxDia >= 0) agendaData.splice(idxDia, 1);
+            agendaMonthRows = agendaMonthRows.filter(x => Number(x.idAgendaAP) !== idAgenda);
+            agendaMonthCacheKey = "";
 
             if (Array.isArray(agendaMesResultados)) {
               agendaMesResultados = agendaMesResultados.filter(
@@ -3352,6 +3908,15 @@
         }
         actionsWrap.appendChild(btnEliminar);
         tdAcciones.appendChild(actionsWrap);
+
+        tr.appendChild(tdContactoMarcadores);
+        tr.appendChild(tdNum);
+        tr.appendChild(tdNombre);
+        tr.appendChild(tdHora);
+        tr.appendChild(tdFecha);
+        tr.appendChild(tdContacto);
+        tr.appendChild(tdEstado);
+        tr.appendChild(tdComentario);
         tr.appendChild(tdAcciones);
 
         tbody.appendChild(tr);
@@ -3450,6 +4015,12 @@
       const estadoFiltroActivo = String(estadoFilter?.value || "").trim() !== "";
       actualizarRefuerzoVisualFiltroEstado(estadoFiltroActivo && listaLocal.length === 0);
 
+      if (agendaViewMode === "mes") {
+        setAgendaSearchScopeAlert(false);
+        renderAgendaMonthCalendar();
+        return;
+      }
+
       if (texto !== "" && Array.isArray(agendaMesResultados)) {
         const listaMes = filtrarYOrdenar(agendaMesResultados, false);
         if (listaMes.length > 0) {
@@ -3488,6 +4059,50 @@
         buscarAgendaMesDebounced();
       }
     }
+
+    agendaViewDayBtn?.addEventListener("click", () => {
+      if (agendaViewMode === "dia") return;
+      setAgendaViewMode("dia");
+      const fechaISO = String(dateInput?.value || "").trim();
+      if (fechaISO) cargarAgendaPorFecha(fechaISO);
+    });
+    agendaViewMonthBtn?.addEventListener("click", () => {
+      if (agendaViewMode === "mes") return;
+      setAgendaViewMode("mes");
+    });
+    agendaMonthPrevBtn?.addEventListener("click", () => {
+      const current = String(dateInput?.value || "").trim() || getLocalTodayISO();
+      dateInput.value = shiftISODateByMonths(current, -1);
+      agendaMonthCacheKey = "";
+      actualizarUiReprogramacion();
+      cargarAgendaMesCalendario(dateInput.value);
+      persistAgendaUiState();
+    });
+    agendaMonthNextBtn?.addEventListener("click", () => {
+      const current = String(dateInput?.value || "").trim() || getLocalTodayISO();
+      dateInput.value = shiftISODateByMonths(current, 1);
+      agendaMonthCacheKey = "";
+      actualizarUiReprogramacion();
+      cargarAgendaMesCalendario(dateInput.value);
+      persistAgendaUiState();
+    });
+    agendaMonthTodayBtn?.addEventListener("click", () => {
+      dateInput.value = getLocalTodayISO();
+      agendaMonthCacheKey = "";
+      actualizarUiReprogramacion();
+      cargarAgendaMesCalendario(dateInput.value);
+      persistAgendaUiState();
+    });
+    agendaMonthGrid?.addEventListener("click", (e) => {
+      const dayBtn = e.target.closest(".agenda-month-day[data-fecha]");
+      if (!dayBtn) return;
+      const fechaISO = String(dayBtn.dataset.fecha || "").trim();
+      if (!fechaISO) return;
+      dateInput.value = fechaISO;
+      setAgendaViewMode("dia");
+      actualizarUiReprogramacion();
+      cargarAgendaPorFecha(fechaISO);
+    });
 
     searchInput.addEventListener("input", () => {
       agendaMesResultados = null;
@@ -3542,7 +4157,6 @@
           document.removeEventListener("keydown", window.__agendaDateNavKeydownHandler);
           window.__agendaDateNavKeydownHandler = null;
         }
-
         if (agendaFetchController) {
           try {
             agendaFetchController.abort();
@@ -3553,6 +4167,16 @@
         agendaFetchController = null;
         agendaFetchDate = "";
         agendaFetchSeq++;
+        if (agendaMonthFetchController) {
+          try {
+            agendaMonthFetchController.abort();
+          } catch {
+            // ignore abort failures
+          }
+        }
+        agendaMonthFetchController = null;
+        agendaMonthFetchSeq++;
+        agendaMonthLoading = false;
         inasistenciaApplying = false;
         cerrarInasistenciaModal();
         window.__agendaCloseInasistenciaModal = null;

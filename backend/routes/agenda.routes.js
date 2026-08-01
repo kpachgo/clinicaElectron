@@ -15,6 +15,13 @@ router.get(
   agendaController.buscarPorMes
 );
 
+router.get(
+  "/mes",
+  authMiddleware,
+  roleMiddleware(ROLES_AGENDA),
+  agendaController.listarMes
+);
+
 router.post(
   "/precheck-registro",
   authMiddleware,

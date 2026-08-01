@@ -5,6 +5,12 @@
 - Estilos clave: `frontend/css/agenda.css`.
 - Render principal: tabla de agenda con filtros por fecha, texto, estado y contacto.
 - Columnas: `Contactado` (SMS/Llamada/Presente), `#` (numeracion), Nombre, Hora, Fecha, Contacto (telefono), Estado, Comentario, Acciones.
+- Selector de vista en toolbar:
+  - `Dia`: comportamiento tradicional con tabla diaria.
+  - `Mes`: oculta la tabla diaria y muestra un calendario mensual grande con conteo de tratamientos por dia.
+  - En modo `Mes`, los filtros de texto/estado/contacto recalculan los conteos del calendario.
+  - Al seleccionar cualquier dia del calendario, vuelve a `Dia`, carga esa fecha y muestra la tabla normal.
+  - El modo se recuerda por sesion/usuario junto con los filtros.
 - Controles de visibilidad:
   - toggle `Numeracion` para mostrar/ocultar columna `#`.
   - toggles `SMS`, `Llamada` y `Presente` para mostrar/ocultar cada marcador dentro de `Contactado`.
@@ -94,9 +100,42 @@
   - filtro de contacto.
 - Al reabrir la vista dentro de la sesion, restaura esos valores.
 
+## Patron visual moderno en prueba
+- Agenda es la primera vista usada para probar el nuevo patron azul clinico inspirado en el login.
+- Cambios aplicados:
+  - topbar global mas liviana, sin marca lateral, con activo azul claro y avatar de usuario.
+  - labels visuales de navegacion pueden diferir del nombre tecnico de la vista usando `data-view`.
+  - hero de modulo compacto con titulo/fecha.
+  - metricas compactas integradas en la primera fila de controles, alineadas a la derecha cuando hay espacio:
+    - total de citas,
+    - confirmadas,
+    - reprogramadas,
+    - pendientes.
+  - boton principal `Nueva cita` con gradiente azul dentro de la fila de filtros, alineado con `Estado` y `Contacto`.
+  - filtros reorganizados en tarjeta:
+    - `Hoy`,
+    - toggle `Dia/Mes`,
+    - navegacion anterior/siguiente por fecha,
+    - buscador,
+    - estado,
+    - contacto,
+    - toggles `Numeracion/SMS/Llamada/Presente`.
+  - tabla con filas blancas/gris azulado alternado.
+  - tabla compacta: filas reducidas para ver mas citas, estado centrado, columnas cortas con ancho compacto y solo `Nombre`/`Comentario` absorben el espacio flexible.
+  - hora como capsula compacta con color suave por franja horaria (`agenda-hora-slot-*`); `AM/PM` hereda el color de la hora.
+  - estado como pill suave.
+  - la tabla conserva el orden funcional original de columnas.
+  - acciones visibles originales por fila: enviar a cola, reprogramar, cobrar, abrir paciente, crear paciente y eliminar.
+  - los cambios de esta prueba deben limitarse al diseno; no debe cambiar orden de columnas, filtros ni flujo de acciones.
+- No se implemento vista `Semana` todavia; solo existe `Dia/Mes`.
+- No se implemento filtro por doctor porque el contrato actual de Agenda no trae doctor.
+- No hay columnas fijas en la tabla para evitar solapes con numeracion, contacto y acciones.
+
 ## Atajos de teclado
 - `Alt + Flecha izquierda`: mueve agenda al dia anterior.
 - `Alt + Flecha derecha`: mueve agenda al dia siguiente.
+- Si la vista `Mes` esta activa, esos mismos atajos desplazan al mes anterior/siguiente en vez de moverse por dia.
+- `Alt + M`: alterna rapidamente entre vista `Dia` y vista `Mes`.
 - Se desactiva el atajo cuando:
   - la vista Agenda no esta activa,
   - hay modal de Agenda abierto,
@@ -116,6 +155,9 @@
 - Reglas:
   - requiere al menos 2 caracteres del token actual.
   - no reemplaza todo el comentario; solo el token actual en cursor/seleccion.
+  - si el usuario escribe parte de un servicio y luego selecciona una sugerencia, el texto parcial se reemplaza por el servicio completo.
+  - evita duplicados como `promo Promo Rellenos`; el resultado queda solo `Promo Rellenos`.
+  - permite agregar varios servicios sin borrar los ya confirmados, porque solo opera sobre el token/rango activo.
   - `Enter` inserta la primera sugerencia visible.
   - `Escape` cierra la lista.
   - click fuera del campo/lista cierra la lista.
@@ -124,6 +166,16 @@
 - `GET /api/agenda?fecha=YYYY-MM-DD`
   - Controller: `agenda.controller.listarPorFecha`
   - SP: `sp_agenda_por_fecha`
+- `GET /api/agenda/mes?fecha=YYYY-MM-DD`
+  - Controller: `agenda.controller.listarMes`
+  - Usa `sp_agenda_buscar_mes` con busqueda vacia para traer el mes completo.
+  - Uso: calendario mensual con conteo de tratamientos por dia.
+  - Rendimiento esperado:
+    - En uso normal de clinica, traer el mes completo es suficiente y carga rapido.
+    - Un volumen aproximado de `0-5,000` registros por mes no deberia ser problematico.
+    - Con indice en `agendapersona.fechaAP`, incluso `5,000-20,000` registros por mes deberian seguir siendo manejables.
+    - Si algun dia la agenda creciera mucho (`20,000+` registros por mes), conviene crear un endpoint optimizado que devuelva solo conteos por dia en vez de filas completas.
+    - Mejora preventiva recomendada si no existe indice: `CREATE INDEX idx_agendapersona_fechaAP ON agendapersona (fechaAP);`.
 - `GET /api/agenda/buscar-mes?q=texto&fecha=YYYY-MM-DD`
   - Controller: `agenda.controller.buscarPorMes`
   - SP: `sp_agenda_buscar_mes`

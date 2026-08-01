@@ -11,6 +11,19 @@
 - `frontend/js/web.js`: estado de sesion, permisos por rol, navegacion inicial y logout.
 - `frontend/css/login.css`: estilos de login, activacion y bloqueos por licencia.
 
+## Configuracion local protegida de base de datos
+- La conexion local ya no debe guardarse en texto claro como `config/db-connection.json` en instalaciones empaquetadas.
+- Electron genera una clave local protegida con `safeStorage`/DPAPI y la pasa al backend por `CLINICA_DB_CONFIG_KEY` solo durante el arranque.
+- El backend guarda la conexion como blob AES-256-GCM en `ProgramData/ClinicaElectron/system/electrondump/util.dat`.
+- La clave protegida por Windows queda en `ProgramData/ClinicaElectron/system/electrondump/state.dat`.
+- Si existe el JSON legado, se migra automaticamente al blob cifrado y luego se intenta borrar.
+- El endpoint `/api/configuracion-db/estado` no expone la ruta exacta de la conexion; devuelve `displaySource`, `protectedConfig`, `configStatus` y banderas publicas.
+- Si el blob cifrado fue modificado o no puede autenticarse, no hay fallback silencioso a `.env`; se reporta configuracion local danada/modificada.
+- Atajo de mantenimiento de conexion:
+  - `Ctrl + Shift + C` abre una compuerta previa.
+  - Antes de mostrar el modal de conexion exige contrasena fija local: `D@nielito100pre`.
+  - Despues de pasar esa compuerta, la edicion sigue requiriendo autorizacion por Administrador o PIN local.
+
 ## Actualizacion transversal: Protocolo de seguridad global (2026-04-16)
 - `frontend/js/web.js` agrega estado global de protocolo:
   - lectura por API al iniciar app con sesion activa.
@@ -83,13 +96,20 @@
 - Crear usuario:
   - `POST /api/auth/registro-oculto`.
 - Campos enviados:
-  - `correo`, `password`, `nombre`, `idRol`, `idDoctor` (nullable),
+  - `correo`, `password`, `nombre`, `idRol`,
+  - para rol `Doctor`: `idDoctor` existente disponible o `doctorNuevo`,
   - opcional: `preguntaSeguridad`, `respuestaSeguridad`.
 - Reglas UI:
   - exige campos obligatorios,
   - valida confirmacion de password,
   - minimo 6 caracteres,
   - si se define seguridad, exige pregunta+respuesta juntas.
+  - el bloque de doctor solo aparece cuando el rol seleccionado es `Doctor`.
+  - para rol `Doctor` permite:
+    - `Usar doctor existente`: selector con doctores no vinculados a usuario.
+    - `Crear doctor nuevo`: nombre obligatorio y telefono opcional.
+  - para otros roles no se envia doctor ni datos de doctor nuevo.
+  - el contenedor del login permite scroll vertical para que registro oculto/recuperacion no queden cortados en pantallas bajas.
 
 ## Recuperacion de contrasena (frontend)
 - Entrada:
@@ -131,11 +151,23 @@
   - `POST /api/auth/login`
   - `POST /api/auth/registro-oculto`
   - `GET /api/auth/registro-oculto/catalogos`
+  - `POST /api/auth/change-password`
   - `POST /api/auth/password-recovery/question`
   - `POST /api/auth/password-recovery/reset`
   - `POST /api/auth/password-recovery/setup`
 - Controller: `backend/controllers/auth.controller.js`.
 - Service: `backend/services/auth.service.js`.
+
+### Cambio de contrasena logueado
+- Endpoint: `POST /api/auth/change-password`.
+- Requiere JWT y rol `Doctor`.
+- Body:
+  - `passwordActual`,
+  - `nuevaPassword`,
+  - `confirmarPassword`.
+- Valida contrasena actual con bcrypt antes de actualizar `usuario.passwordU`.
+- Nueva contrasena: minimo 6, maximo 72 caracteres.
+- No requiere migracion SQL.
 
 ### Login backend (`auth.controller.login`)
 - Sanitiza correo (`trim + lowercase`) y valida longitud.
@@ -154,10 +186,19 @@
 - Validaciones:
   - `correo`, `nombre`, `idRol` validos,
   - `password` minimo 6,
-  - `idDoctor` opcional valido.
+  - `idDoctor` solo valido para rol `Doctor`,
+  - roles distintos de `Doctor` no pueden vincular ni crear doctor,
+  - rol `Doctor` exige seleccionar un doctor disponible o crear doctor nuevo,
+  - si el doctor existente ya esta asignado a otro usuario responde `409`.
 - Seguridad opcional:
   - acepta `preguntaSeguridad` + `respuestaSeguridad`.
   - si vienen, se guardan hasheadas para recuperacion (si columnas existen).
+- Creacion de doctor + usuario:
+  - se hace en una transaccion.
+  - inserta doctor basico (`nombreD`, `TelefonoD`) y luego crea el usuario vinculado.
+  - si falla usuario o seguridad opcional, se revierte para no dejar doctor huerfano.
+- Catalogos:
+  - `GET /api/auth/registro-oculto/catalogos` devuelve roles y solo doctores sin usuario vinculado.
 - `cargo` no se captura desde frontend:
   - se deriva de `rol.nombreR` via `idRol`.
 - Conflicto de correo:
@@ -206,7 +247,7 @@
   - `sp_usuario_crear`
 - Registro catalogos:
   - `rol` (SELECT directo)
-  - `sp_doctor_listar_select`
+  - `doctor` + `usuario` (SELECT directo de doctores sin usuario vinculado)
 - Licencia:
   - `sp_licencia_resolver_por_device`
   - `sp_licencia_validar_arranque`
@@ -241,3 +282,15 @@
   - manejo uniforme de errores DB transitorios con `503`.
   - manejo explicito de `security_columns_missing` con `503`.
   - validaciones estrictas de correo/rol/cargo derivado.
+
+## Diseno login
+- El panel principal de login usa estilo glass claro para acoplarse al nuevo fondo odontologico.
+- La marca superior muestra icono dental + destello y texto `Clinica Dental / Sivar`.
+- Los campos `Usuario` y `Contrasena` tienen iconos internos y altura mayor.
+- El boton `Entrar` usa gradiente azul y sombra suave.
+- Se mantiene scroll vertical del contenedor para recovery y registro oculto en pantallas bajas.
+- Iconos agregados a `frontend/js/uiIcons.js`:
+  - `user`
+  - `lock-closed`
+  - `sparkles`
+  - `tooth`

@@ -6,9 +6,14 @@ const mysql = require("mysql2/promise");
 
 const storagePaths = require("../config/storagePaths");
 
-const CONFIG_FILE_NAME = "db-connection.json";
+const LEGACY_CONFIG_FILE_NAME = "db-connection.json";
 const AUTH_FILE_NAME = "db-maintenance-auth.json";
 const CONFIG_VERSION = 1;
+const PROTECTED_CONFIG_VERSION = 2;
+const PROTECTED_CONFIG_FILE_NAME = "util.dat";
+const PROTECTED_CONFIG_MAGIC = Buffer.from("CLDBCFG2", "ascii");
+const PROTECTED_CONFIG_KEY_ENV = "CLINICA_DB_CONFIG_KEY";
+const PROTECTED_CONFIG_REQUIRED_ENV = "CLINICA_DB_CONFIG_PROTECTED_REQUIRED";
 const ENV_KEYS = {
   url: ["DB_URL", "MYSQL_PUBLIC_URL", "MYSQL_URL"],
   host: ["DB_HOST", "MYSQLHOST"],
@@ -137,8 +142,18 @@ function validateConnection(connection) {
   }
 }
 
-function getConfigFilePath() {
-  return path.join(storagePaths.configDir, CONFIG_FILE_NAME);
+function buildCodedError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+function getLegacyConfigFilePath() {
+  return path.join(storagePaths.configDir, LEGACY_CONFIG_FILE_NAME);
+}
+
+function getProtectedConfigFilePath() {
+  return path.join(storagePaths.protectedConfigDir, PROTECTED_CONFIG_FILE_NAME);
 }
 
 function getAuthFilePath() {
@@ -162,6 +177,91 @@ function writeJsonFileAtomic(filePath, data) {
   fs.renameSync(tempPath, filePath);
 }
 
+function writeBinaryFileAtomic(filePath, data) {
+  storagePaths.ensureDataDirsSync();
+  const dir = path.dirname(filePath);
+  const tempPath = path.join(dir, `${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`);
+  fs.writeFileSync(tempPath, data);
+  fs.renameSync(tempPath, filePath);
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    // Ignore permission adjustments on platforms that do not support chmod semantics.
+  }
+}
+
+function isProtectedConfigRequired() {
+  const raw = String(process.env[PROTECTED_CONFIG_REQUIRED_ENV] || "").trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(raw);
+}
+
+function getProtectedConfigKey({ required = false } = {}) {
+  const raw = String(process.env[PROTECTED_CONFIG_KEY_ENV] || "").trim();
+  if (!raw) {
+    if (required || isProtectedConfigRequired()) {
+      throw buildCodedError(
+        "DB_CONFIG_KEY_MISSING",
+        "Clave local de configuracion no disponible"
+      );
+    }
+    return null;
+  }
+
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== 32) {
+    throw buildCodedError(
+      "DB_CONFIG_KEY_INVALID",
+      "Clave local de configuracion invalida"
+    );
+  }
+  return key;
+}
+
+function isProtectedConfigError(err) {
+  return [
+    "DB_CONFIG_KEY_MISSING",
+    "DB_CONFIG_KEY_INVALID",
+    "DB_CONFIG_PROTECTED_INVALID"
+  ].includes(String(err?.code || ""));
+}
+
+function encryptProtectedPayload(payload) {
+  const key = getProtectedConfigKey({ required: true });
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([PROTECTED_CONFIG_MAGIC, iv, tag, encrypted]);
+}
+
+function decryptProtectedPayload(data) {
+  try {
+    if (!Buffer.isBuffer(data) || data.length <= PROTECTED_CONFIG_MAGIC.length + 12 + 16) {
+      throw new Error("payload too small");
+    }
+    if (!data.subarray(0, PROTECTED_CONFIG_MAGIC.length).equals(PROTECTED_CONFIG_MAGIC)) {
+      throw new Error("magic mismatch");
+    }
+
+    const key = getProtectedConfigKey({ required: true });
+    const offset = PROTECTED_CONFIG_MAGIC.length;
+    const iv = data.subarray(offset, offset + 12);
+    const tag = data.subarray(offset + 12, offset + 28);
+    const encrypted = data.subarray(offset + 28);
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const plaintext = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return JSON.parse(plaintext.toString("utf8"));
+  } catch (err) {
+    if (isProtectedConfigError(err)) throw err;
+    throw buildCodedError(
+      "DB_CONFIG_PROTECTED_INVALID",
+      "La configuracion local esta danada o fue modificada"
+    );
+  }
+}
+
 function getEnvConnection() {
   const urlConfig = parseConnectionUrl(pickEnv(ENV_KEYS.url));
   const connection = normalizeConnection({
@@ -181,20 +281,98 @@ function getEnvConnection() {
   };
 }
 
-function getExternalConnection() {
-  const raw = readJsonFile(getConfigFilePath());
+function normalizeSavedConnectionRecord(raw, source, extra = {}) {
   if (!raw || raw.version !== CONFIG_VERSION || !raw.connection) return null;
 
   const connection = normalizeConnection(raw.connection);
   return {
-    source: "external",
+    source,
     connection,
     savedAt: raw.savedAt || null,
     savedBy: raw.savedBy || null,
+    protectedConfig: source === "protected",
     poolLimit: pickNumber(ENV_KEYS.poolLimit, 10),
     connectTimeout: pickNumber(ENV_KEYS.connectTimeout, 15000),
-    queueLimit: pickNumber(ENV_KEYS.queueLimit, 0)
+    queueLimit: pickNumber(ENV_KEYS.queueLimit, 0),
+    ...extra
   };
+}
+
+function readProtectedConnection() {
+  const filePath = getProtectedConfigFilePath();
+  if (!fs.existsSync(filePath)) return null;
+
+  const raw = decryptProtectedPayload(fs.readFileSync(filePath));
+  if (!raw || raw.version !== PROTECTED_CONFIG_VERSION || !raw.connection) {
+    throw buildCodedError(
+      "DB_CONFIG_PROTECTED_INVALID",
+      "La configuracion local esta danada o fue modificada"
+    );
+  }
+
+  return normalizeSavedConnectionRecord(
+    {
+      version: CONFIG_VERSION,
+      savedAt: raw.savedAt || null,
+      savedBy: raw.savedBy || null,
+      connection: raw.connection
+    },
+    "protected",
+    { migratedFromLegacy: raw.migratedFromLegacy === true }
+  );
+}
+
+function writeProtectedConnection(record) {
+  const payload = {
+    version: PROTECTED_CONFIG_VERSION,
+    savedAt: record.savedAt || new Date().toISOString(),
+    savedBy: record.savedBy || "pre-login",
+    connection: record.connection,
+    migratedFromLegacy: record.migratedFromLegacy === true
+  };
+  writeBinaryFileAtomic(getProtectedConfigFilePath(), encryptProtectedPayload(payload));
+}
+
+function readLegacyConnection() {
+  const raw = readJsonFile(getLegacyConfigFilePath());
+  return normalizeSavedConnectionRecord(raw, "legacy_plaintext");
+}
+
+function migrateLegacyConnectionIfPossible() {
+  const legacy = readLegacyConnection();
+  if (!legacy) return null;
+
+  const key = getProtectedConfigKey({ required: false });
+  if (!key) {
+    if (isProtectedConfigRequired()) {
+      throw buildCodedError(
+        "DB_CONFIG_KEY_MISSING",
+        "Clave local de configuracion no disponible"
+      );
+    }
+    return legacy;
+  }
+
+  writeProtectedConnection({
+    savedAt: legacy.savedAt || new Date().toISOString(),
+    savedBy: legacy.savedBy || "migracion",
+    connection: legacy.connection,
+    migratedFromLegacy: true
+  });
+
+  try {
+    fs.unlinkSync(getLegacyConfigFilePath());
+  } catch {
+    // If cleanup fails, protected config still takes precedence.
+  }
+
+  return readProtectedConnection();
+}
+
+function getExternalConnection() {
+  const protectedConnection = readProtectedConnection();
+  if (protectedConnection) return protectedConnection;
+  return migrateLegacyConnectionIfPossible();
 }
 
 function getActiveConfig() {
@@ -208,8 +386,17 @@ function shouldUseSsl(connection) {
   return Boolean(connection.ssl || railwayHost);
 }
 
-function buildMysqlOptions(configLike = getActiveConfig(), options = {}) {
-  const connection = configLike.connection || configLike;
+function buildMysqlOptions(configLike, options = {}) {
+  let resolvedConfig = configLike;
+  if (resolvedConfig === undefined || resolvedConfig === null) {
+    try {
+      resolvedConfig = getActiveConfig();
+    } catch (err) {
+      if (!options.allowInvalid || !isProtectedConfigError(err)) throw err;
+      resolvedConfig = { connection: {} };
+    }
+  }
+  const connection = resolvedConfig.connection || resolvedConfig;
   if (!options.allowInvalid) {
     validateConnection(connection);
   }
@@ -220,22 +407,46 @@ function buildMysqlOptions(configLike = getActiveConfig(), options = {}) {
     password: connection.password,
     database: connection.database,
     ssl: shouldUseSsl(connection) ? { rejectUnauthorized: false } : undefined,
-    connectTimeout: configLike.connectTimeout || 15000,
+    connectTimeout: resolvedConfig.connectTimeout || 15000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
     waitForConnections: true,
-    connectionLimit: configLike.poolLimit || 10,
-    queueLimit: configLike.queueLimit || 0
+    connectionLimit: resolvedConfig.poolLimit || 10,
+    queueLimit: resolvedConfig.queueLimit || 0
   };
 }
 
 function getPublicStatus() {
-  const active = getActiveConfig();
+  let active;
+  let statusError = null;
+  try {
+    active = getActiveConfig();
+  } catch (err) {
+    if (!isProtectedConfigError(err)) throw err;
+    statusError = err;
+    active = {
+      source: "protected_error",
+      connection: {},
+      protectedConfig: true
+    };
+  }
   const connection = active.connection;
+  const hasProtectedFile = fs.existsSync(getProtectedConfigFilePath());
+  const hasLegacyFile = fs.existsSync(getLegacyConfigFilePath());
   return {
     source: active.source,
-    configPath: getConfigFilePath(),
-    hasExternalConfig: active.source === "external",
+    displaySource: active.source === "protected"
+      ? "local protegido"
+      : active.source === "protected_error"
+        ? "local protegido danado"
+        : active.source === "legacy_plaintext"
+          ? "local legado"
+          : active.source,
+    hasExternalConfig: active.source === "protected" || active.source === "legacy_plaintext" || hasProtectedFile,
+    protectedConfig: active.protectedConfig === true || hasProtectedFile,
+    configStatus: statusError ? "invalid" : "ok",
+    configMessage: statusError?.message || "",
+    hasLegacyPlaintextConfig: hasLegacyFile,
     savedAt: active.savedAt || null,
     savedBy: active.savedBy || null,
     connection: {
@@ -251,7 +462,13 @@ function getPublicStatus() {
 }
 
 async function testConnection(connectionInput) {
-  const connection = mergeConnectionInput(connectionInput, getActiveConfig().connection);
+  let fallbackConnection = {};
+  try {
+    fallbackConnection = getActiveConfig().connection;
+  } catch (err) {
+    if (!isProtectedConfigError(err)) throw err;
+  }
+  const connection = mergeConnectionInput(connectionInput, fallbackConnection);
   validateConnection(connection);
   const pool = mysql.createPool({
     ...buildMysqlOptions({ connection }),
@@ -271,18 +488,27 @@ async function testConnection(connectionInput) {
 }
 
 function saveExternalConnection(connectionInput, metadata = {}) {
-  const currentExternal = getExternalConnection();
-  const fallbackConnection = currentExternal?.connection || getActiveConfig().connection;
+  let fallbackConnection = {};
+  try {
+    const currentExternal = getExternalConnection();
+    fallbackConnection = currentExternal?.connection || getActiveConfig().connection;
+  } catch (err) {
+    if (!isProtectedConfigError(err)) throw err;
+  }
   const connection = mergeConnectionInput(connectionInput, fallbackConnection);
   validateConnection(connection);
 
   const saved = {
-    version: CONFIG_VERSION,
     savedAt: new Date().toISOString(),
     savedBy: metadata.savedBy || "pre-login",
     connection
   };
-  writeJsonFileAtomic(getConfigFilePath(), saved);
+  writeProtectedConnection(saved);
+  try {
+    fs.unlinkSync(getLegacyConfigFilePath());
+  } catch {
+    // No legacy file to clean up, or cleanup not permitted.
+  }
   return getPublicStatus();
 }
 

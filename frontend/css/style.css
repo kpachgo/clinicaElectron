@@ -712,7 +712,7 @@ body[data-theme="princess"] .theme-btn .crown {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-left: 20px;
+    margin-left: 0;
 
     flex-wrap: nowrap;
     flex: 1 1 auto;
@@ -846,6 +846,175 @@ body[data-theme="princess"] .theme-btn .crown {
     background: rgba(220, 38, 38, 0.15);
     border-color: #b91c1c;
     color: #fecaca;
+}
+
+/* =====================================================
+   APP CHROME - REFRESH AZUL CLINICO
+===================================================== */
+:root {
+    --app-primary: #2775f5;
+    --app-primary-dark: #185ed1;
+    --app-secondary: #18bfd0;
+    --app-background: #f3f8fd;
+    --app-surface: #ffffff;
+    --app-border: #dde8f3;
+    --app-text: #16263d;
+    --app-text-muted: #66778d;
+    --app-content-accent: rgba(39, 117, 245, 0.08);
+    --app-topbar-bg: rgba(255, 255, 255, 0.86);
+    --app-topbar-border: rgba(221, 232, 243, 0.9);
+    --app-topbar-shadow: 0 12px 32px rgba(22, 38, 61, 0.08);
+    --app-topbar-scrolled-shadow: 0 16px 36px rgba(22, 38, 61, 0.12);
+    --app-nav-hover-bg: #f4f8ff;
+    --app-nav-hover-border: #e5eefb;
+    --app-nav-active-bg: #edf5ff;
+    --app-nav-active-border: #dceaff;
+    --app-nav-active-shadow: 0 10px 24px rgba(39, 117, 245, 0.12);
+    --app-control-bg: rgba(255, 255, 255, 0.72);
+    --app-avatar-bg: linear-gradient(135deg, var(--app-primary), #2e8bff);
+    --app-avatar-shadow: 0 10px 22px rgba(39, 117, 245, 0.26);
+}
+
+body {
+    background: var(--app-background);
+}
+
+.content {
+    background:
+        radial-gradient(circle at 72% 0%, var(--app-content-accent), transparent 30%),
+        var(--app-background);
+}
+
+.topbar {
+    height: 72px;
+    margin: 12px 18px 0;
+    padding: 0 18px 0 20px;
+    border: 1px solid var(--app-topbar-border);
+    border-bottom-color: var(--app-topbar-border);
+    border-radius: 16px;
+    background: var(--app-topbar-bg);
+    box-shadow: var(--app-topbar-shadow);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+}
+
+.topbar.is-scrolled {
+    border-bottom-color: var(--app-topbar-border);
+    box-shadow: var(--app-topbar-scrolled-shadow);
+}
+
+.topbar .sidebar-menu {
+    margin-left: 0;
+    gap: 8px;
+}
+
+.topbar .sidebar-menu .accordion {
+    min-height: 42px;
+    padding: 0 14px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    color: var(--app-text);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.topbar .sidebar-menu .accordion:hover {
+    background: var(--app-nav-hover-bg);
+    border-color: var(--app-nav-hover-border);
+}
+
+.topbar .sidebar-menu .accordion.active {
+    background: var(--app-nav-active-bg);
+    border-color: var(--app-nav-active-border);
+    color: var(--app-primary-dark);
+    box-shadow: var(--app-nav-active-shadow);
+}
+
+.topbar .sidebar-menu .accordion.active .icon {
+    color: var(--app-primary);
+}
+
+.top-icon-btn,
+.theme-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    border-color: var(--app-border);
+    background: var(--app-control-bg);
+}
+
+.user-info {
+    gap: 10px;
+    padding-left: 4px;
+}
+
+.user-avatar {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: var(--app-avatar-bg);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0;
+    box-shadow: var(--app-avatar-shadow);
+}
+
+.user-name {
+    color: var(--app-text);
+    font-size: 13px;
+}
+
+.user-email {
+    color: var(--app-text-muted);
+}
+
+.btn-logout {
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 12px;
+}
+
+.btn-logout .logout-label {
+    display: none;
+}
+
+.dark-mode .topbar {
+    border-color: var(--app-topbar-border);
+    background: var(--app-topbar-bg);
+    box-shadow: var(--app-topbar-shadow);
+}
+
+.dark-mode .user-name,
+.dark-mode .topbar .sidebar-menu .accordion {
+    color: var(--app-text);
+}
+
+.dark-mode .user-email {
+    color: var(--app-text-muted);
+}
+
+.dark-mode .topbar .sidebar-menu .accordion:hover {
+    background: var(--app-nav-hover-bg);
+    border-color: var(--app-nav-hover-border);
+}
+
+.dark-mode .topbar .sidebar-menu .accordion.active {
+    background: var(--app-nav-active-bg);
+    border-color: var(--app-nav-active-border);
+    color: var(--app-primary-dark);
+}
+
+.dark-mode .top-icon-btn,
+.dark-mode .theme-btn {
+    border-color: var(--app-border);
+    background: var(--app-control-bg);
+    color: var(--app-text);
 }
 
 

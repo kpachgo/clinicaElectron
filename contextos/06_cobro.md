@@ -6,6 +6,12 @@
   - `frontend/css/cobro.css`
 - Montaje SPA:
   - `loadView("Cobro")` llama `window.__mountCobro`.
+- UX tablas 2026-08-01:
+  - carrito POS, cuentas del dia, descuentos, reporte mensual y faltantes de cobro usan el patron compacto unificado de tablas,
+  - encabezado sticky en mayusculas de 10px, filas operativas de ~34px, padding 5px/7px y zebra visible en tema blanco (`#fff` / `#f8fbff`),
+  - los colores salen de tokens `--cobro-table-*` para mantener compatibilidad con `dark`, `vampire` y `princess`,
+  - la tabla de billetes no entra en este patron porque funciona como formulario de conteo de caja,
+  - faltantes conserva mayor altura interna por su contenido largo, pero comparte contenedor, encabezado y zebra del patron.
 - Flujo POS de 3 pasos:
   1. Seleccionar paciente.
   2. Agregar servicios.
@@ -58,6 +64,8 @@
 - Fecha de trabajo en `#cuenta-date`.
 - Lista por fecha:
   - `GET /api/cuenta?fecha=YYYY-MM-DD`.
+  - Con protocolo de seguridad ON, no muestra cuentas de pacientes `Ortodoncia`.
+  - Si todas las cuentas de la fecha son de `Ortodoncia`, la tabla queda vacia.
 - Columnas actuales:
   - `#`, `Nombre`, `Total`, `Forma de Pago`, `Cantidad`, `Tratamiento`, `Doctor`, `Quitar`.
 - Toggles visuales en cabecera:
@@ -196,6 +204,8 @@
   - `sp_cuenta_listar_por_fecha`
   - retorna `cantidadTotal` y consolidado de tratamiento,
   - contempla `idDoctorCuenta`, `nombreDoctorCuenta` y bandera `doctorMixto`.
+  - respeta protocolo de seguridad global (`seguridad_protocolo_config.enabled`):
+    cuando esta ON, solo lista pacientes `Odontologia`.
 - Asignacion de doctor:
   - valida cuenta y doctor,
   - exige migracion `detallecuenta.idDoctor`,

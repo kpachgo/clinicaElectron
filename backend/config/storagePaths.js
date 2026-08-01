@@ -33,9 +33,22 @@ const firmasDir = path.join(dataRootDir, "firmas");
 const imgDocsDir = path.join(dataRootDir, "img-docs");
 const docsDir = path.join(dataRootDir, "docs");
 const configDir = path.join(dataRootDir, "config");
+const systemDir = path.join(dataRootDir, "system");
+const protectedConfigDir = path.join(systemDir, "electrondump");
+const tempDir = path.join(dataRootDir, "tmp");
 
 function ensureDataDirsSync() {
-  for (const dir of [dataRootDir, fotosDir, firmasDir, imgDocsDir, docsDir, configDir]) {
+  for (const dir of [
+    dataRootDir,
+    fotosDir,
+    firmasDir,
+    imgDocsDir,
+    docsDir,
+    configDir,
+    systemDir,
+    protectedConfigDir,
+    tempDir
+  ]) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -49,6 +62,9 @@ module.exports = {
   imgDocsDir,
   docsDir,
   configDir,
+  systemDir,
+  protectedConfigDir,
+  tempDir,
   legacyFrontendDir,
   ensureDataDirsSync
 };

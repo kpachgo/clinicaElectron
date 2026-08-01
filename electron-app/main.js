@@ -1,8 +1,9 @@
-const { app, BrowserWindow, dialog, session } = require("electron");
+const { app, BrowserWindow, dialog, safeStorage, session } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
 const fs = require("fs");
+const crypto = require("crypto");
 let autoUpdater = null;
 try {
   ({ autoUpdater } = require("electron-updater"));
@@ -20,6 +21,9 @@ const ENABLE_CUSTOM_WINDOWS_TITLEBAR = process.env.CLINICA_WIN_CUSTOM_TITLEBAR =
 const BOOL_TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const BOOL_FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 const THEME_CONSOLE_PREFIX = "__CLINICA_THEME__:";
+const DB_CONFIG_KEY_ENV = "CLINICA_DB_CONFIG_KEY";
+const DB_CONFIG_REQUIRED_ENV = "CLINICA_DB_CONFIG_PROTECTED_REQUIRED";
+const DB_KEY_MAGIC = Buffer.from("CLKEY2", "ascii");
 const WINDOWS_TITLEBAR_THEMES = {
   light: { color: "#ffffff", symbolColor: "#0f172a" },
   dark: { color: "#0f172a", symbolColor: "#e2e8f0" },
@@ -75,6 +79,100 @@ function getLogFilePath() {
     process.env.ProgramData ||
     path.join(process.env.SystemDrive || "C:", "ProgramData");
   return path.join(programData, "ClinicaElectron", "logs", "electron-main.log");
+}
+
+function normalizeEnvPath(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return path.isAbsolute(raw) ? raw : path.resolve(raw);
+}
+
+function getClinicaDataRootPath() {
+  const envOverride = normalizeEnvPath(process.env.CLINICA_DATA_DIR);
+  if (envOverride) return envOverride;
+
+  if (process.platform === "win32") {
+    const programData = normalizeEnvPath(process.env.ProgramData || "C:\\ProgramData");
+    return path.join(programData, "ClinicaElectron");
+  }
+
+  if (process.platform === "darwin") {
+    return path.join("/Users/Shared", "ClinicaElectron");
+  }
+
+  return path.join(require("os").homedir(), ".ClinicaElectron");
+}
+
+function getProtectedDbConfigDir() {
+  return path.join(getClinicaDataRootPath(), "system", "electrondump");
+}
+
+function getProtectedDbKeyPath() {
+  return path.join(getProtectedDbConfigDir(), "state.dat");
+}
+
+function readProtectedDbConfigKey() {
+  const keyPath = getProtectedDbKeyPath();
+  if (!fs.existsSync(keyPath)) return "";
+
+  const data = fs.readFileSync(keyPath);
+  if (data.length <= DB_KEY_MAGIC.length || !data.subarray(0, DB_KEY_MAGIC.length).equals(DB_KEY_MAGIC)) {
+    throw new Error("Archivo de clave local no compatible o modificado");
+  }
+
+  const encrypted = data.subarray(DB_KEY_MAGIC.length);
+  const keyBase64 = safeStorage.decryptString(encrypted);
+  const key = Buffer.from(String(keyBase64 || ""), "base64");
+  if (key.length !== 32) {
+    throw new Error("Clave local invalida");
+  }
+  return key.toString("base64");
+}
+
+function writeProtectedDbConfigKey(keyBase64) {
+  const keyPath = getProtectedDbKeyPath();
+  fs.mkdirSync(path.dirname(keyPath), { recursive: true });
+  const encrypted = safeStorage.encryptString(keyBase64);
+  const payload = Buffer.concat([DB_KEY_MAGIC, encrypted]);
+  const tempPath = path.join(path.dirname(keyPath), `state.${process.pid}.${Date.now()}.tmp`);
+  fs.writeFileSync(tempPath, payload);
+  fs.renameSync(tempPath, keyPath);
+  try {
+    fs.chmodSync(keyPath, 0o600);
+  } catch {
+    // Windows ACLs are managed by the OS/DPAPI; chmod may be ignored.
+  }
+}
+
+function ensureProtectedDbConfigKey() {
+  if (!safeStorage || typeof safeStorage.isEncryptionAvailable !== "function") {
+    throw new Error("safeStorage no esta disponible en Electron");
+  }
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("El cifrado local del sistema no esta disponible");
+  }
+
+  const existing = readProtectedDbConfigKey();
+  if (existing) return existing;
+
+  const keyBase64 = crypto.randomBytes(32).toString("base64");
+  writeProtectedDbConfigKey(keyBase64);
+  return keyBase64;
+}
+
+function getBackendRuntimeEnv(extra = {}) {
+  const env = { ...extra };
+  try {
+    env[DB_CONFIG_KEY_ENV] = ensureProtectedDbConfigKey();
+    env[DB_CONFIG_REQUIRED_ENV] = app.isPackaged ? "1" : "0";
+  } catch (err) {
+    logLine("[ELECTRON]", `No se pudo preparar clave local de conexion: ${err.message}`);
+    if (app.isPackaged) {
+      throw err;
+    }
+    env[DB_CONFIG_REQUIRED_ENV] = "0";
+  }
+  return env;
 }
 
 function appendLog(line) {
@@ -375,7 +473,7 @@ function startBackendWithNpm() {
 
   const runtimeDir = getRuntimeDir();
   const npmCommand = getNpmCommand();
-  const env = getSanitizedEnv();
+  const env = getSanitizedEnv(getBackendRuntimeEnv());
   const spawnCommand =
     process.platform === "win32" ? "cmd.exe" : npmCommand;
   const spawnArgs =
@@ -461,7 +559,7 @@ function startBackendWithElectronNode() {
   try {
     backendProcess = spawn(process.execPath, [serverEntry], {
       cwd: runtimeDir,
-      env: getSanitizedEnv({ ELECTRON_RUN_AS_NODE: "1" }),
+      env: getSanitizedEnv(getBackendRuntimeEnv({ ELECTRON_RUN_AS_NODE: "1" })),
       windowsHide: true,
       detached: process.platform !== "win32",
       stdio: ["ignore", "pipe", "pipe"]
@@ -773,7 +871,19 @@ if (!gotSingleInstanceLock) {
     mainWindow.focus();
   });
 
-  app.whenReady().then(bootApp);
+  app.whenReady().then(bootApp).catch((err) => {
+    const message = err?.message || String(err || "Error desconocido");
+    logLine("[ELECTRON:FATAL]", `No se pudo iniciar la app: ${message}`);
+    dialog.showErrorBox(
+      "No se pudo iniciar la aplicacion",
+      [
+        "No se pudo preparar la configuracion local protegida.",
+        message,
+        `Log: ${getLogFilePath()}`
+      ].join("\n")
+    );
+    app.exit(1);
+  });
 }
 
 app.on("before-quit", async (event) => {

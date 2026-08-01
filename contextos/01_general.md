@@ -10,6 +10,31 @@
   - `frontend/js/serverErrorOverlay.js`
   - `frontend/js/uiSounds.js`
 
+## Cambios recientes documentados (2026-07-30)
+- Tema blanco / chrome principal:
+  - `light` sigue como tema predeterminado y ahora usa refresh azul clinico del chrome principal.
+  - `style.css` agrega variables `--app-*` para topbar, contenido, botones superiores, nav activo y avatar.
+  - `theme-light.css` conserva la paleta base clara y ajustes del odontograma por pieza.
+  - `web.js` renderiza iniciales en `#top-user-avatar`; `index.html` incluye ese nodo en la topbar.
+- Agenda:
+  - autocomplete de servicios en `Comentario` reemplaza solo el token actual, evitando duplicar texto como `promo Promo Rellenos`.
+- Paciente:
+  - `Registro de Citas` puede mostrar firma/sello visibles con checkbox por sesion/usuario.
+  - protocolo de seguridad fuerza ese checkbox activo y bloqueado.
+  - citas autorizadas con checkbox apagado muestran check verde compacto; con checkbox activo muestran firma/sello sin chip `Autorizado`.
+  - si el usuario es `Doctor`, al registrar cita solo puede seleccionar su propio doctor vinculado.
+  - `Imprimir Exp` genera expediente completo sin precios, con odontograma, resumen, diagnostico y registro de citas con firma/sello autorizados.
+  - engrane de `Resumen de tratamientos` abre configuracion global de impresion para cabecera/logo/marca de agua.
+- Doctores:
+  - `Administrador` y `Recepcion` ven todos los doctores; `Doctor` solo ve su propio registro; `Asistente` no accede a vista Doctores.
+  - `Doctor` ve su firma/sello visibles, puede reemplazarlos, cambiar su estado, cambiar su contrasena y autorizar citas pendientes rapidamente.
+- Cobro:
+  - con protocolo de seguridad ON, `Cuentas del dia` no muestra cuentas asociadas a pacientes `Ortodoncia`; si solo hay cuentas de ortodoncia, aparece vacio.
+- Auth:
+  - endpoint autenticado `POST /api/auth/change-password` para rol `Doctor`.
+- Release Windows:
+  - build local Windows genera `.exe`, `.exe.blockmap` y `latest.yml`; al subir los tres al release, `electron-updater` puede detectar nuevas versiones.
+
 ## Rutas API montadas
 - `/api/auth`
 - `/api/agenda`

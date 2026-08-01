@@ -1,6 +1,7 @@
 // doctor.js
 (function () {
   const doctorData = [];
+  const pendientesData = [];
 
   function renderIcon(name, className) {
     const registry = window.__uiIcons;
@@ -27,6 +28,56 @@
     return Number(estadoD) === 1 ? "Activo" : "Inactivo";
   }
 
+  function cacheBustMedia(ruta) {
+    const clean = normalizarRutaMedia(ruta);
+    if (!clean) return "";
+    const sep = clean.includes("?") ? "&" : "?";
+    return `${clean}${sep}v=${Date.now()}`;
+  }
+
+  function formatDate(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "--";
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    return raw;
+  }
+
+  function formatMoney(value) {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n)) return "$0.00";
+    return `$${n.toFixed(2)}`;
+  }
+
+  function createDoctorMediaPreview(ruta, tipo) {
+    const wrap = document.createElement("div");
+    wrap.className = "doctor-media-preview";
+
+    const label = document.createElement("span");
+    label.className = "doctor-media-preview-label";
+    label.textContent = tipo === "firma" ? "Firma" : "Sello";
+    wrap.appendChild(label);
+
+    const box = document.createElement("span");
+    box.className = "doctor-media-preview-box";
+    const media = normalizarRutaMedia(ruta);
+    if (media) {
+      const img = document.createElement("img");
+      img.className = "doctor-media-preview-img";
+      img.src = media;
+      img.alt = tipo === "firma" ? "Firma del doctor" : "Sello del doctor";
+      box.appendChild(img);
+    } else {
+      const empty = document.createElement("span");
+      empty.className = "doctor-media-preview-empty";
+      empty.textContent = tipo === "firma" ? "No registrada" : "No registrado";
+      box.appendChild(empty);
+    }
+    wrap.appendChild(box);
+
+    return wrap;
+  }
+
   function openModalCompat(modalEl) {
     if (!modalEl) return;
     modalEl.style.display = "flex";
@@ -40,6 +91,12 @@
   }
 
   function renderDoctor(container) {
+    const currentUser = typeof window.getCurrentUser === "function"
+      ? window.getCurrentUser()
+      : null;
+    const esDoctorLogueado = currentUser?.rol === "Doctor";
+    const puedeGestionarDoctores = ["Administrador", "Recepcion"].includes(currentUser?.rol);
+
     container.innerHTML = `
       <div class="doctor-container">
         <div class="doctor-header">
@@ -48,10 +105,18 @@
             <input class="autofill-trap" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true">
             <input class="autofill-trap" type="password" name="password" autocomplete="current-password" tabindex="-1" aria-hidden="true">
             <input class="ui-control ui-control-search" type="search" id="doctor-search" name="doctor-search-lista" placeholder="Buscar doctor..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-            <button id="doctor-add" class="ui-toolbar-btn is-success">
-              ${renderIcon("plus", "ui-toolbar-icon")}
-              <span>Registrar Doctor</span>
-            </button>
+            ${puedeGestionarDoctores
+              ? `<button id="doctor-add" class="ui-toolbar-btn is-success">
+                  ${renderIcon("plus", "ui-toolbar-icon")}
+                  <span>Registrar Doctor</span>
+                </button>`
+              : ""}
+            ${esDoctorLogueado
+              ? `<button id="doctor-change-password-btn" class="ui-toolbar-btn is-success" type="button">
+                  ${renderIcon("lock-closed", "ui-toolbar-icon") || renderIcon("shield-check", "ui-toolbar-icon")}
+                  <span>Cambiar contrasena</span>
+                </button>`
+              : ""}
           </div>
         </div>
 
@@ -70,6 +135,44 @@
             <tbody id="doctor-tbody"></tbody>
           </table>
         </div>
+
+        ${esDoctorLogueado
+          ? `<section id="doctor-pendientes-section" class="doctor-pendientes-section">
+              <div class="doctor-pendientes-header">
+                <div>
+                  <h3>Pendientes por autorizar</h3>
+                  <p>Ultimos 20 procedimientos pendientes de autorizacion</p>
+                </div>
+                <button id="doctor-autorizar-todos" class="ui-toolbar-btn is-success" type="button">
+                  ${renderIcon("check", "ui-toolbar-icon")}
+                  <span>Autorizar todos</span>
+                </button>
+              </div>
+              <div class="doctor-table-wrap doctor-pendientes-wrap ui-table-wrap-compact">
+                <table class="doctor-table doctor-pendientes-table ui-table-compact">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Fecha</th>
+                      <th>Paciente</th>
+                      <th>Procedimiento</th>
+                      <th>Valor</th>
+                      <th>Abono</th>
+                      <th>Saldo</th>
+                      <th>Accion</th>
+                    </tr>
+                  </thead>
+                  <tbody id="doctor-pendientes-tbody"></tbody>
+                </table>
+                <div id="doctor-pendientes-loader" class="doctor-pendientes-loader" aria-live="polite" aria-atomic="true" hidden>
+                  <div class="doctor-pendientes-loader-card">
+                    <span class="doctor-pendientes-loader-spinner" aria-hidden="true"></span>
+                    <span id="doctor-pendientes-loader-text">Autorizando pendientes...</span>
+                  </div>
+                </div>
+              </div>
+            </section>`
+          : ""}
       </div>
 
       <div id="doctor-estado-modal" class="modal">
@@ -84,11 +187,46 @@
           </div>
         </div>
       </div>
+
+      <div id="doctor-firma-update-modal" class="modal">
+        <div class="modal-content">
+          <h2>Actualizar firma</h2>
+          <p id="doctor-firma-update-target" class="doctor-estado-target"></p>
+          <label>Firma (dibuje abajo o suba imagen)</label>
+          <input type="file" id="doctor-firma-update-file" class="doctor-file-input" accept="image/*">
+          <canvas id="doctor-firma-update-canvas" class="signature-canvas"></canvas>
+          <div class="signature-actions">
+            <button id="doctor-firma-update-clear" class="btn-clear-sign" type="button">Limpiar firma</button>
+          </div>
+          <div class="modal-buttons" style="margin-top:20px;">
+            <button id="doctor-firma-update-cancel" class="btn-cancelar" type="button">Cancelar</button>
+            <button id="doctor-firma-update-save" class="btn-cobrar" type="button">Guardar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="doctor-password-modal" class="modal">
+        <div class="modal-content doctor-password-modal-content">
+          <h2>Cambiar contrasena</h2>
+          <label>Contrasena actual</label>
+          <input type="password" id="doctor-password-current" placeholder="Contrasena actual" autocomplete="current-password">
+          <label>Nueva contrasena</label>
+          <input type="password" id="doctor-password-new" placeholder="Minimo 6 caracteres" autocomplete="new-password">
+          <label>Confirmar nueva contrasena</label>
+          <input type="password" id="doctor-password-confirm" placeholder="Repita la nueva contrasena" autocomplete="new-password">
+          <p id="doctor-password-message" class="doctor-password-message" aria-live="polite"></p>
+          <div class="modal-buttons" style="margin-top:20px;">
+            <button id="doctor-password-cancel" class="btn-cancelar" type="button">Cancelar</button>
+            <button id="doctor-password-save" class="btn-cobrar" type="button">Guardar</button>
+          </div>
+        </div>
+      </div>
     `;
 
     const tbody = container.querySelector("#doctor-tbody");
     const searchInput = container.querySelector("#doctor-search");
     const regBtn = container.querySelector("#doctor-add");
+    const btnChangePassword = container.querySelector("#doctor-change-password-btn");
 
     const modal = document.querySelector("#modal-doctor");
     const modalCancel = document.querySelector("#modal-doctor-cancel");
@@ -114,30 +252,72 @@
     const modalEstadoPass = container.querySelector("#doctor-estado-password");
     const modalEstadoCancel = container.querySelector("#doctor-estado-cancel");
     const modalEstadoSave = container.querySelector("#doctor-estado-save");
-
-    const currentUser = typeof window.getCurrentUser === "function"
-      ? window.getCurrentUser()
-      : null;
-    const esDoctorLogueado = currentUser?.rol === "Doctor";
+    const pendientesTbody = container.querySelector("#doctor-pendientes-tbody");
+    const btnAutorizarTodos = container.querySelector("#doctor-autorizar-todos");
+    const pendientesWrap = container.querySelector(".doctor-pendientes-wrap");
+    const pendientesLoader = container.querySelector("#doctor-pendientes-loader");
+    const pendientesLoaderText = container.querySelector("#doctor-pendientes-loader-text");
+    const modalFirmaUpdate = container.querySelector("#doctor-firma-update-modal");
+    const modalFirmaUpdateTarget = container.querySelector("#doctor-firma-update-target");
+    const modalFirmaUpdateFile = container.querySelector("#doctor-firma-update-file");
+    const modalFirmaUpdateCanvas = container.querySelector("#doctor-firma-update-canvas");
+    const modalFirmaUpdateClear = container.querySelector("#doctor-firma-update-clear");
+    const modalFirmaUpdateCancel = container.querySelector("#doctor-firma-update-cancel");
+    const modalFirmaUpdateSave = container.querySelector("#doctor-firma-update-save");
+    const modalPassword = container.querySelector("#doctor-password-modal");
+    const passwordCurrentInput = container.querySelector("#doctor-password-current");
+    const passwordNewInput = container.querySelector("#doctor-password-new");
+    const passwordConfirmInput = container.querySelector("#doctor-password-confirm");
+    const passwordMessage = container.querySelector("#doctor-password-message");
+    const passwordCancel = container.querySelector("#doctor-password-cancel");
+    const passwordSave = container.querySelector("#doctor-password-save");
 
     let doctorPropioId = null;
     let doctorEstadoTarget = null;
+    let firmaUpdateTargetId = null;
 
     let ctx = null;
+    let firmaUpdateCtx = null;
     let drawing = false;
+    let drawingFirmaUpdate = false;
     let isCreatingDoctor = false;
     let isUpdatingEstado = false;
+    let isUpdatingFirma = false;
+    let isAuthorizingAll = false;
+    let isChangingPassword = false;
     let doctorFetchSeq = 0;
     let doctorFetchController = null;
+    let pendientesFetchSeq = 0;
+    let pendientesFetchController = null;
 
     function resetDoctorModalState() {
       if (modalNombre) modalNombre.value = "";
       if (modalTelefono) modalTelefono.value = "";
       if (modalSello) modalSello.value = "";
       if (firmaFileInput) firmaFileInput.value = "";
+      if (modalFirmaUpdateFile) modalFirmaUpdateFile.value = "";
+      resetPasswordModalState();
       if (firmaImg) firmaImg.src = "";
       if (selloImg) selloImg.src = "";
       clearCanvas();
+      clearFirmaUpdateCanvas();
+    }
+
+    function resetPasswordModalState() {
+      if (passwordCurrentInput) passwordCurrentInput.value = "";
+      if (passwordNewInput) passwordNewInput.value = "";
+      if (passwordConfirmInput) passwordConfirmInput.value = "";
+      if (passwordMessage) {
+        passwordMessage.textContent = "";
+        passwordMessage.classList.remove("is-error", "is-success");
+      }
+    }
+
+    function setPasswordMessage(message, type = "error") {
+      if (!passwordMessage) return;
+      passwordMessage.textContent = String(message || "");
+      passwordMessage.classList.toggle("is-error", type === "error");
+      passwordMessage.classList.toggle("is-success", type === "success");
     }
 
     function cerrarModalEstadoDoctor() {
@@ -146,11 +326,31 @@
       closeModalCompat(modalEstado);
     }
 
+    function cerrarModalActualizarFirma() {
+      firmaUpdateTargetId = null;
+      if (modalFirmaUpdateFile) modalFirmaUpdateFile.value = "";
+      clearFirmaUpdateCanvas();
+      closeModalCompat(modalFirmaUpdate);
+    }
+
+    function abrirModalCambiarPassword() {
+      resetPasswordModalState();
+      openModalCompat(modalPassword);
+      passwordCurrentInput?.focus();
+    }
+
+    function cerrarModalCambiarPassword() {
+      resetPasswordModalState();
+      closeModalCompat(modalPassword);
+    }
+
     function closeDoctorModales() {
       closeModalCompat(modal);
       closeModalCompat(modalVer);
       closeModalCompat(modalVerSello);
       cerrarModalEstadoDoctor();
+      cerrarModalActualizarFirma();
+      cerrarModalCambiarPassword();
     }
 
     function setupCanvasHD() {
@@ -185,6 +385,44 @@
       ctx.fillRect(0, 0, rect.width, rect.height);
     }
 
+    function setupFirmaUpdateCanvasHD() {
+      if (!modalFirmaUpdateCanvas) return;
+      const rect = modalFirmaUpdateCanvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      const nextWidth = Math.round(rect.width * dpr);
+      const nextHeight = Math.round(rect.height * dpr);
+
+      if (
+        modalFirmaUpdateCanvas.width === nextWidth &&
+        modalFirmaUpdateCanvas.height === nextHeight &&
+        firmaUpdateCtx
+      ) {
+        return;
+      }
+
+      modalFirmaUpdateCanvas.width = nextWidth;
+      modalFirmaUpdateCanvas.height = nextHeight;
+      firmaUpdateCtx = modalFirmaUpdateCanvas.getContext("2d");
+      if (!firmaUpdateCtx) return;
+
+      firmaUpdateCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      firmaUpdateCtx.fillStyle = "#ffffff";
+      firmaUpdateCtx.fillRect(0, 0, rect.width, rect.height);
+      firmaUpdateCtx.strokeStyle = "#000000";
+      firmaUpdateCtx.lineWidth = 2;
+      firmaUpdateCtx.lineCap = "round";
+    }
+
+    function clearFirmaUpdateCanvas() {
+      if (!modalFirmaUpdateCanvas || !firmaUpdateCtx) return;
+      const rect = modalFirmaUpdateCanvas.getBoundingClientRect();
+      firmaUpdateCtx.fillStyle = "#ffffff";
+      firmaUpdateCtx.clearRect(0, 0, rect.width, rect.height);
+      firmaUpdateCtx.fillRect(0, 0, rect.width, rect.height);
+    }
+
     function dibujarImagenEnCanvas(img) {
       if (!canvas) return;
       if (!ctx) setupCanvasHD();
@@ -208,6 +446,31 @@
       const y = (rect.height - drawH) / 2;
 
       ctx.drawImage(img, x, y, drawW, drawH);
+    }
+
+    function dibujarImagenEnFirmaUpdateCanvas(img) {
+      if (!modalFirmaUpdateCanvas) return;
+      if (!firmaUpdateCtx) setupFirmaUpdateCanvasHD();
+      if (!firmaUpdateCtx) return;
+
+      const rect = modalFirmaUpdateCanvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      firmaUpdateCtx.fillStyle = "#ffffff";
+      firmaUpdateCtx.clearRect(0, 0, rect.width, rect.height);
+      firmaUpdateCtx.fillRect(0, 0, rect.width, rect.height);
+
+      const imgW = Number(img?.naturalWidth || img?.width || 0);
+      const imgH = Number(img?.naturalHeight || img?.height || 0);
+      if (!imgW || !imgH) return;
+
+      const escala = Math.min(rect.width / imgW, rect.height / imgH);
+      const drawW = imgW * escala;
+      const drawH = imgH * escala;
+      const x = (rect.width - drawW) / 2;
+      const y = (rect.height - drawH) / 2;
+
+      firmaUpdateCtx.drawImage(img, x, y, drawW, drawH);
     }
 
     function cargarFirmaDesdeArchivo(file) {
@@ -243,6 +506,55 @@
       if (modalEstadoPass) modalEstadoPass.value = "";
       openModalCompat(modalEstado);
       modalEstadoPass?.focus();
+    }
+
+    function abrirModalActualizarFirma(doctor) {
+      const id = Number(doctor?.id || 0);
+      if (!id) return;
+      firmaUpdateTargetId = id;
+      if (modalFirmaUpdateTarget) {
+        modalFirmaUpdateTarget.textContent = `Doctor: ${String(doctor?.nombre || "").trim()}`;
+      }
+      if (modalFirmaUpdateFile) modalFirmaUpdateFile.value = "";
+      openModalCompat(modalFirmaUpdate);
+      requestAnimationFrame(() => {
+        setupFirmaUpdateCanvasHD();
+        clearFirmaUpdateCanvas();
+      });
+    }
+
+    async function actualizarFirmaDoctor() {
+      const id = Number(firmaUpdateTargetId || 0);
+      if (!id || !modalFirmaUpdateCanvas || isUpdatingFirma) return;
+
+      isUpdatingFirma = true;
+      if (modalFirmaUpdateSave) modalFirmaUpdateSave.disabled = true;
+
+      try {
+        const firmaBase64 = modalFirmaUpdateCanvas.toDataURL("image/png");
+        const res = await fetch(`/api/doctor/${id}/firma`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ firmaBase64 })
+        });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "No se pudo actualizar la firma");
+        }
+
+        const local = doctorData.find((d) => Number(d.id || 0) === id);
+        if (local) local.firma = cacheBustMedia(json.firma);
+        cerrarModalActualizarFirma();
+        aplicarFiltroTexto();
+      } catch (err) {
+        console.error("No se pudo actualizar firma de doctor", err);
+        alert(err?.message || "No se pudo actualizar la firma.");
+      } finally {
+        isUpdatingFirma = false;
+        if (modalFirmaUpdateSave && modalFirmaUpdateSave.isConnected) {
+          modalFirmaUpdateSave.disabled = false;
+        }
+      }
     }
 
     async function resolverDoctorPropio() {
@@ -322,6 +634,178 @@
       } finally {
         if (doctorFetchController === controller) {
           doctorFetchController = null;
+        }
+      }
+    }
+
+    async function cargarPendientesAutorizacion() {
+      if (!esDoctorLogueado || !pendientesTbody) return;
+      if (pendientesFetchController) {
+        try {
+          pendientesFetchController.abort();
+        } catch {
+          // ignore abort failures
+        }
+      }
+
+      const localSeq = ++pendientesFetchSeq;
+      const controller = typeof AbortController !== "undefined"
+        ? new AbortController()
+        : null;
+      pendientesFetchController = controller;
+
+      try {
+        const fetchOptions = controller ? { signal: controller.signal, cache: "no-store" } : { cache: "no-store" };
+        const res = await fetch("/api/doctor/pendientes-autorizacion?limit=20", fetchOptions);
+        const json = await res.json();
+
+        if (localSeq !== pendientesFetchSeq || !container.isConnected) return;
+
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "Error al cargar pendientes");
+        }
+
+        pendientesData.length = 0;
+        const rows = Array.isArray(json.data) ? json.data : [];
+        rows.forEach((row) => {
+          pendientesData.push({
+            idCita: Number(row.idcitasPaciente || 0),
+            idPaciente: Number(row.idPaciente || 0),
+            paciente: String(row.nombrePaciente || ""),
+            fecha: String(row.fechaCP || ""),
+            procedimiento: String(row.ProcedimientoCP || ""),
+            valor: Number(row.valorCP || 0),
+            abono: Number(row.abonoCP || 0),
+            saldo: Number(row.saldoCP || 0)
+          });
+        });
+
+        drawPendientes();
+      } catch (err) {
+        if (err?.name === "AbortError") return;
+        if (localSeq !== pendientesFetchSeq || !container.isConnected) return;
+
+        console.error("Error al cargar pendientes de autorizacion", err);
+        pendientesData.length = 0;
+        drawPendientes(err?.message || "Error al cargar pendientes");
+      } finally {
+        if (pendientesFetchController === controller) {
+          pendientesFetchController = null;
+        }
+      }
+    }
+
+    async function autorizarPendiente(idCita, button) {
+      const id = Number(idCita || 0);
+      if (!id) return;
+      if (button) button.disabled = true;
+
+      try {
+        const res = await fetch(`/api/paciente/cita/${id}/autorizar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "No se pudo autorizar la cita");
+        }
+
+        await cargarPendientesAutorizacion();
+      } catch (err) {
+        console.error("No se pudo autorizar cita pendiente", err);
+        alert(err?.message || "No se pudo autorizar la cita.");
+        if (button && button.isConnected) button.disabled = false;
+      }
+    }
+
+    async function autorizarTodosPendientes() {
+      if (isAuthorizingAll) return;
+      if (!confirm("Autorizar todos los pendientes de este doctor?")) return;
+
+      isAuthorizingAll = true;
+      setPendientesAuthorizationBusy(true, "Autorizando pendientes...");
+
+      try {
+        const res = await fetch("/api/doctor/pendientes-autorizacion/autorizar-todos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "No se pudieron autorizar los pendientes");
+        }
+
+        await cargarPendientesAutorizacion();
+        alert(`Citas autorizadas: ${Number(json.autorizadas || 0)}`);
+      } catch (err) {
+        console.error("No se pudieron autorizar todos los pendientes", err);
+        alert(err?.message || "No se pudieron autorizar los pendientes.");
+      } finally {
+        isAuthorizingAll = false;
+        setPendientesAuthorizationBusy(false);
+      }
+    }
+
+    async function cambiarPasswordDoctor() {
+      if (isChangingPassword) return;
+
+      const passwordActual = String(passwordCurrentInput?.value || "");
+      const nuevaPassword = String(passwordNewInput?.value || "");
+      const confirmarPassword = String(passwordConfirmInput?.value || "");
+
+      if (!passwordActual || !nuevaPassword || !confirmarPassword) {
+        setPasswordMessage("Complete todos los campos.");
+        return;
+      }
+      if (nuevaPassword !== confirmarPassword) {
+        setPasswordMessage("La confirmacion no coincide.");
+        passwordConfirmInput?.focus();
+        return;
+      }
+      if (nuevaPassword.length < 6) {
+        setPasswordMessage("La nueva contrasena debe tener al menos 6 caracteres.");
+        passwordNewInput?.focus();
+        return;
+      }
+      if (nuevaPassword.length > 72) {
+        setPasswordMessage("La nueva contrasena es demasiado larga.");
+        passwordNewInput?.focus();
+        return;
+      }
+
+      isChangingPassword = true;
+      if (passwordSave) passwordSave.disabled = true;
+      setPasswordMessage("");
+
+      try {
+        const res = await fetch("/api/auth/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            passwordActual,
+            nuevaPassword,
+            confirmarPassword
+          })
+        });
+        const json = await res.json();
+        if (!res.ok || !json?.ok) {
+          throw new Error(json?.message || "No se pudo cambiar la contrasena");
+        }
+
+        setPasswordMessage("Contrasena actualizada correctamente.", "success");
+        setTimeout(() => {
+          if (!modalPassword?.isConnected) return;
+          cerrarModalCambiarPassword();
+        }, 450);
+      } catch (err) {
+        console.error("No se pudo cambiar contrasena", err);
+        setPasswordMessage(err?.message || "No se pudo cambiar la contrasena.");
+      } finally {
+        isChangingPassword = false;
+        if (passwordSave && passwordSave.isConnected) {
+          passwordSave.disabled = false;
         }
       }
     }
@@ -441,7 +925,7 @@
         try {
           const rutaSello = await subirSelloDoctor(id, file);
           const local = doctorData.find((d) => Number(d.id || 0) === id);
-          if (local) local.sello = rutaSello;
+          if (local) local.sello = cacheBustMedia(rutaSello);
           aplicarFiltroTexto();
           alert("Sello subido correctamente.");
         } catch (err) {
@@ -527,7 +1011,9 @@
         tr.appendChild(tdEstado);
 
         const tdFirma = document.createElement("td");
-        if (doctor.firma) {
+        if (esDoctorLogueado && esDoctorPropio) {
+          tdFirma.appendChild(createDoctorMediaPreview(doctor.firma, "firma"));
+        } else if (doctor.firma) {
           const btnFirma = document.createElement("button");
           btnFirma.className = "ui-action-btn is-info row-btn view-firma";
           btnFirma.dataset.id = String(doctor.id);
@@ -545,7 +1031,9 @@
         tr.appendChild(tdFirma);
 
         const tdSello = document.createElement("td");
-        if (doctor.sello) {
+        if (esDoctorLogueado && esDoctorPropio) {
+          tdSello.appendChild(createDoctorMediaPreview(doctor.sello, "sello"));
+        } else if (doctor.sello) {
           const btnSello = document.createElement("button");
           btnSello.className = "ui-action-btn is-primary row-btn view-sello";
           btnSello.dataset.id = String(doctor.id);
@@ -563,20 +1051,23 @@
           noSello.textContent = "Sin sello";
           noSelloWrap.appendChild(noSello);
 
-          const btnSubirSello = document.createElement("button");
-          btnSubirSello.className = "ui-action-btn is-success row-btn upload-sello";
-          btnSubirSello.dataset.id = String(doctor.id);
-          btnSubirSello.title = "Subir sello";
-          btnSubirSello.setAttribute("aria-label", "Subir sello de doctor");
-          btnSubirSello.innerHTML = renderIcon("arrow-up");
-          btnSubirSello.addEventListener("click", onUploadSello);
-          noSelloWrap.appendChild(btnSubirSello);
+          if (puedeGestionarDoctores) {
+            const btnSubirSello = document.createElement("button");
+            btnSubirSello.className = "ui-action-btn is-success row-btn upload-sello";
+            btnSubirSello.dataset.id = String(doctor.id);
+            btnSubirSello.title = "Subir sello";
+            btnSubirSello.setAttribute("aria-label", "Subir sello de doctor");
+            btnSubirSello.innerHTML = renderIcon("arrow-up");
+            btnSubirSello.addEventListener("click", onUploadSello);
+            noSelloWrap.appendChild(btnSubirSello);
+          }
 
           tdSello.appendChild(noSelloWrap);
         }
         tr.appendChild(tdSello);
 
         const tdAcciones = document.createElement("td");
+        tdAcciones.className = "doctor-row-actions";
         if (puedeCambiarEstado) {
           const btnEstado = document.createElement("button");
           btnEstado.className = "ui-action-btn is-warning row-btn doctor-toggle-estado";
@@ -592,6 +1083,26 @@
             abrirModalEstadoDoctor(doctor, estadoDestino);
           });
           tdAcciones.appendChild(btnEstado);
+
+          const btnFirmaUpdate = document.createElement("button");
+          btnFirmaUpdate.className = "ui-action-btn is-info row-btn doctor-update-firma";
+          btnFirmaUpdate.dataset.id = String(doctor.id);
+          btnFirmaUpdate.title = "Actualizar firma";
+          btnFirmaUpdate.setAttribute("aria-label", "Actualizar firma del doctor");
+          btnFirmaUpdate.innerHTML = renderIcon("document-text");
+          btnFirmaUpdate.addEventListener("click", () => {
+            abrirModalActualizarFirma(doctor);
+          });
+          tdAcciones.appendChild(btnFirmaUpdate);
+
+          const btnSelloUpdate = document.createElement("button");
+          btnSelloUpdate.className = "ui-action-btn is-success row-btn doctor-update-sello";
+          btnSelloUpdate.dataset.id = String(doctor.id);
+          btnSelloUpdate.title = "Actualizar sello";
+          btnSelloUpdate.setAttribute("aria-label", "Actualizar sello del doctor");
+          btnSelloUpdate.innerHTML = renderIcon("shield-check");
+          btnSelloUpdate.addEventListener("click", onUploadSello);
+          tdAcciones.appendChild(btnSelloUpdate);
         } else {
           const noAction = document.createElement("em");
           noAction.style.color = "#94a3b8";
@@ -602,6 +1113,90 @@
 
         tbody.appendChild(tr);
       });
+    }
+
+    function drawPendientes(errorMessage = "") {
+      if (!pendientesTbody) return;
+      pendientesTbody.innerHTML = "";
+
+      if (errorMessage) {
+        pendientesTbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center; color:var(--text-muted)">${errorMessage}</td></tr>`;
+        return;
+      }
+
+      if (!pendientesData.length) {
+        pendientesTbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center; color:var(--text-muted)">Sin citas pendientes por autorizar</td></tr>`;
+        return;
+      }
+
+      pendientesData.forEach((item, index) => {
+        const tr = document.createElement("tr");
+
+        const tdIndex = document.createElement("td");
+        tdIndex.textContent = String(index + 1);
+        tr.appendChild(tdIndex);
+
+        const tdFecha = document.createElement("td");
+        tdFecha.textContent = formatDate(item.fecha);
+        tr.appendChild(tdFecha);
+
+        const tdPaciente = document.createElement("td");
+        tdPaciente.textContent = item.paciente || "--";
+        tr.appendChild(tdPaciente);
+
+        const tdProcedimiento = document.createElement("td");
+        tdProcedimiento.textContent = item.procedimiento || "--";
+        tr.appendChild(tdProcedimiento);
+
+        const tdValor = document.createElement("td");
+        tdValor.textContent = formatMoney(item.valor);
+        tr.appendChild(tdValor);
+
+        const tdAbono = document.createElement("td");
+        tdAbono.textContent = formatMoney(item.abono);
+        tr.appendChild(tdAbono);
+
+        const tdSaldo = document.createElement("td");
+        tdSaldo.textContent = formatMoney(item.saldo);
+        tr.appendChild(tdSaldo);
+
+        const tdAccion = document.createElement("td");
+        const btnAutorizar = document.createElement("button");
+        btnAutorizar.className = "ui-action-btn is-success row-btn doctor-pending-authorize";
+        btnAutorizar.dataset.id = String(item.idCita);
+        btnAutorizar.title = "Autorizar";
+        btnAutorizar.setAttribute("aria-label", "Autorizar cita pendiente");
+        btnAutorizar.disabled = isAuthorizingAll;
+        btnAutorizar.innerHTML = renderIcon("check");
+        btnAutorizar.addEventListener("click", (ev) => {
+          autorizarPendiente(item.idCita, ev.currentTarget);
+        });
+        tdAccion.appendChild(btnAutorizar);
+        tr.appendChild(tdAccion);
+
+        pendientesTbody.appendChild(tr);
+      });
+    }
+
+    function setPendientesAuthorizationBusy(isBusy, message = "Autorizando pendientes...") {
+      if (btnAutorizarTodos && btnAutorizarTodos.isConnected) {
+        btnAutorizarTodos.disabled = isBusy;
+        btnAutorizarTodos.classList.toggle("is-loading", isBusy);
+      }
+      if (pendientesWrap) {
+        pendientesWrap.classList.toggle("is-loading", isBusy);
+      }
+      if (pendientesLoader) {
+        pendientesLoader.hidden = !isBusy;
+      }
+      if (pendientesLoaderText) {
+        pendientesLoaderText.textContent = message;
+      }
+      pendientesTbody
+        ?.querySelectorAll?.(".doctor-pending-authorize")
+        ?.forEach((button) => {
+          button.disabled = isBusy;
+        });
     }
 
     function aplicarFiltroTexto() {
@@ -643,6 +1238,10 @@
       });
     }
 
+    if (btnChangePassword) {
+      btnChangePassword.addEventListener("click", abrirModalCambiarPassword);
+    }
+
     if (modalCancel) {
       modalCancel.onclick = () => {
         resetDoctorModalState();
@@ -670,6 +1269,61 @@
 
     if (modalEstadoSave) {
       modalEstadoSave.onclick = cambiarEstadoDoctorConPassword;
+    }
+
+    if (btnAutorizarTodos) {
+      btnAutorizarTodos.onclick = autorizarTodosPendientes;
+    }
+
+    if (modalFirmaUpdateCancel) {
+      modalFirmaUpdateCancel.onclick = cerrarModalActualizarFirma;
+    }
+
+    if (modalFirmaUpdateSave) {
+      modalFirmaUpdateSave.onclick = actualizarFirmaDoctor;
+    }
+
+    if (passwordCancel) {
+      passwordCancel.onclick = cerrarModalCambiarPassword;
+    }
+
+    if (passwordSave) {
+      passwordSave.onclick = cambiarPasswordDoctor;
+    }
+
+    [passwordCurrentInput, passwordNewInput, passwordConfirmInput].forEach((input) => {
+      input?.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Enter") return;
+        ev.preventDefault();
+        cambiarPasswordDoctor();
+      });
+    });
+
+    if (modalFirmaUpdateClear) {
+      modalFirmaUpdateClear.onclick = () => {
+        clearFirmaUpdateCanvas();
+        if (modalFirmaUpdateFile) modalFirmaUpdateFile.value = "";
+      };
+    }
+
+    if (modalFirmaUpdateFile) {
+      modalFirmaUpdateFile.addEventListener("change", async (ev) => {
+        const file = ev?.target?.files?.[0];
+        if (!file) return;
+        if (!/^image\//i.test(String(file.type || ""))) {
+          alert("Seleccione una imagen valida para la firma.");
+          modalFirmaUpdateFile.value = "";
+          return;
+        }
+        try {
+          const img = await cargarFirmaDesdeArchivo(file);
+          dibujarImagenEnFirmaUpdateCanvas(img);
+        } catch (err) {
+          console.error("Error al cargar firma desde archivo", err);
+          alert("No se pudo cargar la firma. Intente con otra imagen.");
+          modalFirmaUpdateFile.value = "";
+        }
+      });
     }
 
     if (modalEstadoPass) {
@@ -752,10 +1406,60 @@
       };
     }
 
+    if (modalFirmaUpdateCanvas) {
+      modalFirmaUpdateCanvas.style.touchAction = "none";
+
+      function getFirmaUpdatePointerPos(e) {
+        const rect = modalFirmaUpdateCanvas.getBoundingClientRect();
+        return {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        };
+      }
+
+      modalFirmaUpdateCanvas.onpointerdown = (e) => {
+        if (!firmaUpdateCtx) setupFirmaUpdateCanvasHD();
+        if (!firmaUpdateCtx) return;
+        drawingFirmaUpdate = true;
+        const pos = getFirmaUpdatePointerPos(e);
+        firmaUpdateCtx.beginPath();
+        firmaUpdateCtx.moveTo(pos.x, pos.y);
+        modalFirmaUpdateCanvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      };
+
+      modalFirmaUpdateCanvas.onpointerup = () => {
+        drawingFirmaUpdate = false;
+        if (firmaUpdateCtx) firmaUpdateCtx.beginPath();
+      };
+      modalFirmaUpdateCanvas.onpointercancel = () => {
+        drawingFirmaUpdate = false;
+        if (firmaUpdateCtx) firmaUpdateCtx.beginPath();
+      };
+      modalFirmaUpdateCanvas.onpointerleave = () => {
+        drawingFirmaUpdate = false;
+        if (firmaUpdateCtx) firmaUpdateCtx.beginPath();
+      };
+
+      modalFirmaUpdateCanvas.onpointermove = (e) => {
+        if (!drawingFirmaUpdate || !firmaUpdateCtx) return;
+        const { x, y } = getFirmaUpdatePointerPos(e);
+        firmaUpdateCtx.lineTo(x, y);
+        firmaUpdateCtx.stroke();
+        e.preventDefault();
+      };
+    }
+
     if (!window.__doctorSignResizeBound) {
       window.__doctorSignResizeBound = true;
       window.addEventListener("resize", setupCanvasHD);
       window.addEventListener("orientationchange", setupCanvasHD);
+    }
+
+    if (!window.__doctorFirmaUpdateResizeBound) {
+      window.__doctorFirmaUpdateResizeBound = true;
+      window.addEventListener("resize", setupFirmaUpdateCanvasHD);
+      window.addEventListener("orientationchange", setupFirmaUpdateCanvasHD);
     }
 
     if (modalSave) {
@@ -837,6 +1541,9 @@
     document.addEventListener("keydown", window.__doctorEscHandler);
 
     cargarDoctores();
+    if (esDoctorLogueado) {
+      cargarPendientesAutorizacion();
+    }
 
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
@@ -847,16 +1554,30 @@
             // ignore abort failures
           }
         }
+        if (pendientesFetchController) {
+          try {
+            pendientesFetchController.abort();
+          } catch {
+            // ignore abort failures
+          }
+        }
         doctorFetchController = null;
+        pendientesFetchController = null;
         doctorFetchSeq++;
+        pendientesFetchSeq++;
         isCreatingDoctor = false;
         isUpdatingEstado = false;
+        isUpdatingFirma = false;
+        isAuthorizingAll = false;
         doctorEstadoTarget = null;
         doctorPropioId = null;
+        firmaUpdateTargetId = null;
 
         doctorData.length = 0;
+        pendientesData.length = 0;
         if (searchInput) searchInput.value = "";
         if (tbody) tbody.innerHTML = "";
+        if (pendientesTbody) pendientesTbody.innerHTML = "";
 
         resetDoctorModalState();
         closeDoctorModales();

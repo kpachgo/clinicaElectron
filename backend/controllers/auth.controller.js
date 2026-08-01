@@ -4,6 +4,7 @@ const bcrypt = require("bcrypt");
 
 const authService = require("../services/auth.service");
 const licenciaService = require("../services/licencia.service");
+const db = require("../config/db");
 const { badRequest, serverError } = require("../utils/http");
 
 const EMAIL_MAX_LEN = 60;
@@ -11,6 +12,8 @@ const SECURITY_QUESTION_MAX_LEN = 120;
 const SECURITY_ANSWER_MAX_LEN = 120;
 const PASSWORD_MIN_LEN = 6;
 const PASSWORD_MAX_LEN = 72;
+const DOCTOR_NAME_MAX_LEN = 120;
+const DOCTOR_PHONE_MAX_LEN = 30;
 
 function normalizeEmail(value) {
     return String(value || "").trim().toLowerCase();
@@ -129,6 +132,8 @@ async function login(req, res) {
 }
 
 async function registroOculto(req, res) {
+    let conn = null;
+
     try {
         if (!isHiddenRegisterEnabled()) {
             return res.status(404).json({
@@ -143,6 +148,7 @@ async function registroOculto(req, res) {
             nombre,
             idRol,
             idDoctor,
+            doctorNuevo,
             preguntaSeguridad,
             respuestaSeguridad
         } = req.body || {};
@@ -157,6 +163,12 @@ async function registroOculto(req, res) {
         const idDoctorNum = idDoctor === "" || idDoctor == null
             ? null
             : Number(idDoctor);
+        const doctorNuevoPayload = doctorNuevo && typeof doctorNuevo === "object"
+            ? doctorNuevo
+            : null;
+        const doctorNuevoNombre = normalizeText(doctorNuevoPayload?.nombre);
+        const doctorNuevoTelefono = normalizeText(doctorNuevoPayload?.telefono);
+        const quiereCrearDoctor = !!doctorNuevoPayload && (!!doctorNuevoNombre || !!doctorNuevoTelefono);
 
         const preguntaSeguridadNorm = authService.normalizeSecurityQuestion(preguntaSeguridad);
         const respuestaSeguridadNorm = authService.normalizeSecurityAnswer(respuestaSeguridad);
@@ -205,7 +217,66 @@ async function registroOculto(req, res) {
             return badRequest(res, "La contrasena debe tener al menos 6 caracteres");
         }
 
+        if (String(password).length > PASSWORD_MAX_LEN) {
+            return badRequest(res, "La contrasena es demasiado larga");
+        }
+
+        const esRolDoctor = cargoDerivado.toLowerCase() === "doctor";
+
+        if (!esRolDoctor && (idDoctorNum !== null || quiereCrearDoctor)) {
+            return badRequest(res, "Solo el rol Doctor puede vincular o crear doctor");
+        }
+
+        if (esRolDoctor && idDoctorNum !== null && quiereCrearDoctor) {
+            return badRequest(res, "Seleccione un doctor existente o cree uno nuevo, no ambos");
+        }
+
+        if (esRolDoctor && idDoctorNum === null && !quiereCrearDoctor) {
+            return badRequest(res, "Seleccione un doctor disponible o cree un doctor nuevo");
+        }
+
+        if (quiereCrearDoctor) {
+            if (!doctorNuevoNombre || doctorNuevoNombre.length > DOCTOR_NAME_MAX_LEN) {
+                return badRequest(res, "Nombre de doctor invalido o demasiado largo");
+            }
+
+            if (doctorNuevoTelefono.length > DOCTOR_PHONE_MAX_LEN) {
+                return badRequest(res, "Telefono de doctor demasiado largo");
+            }
+        }
+
         const passwordHash = await bcrypt.hash(String(password), 10);
+
+        conn = await db.getConnection();
+        await conn.beginTransaction();
+
+        let idDoctorFinal = null;
+        if (esRolDoctor && quiereCrearDoctor) {
+            idDoctorFinal = await authService.crearDoctorBasico({
+                nombre: doctorNuevoNombre,
+                telefono: doctorNuevoTelefono
+            }, conn);
+        } else if (esRolDoctor && idDoctorNum !== null) {
+            const doctorExistente = await authService.bloquearDoctorPorId(idDoctorNum, conn);
+            if (!doctorExistente) {
+                await conn.rollback();
+                conn.release();
+                conn = null;
+                return badRequest(res, "idDoctor no existe");
+            }
+
+            const doctorAsignado = await authService.doctorEstaAsignado(idDoctorNum, conn);
+            if (doctorAsignado) {
+                await conn.rollback();
+                conn.release();
+                conn = null;
+                return res.status(409).json({
+                    ok: false,
+                    message: "Este doctor ya esta asignado a otro usuario"
+                });
+            }
+            idDoctorFinal = idDoctorNum;
+        }
 
         const idUsuario = await authService.crearUsuario({
             correo: correoLimpio,
@@ -213,8 +284,8 @@ async function registroOculto(req, res) {
             nombre: nombreLimpio,
             cargo: cargoDerivado,
             idRol: idRolNum,
-            idDoctor: idDoctorNum
-        });
+            idDoctor: idDoctorFinal
+        }, conn);
 
         let securityQuestionStored = null;
         if (hasPreguntaSeguridad && hasRespuestaSeguridad && idUsuario) {
@@ -222,9 +293,13 @@ async function registroOculto(req, res) {
                 idUsuario,
                 preguntaSeguridadNorm,
                 respuestaSeguridadNorm,
-                { ignoreMissingColumns: true }
+                { conn, ignoreMissingColumns: true }
             );
         }
+
+        await conn.commit();
+        conn.release();
+        conn = null;
 
         return res.status(201).json({
             ok: true,
@@ -233,6 +308,15 @@ async function registroOculto(req, res) {
         });
 
     } catch (error) {
+        if (conn) {
+            try {
+                await conn.rollback();
+            } catch {
+                // noop
+            }
+            conn.release();
+        }
+
         if (error?.sqlState === "45000" && String(error?.message || "").includes("EL_CORREO_YA_EXISTE")) {
             return res.status(409).json({
                 ok: false,
@@ -423,10 +507,69 @@ async function passwordRecoverySetup(req, res) {
     }
 }
 
+async function changePassword(req, res) {
+    try {
+        const idUsuario = Number(req.user?.idUsuario || 0);
+        const passwordActual = String(req.body?.passwordActual || "");
+        const nuevaPassword = String(req.body?.nuevaPassword || "");
+        const confirmarPassword = String(req.body?.confirmarPassword || "");
+
+        if (!idUsuario) {
+            return res.status(403).json({
+                ok: false,
+                message: "Usuario no autorizado"
+            });
+        }
+
+        if (!passwordActual || !nuevaPassword || !confirmarPassword) {
+            return badRequest(res, "Complete contrasena actual, nueva contrasena y confirmacion");
+        }
+
+        if (nuevaPassword !== confirmarPassword) {
+            return badRequest(res, "La confirmacion de contrasena no coincide");
+        }
+
+        if (nuevaPassword.length < PASSWORD_MIN_LEN) {
+            return badRequest(res, "La nueva contrasena debe tener al menos 6 caracteres");
+        }
+
+        if (nuevaPassword.length > PASSWORD_MAX_LEN) {
+            return badRequest(res, "La nueva contrasena es demasiado larga");
+        }
+
+        const passwordHashActual = await authService.obtenerPasswordHashPorIdUsuario(idUsuario);
+        if (!passwordHashActual) {
+            return res.status(404).json({
+                ok: false,
+                message: "Usuario no encontrado"
+            });
+        }
+
+        const passwordOk = await bcrypt.compare(passwordActual, passwordHashActual);
+        if (!passwordOk) {
+            return res.status(401).json({
+                ok: false,
+                message: "Contrasena actual incorrecta"
+            });
+        }
+
+        const nuevaPasswordHash = await bcrypt.hash(nuevaPassword, 10);
+        await authService.cambiarPasswordPorIdUsuario(idUsuario, nuevaPasswordHash);
+
+        return res.json({
+            ok: true,
+            message: "Contrasena actualizada correctamente"
+        });
+    } catch (error) {
+        return handleAuthError(res, error, "Error al cambiar contrasena");
+    }
+}
+
 module.exports = {
     login,
     registroOculto,
     registroCatalogos,
+    changePassword,
     passwordRecoveryQuestion,
     passwordRecoveryReset,
     passwordRecoverySetup

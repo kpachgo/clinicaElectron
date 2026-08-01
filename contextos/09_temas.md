@@ -42,6 +42,13 @@
 - Patrones globales ya existentes:
   - `--bg-gray`, `--bg-white`, `--text-color`, `--text-muted`, `--border-color`
   - colores de accion (`--danger`, `--success`, etc.)
+- Tema blanco actual:
+  - `theme-light.css` define la paleta base clara y `color-scheme: light`.
+  - el chrome principal se refresco en `style.css` con variables `--app-*` (`--app-primary`, `--app-secondary`, `--app-background`, `--app-surface`, `--app-border`, `--app-text`, `--app-text-muted`).
+  - la topbar usa fondo blanco translucido, borde suave, sombra ligera, nav activo azul clinico y avatar circular con iniciales del usuario.
+  - el contenido usa fondo claro `--app-background` con acento radial azul muy leve.
+  - los botones superiores (`.top-icon-btn`, `.theme-btn`) y logout se compactaron a formato icono/cuadrado para el nuevo chrome.
+  - existen ajustes de compatibilidad para `.dark-mode` sobre la topbar y botones, evitando que el refresh claro rompa temas oscuros.
 
 ## Regla principal para theming por vista
 - Si un color esta fijo (`#xxxxxx`, `rgb(...)`), no cambiara con tema.
@@ -51,6 +58,16 @@
   - `body[data-theme="<tema>"] .<vista-container> ...`
   - mientras exista legado, mantener tambien `.dark-mode ...` para no romper.
   - Evitar reglas demasiado globales si pueden afectar otra vista.
+
+## Patron unificado de tablas compactas
+- Aplicar este patron en todas las tablas operativas del programa:
+  - contenedor con borde suave, radio 12px, fondo tematico y overflow horizontal controlado.
+  - encabezado sticky con texto uppercase, `font-size: 10px`, `font-weight: 900`, padding `6px 9px`.
+  - filas con altura aproximada de `34px` y celdas con padding `5px 7px`.
+  - zebra visible en tema blanco: fila normal `#ffffff`, fila alterna `#f8fbff`.
+  - en temas oscuros/personalizados, declarar tokens propios de zebra por vista (ej. `--ms-table-row-bg`, `--ms-table-row-alt-bg`, `--ms-table-row-border`).
+  - columnas informativas como `Paciente` no deben forzar bold global; usar peso normal salvo que una vista tenga una razon clara para destacar.
+  - chips y acciones deben mantenerse compactos para no aumentar la altura de fila.
 
 ## Lecciones aprendidas en este proyecto
 
@@ -148,6 +165,9 @@
   - `style.css` conserva estructura/tokens base y compatibilidad de icono/estado de tema.
   - paletas por tema viven en `frontend/css/themes/`.
   - `theme-toggle` ya tiene iconos para 4 estados: sol, luna, vampiro y corona.
+  - Tema blanco (`light`) es el predeterminado (`DEFAULT_THEME = "light"`) y usa el nuevo chrome azul clinico en `style.css`.
+  - `index.html` carga `theme-light.css` antes de los demas temas y agrega `#top-user-avatar` para mostrar iniciales en la topbar.
+  - El chrome nuevo usa variables `--app-*`; `dark`, `vampire` y `princess` deben definir su propia paleta para no heredar el azul clinico claro.
 - Login:
   - `login.css` usa variables `--login-*` con override dark en el mismo archivo.
   - `theme-vampire.css` agrega override de login (`--login-*`, boton y error) para evitar herencia del dark base.
@@ -155,6 +175,7 @@
 - Agenda:
   - `agenda.css` tiene override dark para neutralizar colores fuertes de `Nombre/Hora`.
   - En dark, `agenda-hora-slot-*` y `agenda-nombre-estado-*` pasan a fondo transparente.
+  - El rediseño compacto de Agenda mantiene tamano de tabla y filas; la compatibilidad visual con `dark`, `vampire` y `princess` se maneja al final de `agenda.css` con variables `--agenda-*` y overrides por `body[data-theme="..."]`.
 - En Cola:
   - `encola.css` migrado a variables de vista (`--cola-*`) con dark completo.
 - Servicios:

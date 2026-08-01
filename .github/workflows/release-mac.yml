@@ -71,13 +71,6 @@ jobs:
           fi
           RELEASE_VERSION="$RELEASE_VERSION" node -e "const fs=require('fs'); const files=['package.json','electron-app/package.json','runtime.package.json']; const v=process.env.RELEASE_VERSION; for (const f of files){ const j=JSON.parse(fs.readFileSync(f,'utf8')); j.version=v; fs.writeFileSync(f, JSON.stringify(j, null, 2)+'\n'); console.log('updated '+f+' -> '+v); }"
 
-      - name: Validate BACKEND_ENV secret exists
-        run: |
-          if [ -z "${{ secrets.BACKEND_ENV }}" ]; then
-            echo "Missing required secret: BACKEND_ENV"
-            exit 1
-          fi
-
       - name: Detect macOS signing/notarization secrets
         run: |
           has_cert_base64=0
@@ -110,11 +103,6 @@ jobs:
             echo "- APPLE_API_ISSUER"
             exit 1
           fi
-
-      - name: Create backend .env from GitHub Secret
-        run: |
-          printf '%s' "${{ secrets.BACKEND_ENV }}" > backend/.env
-          test -s backend/.env
 
       - name: Prepare macOS signing assets
         if: env.HAS_MAC_SIGNING == 'true'

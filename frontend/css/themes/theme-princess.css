@@ -17,22 +17,34 @@ body[data-theme="princess"] {
   --table-row-border: rgba(214, 51, 154, 0.16);
   --table-row-hover: rgba(214, 51, 154, 0.12);
   color-scheme: light;
+
+  --app-primary: #ff69b4;
+  --app-primary-dark: #cd0067;
+  --app-secondary: #a855f7;
+  --app-background: #fff1f8;
+  --app-surface: #fff7fc;
+  --app-border: #ffc2df;
+  --app-text: #4a2340;
+  --app-text-muted: #845872;
+  --app-content-accent: rgba(255, 105, 180, 0.12);
+  --app-topbar-bg: rgba(255, 247, 252, 0.9);
+  --app-topbar-border: rgba(255, 194, 223, 0.95);
+  --app-topbar-shadow: 0 12px 32px rgba(126, 58, 99, 0.12);
+  --app-topbar-scrolled-shadow: 0 16px 36px rgba(126, 58, 99, 0.16);
+  --app-nav-hover-bg: #ffe3f2;
+  --app-nav-hover-border: #ffc2df;
+  --app-nav-active-bg: #ffd7ec;
+  --app-nav-active-border: #ff9cce;
+  --app-nav-active-shadow: 0 10px 24px rgba(214, 51, 154, 0.12);
+  --app-control-bg: rgba(255, 232, 244, 0.74);
+  --app-avatar-bg: linear-gradient(135deg, #ff69b4, #a855f7);
+  --app-avatar-shadow: 0 10px 22px rgba(214, 51, 154, 0.22);
 }
 
 /* =====================================================
    TOPBAR / CROMA
 ===================================================== */
-body[data-theme="princess"] .topbar .sidebar-menu .accordion:hover {
-  background: #ffc2df;
-}
-
-body[data-theme="princess"] .topbar .sidebar-menu .accordion.active {
-  background: #ffcbe5;
-  color: #cd0067;
-  box-shadow: inset 0 -2px 0 #ff69b4;
-}
-
-body[data-theme="princess"] .top-right > .icon:hover,
+body[data-theme="princess"] .top-icon-btn:hover,
 body[data-theme="princess"] .theme-btn:hover {
   background: #ffc2df;
   border-color: #ff9cce;
@@ -243,6 +255,51 @@ body[data-theme="princess"] #signature-canvas {
   background: #ffdded;
 }
 
+body[data-theme="princess"] .doctor-media-preview-label,
+body[data-theme="princess"] .doctor-pendientes-header p {
+  color: #845872;
+}
+
+body[data-theme="princess"] .doctor-media-preview-box {
+  background: #fff7fb;
+  border-color: #ff9cce;
+}
+
+body[data-theme="princess"] .doctor-media-preview-empty {
+  color: #845872;
+}
+
+body[data-theme="princess"] .doctor-pendientes-section {
+  border-top-color: #ff9cce;
+}
+
+body[data-theme="princess"] .doctor-pendientes-header h3 {
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .doctor-pendientes-loader {
+  background: rgba(255, 232, 244, 0.78);
+}
+
+body[data-theme="princess"] .doctor-pendientes-loader-card {
+  background: #fff7fb;
+  border-color: #ff9cce;
+  color: #4a2340;
+}
+
+body[data-theme="princess"] .doctor-pendientes-loader-spinner {
+  border-color: #ffd0e7;
+  border-top-color: #ff1493;
+}
+
+body[data-theme="princess"] .doctor-password-message.is-error {
+  color: #cd0067;
+}
+
+body[data-theme="princess"] .doctor-password-message.is-success {
+  color: #15803d;
+}
+
 /* =====================================================
    EN COLA - PRINCESS
 ===================================================== */
@@ -379,6 +436,10 @@ body[data-theme="princess"] {
   --ms-contacto-llamada-bg: #e8f7ef;
   --ms-contacto-llamada-border: #9ed5b8;
   --ms-contacto-llamada-text: #1f6a45;
+  --ms-table-head-bg: #ffe8f4;
+  --ms-table-row-bg: #fff7fc;
+  --ms-table-row-alt-bg: #fff0f8;
+  --ms-table-row-border: rgba(214, 51, 154, 0.16);
 }
 
 /* =====================================================
@@ -434,6 +495,35 @@ body[data-theme="princess"] .paciente-card .btn-cita-paciente {
 
 body[data-theme="princess"] .paciente-card .btn-cita-paciente:hover {
   background: #cd0067;
+}
+
+body[data-theme="princess"] .citas-firma-toggle {
+  border-color: #ff69b4;
+  background: #ffeaf5;
+  color: #631f50;
+}
+
+body[data-theme="princess"] .citas-firma-toggle:hover,
+body[data-theme="princess"] .citas-firma-toggle:has(input:checked),
+body[data-theme="princess"] .citas-firma-toggle.is-security-forced {
+  border-color: #ff0381;
+  background: #ffd2e8;
+  color: #631f50;
+  box-shadow: 0 0 0 2px rgba(255, 3, 129, 0.12);
+}
+
+body[data-theme="princess"] .citas-firma-toggle input {
+  border-color: #ff0381;
+  background: #fff5fb;
+}
+
+body[data-theme="princess"] .citas-firma-toggle input:checked {
+  border-color: #ff0381;
+  background: #ff0381;
+}
+
+body[data-theme="princess"] .citas-firma-toggle.is-security-forced input:disabled {
+  opacity: 1;
 }
 
 body[data-theme="princess"] #btn-ver-firma-paciente {

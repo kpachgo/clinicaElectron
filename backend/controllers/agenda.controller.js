@@ -43,6 +43,25 @@ function isValidIsoDate(value) {
   );
 }
 
+function getMonthBoundsFromIso(fechaBase) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(fechaBase || "").trim());
+  if (!m) return null;
+
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  const ultimoDia = String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0");
+  return {
+    year,
+    month,
+    desde: `${m[1]}-${m[2]}-01`,
+    hasta: `${m[1]}-${m[2]}-${ultimoDia}`
+  };
+}
+
 function getLocalTodayISO() {
   const now = new Date();
   const y = now.getFullYear();
@@ -317,6 +336,32 @@ exports.listarPorFecha = async (req, res) => {
   }
 };
 
+exports.listarMes = async (req, res) => {
+  try {
+    const fechaBase = String(req.query?.fecha || "").trim();
+    const bounds = getMonthBoundsFromIso(fechaBase);
+    if (!bounds) {
+      return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
+    }
+
+    const [rows] = await pool.query(
+      "CALL sp_agenda_buscar_mes(?, ?, ?)",
+      [bounds.desde, bounds.hasta, ""]
+    );
+
+    const data = firstResultSet(rows);
+
+    return res.json({
+      ok: true,
+      data,
+      desde: bounds.desde,
+      hasta: bounds.hasta
+    });
+  } catch (error) {
+    return serverError(res, error, "Error al obtener agenda del mes");
+  }
+};
+
 exports.buscarPorMes = async (req, res) => {
   try {
     const { q, fecha } = req.query;
@@ -327,24 +372,14 @@ exports.buscarPorMes = async (req, res) => {
       return badRequest(res, "Texto de busqueda requerido");
     }
 
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fechaBase);
-    if (!m) {
+    const bounds = getMonthBoundsFromIso(fechaBase);
+    if (!bounds) {
       return badRequest(res, "Fecha invalida, use YYYY-MM-DD");
     }
 
-    const year = Number(m[1]);
-    const month = Number(m[2]);
-    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-      return badRequest(res, "Mes invalido");
-    }
-
-    const desde = `${m[1]}-${m[2]}-01`;
-    const ultimoDia = String(new Date(Date.UTC(year, month, 0)).getUTCDate()).padStart(2, "0");
-    const hasta = `${m[1]}-${m[2]}-${ultimoDia}`;
-
     const [rows] = await pool.query(
       "CALL sp_agenda_buscar_mes(?, ?, ?)",
-      [desde, hasta, texto]
+      [bounds.desde, bounds.hasta, texto]
     );
 
     const data = firstResultSet(rows);
@@ -352,8 +387,8 @@ exports.buscarPorMes = async (req, res) => {
     return res.json({
       ok: true,
       data,
-      desde,
-      hasta
+      desde: bounds.desde,
+      hasta: bounds.hasta
     });
   } catch (error) {
     return serverError(res, error, "Error al buscar agenda por mes");

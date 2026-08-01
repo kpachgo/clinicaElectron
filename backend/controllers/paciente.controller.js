@@ -1026,7 +1026,7 @@ const crearCitaPaciente = async (req, res) => {
     const abonoNum = abono === "" || abono === null || abono === undefined
       ? 0
       : Number(abono);
-    const doctorIdNum = doctorId === "" || doctorId === null || doctorId === undefined
+    let doctorIdNum = doctorId === "" || doctorId === null || doctorId === undefined
       ? null
       : Number(doctorId);
 
@@ -1040,6 +1040,33 @@ const crearCitaPaciente = async (req, res) => {
       return badRequest(res, "Datos de cita invalidos");
     }
 
+    const creadoPorUsuarioId = Number(req.user?.idUsuario || 0) || null;
+    if (req.user?.rol === "Doctor") {
+      if (!creadoPorUsuarioId) {
+        return res.status(403).json({
+          ok: false,
+          message: "Usuario no autorizado"
+        });
+      }
+
+      const doctorVinculado = await obtenerVinculoDoctorPorUsuario(creadoPorUsuarioId);
+      if (!doctorVinculado) {
+        return res.status(403).json({
+          ok: false,
+          message: "Doctor no vinculado"
+        });
+      }
+
+      if (doctorIdNum !== null && doctorIdNum !== doctorVinculado) {
+        return res.status(403).json({
+          ok: false,
+          message: "Solo puede registrar citas con su propio doctor"
+        });
+      }
+
+      doctorIdNum = doctorVinculado;
+    }
+
     let doctor = null;
     if (doctorIdNum !== null) {
       doctor = await obtenerMetaDoctor(doctorIdNum);
@@ -1051,7 +1078,6 @@ const crearCitaPaciente = async (req, res) => {
       }
     }
 
-    const creadoPorUsuarioId = Number(req.user?.idUsuario || 0) || null;
     let estadoAutorizacion = ESTADO_AUTORIZACION_PENDIENTE;
     let metodoAutorizacion = null;
     let autorizadoPorUsuarioId = null;
@@ -1158,6 +1184,31 @@ const actualizarCitaPaciente = async (req, res) => {
       );
     }
     return handlePacienteError(res, err, "Error al actualizar cita");
+  }
+};
+
+const eliminarCitaPaciente = async (req, res) => {
+  try {
+    const id = Number(req.params?.id || 0);
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return badRequest(res, "ID de cita invalido");
+    }
+
+    const [rows] = await pool.query(
+      "CALL sp_cita_paciente_eliminar(?)",
+      [id]
+    );
+
+    const out = firstRow(rows);
+    if (!out || !out.affectedRows) {
+      return notFound(res, "Cita no encontrada");
+    }
+
+    res.json({ ok: true, idCitaPaciente: id });
+
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al eliminar cita");
   }
 };
 // ============================
@@ -1412,6 +1463,7 @@ module.exports = {
   guardarPaciente,
   crearCitaPaciente,
   actualizarCitaPaciente,
+  eliminarCitaPaciente,
   autorizarCitaPaciente,
   listarCitasPaciente
 };
