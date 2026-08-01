@@ -873,6 +873,7 @@ body[data-theme="princess"] .theme-btn .crown {
     --app-control-bg: rgba(255, 255, 255, 0.72);
     --app-avatar-bg: linear-gradient(135deg, var(--app-primary), #2e8bff);
     --app-avatar-shadow: 0 10px 22px rgba(39, 117, 245, 0.26);
+    --app-view-max-width: 1760px;
 }
 
 body {

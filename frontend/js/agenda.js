@@ -344,6 +344,8 @@
         return `<svg ${base}><path d="m9 18 6-6-6-6"></path></svg>`;
       case "check-circle":
         return `<svg ${base}><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.2 2.2 4.8-4.8"></path></svg>`;
+      case "x-circle":
+        return `<svg ${base}><circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6m0-6-6 6"></path></svg>`;
       case "clock":
         return `<svg ${base}><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5V12l3 1.8"></path></svg>`;
       case "funnel":
@@ -811,22 +813,37 @@
               </button>
 
               <div class="agenda-hero-metrics agenda-control-metrics" aria-live="polite">
-                <article class="agenda-metric-card is-total">
+                <article class="agenda-metric-card is-total" data-agenda-metric="" role="button" tabindex="0" aria-pressed="false" title="Limpiar resaltado de estados">
                   <span class="agenda-metric-icon">${getAgendaHeroIcon("calendar-days")}</span>
                   <strong id="agenda-stat-total">0</strong>
                   <small>Total</small>
                 </article>
-                <article class="agenda-metric-card is-confirmed">
+                <article class="agenda-metric-card is-confirmed" data-agenda-metric="confirmado" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas confirmadas">
                   <span class="agenda-metric-icon">${getAgendaHeroIcon("check-circle")}</span>
                   <strong id="agenda-stat-confirmadas">0</strong>
                   <small>Confirmadas</small>
                 </article>
-                <article class="agenda-metric-card is-rescheduled">
+                <article class="agenda-metric-card is-canceled" data-agenda-metric="cancelado" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas canceladas">
+                  <span class="agenda-metric-icon">${getAgendaHeroIcon("x-circle")}</span>
+                  <strong id="agenda-stat-canceladas">0</strong>
+                  <small>Canceladas</small>
+                </article>
+                <article class="agenda-metric-card is-rescheduled" data-agenda-metric="reprogramado" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas reprogramadas">
                   <span class="agenda-metric-icon">${getAgendaHeroIcon("clock")}</span>
                   <strong id="agenda-stat-reprogramadas">0</strong>
                   <small>Reprog.</small>
                 </article>
-                <article class="agenda-metric-card is-pending">
+                <article class="agenda-metric-card is-no-answer" data-agenda-metric="no contesta" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas no contesta">
+                  <span class="agenda-metric-icon">${getAgendaHeroIcon("phone")}</span>
+                  <strong id="agenda-stat-no-contesta">0</strong>
+                  <small>No contesta</small>
+                </article>
+                <article class="agenda-metric-card is-igs" data-agenda-metric="igs" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas IGS">
+                  <span class="agenda-metric-icon">${getAgendaHeroIcon("building-office")}</span>
+                  <strong id="agenda-stat-igs">0</strong>
+                  <small>IGS</small>
+                </article>
+                <article class="agenda-metric-card is-pending" data-agenda-metric="pendiente" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas pendientes">
                   <span class="agenda-metric-icon">${getAgendaHeroIcon("funnel")}</span>
                   <strong id="agenda-stat-pendientes">0</strong>
                   <small>Pendientes</small>
@@ -1173,9 +1190,7 @@
     const agendaDatePrevBtn = container.querySelector("#agenda-date-prev");
     const agendaDateNextBtn = container.querySelector("#agenda-date-next");
     const agendaStatTotal = container.querySelector("#agenda-stat-total");
-    const agendaStatConfirmadas = container.querySelector("#agenda-stat-confirmadas");
-    const agendaStatReprogramadas = container.querySelector("#agenda-stat-reprogramadas");
-    const agendaStatPendientes = container.querySelector("#agenda-stat-pendientes");
+    const agendaMetricCards = Array.from(container.querySelectorAll("[data-agenda-metric]"));
     const agendaViewDayBtn = container.querySelector("#agenda-view-day");
     const agendaViewMonthBtn = container.querySelector("#agenda-view-month");
     const agendaMonthView = container.querySelector("#agenda-month-view");
@@ -1247,11 +1262,33 @@
       const countByState = (state) => list.filter((item) => (
         normalizarTexto(String(item?.estado || "Pendiente")) === state
       )).length;
+      const stateCounts = {
+        confirmado: countByState("confirmado"),
+        cancelado: countByState("cancelado"),
+        reprogramado: countByState("reprogramado"),
+        "no contesta": countByState("no contesta"),
+        igs: countByState("igs"),
+        pendiente: countByState("pendiente")
+      };
+      const setMetricCount = (metric, value) => {
+        const card = agendaMetricCards.find((item) => String(item.dataset.agendaMetric || "") === metric);
+        const countEl = card?.querySelector?.("strong");
+        if (countEl) countEl.textContent = String(value);
+        if (card && metric) {
+          card.hidden = Number(value || 0) <= 0;
+        }
+      };
 
       if (agendaStatTotal) agendaStatTotal.textContent = String(list.length);
-      if (agendaStatConfirmadas) agendaStatConfirmadas.textContent = String(countByState("confirmado"));
-      if (agendaStatReprogramadas) agendaStatReprogramadas.textContent = String(countByState("reprogramado"));
-      if (agendaStatPendientes) agendaStatPendientes.textContent = String(countByState("pendiente"));
+      setMetricCount("confirmado", stateCounts.confirmado);
+      setMetricCount("cancelado", stateCounts.cancelado);
+      setMetricCount("reprogramado", stateCounts.reprogramado);
+      setMetricCount("no contesta", stateCounts["no contesta"]);
+      setMetricCount("igs", stateCounts.igs);
+      setMetricCount("pendiente", stateCounts.pendiente);
+      if (agendaMetricHighlight && Number(stateCounts[agendaMetricHighlight] || 0) <= 0) {
+        agendaMetricHighlight = "";
+      }
     }
 
     function setAgendaDateAndRefresh(nextDate) {
@@ -1280,6 +1317,7 @@
     let inasistenciaFetchSeq = 0;
     let inasistenciaFetchController = null;
     let daySummaryActiveView = "hour";
+    let agendaMetricHighlight = "";
     const RESUMEN_ESTADOS_HIGHLIGHT = new Set(["confirmado", "cancelado", "reprogramado"]);
     const agendaContactoSaveInFlight = new Set();
     const agendaUiStateKey = `ui_state_agenda_${getUiStateUserId()}`;
@@ -1504,6 +1542,44 @@
       sincronizarColumnasOpcionalesAgenda();
     }
 
+    function syncAgendaMetricHighlightUi() {
+      agendaMetricCards.forEach((card) => {
+        const metric = String(card.dataset.agendaMetric || "").trim();
+        const active = metric !== "" && metric === agendaMetricHighlight;
+        card.classList.toggle("is-highlight-active", active);
+        card.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+    }
+
+    function setAgendaMetricHighlight(metric) {
+      const nextMetric = String(metric || "").trim();
+      agendaMetricHighlight = nextMetric && nextMetric !== agendaMetricHighlight ? nextMetric : "";
+      syncAgendaMetricHighlightUi();
+      aplicarFiltros({ dispararFallback: false });
+    }
+
+    function getAgendaMetricHighlightClassSuffix(metric) {
+      return normalizarTexto(metric).replace(/\s+/g, "-");
+    }
+
+    function applyAgendaMetricHighlightToRow(rowEl, estado) {
+      if (!rowEl) return;
+      const estadoKey = normalizarTexto(String(estado || "Pendiente")) || "pendiente";
+      const active = !!agendaMetricHighlight && estadoKey === agendaMetricHighlight;
+      rowEl.classList.toggle("agenda-row-metric-highlight", active);
+      rowEl.classList.remove(
+        "agenda-row-metric-confirmado",
+        "agenda-row-metric-cancelado",
+        "agenda-row-metric-reprogramado",
+        "agenda-row-metric-no-contesta",
+        "agenda-row-metric-igs",
+        "agenda-row-metric-pendiente"
+      );
+      if (active) {
+        rowEl.classList.add(`agenda-row-metric-${getAgendaMetricHighlightClassSuffix(agendaMetricHighlight)}`);
+      }
+    }
+
     function getAgendaMonthKey(fechaISO) {
       const parts = parseISODateParts(fechaISO);
       if (!parts) return "";
@@ -1522,6 +1598,8 @@
     function setAgendaViewMode(mode, opts = {}) {
       const nextMode = mode === "mes" ? "mes" : "dia";
       agendaViewMode = nextMode;
+      const agendaContainer = container.querySelector(".agenda-container");
+      agendaContainer?.classList.toggle("agenda-is-month-view", nextMode === "mes");
 
       if (agendaViewDayBtn) {
         const active = nextMode === "dia";
@@ -1575,6 +1653,7 @@
       const rowsByDate = new Map();
       updateAgendaDateChrome();
       updateAgendaMetrics(filteredRows);
+      syncAgendaMetricHighlightUi();
 
       filteredRows.forEach((item) => {
         const iso = getAgendaFechaIsoItem(item);
@@ -2970,6 +3049,13 @@
       }
       setAgendaViewMode("mes");
     };
+    const toggleAgendaCheckboxShortcut = (input) => {
+      if (!(input instanceof HTMLInputElement)) return false;
+      if (input.disabled) return false;
+      input.checked = !input.checked;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    };
     const moverFechaAgenda = (deltaDays) => {
       if (!isAgendaViewActive()) return;
       if (isAgendaCriticalSaveInProgress()) return;
@@ -2999,6 +3085,18 @@
       if (String(e.key || "").toLowerCase() === "m") {
         e.preventDefault();
         toggleAgendaViewModeRapido();
+        return;
+      }
+
+      const toggleShortcutByKey = {
+        "1": toggleNumeracionAgenda,
+        "2": toggleSmsAgenda,
+        "3": toggleLlamadaAgenda,
+        "4": togglePresenteAgenda
+      };
+      const shortcutInput = toggleShortcutByKey[String(e.key || "")];
+      if (shortcutInput && toggleAgendaCheckboxShortcut(shortcutInput)) {
+        e.preventDefault();
       }
     };
     if (window.__agendaDateNavKeydownHandler) {
@@ -3297,11 +3395,13 @@
       aplicarVisibilidadContactadoAgenda();
       updateAgendaDateChrome();
       updateAgendaMetrics(list);
+      syncAgendaMetricHighlightUi();
       const duplicateCounts = buildAgendaDuplicateCounts(duplicateSourceList);
 
       list.forEach((item, index) => {
         const tr = document.createElement("tr");
         aplicarRefuerzoVisualFila(tr, item.estado);
+        applyAgendaMetricHighlightToRow(tr, item.estado);
 
         // Contacto (SMS / Llamada / Presente)
         const tdContactoMarcadores = document.createElement("td");
@@ -3441,6 +3541,7 @@
         item.estado = nuevoEstado;
         sel.className = "select-estado " + estadoClassName(item.estado);
         aplicarRefuerzoVisualFila(tr, item.estado);
+        applyAgendaMetricHighlightToRow(tr, item.estado);
         aplicarRefuerzoVisualNombre(tdNombre, item.estado);
         aplicarFiltros();
 
@@ -4102,6 +4203,18 @@
       setAgendaViewMode("dia");
       actualizarUiReprogramacion();
       cargarAgendaPorFecha(fechaISO);
+    });
+    container.querySelector(".agenda-hero-metrics")?.addEventListener("click", (e) => {
+      const card = e.target?.closest?.("[data-agenda-metric]");
+      if (!card) return;
+      setAgendaMetricHighlight(card.dataset.agendaMetric || "");
+    });
+    container.querySelector(".agenda-hero-metrics")?.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      const card = e.target?.closest?.("[data-agenda-metric]");
+      if (!card) return;
+      e.preventDefault();
+      setAgendaMetricHighlight(card.dataset.agendaMetric || "");
     });
 
     searchInput.addEventListener("input", () => {

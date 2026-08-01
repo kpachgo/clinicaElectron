@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, safeStorage, session } = require("electron");
+const { app, BrowserWindow, Menu, dialog, safeStorage, session } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
@@ -800,6 +800,8 @@ function createWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+  Menu.setApplicationMenu(null);
+  mainWindow.setMenu(null);
   installThemeReporterBridge();
 
   const launchUrl = DEV_DISABLE_CACHE
