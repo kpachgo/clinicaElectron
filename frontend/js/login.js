@@ -151,7 +151,7 @@
         return;
       }
       closeDbConfigModal();
-      void openDbConfigModal();
+      void openDbConfigModal(password);
     };
 
     modal.querySelector("#db-config-gate-close")?.addEventListener("click", close);
@@ -483,7 +483,7 @@
     }, 50);
   }
 
-  async function openDbConfigModal() {
+  async function openDbConfigModal(gatePassword = "") {
     closeDbConfigModal();
 
     const modal = document.createElement("div");
@@ -513,7 +513,19 @@
 
     try {
       const status = await fetchDbConfigStatus();
-      renderDbConfigAuth(modal, status);
+      const authRes = await fetch("/api/configuracion-db/autorizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "maintenance",
+          gatePassword: String(gatePassword || "")
+        })
+      });
+      const authData = await readJsonResponse(authRes);
+      if (!authRes.ok || !authData?.ok) {
+        throw new Error(authData?.message || "No se pudo autorizar configuracion");
+      }
+      renderDbConfigForm(modal, authData.status || status, authData.data?.token);
     } catch (err) {
       console.error(err);
       const body = modal.querySelector(".db-config-body");

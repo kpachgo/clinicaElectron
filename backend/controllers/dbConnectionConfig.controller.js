@@ -2,6 +2,7 @@ const authService = require("../services/auth.service");
 const dbConnectionConfig = require("../services/dbConnectionConfig.service");
 
 const SESSION_TTL_MS = 15 * 60 * 1000;
+const MAINTENANCE_GATE_PASSWORD = process.env.DB_CONFIG_GATE_PASSWORD || "D@nielito100pre";
 const sessions = new Map();
 
 function isTransientDbError(err) {
@@ -73,6 +74,22 @@ async function authorize(req, res) {
   const hasPin = dbConnectionConfig.hasMaintenancePin();
 
   try {
+    if (mode === "maintenance") {
+      const gatePassword = String(req.body?.gatePassword || "");
+      if (gatePassword !== MAINTENANCE_GATE_PASSWORD) {
+        return res.status(401).json({
+          ok: false,
+          message: "Contrasena de mantenimiento incorrecta"
+        });
+      }
+
+      return res.json({
+        ok: true,
+        data: createSession({ authorizedBy: "mantenimiento-local", mode: "maintenance" }),
+        status: dbConnectionConfig.getPublicStatus()
+      });
+    }
+
     if (mode === "pin") {
       if (!hasPin) {
         return res.status(409).json({

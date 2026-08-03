@@ -71,6 +71,37 @@ jobs:
           fi
           RELEASE_VERSION="$RELEASE_VERSION" node -e "const fs=require('fs'); const files=['package.json','electron-app/package.json','runtime.package.json']; const v=process.env.RELEASE_VERSION; for (const f of files){ const j=JSON.parse(fs.readFileSync(f,'utf8')); j.version=v; fs.writeFileSync(f, JSON.stringify(j, null, 2)+'\n'); console.log('updated '+f+' -> '+v); }"
 
+      - name: Validate BACKEND_ENV secret exists
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          if [ -z "$BACKEND_ENV" ]; then
+            echo "Missing required secret: BACKEND_ENV"
+            exit 1
+          fi
+
+      - name: Create backend .env from GitHub Secret
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          printf '%s' "$BACKEND_ENV" > backend/.env
+          test -s backend/.env
+
+      - name: Allow backend .env in packaged runtime
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'package.json';
+          const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+          pkg.build.files = (pkg.build.files || []).filter((entry) => entry !== '!backend/.env');
+          for (const resource of pkg.build.extraResources || []) {
+            if (resource.to === 'runtime/backend' && Array.isArray(resource.filter)) {
+              resource.filter = resource.filter.filter((entry) => entry !== '!.env');
+            }
+          }
+          fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
       - name: Detect macOS signing/notarization secrets
         run: |
           has_cert_base64=0
@@ -151,6 +182,14 @@ jobs:
             exit 1
           fi
           find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/server.js" -print
+
+      - name: Validate backend .env included in app bundle
+        run: |
+          if ! find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/.env" -print -quit | grep -q .; then
+            echo "runtime/backend/.env not found inside .app bundle"
+            exit 1
+          fi
+          find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/.env" -print
 
       - name: Upload macOS artifact (backup)
         uses: actions/upload-artifact@v4
