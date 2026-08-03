@@ -7,11 +7,13 @@ BEGIN
   DECLARE v_now DATETIME;
   DECLARE v_codigo VARCHAR(64);
   DECLARE v_warning_window_days INT DEFAULT 3;
+  DECLARE v_tolerancia_horas INT DEFAULT 23;
 
   DECLARE v_id_licencia BIGINT UNSIGNED;
   DECLARE v_estado_suscripcion VARCHAR(20);
   DECLARE v_suscripcion_habilitada TINYINT;
   DECLARE v_fecha_vencimiento DATETIME;
+  DECLARE v_ultima_fecha_confiable DATETIME DEFAULT NULL;
   DECLARE v_dias_restantes INT DEFAULT NULL;
   DECLARE v_proxima_a_vencer TINYINT DEFAULT 0;
   DECLARE v_mensaje_aviso VARCHAR(255) DEFAULT NULL;
@@ -51,8 +53,38 @@ BEGIN
     WHERE BINARY l.codigo_licencia = BINARY v_codigo
     LIMIT 1;
 
+    IF v_id_licencia IS NOT NULL THEN
+      SELECT MAX(fecha_valor)
+      INTO v_ultima_fecha_confiable
+      FROM (
+        SELECT l.ultima_validacion AS fecha_valor
+        FROM licencias l
+        WHERE l.id_licencia = v_id_licencia
+        UNION ALL
+        SELECT MAX(s.inicio_sesion) AS fecha_valor
+        FROM licencia_sesiones s
+        WHERE s.id_licencia = v_id_licencia
+        UNION ALL
+        SELECT MAX(s.fin_sesion) AS fecha_valor
+        FROM licencia_sesiones s
+        WHERE s.id_licencia = v_id_licencia
+        UNION ALL
+        SELECT MAX(s.creado_en) AS fecha_valor
+        FROM licencia_sesiones s
+        WHERE s.id_licencia = v_id_licencia
+        UNION ALL
+        SELECT MAX(s.actualizado_en) AS fecha_valor
+        FROM licencia_sesiones s
+        WHERE s.id_licencia = v_id_licencia
+      ) fechas
+      WHERE fecha_valor IS NOT NULL;
+    END IF;
+
     IF v_id_licencia IS NULL THEN
       SET v_ok = 0; SET v_code = 'licencia_no_encontrada'; SET v_message = 'La licencia no existe';
+    ELSEIF v_ultima_fecha_confiable IS NOT NULL
+      AND v_now < DATE_SUB(v_ultima_fecha_confiable, INTERVAL v_tolerancia_horas HOUR) THEN
+      SET v_ok = 0; SET v_code = 'fecha_sistema_retrocedida'; SET v_message = 'La fecha del sistema/servidor fue retrocedida. Actualice la fecha para continuar.';
     ELSEIF BINARY v_estado_suscripcion <> BINARY 'activa' THEN
       SET v_ok = 0; SET v_code = 'suscripcion_inactiva'; SET v_message = 'La suscripcion no esta activa';
     ELSEIF IFNULL(v_suscripcion_habilitada, 0) <> 1 THEN
