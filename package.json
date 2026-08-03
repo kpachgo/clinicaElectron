@@ -36,7 +36,6 @@
     "asar": true,
     "files": [
       "**/*",
-      "!backend/.env",
       "!node_modules/clinica{,/**}"
     ],
     "extraResources": [
@@ -45,8 +44,8 @@
         "to": "runtime/backend",
         "filter": [
           "**/*",
-          "node_modules{,/**}",
-          "!.env"
+          ".env",
+          "node_modules{,/**}"
         ]
       },
       {

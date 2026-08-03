@@ -57,10 +57,10 @@
   - `electron-builder` quedo fijado en `26.0.12`.
 
 ## Comportamiento del `.env` y conexion local
-- Para releases multi-sucursal, el instalador ya no debe incluir `backend/.env` con credenciales de una sucursal.
-- `package.json` excluye explicitamente `backend/.env` del bundle general y de `extraResources`.
-- Los workflows de release ya no requieren ni crean el secret `BACKEND_ENV`.
-- La conexion MySQL de cada equipo se guarda fuera del instalador, en almacenamiento local protegido:
+- El instalador oficial debe incluir `backend/.env` para arrancar conectado despues de instalar.
+- Los workflows de release deben crear `backend/.env` desde el secret `BACKEND_ENV` antes de empaquetar.
+- `package.json` no debe excluir `backend/.env`; el archivo sigue ignorado por Git y no se commitea.
+- La conexion MySQL tambien puede guardarse fuera del instalador, en almacenamiento local protegido:
   - blob cifrado: `ProgramData/ClinicaElectron/system/electrondump/util.dat`
   - clave protegida por Windows DPAPI via Electron `safeStorage`: `ProgramData/ClinicaElectron/system/electrondump/state.dat`
 - En actualizaciones automaticas, el updater reemplaza el programa, pero no modifica `ProgramData`; por eso cada sucursal conserva su conexion.
@@ -72,21 +72,25 @@
 
 ## Checklist rapido de validacion por release
 1. En release del tag existe `.dmg` y `.exe`.
-2. Al abrir la app, `http://127.0.0.1:3000/health` responde.
-3. Login funciona (DB/JWT correctos).
-4. Verificar que los assets previos del release no se pierden al subir el nuevo.
+2. El bundle contiene `runtime/backend/.env`.
+3. Al abrir la app, `http://127.0.0.1:3000/health` responde.
+4. Login funciona (DB/JWT correctos).
+5. Verificar que los assets previos del release no se pierden al subir el nuevo.
 
 ## Flujo oficial Windows (manual local)
 1. En raiz del repo:
    - `npm ci`
    - `npm --prefix backend ci`
+   - confirmar que existe `backend/.env`
 2. Generar instalador Windows local:
    - `npm run dist:win:local`
 3. Artefactos esperados:
    - `dist-electron/ClinicaElectron-Setup-X.Y.Z.exe`
    - `dist-electron/ClinicaElectron-Setup-X.Y.Z.exe.blockmap`
    - `dist-electron/latest.yml`
-4. Subir manual al release existente (mismo tag, por ejemplo `v1.0.2`):
+4. Validar que el bundle contiene:
+   - `dist-electron/win-unpacked/resources/runtime/backend/.env`
+5. Subir manual al release existente (mismo tag, por ejemplo `v1.0.2`):
    - GitHub Releases -> Edit release -> Attach binaries.
    - Subir juntos el `.exe`, `.exe.blockmap` y `latest.yml` del mismo build.
    - No subir solo el `.exe`: sin `latest.yml`, los clientes instalados no detectan la actualizacion.

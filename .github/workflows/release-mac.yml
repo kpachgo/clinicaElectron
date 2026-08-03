@@ -87,21 +87,6 @@ jobs:
           printf '%s' "$BACKEND_ENV" > backend/.env
           test -s backend/.env
 
-      - name: Allow backend .env in packaged runtime
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const file = 'package.json';
-          const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
-          pkg.build.files = (pkg.build.files || []).filter((entry) => entry !== '!backend/.env');
-          for (const resource of pkg.build.extraResources || []) {
-            if (resource.to === 'runtime/backend' && Array.isArray(resource.filter)) {
-              resource.filter = resource.filter.filter((entry) => entry !== '!.env');
-            }
-          }
-          fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
-          NODE
-
       - name: Detect macOS signing/notarization secrets
         run: |
           has_cert_base64=0

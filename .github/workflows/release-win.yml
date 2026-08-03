@@ -70,6 +70,28 @@ jobs:
           }
           node -e "const fs=require('fs'); const files=['package.json','electron-app/package.json','runtime.package.json']; const v=process.env.RELEASE_VERSION; for (const f of files){ const j=JSON.parse(fs.readFileSync(f,'utf8')); j.version=v; fs.writeFileSync(f, JSON.stringify(j, null, 2)+'\n'); console.log('updated '+f+' -> '+v); }"
 
+      - name: Validate BACKEND_ENV secret exists
+        shell: pwsh
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:BACKEND_ENV)) {
+            throw "Missing required secret: BACKEND_ENV"
+          }
+
+      - name: Create backend .env from GitHub Secret
+        shell: pwsh
+        env:
+          BACKEND_ENV: ${{ secrets.BACKEND_ENV }}
+        run: |
+          [System.IO.File]::WriteAllText((Join-Path (Resolve-Path "backend") ".env"), $env:BACKEND_ENV, [System.Text.UTF8Encoding]::new($false))
+          if (-not (Test-Path -LiteralPath "backend/.env")) {
+            throw "backend/.env was not created"
+          }
+          if ((Get-Item -LiteralPath "backend/.env").Length -le 0) {
+            throw "backend/.env is empty"
+          }
+
       - name: Detect Windows signing secrets
         shell: pwsh
         run: |
@@ -109,10 +131,10 @@ jobs:
         run: |
           if ("${{ env.HAS_WIN_SIGNING }}" -eq "true") {
             Write-Host "Running signed Windows build..."
-            npm run dist:win -- --x64 --config.compression=store --config.nsis.differentialPackage=false
+            npm run dist:win -- --x64 --config.nsis.differentialPackage=false
           } else {
             Write-Host "Running unsigned Windows build (local parity)..."
-            npm run dist:win:local -- --config.compression=store --config.nsis.differentialPackage=false
+            npm run dist:win:local -- --config.nsis.differentialPackage=false
           }
 
       - name: Validate EXE output exists
@@ -134,6 +156,17 @@ jobs:
             throw "runtime/backend/server.js not found inside win-unpacked bundle"
           }
           Write-Host $runtimeServer.FullName
+
+      - name: Validate backend .env included in win-unpacked
+        shell: pwsh
+        run: |
+          $runtimeEnv = Get-ChildItem -Path "dist-electron" -Filter ".env" -File -Force -Recurse |
+            Where-Object { $_.FullName -match "win-unpacked[\\/]+resources[\\/]+runtime[\\/]+backend[\\/]\.env$" } |
+            Select-Object -First 1
+          if (-not $runtimeEnv) {
+            throw "runtime/backend/.env not found inside win-unpacked bundle"
+          }
+          Write-Host $runtimeEnv.FullName
 
       - name: Validate latest.yml output exists
         shell: pwsh

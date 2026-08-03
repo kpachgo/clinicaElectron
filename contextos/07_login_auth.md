@@ -22,7 +22,8 @@
 - Atajo de mantenimiento de conexion:
   - `Ctrl + Shift + C` abre una compuerta previa.
   - Antes de mostrar el modal de conexion exige contrasena fija local: `D@nielito100pre`.
-  - Despues de pasar esa compuerta, la edicion sigue requiriendo autorizacion por Administrador o PIN local.
+  - Despues de pasar esa compuerta, abre directamente el formulario de conexion con una sesion temporal local.
+  - No debe pedir PIN local ni Administrador para recuperar la conexion cuando la BD no esta disponible.
 
 ## Actualizacion transversal: Protocolo de seguridad global (2026-04-16)
 - `frontend/js/web.js` agrega estado global de protocolo:
