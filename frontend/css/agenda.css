@@ -2658,6 +2658,15 @@ body.agenda-day-summary-open {
   background: #f2f7ff !important;
 }
 
+.agenda-table tbody tr.agenda-empty-row td.agenda-empty-cell,
+.agenda-table tbody tr.agenda-empty-row:hover td.agenda-empty-cell {
+  padding: 24px 16px;
+  background: #f8fbff !important;
+  color: var(--agenda-muted);
+  font-weight: 800;
+  text-align: center;
+}
+
 .agenda-table tbody tr.agenda-row-metric-highlight td {
   position: relative;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), inset 0 -1px 0 rgba(15, 23, 42, 0.08);
@@ -3183,6 +3192,12 @@ body.agenda-day-summary-open {
 
 .dark-mode .agenda-table tbody tr:hover td {
   background: #15223a !important;
+}
+
+.dark-mode .agenda-table tbody tr.agenda-empty-row td.agenda-empty-cell,
+.dark-mode .agenda-table tbody tr.agenda-empty-row:hover td.agenda-empty-cell {
+  background: #0f172a !important;
+  color: var(--agenda-muted);
 }
 
 .dark-mode .agenda-table tbody tr.agenda-row-metric-confirmado td,

@@ -154,10 +154,15 @@
   }
   function debounce(fn, delay = 350) {
     let timer;
-    return (...args) => {
+    const debounced = (...args) => {
       clearTimeout(timer);
       timer = setTimeout(() => fn(...args), delay);
     };
+    debounced.cancel = () => {
+      clearTimeout(timer);
+      timer = null;
+    };
+    return debounced;
   }
   function getUiStateUserId() {
     try {
@@ -1106,12 +1111,19 @@
     let agendaFetchSeq = 0;
     let agendaFetchController = null;
     let agendaFetchDate = "";
+    let agendaDayLoading = false;
+    let agendaDayError = "";
     let isCreatingAgenda = false;
     let agendaCriticalSaveActive = false;
+    let buscarAgendaMesDebounced = null;
 
     async function cargarAgendaPorFecha(fechaISO) {
       const fechaObjetivo = String(fechaISO || "").trim();
       if (!fechaObjetivo) return;
+
+      agendaDayLoading = true;
+      agendaDayError = "";
+      aplicarFiltros({ dispararFallback: false });
 
       if (agendaFetchController) {
         try {
@@ -1142,6 +1154,9 @@
         if (!isLatestRequest || !isTargetDateStillSelected) return;
 
         if (!res.ok || !json?.ok) {
+          agendaDayLoading = false;
+          agendaDayError = json?.message || "Error al cargar agenda";
+          aplicarFiltros({ dispararFallback: false });
           alert(json?.message || "Error al cargar agenda");
           return;
         }
@@ -1157,6 +1172,8 @@
           agendaData.push(normalizarAgendaRow(item, fechaObjetivo, true));
         });
 
+        agendaDayLoading = false;
+        agendaDayError = "";
         aplicarFiltros();
       } catch (err) {
         if (err?.name === "AbortError") return;
@@ -1167,6 +1184,9 @@
         if (!isLatestRequest || !isTargetDateStillSelected) return;
 
         console.error(err);
+        agendaDayLoading = false;
+        agendaDayError = "Opps ocurrio un error de conexion";
+        aplicarFiltros({ dispararFallback: false });
         if (window.notifyConnectionError) {
           window.notifyConnectionError("Opps ocurrio un error de conexion");
         } else {
@@ -3416,8 +3436,28 @@
       updateAgendaMetrics(list);
       syncAgendaMetricHighlightUi();
       const duplicateCounts = buildAgendaDuplicateCounts(duplicateSourceList);
+      const safeList = Array.isArray(list) ? list : [];
 
-      list.forEach((item, index) => {
+      if (safeList.length === 0) {
+        const hasFilters = [
+          String(searchInput?.value || "").trim(),
+          String(estadoFilter?.value || "").trim(),
+          String(contactoFilter?.value || "").trim()
+        ].some(Boolean);
+        const tr = document.createElement("tr");
+        tr.className = "agenda-empty-row";
+        const td = document.createElement("td");
+        td.className = "agenda-empty-cell";
+        td.colSpan = 12;
+        td.textContent = agendaDayLoading
+          ? "Cargando agenda..."
+          : agendaDayError || (hasFilters ? "Sin coincidencias para los filtros actuales." : "No hay citas para esta fecha.");
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+
+      safeList.forEach((item, index) => {
         const tr = document.createElement("tr");
         aplicarRefuerzoVisualFila(tr, item.estado);
         applyAgendaMetricHighlightToRow(tr, item.estado);
@@ -4093,6 +4133,8 @@
     }
 
     async function buscarAgendaMesEnBackend() {
+      if (!container?.isConnected || window.currentView !== "Agenda") return;
+
       const textoRaw = (searchInput.value || "").trim();
       const fechaISO = dateInput.value;
 
@@ -4121,7 +4163,7 @@
       }
     }
 
-    const buscarAgendaMesDebounced = debounce(() => {
+    buscarAgendaMesDebounced = debounce(() => {
       buscarAgendaMesEnBackend();
     }, 320);
 
@@ -4176,7 +4218,9 @@
       }
 
       if (!Array.isArray(agendaMesResultados)) {
-        buscarAgendaMesDebounced();
+        if (typeof buscarAgendaMesDebounced === "function") {
+          buscarAgendaMesDebounced();
+        }
       }
     }
 
@@ -4308,6 +4352,13 @@
         }
         agendaMonthFetchController = null;
         agendaMonthFetchSeq++;
+        if (buscarAgendaMesDebounced && typeof buscarAgendaMesDebounced.cancel === "function") {
+          buscarAgendaMesDebounced.cancel();
+        }
+        agendaMesBusquedaToken++;
+        agendaMesResultados = null;
+        agendaDayLoading = false;
+        agendaDayError = "";
         agendaMonthLoading = false;
         inasistenciaApplying = false;
         cerrarInasistenciaModal();

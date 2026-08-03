@@ -1092,6 +1092,26 @@ const content = document.querySelector(".content");
 window.currentView = null;
 window.__currentViewCleanup = null;
 window.__currentViewLeaveGuard = null;
+let spaNavigationSeq = 0;
+let spaNavigationInFlight = false;
+
+const VIEW_MOUNTERS = {
+    Agenda: "__mountAgenda",
+    Paciente: "__mountPaciente",
+    "Monitor de Seguimiento": "__mountMonitorSeguimiento",
+    "En Cola": "__mountEnCola",
+    Doctores: "__mountDoctor",
+    Servicios: "__mountServicios",
+    Cobro: "__mountCobro"
+};
+
+function resetContentAnimationState() {
+    if (typeof window.__cancelSpaTransition === "function") {
+        window.__cancelSpaTransition({ host: content });
+        return;
+    }
+    content?.classList.remove("spa-view-in", "spa-view-out", "spa-animating");
+}
 
 async function runSpaViewTransition(renderFn) {
     if (typeof renderFn !== "function") return;
@@ -1107,6 +1127,56 @@ function syncActiveAccordion(viewName) {
         const name = String(btn.dataset?.view || btn.querySelector(".label")?.innerText || "").trim();
         btn.classList.toggle("active", name === viewName);
     });
+}
+
+function contentHasMountedView() {
+    if (!content) return false;
+    if (content.classList.contains("spa-view-out") || content.classList.contains("spa-animating")) {
+        return false;
+    }
+    return content.childElementCount > 0 || String(content.textContent || "").trim() !== "";
+}
+
+function contentNeedsViewRecovery() {
+    if (!content) return true;
+    return !contentHasMountedView();
+}
+
+function escapeViewErrorHtml(value) {
+    return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function renderViewMountError(viewName, err) {
+    if (!content) return;
+    const message = escapeViewErrorHtml(err?.message || "No se pudo cargar la vista");
+    content.innerHTML = `
+        <section style="width:min(720px,100%);padding:28px;border:1px solid #fecaca;border-radius:12px;background:#fff1f2;color:#7f1d1d;">
+            <h2 style="margin:0 0 10px;font-size:22px;">No se pudo cargar ${escapeViewErrorHtml(viewName)}</h2>
+            <p style="margin:0;font-weight:700;">${message}</p>
+        </section>
+    `;
+}
+
+async function mountViewByName(name) {
+    const mountName = VIEW_MOUNTERS[name];
+    if (!mountName) {
+        throw new Error(`Vista no configurada: ${name}`);
+    }
+
+    const mountFn = window[mountName];
+    if (typeof mountFn !== "function") {
+        throw new Error(`Montador no disponible: ${mountName}`);
+    }
+
+    await Promise.resolve(mountFn());
+
+    if (!contentHasMountedView()) {
+        throw new Error(`La vista ${name} no genero contenido`);
+    }
 }
 
 function runCurrentViewCleanup() {
@@ -1159,50 +1229,61 @@ function initTopbarEnhancements() {
 
 async function loadView(name, options = {}) {
     const force = options?.force === true;
-    if (!force && window.currentView === name) return;
-    if (!isAuthenticated()) {
-        mountLogin();
-        return;
-    }
+    const needsRecovery = contentNeedsViewRecovery();
+    if (!force && window.currentView === name && !spaNavigationInFlight && !needsRecovery) return;
 
-    if (!canAccessView(name)) {
-        alert("No tiene permisos para acceder a esta vista");
-        return;
-    }
-    if (!(await canLeaveCurrentView())) return;
+    const localSeq = ++spaNavigationSeq;
+    spaNavigationInFlight = true;
 
-    setAppChromeVisible(true);
-    runCurrentViewCleanup();
-    window.currentView = name;
-    syncActiveAccordion(name);
-
-    await runSpaViewTransition(() => {
-        switch (name) {
-            case "Agenda":
-                window.__mountAgenda && window.__mountAgenda();
-                break;
-            case "Paciente":
-                window.__mountPaciente && window.__mountPaciente();
-                break;
-            case "Monitor de Seguimiento":
-                window.__mountMonitorSeguimiento && window.__mountMonitorSeguimiento();
-                break;
-            case "En Cola":
-                window.__mountEnCola && window.__mountEnCola();
-                break;
-            case "Doctores":
-                window.__mountDoctor && window.__mountDoctor();
-                break;
-            case "Servicios":
-                window.__mountServicios && window.__mountServicios();
-                break;
-            case "Cobro":
-                window.__mountCobro && window.__mountCobro();
-                break;
+    try {
+        if (!isAuthenticated()) {
+            mountLogin();
+            return;
         }
-    });
-    renderTopUser();
-    initTopbarEnhancements();
+
+        if (!canAccessView(name)) {
+            alert("No tiene permisos para acceder a esta vista");
+            return;
+        }
+        if (!(await canLeaveCurrentView())) return;
+        if (localSeq !== spaNavigationSeq) return;
+
+        setAppChromeVisible(true);
+        resetContentAnimationState();
+        window.currentView = null;
+        syncActiveAccordion(null);
+        runCurrentViewCleanup();
+        // Las vistas usan currentView durante el montaje para aceptar sus cargas iniciales.
+        // La navegacion visual se sincroniza despues de validar que el DOM si monto.
+        window.currentView = name;
+
+        await runSpaViewTransition(() => {
+            if (localSeq !== spaNavigationSeq) return;
+            return mountViewByName(name);
+        });
+        if (localSeq !== spaNavigationSeq) return;
+
+        if (!contentHasMountedView()) {
+            throw new Error(`La vista ${name} quedo sin contenido`);
+        }
+
+        window.currentView = name;
+        syncActiveAccordion(name);
+        renderTopUser();
+        initTopbarEnhancements();
+    } catch (err) {
+        if (localSeq !== spaNavigationSeq) return;
+        console.error("Error cargando vista:", err);
+        resetContentAnimationState();
+        window.currentView = null;
+        syncActiveAccordion(null);
+        renderViewMountError(name, err);
+    } finally {
+        if (localSeq === spaNavigationSeq) {
+            resetContentAnimationState();
+            spaNavigationInFlight = false;
+        }
+    }
 }
 
 // ---------- menu lateral ----------
@@ -1235,6 +1316,9 @@ function applyMenuPermissions() {
 ========================================================= */
 
 function mountLogin() {
+    spaNavigationSeq++;
+    spaNavigationInFlight = false;
+    resetContentAnimationState();
     runCurrentViewCleanup();
     window.currentView = null;
     syncActiveAccordion(null);
