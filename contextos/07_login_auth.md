@@ -240,11 +240,6 @@
   - ejecuta `initializeRuntimeValidation()`.
 - Proteccion de APIs funcionales:
   - rutas de negocio (`agenda`, `doctor`, `servicio`, `paciente`, `cuenta`, `odontograma`, `foto-paciente`, `cola`) usan `licencia.middleware.requireLicensedAccess`.
-- Proteccion anti-retroceso de fecha:
-  - MySQL es la fuente autoritativa de fecha/hora para licencia.
-  - Los SPs de activacion, arranque y uso calculan la ultima fecha confiable desde `licencias.ultima_validacion` y fechas de `licencia_sesiones`.
-  - Se permite una tolerancia fija de 23 horas por diferencias horarias entre servidor y PC.
-  - Si `NOW()` queda mas de 23 horas por debajo de la ultima fecha confiable, responde `fecha_sistema_retrocedida` y bloquea acceso hasta corregir la fecha.
 
 ## SP/Auth y licencia usados
 - Auth:
