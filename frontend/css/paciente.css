@@ -1123,20 +1123,34 @@ body[data-theme="princess"] .paciente-container .citas-table tbody tr:hover td {
 /* Modal */
 .foto-modal {
     display: none;
-    position: fixed;
-    inset: 0;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw;
+    height: 100vh;
+    box-sizing: border-box;
+    padding: 72px 110px 64px;
     background: rgba(0,0,0,0.85);
     justify-content: center;
     align-items: center;
-    z-index: 5000;
+    overflow: hidden;
+    z-index: 10000;
 }
 .foto-modal-img {
-    max-width: 90%;
-    max-height: 90%;
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: min(1120px, calc(100vw - 220px));
+    max-height: calc(100vh - 170px);
+    object-fit: contain;
     border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
     touch-action: pinch-zoom;
     -webkit-user-drag: none;
     user-select: none;
+}
+body.foto-modal-open {
+    overflow: hidden;
 }
 .foto-modal-nav {
     position: absolute;
@@ -1189,6 +1203,28 @@ body[data-theme="princess"] .paciente-container .citas-table tbody tr:hover td {
     color: white;
     font-size: 28px;
     cursor: pointer;
+}
+@media (max-width: 700px) {
+    .foto-modal {
+        padding: 52px 18px 44px;
+    }
+    .foto-modal-img {
+        max-width: calc(100vw - 36px);
+        max-height: calc(100vh - 112px);
+    }
+    .foto-modal-prev {
+        left: 10px;
+    }
+    .foto-modal-next {
+        right: 10px;
+    }
+    .foto-modal-close {
+        top: 12px;
+        right: 18px;
+    }
+    .foto-modal-indicador {
+        bottom: 12px;
+    }
 }
 /* =======================================================
    AUTOCOMPLETE — BUSCAR PACIENTE

@@ -2353,13 +2353,21 @@ async function eliminarFotosSeleccionadas() {
 }
 // Modal de foto
 function initFotoModal() {
-    const modal = document.getElementById("foto-modal");
+    const pacienteRoot = document.querySelector(".paciente-container");
+    const modal = pacienteRoot?.querySelector("#foto-modal") || document.getElementById("foto-modal");
     const modalImg = document.getElementById("modal-img");
     const btnPrev = document.getElementById("foto-prev");
     const btnNext = document.getElementById("foto-next");
     const btnClose = document.getElementById("modal-close");
     const indicador = document.getElementById("foto-modal-indicador");
     if (!modal || !modalImg || !btnPrev || !btnNext || !btnClose || !indicador) return;
+
+    document.querySelectorAll("body > #foto-modal").forEach(existingModal => {
+      if (existingModal !== modal) existingModal.remove();
+    });
+    if (modal.parentElement !== document.body) {
+      document.body.appendChild(modal);
+    }
 
     const getFotos = () => Array.isArray(window.fotosPaciente) ? window.fotosPaciente : [];
 
@@ -2391,6 +2399,7 @@ function initFotoModal() {
 
     function cerrarModalFoto() {
       modal.style.display = "none";
+      document.body.classList.remove("foto-modal-open");
       modalImg.src = "";
       indicador.textContent = "";
       window.__fotoModalIndex = -1;
@@ -2421,6 +2430,7 @@ function initFotoModal() {
       btnNext.disabled = disableNav;
 
       modal.style.display = "flex";
+      document.body.classList.add("foto-modal-open");
     }
 
     if (window.__pacienteFotoModalHandler) {
@@ -7880,7 +7890,22 @@ function limpiarVistaPaciente() {
   if (fotosGrid) fotosGrid.innerHTML = "";
 
   const fotoModal = document.getElementById("foto-modal");
-  if (fotoModal) fotoModal.style.display = "none";
+  if (fotoModal) {
+    fotoModal.style.display = "none";
+    if (fotoModal.parentElement === document.body) {
+      fotoModal.remove();
+    }
+  }
+  document.body.classList.remove("foto-modal-open");
+
+  if (window.__pacienteFotoModalHandler) {
+    document.removeEventListener("click", window.__pacienteFotoModalHandler);
+    window.__pacienteFotoModalHandler = null;
+  }
+  if (window.__pacienteFotoModalKeyHandler) {
+    document.removeEventListener("keydown", window.__pacienteFotoModalKeyHandler);
+    window.__pacienteFotoModalKeyHandler = null;
+  }
 
   const modalImg = document.getElementById("modal-img");
   if (modalImg) modalImg.src = "";
