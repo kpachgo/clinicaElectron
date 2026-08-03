@@ -111,6 +111,27 @@ function getProtectedDbKeyPath() {
   return path.join(getProtectedDbConfigDir(), "state.dat");
 }
 
+function getProtectedDbConfigPath() {
+  return path.join(getProtectedDbConfigDir(), "util.dat");
+}
+
+function quarantineProtectedDbFile(filePath, reason) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return "";
+    const dir = path.dirname(filePath);
+    const ext = path.extname(filePath);
+    const base = path.basename(filePath, ext);
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const target = path.join(dir, `${base}.invalid-${stamp}${ext || ".dat"}`);
+    fs.renameSync(filePath, target);
+    logLine("[ELECTRON]", `Archivo local protegido puesto en cuarentena: ${target} (${reason})`);
+    return target;
+  } catch (err) {
+    logLine("[ELECTRON]", `No se pudo poner en cuarentena ${filePath}: ${err?.message || err}`);
+    return "";
+  }
+}
+
 function readProtectedDbConfigKey() {
   const keyPath = getProtectedDbKeyPath();
   if (!fs.existsSync(keyPath)) return "";
@@ -152,7 +173,15 @@ function ensureProtectedDbConfigKey() {
     throw new Error("El cifrado local del sistema no esta disponible");
   }
 
-  const existing = readProtectedDbConfigKey();
+  let existing = "";
+  try {
+    existing = readProtectedDbConfigKey();
+  } catch (err) {
+    const reason = err?.message || String(err || "clave local invalida");
+    logLine("[ELECTRON]", `Clave local protegida invalida; se regenerara: ${reason}`);
+    quarantineProtectedDbFile(getProtectedDbKeyPath(), reason);
+    quarantineProtectedDbFile(getProtectedDbConfigPath(), "conexion cifrada dependia de clave local invalida");
+  }
   if (existing) return existing;
 
   const keyBase64 = crypto.randomBytes(32).toString("base64");
