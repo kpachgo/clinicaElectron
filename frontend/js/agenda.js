@@ -886,6 +886,14 @@
                 </select>
               </label>
 
+              <button id="agenda-paste-cita" class="btn-cobrar agenda-btn-reprogramar-pegar" disabled hidden>
+                Pegar Cita
+              </button>
+
+              <button id="agenda-clear-reprograma" class="btn-cobrar agenda-btn-reprogramar-cancelar" disabled hidden>
+                Cancelar
+              </button>
+
               <button id="agenda-register" class="agenda-primary-btn agenda-filter-primary-btn" type="button">
                 ${getAgendaHeroIcon("plus")}
                 <span>Nueva cita</span>
@@ -912,14 +920,6 @@
                 <input type="checkbox" id="agenda-toggle-presente">
                 Presente
               </label>
-
-              <button id="agenda-paste-cita" class="btn-cobrar agenda-btn-reprogramar-pegar" disabled hidden>
-                Pegar Cita
-              </button>
-
-              <button id="agenda-clear-reprograma" class="btn-cobrar agenda-btn-reprogramar-cancelar" disabled hidden>
-                Cancelar
-              </button>
 
               <span id="agenda-reprograma-status" class="agenda-reprograma-status" aria-live="polite"></span>
             </div>
@@ -1184,6 +1184,7 @@
     const agendaTable = container.querySelector(".agenda-table");
     const agendaTableWrap = container.querySelector(".agenda-table-wrap");
     const dateInput = container.querySelector("#agenda-date");
+    const agendaDateField = container.querySelector(".agenda-date-field");
     const agendaHeroDate = container.querySelector("#agenda-hero-date");
     const agendaDateLabel = container.querySelector("#agenda-date-label");
     const agendaTodayBtn = container.querySelector("#agenda-today");
@@ -1297,6 +1298,18 @@
       dateInput.value = fechaNueva;
       updateAgendaDateChrome();
       dateInput.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function openAgendaDatePicker() {
+      if (!dateInput || isAgendaCriticalSaveInProgress()) return;
+      dateInput.focus({ preventScroll: true });
+      if (typeof dateInput.showPicker === "function") {
+        try {
+          dateInput.showPicker();
+        } catch (err) {
+          // El navegador puede bloquearlo si no viene de una interaccion directa.
+        }
+      }
     }
 
     const isRedes = isRedesRole();
@@ -3104,6 +3117,12 @@
     }
     window.__agendaDateNavKeydownHandler = onAgendaDateShortcut;
     document.addEventListener("keydown", onAgendaDateShortcut);
+
+    agendaDateField?.addEventListener("click", (event) => {
+      if (typeof dateInput?.showPicker !== "function") return;
+      event.preventDefault();
+      openAgendaDatePicker();
+    });
 
     dateInput.value = getLocalTodayISO();
     updateAgendaDateChrome();

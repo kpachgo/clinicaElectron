@@ -550,8 +550,8 @@ body.agenda-day-summary-open {
 }
 
 .agenda-day-summary-estado.is-highlight.is-reprogramado {
-  border-color: #bfdbfe;
-  background: #eff6ff;
+  border-color: #c4b5fd;
+  background: #f3e8ff;
 }
 
 .agenda-day-summary-empty {
@@ -1153,7 +1153,7 @@ body.agenda-day-summary-open {
 }
 
 .agenda-table tbody tr.agenda-row-estado-reprogramado:hover td {
-  background: #fdba74;
+  background: #c4b5fd;
 }
 
 .agenda-table tbody tr.agenda-row-estado-no-contesta:hover td {
@@ -1217,9 +1217,9 @@ body.agenda-day-summary-open {
 }
 
 .agenda-nombre-estado-reprogramado {
-  background: #ffedd5;
-  border-left-color: #ea580c;
-  color: #9a3412;
+  background: #f3e8ff;
+  border-left-color: #7c3aed;
+  color: #5b21b6;
 }
 
 .agenda-nombre-estado-no-contesta {
@@ -1348,9 +1348,9 @@ body.agenda-day-summary-open {
 }
 
 .estado-reprogramado {
-  background: #fdba74;
-  color: #7c2d12;
-  border-color: #ea580c;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #a78bfa;
 }
 
 .estado-no-contesta {
@@ -1736,7 +1736,7 @@ body.agenda-day-summary-open {
 }
 
 .dark-mode .agenda-table tbody tr.agenda-row-estado-reprogramado:hover td {
-  background: rgba(234, 88, 12, 0.4);
+  background: rgba(124, 58, 237, 0.44);
 }
 
 .dark-mode .agenda-table tbody tr.agenda-row-estado-no-contesta:hover td {
@@ -2071,8 +2071,8 @@ body.agenda-day-summary-open {
 }
 
 .dark-mode .agenda-day-summary-estado.is-highlight.is-reprogramado {
-  border-color: #1d4ed8;
-  background: #152b52;
+  border-color: #6d28d9;
+  background: #2e1065;
 }
 
 .dark-mode .agenda-day-summary-empty {
@@ -2258,8 +2258,8 @@ body.agenda-day-summary-open {
 }
 
 .agenda-metric-card.is-rescheduled .agenda-metric-icon {
-  color: #d97706;
-  background: #fff0dc;
+  color: #7c3aed;
+  background: #ede9fe;
 }
 
 .agenda-metric-card.is-no-answer .agenda-metric-icon {
@@ -2455,6 +2455,7 @@ body.agenda-day-summary-open {
   width: 15px;
   height: 15px;
   flex: 0 0 auto;
+  pointer-events: none;
 }
 
 .agenda-date-field input {
@@ -2462,6 +2463,11 @@ body.agenda-day-summary-open {
   inset: 0;
   opacity: 0;
   cursor: pointer;
+  z-index: 2;
+}
+
+.agenda-date-field span {
+  pointer-events: none;
 }
 
 .agenda-search-field,
@@ -2681,11 +2687,11 @@ body.agenda-day-summary-open {
 
 .agenda-table tbody tr.agenda-row-metric-reprogramado td,
 .agenda-table tbody tr.agenda-row-metric-reprogramado:hover td {
-  background: #ffedd5 !important;
+  background: #f3e8ff !important;
 }
 
 .agenda-table tbody tr.agenda-row-metric-reprogramado td:first-child {
-  border-left-color: #ea580c;
+  border-left-color: #7c3aed;
 }
 
 .agenda-table tbody tr.agenda-row-metric-no-contesta td,
@@ -2859,9 +2865,9 @@ body.agenda-day-summary-open {
 }
 
 .estado-reprogramado {
-  background: #fff0dc;
-  color: #a35209;
-  border-color: #ffc98a;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-color: #a78bfa;
 }
 
 .estado-cancelado {
@@ -3191,7 +3197,7 @@ body.agenda-day-summary-open {
 
 .dark-mode .agenda-table tbody tr.agenda-row-metric-reprogramado td,
 .dark-mode .agenda-table tbody tr.agenda-row-metric-reprogramado:hover td {
-  background: rgba(194, 86, 18, 0.48) !important;
+  background: rgba(109, 40, 217, 0.48) !important;
 }
 
 .dark-mode .agenda-table tbody tr.agenda-row-metric-no-contesta td,
