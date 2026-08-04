@@ -29,6 +29,18 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
 
+      - name: Validate release tag is current main
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          release_commit="$(git rev-parse HEAD)"
+          main_commit="$(git rev-parse refs/remotes/origin/main)"
+          if [ "$release_commit" != "$main_commit" ]; then
+            echo "Release tag ${RELEASE_TAG} points to ${release_commit}, but origin/main is ${main_commit}."
+            echo "Push main first, then create/push a new tag from origin/main."
+            exit 1
+          fi
+          echo "Release tag ${RELEASE_TAG} matches origin/main at ${main_commit}"
+
       - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
