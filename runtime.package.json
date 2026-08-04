@@ -1,6 +1,6 @@
 {
   "name": "clinica-runtime",
-  "version": "5.0.2",
+  "version": "5.0.3",
   "private": true,
   "scripts": {
     "start": "node backend/server.js"
