@@ -1,4 +1,4 @@
-
+﻿
 --
 -- Host: centerbeam.proxy.rlwy.net    Database: clinica
 -- ------------------------------------------------------
@@ -32,7 +32,7 @@
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_agenda_buscar_mes`(
+CREATE PROCEDURE `sp_agenda_buscar_mes`(
   IN p_desde DATE,
   IN p_hasta DATE,
   IN p_texto VARCHAR(120)
@@ -109,7 +109,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_agenda_create`(
+CREATE PROCEDURE `sp_agenda_create`(
   IN p_nombreAP VARCHAR(100),
   IN p_horaAP VARCHAR(20),
   IN p_fechaAP DATE,
@@ -160,7 +160,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_agenda_delete`(IN p_idAgendaAP INT)
+CREATE PROCEDURE `sp_agenda_delete`(IN p_idAgendaAP INT)
 BEGIN
   DELETE FROM agendapersona
   WHERE idAgendaAP = p_idAgendaAP;
@@ -182,7 +182,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_agenda_por_fecha`(
+CREATE PROCEDURE `sp_agenda_por_fecha`(
   IN p_fecha DATE
 )
 BEGIN
@@ -249,7 +249,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_agenda_update`(
+CREATE PROCEDURE `sp_agenda_update`(
   IN p_idAgendaAP INT,
   IN p_nombreAP VARCHAR(100),
   IN p_horaAP VARCHAR(20),
@@ -290,7 +290,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cita_paciente_actualizar`(
+CREATE PROCEDURE `sp_cita_paciente_actualizar`(
   IN p_idCitasPaciente INT,
   IN p_fechaCP DATE,
   IN p_procedimientoCP VARCHAR(500),
@@ -341,7 +341,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cita_paciente_autorizar`(
+CREATE PROCEDURE `sp_cita_paciente_autorizar`(
   IN p_idCitasPaciente INT,
   IN p_autorizadoPorUsuarioId INT,
   IN p_metodoAutorizacionCP VARCHAR(40)
@@ -372,7 +372,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cita_paciente_eliminar`(
+CREATE PROCEDURE `sp_cita_paciente_eliminar`(
   IN p_idCitasPaciente INT
 )
 BEGIN
@@ -417,7 +417,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cita_paciente_crear`(
+CREATE PROCEDURE `sp_cita_paciente_crear`(
   IN p_idPaciente INT,
   IN p_fecha DATE,
   IN p_procedimiento VARCHAR(500),
@@ -488,7 +488,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cita_paciente_listar`(
+CREATE PROCEDURE `sp_cita_paciente_listar`(
   IN p_idPaciente INT
 )
 BEGIN
@@ -554,7 +554,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cuenta_asignar_doctor_por_cuenta`(
+CREATE PROCEDURE `sp_cuenta_asignar_doctor_por_cuenta`(
   IN p_idCuenta INT,
   IN p_idDoctor INT
 )
@@ -578,7 +578,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cuenta_create`(
+CREATE PROCEDURE `sp_cuenta_create`(
   IN p_idPaciente INT,
   IN p_formaPago VARCHAR(40),
   IN p_total DECIMAL(10,2)
@@ -604,7 +604,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cuenta_eliminar`(
+CREATE PROCEDURE `sp_cuenta_eliminar`(
   IN p_idCuenta INT
 )
 BEGIN
@@ -631,7 +631,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cuenta_listar_por_fecha`(
+CREATE PROCEDURE `sp_cuenta_listar_por_fecha`(
     IN p_fecha DATE
 )
 BEGIN
@@ -724,7 +724,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cuenta_reporte_mensual`(
+CREATE PROCEDURE `sp_cuenta_reporte_mensual`(
   IN p_anio SMALLINT,
   IN p_mes TINYINT,
   IN p_idServicio INT
@@ -759,7 +759,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_cuenta_reporte_mensual_pacientes`(
+CREATE PROCEDURE `sp_cuenta_reporte_mensual_pacientes`(
   IN p_anio INT,
   IN p_mes INT,
   IN p_idServicio INT,
@@ -948,7 +948,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_descuento_crear`(
+CREATE PROCEDURE `sp_descuento_crear`(
   IN p_nombre VARCHAR(50),
   IN p_fecha DATE,
   IN p_cantidad DECIMAL(10,2)
@@ -974,7 +974,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_descuento_eliminar`(
+CREATE PROCEDURE `sp_descuento_eliminar`(
   IN p_id INT
 )
 BEGIN
@@ -996,7 +996,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_descuento_listar_por_fecha`(
+CREATE PROCEDURE `sp_descuento_listar_por_fecha`(
   IN p_fecha DATE
 )
 BEGIN
@@ -1024,7 +1024,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_detallecuenta_create`(
+CREATE PROCEDURE `sp_detallecuenta_create`(
   IN p_idCuenta INT,
   IN p_idServicio INT,
   IN p_cantidad INT,
@@ -1060,7 +1060,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_doctor_get_by_id`(
+CREATE PROCEDURE `sp_doctor_get_by_id`(
   IN p_idDoctor INT
 )
 BEGIN
@@ -1088,7 +1088,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_doctor_citas_pendientes_autorizacion`(
+CREATE PROCEDURE `sp_doctor_citas_pendientes_autorizacion`(
   IN p_idDoctor INT,
   IN p_limit INT
 )
@@ -1134,7 +1134,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_doctor_citas_pendientes_autorizar_todos`(
+CREATE PROCEDURE `sp_doctor_citas_pendientes_autorizar_todos`(
   IN p_idDoctor INT,
   IN p_autorizadoPorUsuarioId INT
 )
@@ -1165,7 +1165,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_doctor_listar_select`()
+CREATE PROCEDURE `sp_doctor_listar_select`()
 BEGIN
     SELECT
         idDoctor,
@@ -1188,7 +1188,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_doctor_listar_select_activos`()
+CREATE PROCEDURE `sp_doctor_listar_select_activos`()
 BEGIN
     SELECT
         idDoctor,
@@ -1212,7 +1212,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_foto_paciente_crear`(
+CREATE PROCEDURE `sp_foto_paciente_crear`(
   IN p_pacienteId INT,
   IN p_fecha DATE,
   IN p_ruta VARCHAR(255)
@@ -1238,7 +1238,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_foto_paciente_eliminar`(
+CREATE PROCEDURE `sp_foto_paciente_eliminar`(
   IN p_idFotoPaciente INT
 )
 BEGIN
@@ -1266,7 +1266,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_foto_paciente_listar`(
+CREATE PROCEDURE `sp_foto_paciente_listar`(
   IN p_pacienteId INT
 )
 BEGIN
@@ -1294,7 +1294,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_activar_inicial`(
+CREATE PROCEDURE `sp_licencia_activar_inicial`(
   IN p_codigo_licencia VARCHAR(64),
   IN p_device_id VARCHAR(128),
   IN p_offline_dias INT
@@ -1434,7 +1434,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_cerrar_sesion`(
+CREATE PROCEDURE `sp_licencia_cerrar_sesion`(
   IN p_codigo_licencia VARCHAR(64),
   IN p_device_id VARCHAR(128)
 )
@@ -1485,7 +1485,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_crear`(
+CREATE PROCEDURE `sp_licencia_crear`(
   IN p_codigo_licencia VARCHAR(64),
   IN p_cliente_nombre VARCHAR(120),
   IN p_estado_licencia VARCHAR(20),
@@ -1608,7 +1608,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_limpiar_sesion_dia`(
+CREATE PROCEDURE `sp_licencia_limpiar_sesion_dia`(
   IN p_codigo_licencia VARCHAR(64),
   IN p_fecha DATE
 )
@@ -1658,7 +1658,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_renovar_suscripcion`(
+CREATE PROCEDURE `sp_licencia_renovar_suscripcion`(
   IN p_codigo_licencia VARCHAR(64),
   IN p_nueva_fecha_vencimiento DATETIME,
   IN p_fecha_inicio DATETIME
@@ -1743,7 +1743,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_reset_pruebas`(
+CREATE PROCEDURE `sp_licencia_reset_pruebas`(
   IN p_confirmacion VARCHAR(10)
 )
 BEGIN
@@ -1787,7 +1787,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_resolver_por_device`(
+CREATE PROCEDURE `sp_licencia_resolver_por_device`(
   IN p_device_id VARCHAR(128)
 )
 BEGIN
@@ -1861,7 +1861,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_validar_arranque`(
+CREATE PROCEDURE `sp_licencia_validar_arranque`(
   IN p_codigo_licencia VARCHAR(64),
   IN p_device_id VARCHAR(128),
   IN p_offline_dias INT
@@ -2003,7 +2003,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_licencia_validar_uso_sistema`(
+CREATE PROCEDURE `sp_licencia_validar_uso_sistema`(
   IN p_codigo_licencia VARCHAR(64)
 )
 BEGIN
@@ -2128,7 +2128,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_login_usuario`(IN p_correo VARCHAR(60))
+CREATE PROCEDURE `sp_login_usuario`(IN p_correo VARCHAR(60))
 BEGIN
     SELECT
         u.idUsuario,
@@ -2158,7 +2158,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_odontograma_get_by_id`(
+CREATE PROCEDURE `sp_odontograma_get_by_id`(
   IN p_idOdontograma INT
 )
 BEGIN
@@ -2182,7 +2182,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_odontograma_guardar`(
+CREATE PROCEDURE `sp_odontograma_guardar`(
   IN p_idPaciente INT,
   IN p_fecha DATE,
   IN p_odontograma MEDIUMTEXT
@@ -2206,7 +2206,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_odontograma_historial`(
+CREATE PROCEDURE `sp_odontograma_historial`(
   IN p_idPaciente INT
 )
 BEGIN
@@ -2233,7 +2233,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_odontograma_ultimo`(
+CREATE PROCEDURE `sp_odontograma_ultimo`(
   IN p_idPaciente INT
 )
 BEGIN
@@ -2258,7 +2258,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_actualizar_firma`(
+CREATE PROCEDURE `sp_paciente_actualizar_firma`(
   IN p_idPaciente INT,
   IN p_firmaP VARCHAR(255)
 )
@@ -2282,7 +2282,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_buscar_ligero`(
+CREATE PROCEDURE `sp_paciente_buscar_ligero`(
   IN p_texto VARCHAR(60)
 )
 BEGIN
@@ -2321,7 +2321,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_get_by_id`(
+CREATE PROCEDURE `sp_paciente_get_by_id`(
   IN p_idPaciente INT
 )
 BEGIN
@@ -2386,7 +2386,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_guardar`(
+CREATE PROCEDURE `sp_paciente_guardar`(
   IN p_idPaciente INT,
   IN p_NombreP VARCHAR(60),
   IN p_direccionP VARCHAR(100),
@@ -2495,7 +2495,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_monitor_contacto_guardar`(
+CREATE PROCEDURE `sp_paciente_monitor_contacto_guardar`(
   IN p_idPaciente INT,
   IN p_fechaCorte DATE,
   IN p_sms TINYINT,
@@ -2547,7 +2547,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_monitor_seguimiento_listar`(
+CREATE PROCEDURE `sp_paciente_monitor_seguimiento_listar`(
   IN p_fechaCorte DATE,
   IN p_segmento VARCHAR(20),
   IN p_estado VARCHAR(20),
@@ -2799,7 +2799,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_monitor_seguimiento_totales`(
+CREATE PROCEDURE `sp_paciente_monitor_seguimiento_totales`(
   IN p_fechaCorte DATE,
   IN p_estado VARCHAR(20),
   IN p_tratamiento VARCHAR(30),
@@ -2902,7 +2902,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_paciente_search`(
+CREATE PROCEDURE `sp_paciente_search`(
     IN p_query VARCHAR(60)
 )
 BEGIN
@@ -2930,7 +2930,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_seguridad_protocolo_get`()
+CREATE PROCEDURE `sp_seguridad_protocolo_get`()
 BEGIN
   SELECT
     id,
@@ -2956,7 +2956,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_seguridad_protocolo_set`(
+CREATE PROCEDURE `sp_seguridad_protocolo_set`(
   IN p_enabled TINYINT,
   IN p_updatedByUsuarioId INT
 )
@@ -2999,7 +2999,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_servicio_buscar_ligero`(
+CREATE PROCEDURE `sp_servicio_buscar_ligero`(
   IN p_q VARCHAR(50)
 )
 BEGIN
@@ -3027,7 +3027,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_servicio_create`(
+CREATE PROCEDURE `sp_servicio_create`(
     IN p_nombre VARCHAR(50),
     IN p_precio DECIMAL(10,2)
 )
@@ -3053,7 +3053,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_servicio_delete`(
+CREATE PROCEDURE `sp_servicio_delete`(
   IN p_id INT
 )
 BEGIN
@@ -3077,7 +3077,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_servicio_listar`()
+CREATE PROCEDURE `sp_servicio_listar`()
 BEGIN
   SELECT idServicio, nombreS, precioS
   FROM servicio
@@ -3098,7 +3098,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_servicio_update_nombre`(
+CREATE PROCEDURE `sp_servicio_update_nombre`(
   IN p_id INT,
   IN p_nombre VARCHAR(50)
 )
@@ -3122,7 +3122,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_servicio_update_precio`(
+CREATE PROCEDURE `sp_servicio_update_precio`(
   IN p_id INT,
   IN p_precio DECIMAL(10,2)
 )
@@ -3146,7 +3146,7 @@ DELIMITER ;
 /*!50003 SET @saved_sql_mode       = @@sql_mode */ ;
 /*!50003 SET sql_mode              = 'ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION' */ ;
 DELIMITER ;;
-CREATE DEFINER=`root`@`%` PROCEDURE `sp_usuario_crear`(
+CREATE PROCEDURE `sp_usuario_crear`(
     IN p_correo   VARCHAR(60),
     IN p_password VARCHAR(255),
     IN p_nombre   VARCHAR(60),

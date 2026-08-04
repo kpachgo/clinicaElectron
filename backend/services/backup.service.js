@@ -3,6 +3,7 @@ const fs = require("fs");
 const fsp = require("fs/promises");
 const path = require("path");
 const { spawn } = require("child_process");
+const { Transform } = require("stream");
 const { pipeline } = require("stream/promises");
 
 const storagePaths = require("../config/storagePaths");
@@ -41,29 +42,47 @@ function resolveMysqlTool(envName, defaultCommand, fileName) {
   const envPath = String(process.env[envName] || "").trim();
   if (envPath) return envPath;
 
-  if (process.platform !== "win32") return defaultCommand;
-
-  const roots = [
-    process.env.ProgramFiles,
-    process.env["ProgramFiles(x86)"],
-    "C:\\Program Files",
-    "C:\\Program Files (x86)"
-  ];
-  const versions = ["8.4", "8.3", "8.2", "8.1", "8.0", "5.7"];
   const candidates = [];
 
-  roots.forEach((root) => {
-    versions.forEach((version) => {
-      candidates.push(path.join(root || "", "MySQL", `MySQL Server ${version}`, "bin", fileName));
+  if (process.platform === "win32") {
+    const roots = [
+      process.env.ProgramFiles,
+      process.env["ProgramFiles(x86)"],
+      "C:\\Program Files",
+      "C:\\Program Files (x86)"
+    ];
+    const versions = ["8.4", "8.3", "8.2", "8.1", "8.0", "5.7"];
+
+    roots.forEach((root) => {
+      versions.forEach((version) => {
+        candidates.push(path.join(root || "", "MySQL", `MySQL Server ${version}`, "bin", fileName));
+      });
+      candidates.push(path.join(root || "", "MySQL", "MySQL Workbench 8.0 CE", fileName));
+      candidates.push(path.join(root || "", "MySQL", "MySQL Workbench 8.0", fileName));
     });
-    candidates.push(path.join(root || "", "MySQL", "MySQL Workbench 8.0", fileName));
-  });
+  } else {
+    candidates.push(
+      path.join("/usr/bin", defaultCommand),
+      path.join("/usr/local/bin", defaultCommand),
+      path.join("/bin", defaultCommand),
+      path.join("/snap/bin", defaultCommand),
+      path.join("/opt/homebrew/bin", defaultCommand),
+      path.join("/opt/local/bin", defaultCommand),
+      path.join("/usr/local/mysql/bin", defaultCommand),
+      path.join("/usr/mysql/bin", defaultCommand)
+    );
+  }
 
   return firstExistingPath(candidates) || defaultCommand;
 }
 
-const MYSQLDUMP_BIN = resolveMysqlTool("CLINICA_MYSQLDUMP_PATH", "mysqldump", "mysqldump.exe");
-const MYSQL_BIN = resolveMysqlTool("CLINICA_MYSQL_CLI_PATH", "mysql", "mysql.exe");
+function getMysqlDumpBin() {
+  return resolveMysqlTool("CLINICA_MYSQLDUMP_PATH", "mysqldump", "mysqldump.exe");
+}
+
+function getMysqlBin() {
+  return resolveMysqlTool("CLINICA_MYSQL_CLI_PATH", "mysql", "mysql.exe");
+}
 
 function buildCodedError(code, message) {
   const err = new Error(message);
@@ -278,14 +297,32 @@ async function testTool(command) {
 
 async function getStatus() {
   const [dump, mysql] = await Promise.all([
-    testTool(MYSQLDUMP_BIN),
-    testTool(MYSQL_BIN)
+    testTool(getMysqlDumpBin()),
+    testTool(getMysqlBin())
   ]);
+
+  let connection = null;
+  let connectionError = null;
+  try {
+    const active = dbConnectionConfig.getActiveConfig();
+    const activeConnection = active?.connection || {};
+    connection = {
+      source: active?.source || "",
+      host: activeConnection.host || "",
+      port: activeConnection.port || 3306,
+      database: activeConnection.database || "",
+      ssl: Boolean(activeConnection.ssl || isRailwayHost(activeConnection.host))
+    };
+  } catch (err) {
+    connectionError = err?.message || "No se pudo leer la conexion activa";
+  }
 
   return {
     mysqldump: dump,
     mysql,
-    ready: dump.ok && mysql.ok
+    ready: dump.ok && mysql.ok,
+    connection,
+    connectionError
   };
 }
 
@@ -298,6 +335,54 @@ async function ensureToolsAvailable() {
     );
   }
   return status;
+}
+
+function stripMysqlDefiners(sql) {
+  return String(sql || "")
+    .replace(/\/\*![0-9]{5}\s+DEFINER=`[^`]+`@`[^`]+`\s*\*\//gi, "")
+    .replace(/\bDEFINER=`[^`]+`@`[^`]+`\s*/gi, "");
+}
+
+async function sanitizeMysqlDump(sqlPath) {
+  const sanitizedPath = makeTempPath("backup-sanitized", "sql");
+  const carryLength = 4096;
+  let carry = "";
+
+  const transform = new Transform({
+    decodeStrings: false,
+    transform(chunk, _encoding, callback) {
+      try {
+        const input = carry + String(chunk);
+        const splitAt = Math.max(0, input.length - carryLength);
+        const ready = input.slice(0, splitAt);
+        carry = input.slice(splitAt);
+        this.push(stripMysqlDefiners(ready));
+        callback();
+      } catch (err) {
+        callback(err);
+      }
+    },
+    flush(callback) {
+      try {
+        this.push(stripMysqlDefiners(carry));
+        callback();
+      } catch (err) {
+        callback(err);
+      }
+    }
+  });
+
+  try {
+    await pipeline(
+      fs.createReadStream(sqlPath, { encoding: "utf8" }),
+      transform,
+      fs.createWriteStream(sanitizedPath, { encoding: "utf8" })
+    );
+    await fsp.rename(sanitizedPath, sqlPath);
+  } catch (err) {
+    await safeUnlink(sanitizedPath);
+    throw err;
+  }
 }
 
 function deriveKey(password, salt, licenseSecret = null, kdfOptions = KDF_OPTIONS) {
@@ -337,7 +422,9 @@ async function dumpDatabase(sqlPath) {
     "--triggers",
     "--events",
     "--hex-blob",
-    "--add-drop-table"
+    "--add-drop-table",
+    "--no-tablespaces",
+    "--set-gtid-purged=OFF"
   ];
 
   LICENSE_TABLES_EXCLUDED.forEach((tableName) => {
@@ -346,11 +433,12 @@ async function dumpDatabase(sqlPath) {
 
   args.push(connection.database);
 
-  await runProcess(MYSQLDUMP_BIN, args, {
+  await runProcess(getMysqlDumpBin(), args, {
     env: buildMysqlEnv(connection),
     stdoutPath: sqlPath,
     timeoutMs: 10 * 60 * 1000
   });
+  await sanitizeMysqlDump(sqlPath);
 }
 
 async function restoreDatabase(sqlPath) {
@@ -360,7 +448,7 @@ async function restoreDatabase(sqlPath) {
     connection.database
   ];
 
-  await runProcess(MYSQL_BIN, args, {
+  await runProcess(getMysqlBin(), args, {
     env: buildMysqlEnv(connection),
     stdinPath: sqlPath,
     timeoutMs: 10 * 60 * 1000

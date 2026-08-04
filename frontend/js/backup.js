@@ -13,6 +13,7 @@
   let pickFileBtn = null;
   let closeBtn = null;
   let statusEl = null;
+  let targetEl = null;
   let busyLayer = null;
   let busyTitle = null;
   let busyDetail = null;
@@ -53,6 +54,20 @@
     if (!statusEl) return;
     statusEl.textContent = message;
     statusEl.className = `backup-status ${type ? `is-${type}` : ""}`;
+  }
+
+  function setTarget(connection = null, error = "") {
+    if (!targetEl) return;
+    if (connection?.host && connection?.database) {
+      const port = connection.port || 3306;
+      const ssl = connection.ssl ? " SSL" : "";
+      targetEl.textContent = `Destino actual: ${connection.host}:${port} / ${connection.database}${ssl}`;
+      targetEl.hidden = false;
+      return;
+    }
+
+    targetEl.textContent = error || "Destino actual no disponible";
+    targetEl.hidden = false;
   }
 
   function setBusy(value, message = "") {
@@ -174,6 +189,7 @@
             </button>
           </section>
 
+          <div class="backup-target" id="backup-target" hidden></div>
           <div class="backup-status" id="backup-status" aria-live="polite"></div>
         </div>
         <div class="backup-busy-layer" id="backup-busy-layer" hidden>
@@ -198,6 +214,7 @@
     pickFileBtn = overlay.querySelector("#backup-pick-file");
     closeBtn = overlay.querySelector("#backup-close");
     statusEl = overlay.querySelector("#backup-status");
+    targetEl = overlay.querySelector("#backup-target");
     busyLayer = overlay.querySelector("#backup-busy-layer");
     busyTitle = overlay.querySelector("#backup-busy-title");
     busyDetail = overlay.querySelector("#backup-busy-detail");
@@ -253,8 +270,12 @@
         return;
       }
 
+      setTarget(data?.data?.connection, data?.data?.connectionError);
+
       if (!data?.data?.ready) {
         setStatus("No se encontro mysqldump o mysql en este equipo.", "error");
+      } else {
+        setStatus("Herramientas de copia listas.", "ok");
       }
     } catch {
       setStatus("No se pudo verificar herramientas de backup", "error");
