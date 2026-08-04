@@ -670,50 +670,6 @@ async function runPacienteLoadingFlow(_initialText, runner) {
 function getPacienteDetailShell() {
   return document.getElementById("paciente-detail-shell");
 }
-function setPacienteSearchCollapsed(collapsed) {
-  const container = document.querySelector(".paciente-container");
-  if (!container) return;
-
-  const shouldCollapse = collapsed === true && !getPacienteDetailShell()?.hidden;
-  container.classList.toggle("paciente-search-collapsed", shouldCollapse);
-}
-function getPacienteScrollTop() {
-  const content = document.querySelector(".content");
-  if (content && content.scrollHeight > content.clientHeight) {
-    return content.scrollTop;
-  }
-  return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-}
-function registrarPacienteSearchRevealOnScroll() {
-  if (window.__pacienteSearchRevealScrollHandler) {
-    window.removeEventListener("scroll", window.__pacienteSearchRevealScrollHandler, true);
-    window.__pacienteSearchRevealScrollTarget?.removeEventListener(
-      "scroll",
-      window.__pacienteSearchRevealScrollHandler,
-      true
-    );
-  }
-
-  let lastScrollTop = getPacienteScrollTop();
-  window.__pacienteSearchRevealScrollHandler = () => {
-    const container = document.querySelector(".paciente-container");
-    if (!container?.classList.contains("paciente-search-collapsed")) {
-      lastScrollTop = getPacienteScrollTop();
-      return;
-    }
-
-    const currentTop = getPacienteScrollTop();
-    if (lastScrollTop - currentTop > 12) {
-      setPacienteSearchCollapsed(false);
-    }
-    lastScrollTop = currentTop;
-  };
-
-  const content = document.querySelector(".content");
-  window.__pacienteSearchRevealScrollTarget = content || null;
-  window.addEventListener("scroll", window.__pacienteSearchRevealScrollHandler, true);
-  content?.addEventListener("scroll", window.__pacienteSearchRevealScrollHandler, true);
-}
 function getPacienteLoadProgress() {
   return document.getElementById("paciente-load-progress");
 }
@@ -789,7 +745,6 @@ function ocultarPacienteDetailShellInmediato() {
   const shell = getPacienteDetailShell();
   if (!shell) return;
 
-  setPacienteSearchCollapsed(false);
   shell.hidden = true;
   shell.classList.remove("is-visible", "is-exiting");
 }
@@ -802,6 +757,43 @@ function ocultarPacienteLoadProgressInmediato() {
   loader.classList.remove("is-visible", "is-hiding");
   setPacienteLoadProgress(0);
 }
+function esperarPacienteBackground(ms = 80) {
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+function pacienteActualCoincide(idPaciente) {
+  return (
+    isPacienteViewActive() &&
+    Number(window.pacienteActual?.idPaciente || 0) === Number(idPaciente || 0)
+  );
+}
+async function cargarPacienteRecursosSecundarios(idPaciente) {
+  const idPacienteNum = Number(idPaciente || 0);
+  if (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0) return;
+
+  try {
+    await esperarPacienteBackground(90);
+    if (!pacienteActualCoincide(idPacienteNum)) return;
+    await cargarFotosPaciente(idPacienteNum);
+
+    await esperarPacienteBackground(90);
+    if (!pacienteActualCoincide(idPacienteNum)) return;
+    await cargarCitasPaciente(idPacienteNum);
+
+    await esperarPacienteBackground(120);
+    if (!pacienteActualCoincide(idPacienteNum)) return;
+    await cargarHistorialOdontogramas(idPacienteNum);
+
+    await esperarPacienteBackground(120);
+    if (!pacienteActualCoincide(idPacienteNum)) return;
+    await cargarUltimoOdontogramaPaciente({
+      silentNoData: true,
+      silentSuccess: true
+    });
+  } catch (err) {
+    if (isAbortError(err)) return;
+    console.warn("Carga secundaria de paciente omitida:", err);
+  }
+}
 async function cargarPacienteCompleto(idPaciente) {
   return runPacienteLoadingFlow("Cargando paciente...", async () => {
     setOdontoVisualMode(false, { restorePreviousLock: false });
@@ -813,18 +805,12 @@ async function cargarPacienteCompleto(idPaciente) {
         await ocultarPacienteLoadProgress();
         return false;
       }
-      setPacienteLoadProgress(45);
+      setPacienteLoadProgress(75);
       limpiarOdontogramaActivoEnVista({ clearHistorial: false });
-      await cargarHistorialOdontogramas(idPaciente);
-      setPacienteLoadProgress(70);
-      await cargarUltimoOdontogramaPaciente({
-        silentNoData: true,
-        silentSuccess: true
-      });
       setPacienteLoadProgress(92);
       await ocultarPacienteLoadProgress();
       mostrarPacienteDetailShell();
-      setPacienteSearchCollapsed(true);
+      void cargarPacienteRecursosSecundarios(idPaciente);
       return true;
     } catch (err) {
       await ocultarPacienteLoadProgress();
@@ -3014,7 +3000,12 @@ async function cargarPaciente(idPaciente) {
     const idPacienteCargado = Number(p.idPaciente || idPacienteNum);
     window.pacienteActual = p; // estado global del paciente
     window.pacienteFotoPrincipalId = Number(p.fotoPrincipalId || 0) || null;
+    window.fotosPaciente = [];
+    window.citasPaciente = [];
+    window.citasPacienteView = [];
     renderFotoPrincipalPaciente();
+    renderFotosPaciente();
+    renderCitasPaciente();
 
     withPacienteDirtySuspend(() => {
       // ================= DATOS PERSONALES =================
@@ -3081,10 +3072,6 @@ async function cargarPaciente(idPaciente) {
     if (lblOdo) {
       lblOdo.textContent = "Sin odontograma";
     }
-    await Promise.all([
-      cargarFotosPaciente(p.idPaciente),
-      cargarCitasPaciente(p.idPaciente)
-    ]);
     if (isStaleRequest("detallePaciente", localSeq)) return false;
     if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteCargado) return false;
     const notaObservacionPaciente = String(p.notasObservacionP || "").trim();
@@ -7804,7 +7791,6 @@ function registrarEventoEliminarCita() {
 // ============= FUNCION PARA LIMPIAR TODO LO DE LA VISTA PACIENTE ====
 function limpiarVistaPaciente() {
   ocultarPacienteDetailShellInmediato();
-  setPacienteSearchCollapsed(false);
   ocultarPacienteLoadProgressInmediato();
   abortAllPacienteRequests();
   isSavingPaciente = false;
@@ -8046,7 +8032,6 @@ function initBotonNuevoPaciente() {
     }
 
     mostrarPacienteDetailShell();
-    setPacienteSearchCollapsed(true);
 
     const nombreEl = document.getElementById("NombreP");
     if (nombreEl) {
@@ -8080,14 +8065,12 @@ window.__mountPaciente = function () {
     window.__pacienteLoading = false;
     setPacienteCambiosPendientes(false);
     clearOdontoSummaryHighlightState();
-    setPacienteSearchCollapsed(false);
     llenarSelectFechasOdontograma([]);
     initAutocompletePaciente();
     initBotonNuevoPaciente();
     initBotonLimpiarPaciente();
     bindPacienteDirtyTracking();
     registrarGuardCambiosPaciente();
-    registrarPacienteSearchRevealOnScroll();
     setPacienteEdicionHabilitada(false);
 
     // 2a Inicializar odontograma (ya existe en la vista)
