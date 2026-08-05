@@ -11,7 +11,26 @@ const HOST = "0.0.0.0";
 const frontendDir = path.join(__dirname, "../frontend");
 
 // Middlewares
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use((err, req, res, next) => {
+  if (!err) return next();
+
+  if (err.type === "entity.too.large" || err.status === 413) {
+    return res.status(413).json({
+      ok: false,
+      message: "La imagen es demasiado grande. Seleccione una firma mas liviana."
+    });
+  }
+
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({
+      ok: false,
+      message: "JSON invalido en la solicitud"
+    });
+  }
+
+  return next(err);
+});
 
 // Servir archivos persistentes externos (imagenes de docs con fallback legacy).
 app.use("/fotos", express.static(storagePaths.fotosDir));
@@ -31,6 +50,7 @@ app.get("/health", (req, res) => {
 });
 
 // Rutas API
+app.use("/api/app-config", require("./routes/appConfig.routes"));
 app.use("/api/licencia", require("./routes/licencia.routes"));
 app.use("/api/configuracion-db", require("./routes/dbConnectionConfig.routes"));
 app.use("/api/auth", require("./routes/auth.routes"));

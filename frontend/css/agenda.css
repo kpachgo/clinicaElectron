@@ -195,6 +195,7 @@ body.agenda-save-busy {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .agenda-reprograma-status {
@@ -2493,7 +2494,7 @@ body.agenda-day-summary-open {
 
 .agenda-filter-estado-wrap,
 .agenda-contact-filter {
-  flex: 0 0 210px;
+  flex: 0 0 220px;
   min-width: 0;
 }
 
@@ -2531,6 +2532,36 @@ body.agenda-day-summary-open {
 .agenda-select-shell select {
   appearance: auto;
   cursor: pointer;
+}
+
+.agenda-filter-clear-btn {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--agenda-border);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--agenda-muted);
+  cursor: pointer;
+}
+
+.agenda-filter-clear-btn[hidden] {
+  display: none;
+}
+
+.agenda-filter-clear-btn .agenda-action-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.agenda-filter-clear-btn:hover,
+.agenda-filter-clear-btn:focus-visible {
+  color: var(--agenda-danger);
+  border-color: rgba(220, 38, 38, 0.36);
+  outline: 0;
 }
 
 .agenda-select-dot {
@@ -3065,6 +3096,34 @@ body.agenda-day-summary-open {
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.agenda-filter-estado-wrap {
+  flex: 0 1 auto;
+}
+
+.agenda-filter-estado-wrap .agenda-select-shell {
+  flex: 0 0 220px;
+  width: 220px;
+  cursor: pointer;
+}
+
+.agenda-filter-estado-wrap .agenda-select-shell.filter-estado-active {
+  border-color: #8eb8ff;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+}
+
+.agenda-filter-estado-wrap .agenda-select-shell.filter-estado-no-results {
+  border-color: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.2);
+}
+
+.agenda-filter-estado-wrap .agenda-select-shell select.filter-estado {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 126px;
+  min-height: 34px;
+  padding-right: 24px;
 }
 
 .agenda-container .filter-estado.filter-estado-active,

@@ -40,9 +40,7 @@
   - `Ver Sello` -> `shield-check` (si existe sello; Admin/Recepcion).
   - para `Doctor`, firma/sello se muestran visibles como miniaturas.
   - `Subir sello` -> `arrow-up` (cuando no hay sello y el usuario es `Administrador` o `Recepcion`).
-  - `Cambiar estado` -> `arrow-path` (solo para doctor propio vinculado).
-  - `Actualizar firma` -> `document-text` (solo doctor propio vinculado).
-  - `Actualizar sello` -> `shield-check` (solo doctor propio vinculado).
+  - para doctor propio vinculado, las acciones ya no son icon-only: se muestran como botones amplios con icono + texto para `Marcar activo/inactivo`, `Actualizar firma` y `Actualizar sello`.
   - conservan `title` y `aria-label`.
 
 ## Pendientes de autorizacion rapida
@@ -70,6 +68,7 @@
 - Solo el doctor vinculado puede reemplazar su propia firma/sello desde la vista Doctores.
 - No pide contrasena adicional; basta la sesion activa del usuario `Doctor`.
 - Reemplazar firma/sello actualiza el archivo/ruta del registro `doctor`.
+- La firma viaja como PNG base64 en JSON; el backend acepta hasta `10mb` y responde JSON claro si la imagen excede el limite.
 - Las citas y expedientes que muestran firma/sello usan el archivo actual del doctor:
   - si se reemplaza firma/sello, los historicos autorizados muestran la version nueva al volver a consultar/imprimir.
   - el estado `Inactivo` no oculta firma/sello.
@@ -77,7 +76,7 @@
 ## Flujo de registro
 1. Abre modal `#modal-doctor`.
 2. Dibuja firma en canvas (PNG base64) o carga imagen de firma al canvas.
-3. `POST /api/doctor` con `nombre`, `telefono`, `firmaBase64`.
+3. `POST /api/doctor` con `nombre`, `telefono`, `firmaBase64`; si existe `doctor.estadoD`, se inserta activo (`estadoD = 1`).
 4. Si se adjunta sello, `POST /api/doctor/:id/sello` con multipart.
 5. Si el sello falla, mantiene alta del doctor y muestra mensaje parcial.
 6. Actualiza tabla local.
@@ -110,6 +109,8 @@
   - usado para mostrar solo doctores activos.
 - `GET /api/doctor/select?soloActivos=1&soloVinculado=1`
   - usado por Paciente al registrar cita cuando el usuario logueado es `Doctor`.
+- `GET /api/doctor/select?soloVinculado=1`
+  - usado por Doctores para resolver la fila propia del usuario `Doctor`, incluso si esta inactivo.
 - `PUT /api/doctor/:id/estado`
   - cambia estado activo/inactivo del doctor vinculado (con validacion de contrasena).
 - `GET /api/doctor/:id`
@@ -138,6 +139,7 @@
 - Crear: `Administrador`, `Recepcion`.
 - Sello/firma: `Administrador`, `Recepcion`; `Doctor` solo sobre su propio doctor vinculado.
 - Cambio de estado: `Doctor` (sobre su propio doctor vinculado).
+- El frontend resuelve el doctor propio con `GET /api/doctor/select?soloVinculado=1`; sin esa bandera el catalogo general no marca `doctorVinculado`.
 - Pendientes de autorizacion: `Doctor` (solo su propio doctor vinculado).
 - Cambio de contrasena: `Doctor` (solo usuario logueado).
 - Select y detalle por id: `Administrador`, `Recepcion`, `Doctor`, `Asistente`.

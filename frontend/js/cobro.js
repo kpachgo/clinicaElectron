@@ -41,6 +41,23 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   }
+
+  function isClinicaModoVenta() {
+    return typeof window.isModoVenta === "function"
+      ? window.isModoVenta()
+      : window.__clinicaAppConfig?.modoVenta === true;
+  }
+
+  function labelFormaPago(value) {
+    const raw = String(value || "").trim();
+    if (raw.toLowerCase() === "igs" && isClinicaModoVenta()) return "Seguro";
+    return raw;
+  }
+
+  function igsDisplayLabel() {
+    return labelFormaPago("IGS");
+  }
+
   function renderProcedimientoVisual(texto) {
     const raw = String(texto || "").trim();
     if (!raw) return "-";
@@ -371,7 +388,7 @@
               </article>
 
               <article class="cobro-kpi">
-                <span class="kpi-label">${kpiIcon("igs")}IGS</span>
+                <span class="kpi-label">${kpiIcon("igs")}${igsDisplayLabel()}</span>
                 <strong id="kpi-igs">$0.00</strong>
               </article>
 
@@ -537,7 +554,7 @@
             <option value="">Seleccione forma de pago</option>
             <option value="Efectivo">Efectivo</option>
             <option value="Tarjeta">Tarjeta</option>
-            <option value="IGS">IGS</option>
+            <option value="IGS">${igsDisplayLabel()}</option>
             <option value="Transferencia">Transferencia</option>
           </select>
 
@@ -571,7 +588,7 @@
                 <option value="">Todos los tipos</option>
                 <option value="efectivo">Efectivo</option>
                 <option value="tarjeta">Tarjeta</option>
-                <option value="igs">IGS</option>
+                <option value="igs">${igsDisplayLabel()}</option>
                 <option value="transferencia">Transferencia</option>
               </select>
             </div>
@@ -672,7 +689,7 @@
             <option value="">Todos los metodos de pago</option>
             <option value="efectivo">Efectivo</option>
             <option value="tarjeta">Tarjeta</option>
-            <option value="igs">IGS</option>
+            <option value="igs">${igsDisplayLabel()}</option>
             <option value="transferencia">Transferencia</option>
           </select>
           <button id="btn-reporte-mensual-pdf" class="btn-cobro-secondary" type="button">PDF</button>
@@ -2440,7 +2457,7 @@
         const filasCuenta = cuentasActuales.map((c) => ([
           textoSeguro(c.nombrePaciente) || "-",
           precioUSD(Number(c.totalC || 0)),
-          textoSeguro(c.FormaPagoC) || "-",
+          textoSeguro(labelFormaPago(c.FormaPagoC)) || "-",
           Number.isFinite(Number(c.cantidadTotal)) ? String(Number(c.cantidadTotal)) : "-",
           textoSeguro(c.procedimientos) || "-"
         ]));
@@ -2527,8 +2544,9 @@
             : "Todos los doctores")
           || "Todos los doctores";
         const metodoPagoFiltro = reporteMensualFormaPagoActual
-          || (selectReporteMensualFormaPago?.value
-            ? (selectReporteMensualFormaPago?.selectedOptions?.[0]?.textContent || "")
+          ? labelFormaPago(reporteMensualFormaPagoActual)
+          : (selectReporteMensualFormaPago?.value
+            ? labelFormaPago(selectReporteMensualFormaPago?.selectedOptions?.[0]?.textContent || "")
             : "Todos");
 
         const doc = new jsPdfCtor({
@@ -2668,7 +2686,7 @@
         const formaPago = String(c.FormaPagoC || "").trim();
         const formaPagoClass = claseFormaPago(formaPago);
         const formaPagoHtml = formaPago
-          ? `<span class="forma-pago-chip ${formaPagoClass}">${formaPago}</span>`
+          ? `<span class="forma-pago-chip ${formaPagoClass}">${escapeHtml(labelFormaPago(formaPago))}</span>`
           : "-";
         const cantidadRaw = Number(c.cantidadTotal);
         const cantidadText = Number.isFinite(cantidadRaw) ? String(cantidadRaw) : "-";

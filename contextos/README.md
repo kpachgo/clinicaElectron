@@ -21,6 +21,7 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `16_backups.md`
 - `16_release_mac_runner_issue.md`
 - `17_release_linux_github_actions.md`
+- `18_modo_venta.md`
 
 ## Nota
 - `01_general.md` incluye un resumen fechado de cambios recientes para reubicarse rapido entre sesiones.
@@ -31,3 +32,4 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `16_backups.md` documenta el modulo oculto de copias de seguridad cifradas y restauracion portable por credenciales de Administrador.
 - `16_release_mac_runner_issue.md` documenta la incidencia recurrente donde macOS queda en cola por publicar el workflow con `macos-13` en lugar de `macos-latest`.
 - `17_release_linux_github_actions.md` documenta el flujo oficial de Linux, errores ya resueltos y el procedimiento correcto para relanzar builds nuevas.
+- `18_modo_venta.md` documenta la variante comercial activada por `CLINICA_MODO_VENTA=1`.

@@ -137,12 +137,31 @@ async function doctorEstaAsignado(idDoctor, conn = null) {
     return !!rows?.[0];
 }
 
+async function existeColumnaEstadoDoctor(conn = null) {
+    const executor = conn || db;
+    const [rows] = await executor.query(
+        `SELECT 1
+           FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'doctor'
+            AND COLUMN_NAME = 'estadoD'
+          LIMIT 1`
+    );
+    return Array.isArray(rows) && rows.length > 0;
+}
+
 async function crearDoctorBasico({ nombre, telefono }, conn = null) {
     const executor = conn || db;
-    const [result] = await executor.query(
-        "INSERT INTO doctor (nombreD, TelefonoD) VALUES (?, ?)",
-        [nombre, telefono || null]
-    );
+    const tieneColumnaEstado = await existeColumnaEstadoDoctor(executor);
+    const [result] = tieneColumnaEstado
+        ? await executor.query(
+            "INSERT INTO doctor (nombreD, TelefonoD, estadoD) VALUES (?, ?, 1)",
+            [nombre, telefono || null]
+        )
+        : await executor.query(
+            "INSERT INTO doctor (nombreD, TelefonoD) VALUES (?, ?)",
+            [nombre, telefono || null]
+        );
     return result?.insertId || null;
 }
 
@@ -314,6 +333,7 @@ module.exports = {
     listarDoctoresRegistro,
     bloquearDoctorPorId,
     doctorEstaAsignado,
+    existeColumnaEstadoDoctor,
     crearDoctorBasico,
     obtenerRolPorId,
     obtenerUsuarioRecuperacionPorCorreo,

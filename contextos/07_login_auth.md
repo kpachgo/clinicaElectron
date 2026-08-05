@@ -197,6 +197,7 @@
 - Creacion de doctor + usuario:
   - se hace en una transaccion.
   - inserta doctor basico (`nombreD`, `TelefonoD`) y luego crea el usuario vinculado.
+  - si existe `doctor.estadoD`, el doctor nuevo se crea explicitamente activo (`estadoD = 1`).
   - si falla usuario o seguridad opcional, se revierte para no dejar doctor huerfano.
 - Catalogos:
   - `GET /api/auth/registro-oculto/catalogos` devuelve roles y solo doctores sin usuario vinculado.

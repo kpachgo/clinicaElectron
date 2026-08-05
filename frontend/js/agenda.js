@@ -4,6 +4,24 @@
   const agendaData = [];
   const estados = ["Pendiente", "Confirmado", "Cancelado", "Reprogramado", "No contesta", "IGS"];
   // ============UTILS===========================
+  function isClinicaModoVenta() {
+    return typeof window.isModoVenta === "function"
+      ? window.isModoVenta()
+      : window.__clinicaAppConfig?.modoVenta === true;
+  }
+  function estadoDisplayLabel(value) {
+    const raw = String(value || "").trim();
+    if (raw.toLowerCase() === "igs" && isClinicaModoVenta()) return "Seguro";
+    return raw;
+  }
+  function igsDisplayLabel() {
+    return estadoDisplayLabel("IGS");
+  }
+  function syncAgendaStaticModalLabels() {
+    const modalEstado = document.getElementById("modal-estado");
+    const igsOption = modalEstado?.querySelector?.('option[value="IGS"]');
+    if (igsOption) igsOption.textContent = igsDisplayLabel();
+  }
   function formatTime12(hm) {
     const [hh, mm] = hm.split(":").map(Number);
     const period = hh >= 12 ? "pm" : "am";
@@ -617,7 +635,7 @@
   estados.forEach(e => {
     const opt = document.createElement("option");
     opt.value = e;
-    opt.textContent = e;
+    opt.textContent = estadoDisplayLabel(e);
 
     // si value es null / "" -> Pendiente queda seleccionado
     if ((value || "Pendiente") === opt.value) opt.selected = true;
@@ -752,6 +770,7 @@
   });
   // ==============RENDER PRINCIPAL==============================
   function renderAgenda(container) {
+    syncAgendaStaticModalLabels();
     container.innerHTML = `
       <div class="agenda-container">
         <div id="agenda-save-overlay" class="agenda-save-overlay" hidden aria-hidden="true">
@@ -843,10 +862,10 @@
                   <strong id="agenda-stat-no-contesta">0</strong>
                   <small>No contesta</small>
                 </article>
-                <article class="agenda-metric-card is-igs" data-agenda-metric="igs" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas IGS">
+                <article class="agenda-metric-card is-igs" data-agenda-metric="igs" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas ${igsDisplayLabel()}">
                   <span class="agenda-metric-icon">${getAgendaHeroIcon("building-office")}</span>
                   <strong id="agenda-stat-igs">0</strong>
-                  <small>IGS</small>
+                  <small>${igsDisplayLabel()}</small>
                 </article>
                 <article class="agenda-metric-card is-pending" data-agenda-metric="pendiente" role="button" tabindex="0" aria-pressed="false" title="Resaltar citas pendientes">
                   <span class="agenda-metric-icon">${getAgendaHeroIcon("funnel")}</span>
@@ -863,7 +882,7 @@
               </label>
 
               <div class="agenda-filter-estado-wrap">
-                <label class="agenda-select-shell" for="agenda-filter-estado">
+                <label id="agenda-filter-estado-shell" class="agenda-select-shell" for="agenda-filter-estado">
                   <span class="agenda-select-dot"></span>
                   Estado:
                   <select id="agenda-filter-estado" class="filter-estado">
@@ -873,9 +892,19 @@
                     <option value="Cancelado">Cancelado</option>
                     <option value="Reprogramado">Reprogramado</option>
                     <option value="No contesta">No contesta</option>
-                    <option value="IGS">IGS</option>
+                    <option value="IGS">${igsDisplayLabel()}</option>
                   </select>
                 </label>
+                <button
+                  id="agenda-filter-estado-clear"
+                  class="agenda-filter-clear-btn"
+                  type="button"
+                  title="Limpiar filtro de estado"
+                  aria-label="Limpiar filtro de estado"
+                  hidden
+                >
+                  ${getAgendaHeroIcon("x-circle")}
+                </button>
                 <span id="agenda-filter-estado-alert" class="agenda-filter-estado-alert" hidden></span>
               </div>
 
@@ -1228,6 +1257,8 @@
     const agendaSaveOverlayText = container.querySelector("#agenda-save-overlay-text");
     const agendaSearchScopeAlert = container.querySelector("#agenda-search-scope-alert");
     const estadoFilter = container.querySelector("#agenda-filter-estado");
+    const estadoFilterShell = container.querySelector("#agenda-filter-estado-shell");
+    const estadoFilterClear = container.querySelector("#agenda-filter-estado-clear");
     const estadoFilterAlert = container.querySelector("#agenda-filter-estado-alert");
     const contactoFilter = container.querySelector("#agenda-filter-contacto");
     const toggleNumeracionAgenda = container.querySelector("#agenda-toggle-numeracion");
@@ -1446,9 +1477,12 @@
     function actualizarRefuerzoVisualFiltroEstado(hasNoResults = false) {
       if (!estadoFilter) return;
       FILTER_ESTADO_VISUAL_CLASSES.forEach((cls) => estadoFilter.classList.remove(cls));
+      FILTER_ESTADO_VISUAL_CLASSES.forEach((cls) => estadoFilterShell?.classList.remove(cls));
 
       const estadoActual = String(estadoFilter.value || "").trim();
       if (!estadoActual) {
+        estadoFilterShell?.classList.remove("filter-estado-active", "filter-estado-no-results");
+        if (estadoFilterClear) estadoFilterClear.hidden = true;
         if (estadoFilterAlert) {
           estadoFilterAlert.hidden = true;
           estadoFilterAlert.classList.remove("is-warning");
@@ -1458,20 +1492,25 @@
       }
 
       estadoFilter.classList.add("filter-estado-active");
+      estadoFilterShell?.classList.add("filter-estado-active");
       const estadoVisualClass = estadoClassName(estadoActual);
       if (estadoVisualClass) {
         estadoFilter.classList.add(estadoVisualClass);
+        estadoFilterShell?.classList.add(estadoVisualClass);
       }
 
       const sinCoincidencias = !!hasNoResults;
       estadoFilter.classList.toggle("filter-estado-no-results", sinCoincidencias);
+      estadoFilterShell?.classList.toggle("filter-estado-no-results", sinCoincidencias);
+      if (estadoFilterClear) estadoFilterClear.hidden = false;
 
       if (!estadoFilterAlert) return;
       estadoFilterAlert.hidden = false;
       estadoFilterAlert.classList.toggle("is-warning", sinCoincidencias);
+      const estadoActualLabel = estadoDisplayLabel(estadoActual);
       estadoFilterAlert.textContent = sinCoincidencias
-        ? `Sin coincidencias para filtro: ${estadoActual}`
-        : `Filtro activo: ${estadoActual}`;
+        ? `Sin coincidencias para filtro: ${estadoActualLabel}`
+        : `Filtro activo: ${estadoActualLabel}`;
     }
     if (toggleNumeracionAgenda) {
       toggleNumeracionAgenda.checked = !!agendaUiState.numeracion;
@@ -1864,8 +1903,9 @@
       const sinHoraTratamientos = new Set();
 
       safeRows.forEach((row) => {
-        const estadoLabel = String(row?.estado || "Pendiente").trim() || "Pendiente";
-        const estadoKey = normalizarTexto(estadoLabel) || "pendiente";
+        const estadoRawLabel = String(row?.estado || "Pendiente").trim() || "Pendiente";
+        const estadoLabel = estadoDisplayLabel(estadoRawLabel);
+        const estadoKey = normalizarTexto(estadoRawLabel) || "pendiente";
         const estadoItem = byEstado.get(estadoKey) || {
           key: estadoKey,
           label: estadoLabel,
@@ -2006,7 +2046,7 @@
             const highlight = estado.highlight ? " is-highlight" : "";
             return `
               <article class="agenda-day-summary-estado${highlight}${estadoTone}">
-                <span>${escapeHtml(String(estado.label || "-"))}</span>
+                <span>${escapeHtml(estadoDisplayLabel(estado.label || "-"))}</span>
                 <strong>${Number(estado.total || 0)}</strong>
               </article>
             `;
@@ -2130,7 +2170,7 @@
           <td>${escapeHtml(String(row?.nombre || "-"))}</td>
           <td>${escapeHtml(formatearHoraInasistencia(row?.hora))}</td>
           <td>${escapeHtml(String(row?.contacto || "-"))}</td>
-          <td>${escapeHtml(String(row?.estado || "-"))}</td>
+          <td>${escapeHtml(estadoDisplayLabel(row?.estado || "-"))}</td>
         `;
         inasistenciaTbody.appendChild(tr);
       });
@@ -4289,6 +4329,13 @@
     estadoFilter.addEventListener("change", () => {
       aplicarFiltros();
       persistAgendaUiState();
+    });
+    estadoFilterClear?.addEventListener("click", () => {
+      if (!estadoFilter) return;
+      estadoFilter.value = "";
+      aplicarFiltros({ dispararFallback: false });
+      persistAgendaUiState();
+      estadoFilter.focus();
     });
     contactoFilter?.addEventListener("change", () => {
       aplicarFiltros();

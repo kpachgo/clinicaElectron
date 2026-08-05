@@ -14,6 +14,8 @@ const PROTECTED_CONFIG_FILE_NAME = "util.dat";
 const PROTECTED_CONFIG_MAGIC = Buffer.from("CLDBCFG2", "ascii");
 const PROTECTED_CONFIG_KEY_ENV = "CLINICA_DB_CONFIG_KEY";
 const PROTECTED_CONFIG_REQUIRED_ENV = "CLINICA_DB_CONFIG_PROTECTED_REQUIRED";
+const PROTECTED_CONFIG_KEY_MISSING_MESSAGE =
+  "Clave local de configuracion no disponible. Cierre procesos node/backend abiertos y vuelva a abrir ClinicaElectron.";
 const ENV_KEYS = {
   url: ["DB_URL", "MYSQL_PUBLIC_URL", "MYSQL_URL"],
   host: ["DB_HOST", "MYSQLHOST"],
@@ -201,7 +203,7 @@ function getProtectedConfigKey({ required = false } = {}) {
     if (required || isProtectedConfigRequired()) {
       throw buildCodedError(
         "DB_CONFIG_KEY_MISSING",
-        "Clave local de configuracion no disponible"
+        PROTECTED_CONFIG_KEY_MISSING_MESSAGE
       );
     }
     return null;
@@ -347,7 +349,7 @@ function migrateLegacyConnectionIfPossible() {
     if (isProtectedConfigRequired()) {
       throw buildCodedError(
         "DB_CONFIG_KEY_MISSING",
-        "Clave local de configuracion no disponible"
+        PROTECTED_CONFIG_KEY_MISSING_MESSAGE
       );
     }
     return legacy;

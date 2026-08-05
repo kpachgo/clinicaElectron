@@ -468,19 +468,17 @@ function runNodeScript(scriptPath, args = [], timeoutMs = 20_000) {
   });
 }
 
-async function stopExistingBackendOnPortInDev() {
-  if (!DEV_FORCE_BACKEND_RESTART) return;
-
+async function stopExistingBackendOnPort(reasonLabel) {
   const healthy = await checkServerHealth();
-  if (!healthy) return;
+  if (!healthy) return true;
 
   const stopScript = path.join(getRuntimeDir(), "backend", "scripts", "stop-server.js");
   if (!fs.existsSync(stopScript)) {
-    logLine("[ELECTRON]", `No se encontro script de stop para reinicio forzado: ${stopScript}`);
-    return;
+    logLine("[ELECTRON]", `No se encontro script de stop para liberar puerto ${SERVER_PORT}: ${stopScript}`);
+    return false;
   }
 
-  logLine("[ELECTRON]", `Modo dev: reinicio forzado backend en puerto ${SERVER_PORT}.`);
+  logLine("[ELECTRON]", `${reasonLabel} en puerto ${SERVER_PORT}.`);
   const result = await runNodeScript(stopScript, [String(SERVER_PORT)], 25_000);
   const out = String(result.stdout || "").trim();
   const err = String(result.stderr || "").trim();
@@ -489,8 +487,24 @@ async function stopExistingBackendOnPortInDev() {
 
   const down = await waitForServerDown(12_000);
   if (!down) {
-    logLine("[ELECTRON]", "Backend previo sigue respondiendo en /health tras stop-server.");
+    logLine("[ELECTRON]", `Backend previo sigue respondiendo en /health tras stop-server; no se libero el puerto ${SERVER_PORT}.`);
+    return false;
   }
+  return true;
+}
+
+async function stopExistingBackendOnPortInDev() {
+  if (!DEV_FORCE_BACKEND_RESTART) return true;
+
+  return stopExistingBackendOnPort("Modo dev: reinicio forzado backend");
+}
+
+async function stopExternalBackendOnPortInPackaged() {
+  if (!app.isPackaged) return true;
+
+  return stopExistingBackendOnPort(
+    "Modo empaquetado: backend existente detectado; deteniendo para arranque seguro"
+  );
 }
 
 function startBackendWithNpm() {
@@ -852,11 +866,41 @@ async function bootApp() {
     await stopExistingBackendOnPortInDev();
   }
 
+  if (app.isPackaged && await checkServerHealth()) {
+    const stopped = await stopExternalBackendOnPortInPackaged();
+    if (!stopped) {
+      dialog.showErrorBox(
+        "No se pudo preparar el servidor",
+        [
+          `La app instalada detecto otro backend activo en ${SERVER_URL}${HEALTH_PATH}.`,
+          "No se pudo detener ese proceso para iniciar el backend seguro con la clave local de configuracion.",
+          `Puerto: ${SERVER_PORT}`,
+          `Log: ${getLogFilePath()}`,
+          "Cierre procesos node/backend abiertos y vuelva a abrir ClinicaElectron."
+        ].join("\n")
+      );
+      app.exit(1);
+      return;
+    }
+  }
+
   const isAlreadyRunning = await checkServerHealth();
-  if (DEV_FORCE_BACKEND_RESTART || !isAlreadyRunning) {
+  if (!isAlreadyRunning) {
     startBackendWithNpm();
+  } else if (app.isPackaged) {
+    logLine("[ELECTRON]", `Puerto ${SERVER_PORT} sigue ocupado en modo empaquetado; se aborta arranque seguro.`);
+    dialog.showErrorBox(
+      "No se pudo preparar el servidor",
+      [
+        `El puerto ${SERVER_PORT} sigue respondiendo antes de iniciar el backend seguro.`,
+        "Cierre procesos node/backend abiertos y vuelva a abrir ClinicaElectron.",
+        `Log: ${getLogFilePath()}`
+      ].join("\n")
+    );
+    app.exit(1);
+    return;
   } else {
-    logLine("[ELECTRON]", "Backend ya estaba saludable en /health (reuso habilitado).");
+    logLine("[ELECTRON]", "Backend ya estaba saludable en /health (reuso habilitado solo en desarrollo).");
   }
 
   const ready = await waitForServerReady(HEALTH_TIMEOUT_MS);

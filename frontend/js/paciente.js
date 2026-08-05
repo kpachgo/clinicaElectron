@@ -1628,11 +1628,13 @@ function renderPaciente(container) {
                 ${odontoActionButton("Varios", "stack", "odonto-summary-multi-btn")}
                 ${odontoActionButton("Exp", "file", "odonto-summary-exp-btn")}
               </div>
-              <div class="odonto-summary-action-group">
-                <span class="odonto-summary-group-label">Consentimientos:</span>
-                ${odontoActionButton("Endodoncia", "shield", "odonto-summary-consent-btn")}
-                ${odontoActionButton("Ortodoncia", "spark", "odonto-summary-ortho-consent-btn")}
-              </div>
+              ${isClinicaModoVenta() ? "" : `
+                <div class="odonto-summary-action-group">
+                  <span class="odonto-summary-group-label">Consentimientos:</span>
+                  ${odontoActionButton("Endodoncia", "shield", "odonto-summary-consent-btn")}
+                  ${odontoActionButton("Ortodoncia", "spark", "odonto-summary-ortho-consent-btn")}
+                </div>
+              `}
               ${odontoIconButton("Configuracion", "settings", "odonto-summary-config-btn")}
             </div>
           </div>
@@ -1687,14 +1689,16 @@ function renderPaciente(container) {
                   </div>
                   <div id="odonto-print-items-editor" class="odonto-print-items-editor"></div>
 
-                  <div class="odonto-print-promos">
-                    <h6>Promociones del mes</h6>
-                    <div id="odonto-print-preset-list" class="odonto-print-preset-list"></div>
-                    <div class="odonto-print-editor-row">
-                      <input id="odonto-print-promo-input" type="text" class="form-control" placeholder="Promocion personalizada">
-                      <button id="odonto-print-promo-add-btn" type="button">Agregar promocion</button>
+                  ${isClinicaModoVenta() ? "" : `
+                    <div class="odonto-print-promos">
+                      <h6>Promociones del mes</h6>
+                      <div id="odonto-print-preset-list" class="odonto-print-preset-list"></div>
+                      <div class="odonto-print-editor-row">
+                        <input id="odonto-print-promo-input" type="text" class="form-control" placeholder="Promocion personalizada">
+                        <button id="odonto-print-promo-add-btn" type="button">Agregar promocion</button>
+                      </div>
                     </div>
-                  </div>
+                  `}
                 </div>
 
                 <div id="odonto-assist-editor" class="odonto-assist-editor" hidden>
@@ -3222,7 +3226,12 @@ const ODONTO_PRINT_COMPANY_DEFAULT_CONFIG = {
   sucursal: "Sucursal Sonsonate, Centro comercial el encuentro local 22",
   telefono: "Tel. 6061-3992"
 };
+const ODONTO_PRINT_COMPANY_SALE_DEFAULT_CONFIG = {
+  sucursal: "",
+  telefono: ""
+};
 const ODONTO_PRINT_COMPANY_STORAGE_KEY = "odonto_print_company_config_v1";
+const ODONTO_PRINT_COMPANY_SALE_STORAGE_KEY = "odonto_print_company_config_sale_v1";
 const ODONTO_PRINT_PRICE_STORAGE_KEY = "odonto_print_price_overrides_v1";
 const ODONTO_PRINT_BRANDING_STORAGE_KEY = "odonto_print_branding_config_v1";
 const ODONTO_PRINT_CONSENT_LOCATION_STORAGE_KEY = "odonto_print_consent_location_v1";
@@ -3259,6 +3268,24 @@ const ODONTO_PRINT_TEXT_PRESETS = [
     ]
   }
 ];
+
+function isClinicaModoVenta() {
+  return typeof window.isModoVenta === "function"
+    ? window.isModoVenta()
+    : window.__clinicaAppConfig?.modoVenta === true;
+}
+
+function getOdontoPrintCompanyStorageKey() {
+  return isClinicaModoVenta()
+    ? ODONTO_PRINT_COMPANY_SALE_STORAGE_KEY
+    : ODONTO_PRINT_COMPANY_STORAGE_KEY;
+}
+
+function getOdontoPrintCompanyDefaultConfig() {
+  return isClinicaModoVenta()
+    ? { ...ODONTO_PRINT_COMPANY_SALE_DEFAULT_CONFIG }
+    : { ...ODONTO_PRINT_COMPANY_DEFAULT_CONFIG };
+}
 const ODONTO_ASSIST_PRESETS = [
   "Control de ortodoncia",
   "Extraccion dental simple",
@@ -4242,7 +4269,7 @@ function normalizeOdontoPrintCompanyText(value, maxLen = 140) {
   return collapsed.slice(0, Math.max(1, Number(maxLen) || 1));
 }
 function normalizeOdontoPrintCompanyConfig(rawConfig) {
-  const fallback = { ...ODONTO_PRINT_COMPANY_DEFAULT_CONFIG };
+  const fallback = getOdontoPrintCompanyDefaultConfig();
   if (!rawConfig || typeof rawConfig !== "object") {
     return fallback;
   }
@@ -4252,30 +4279,30 @@ function normalizeOdontoPrintCompanyConfig(rawConfig) {
   );
   const telefono = normalizeOdontoPrintCompanyText(rawConfig.telefono, 64);
   return {
-    sucursal: sucursal || fallback.sucursal,
-    telefono: telefono || fallback.telefono
+    sucursal: isClinicaModoVenta() ? sucursal : (sucursal || fallback.sucursal),
+    telefono: isClinicaModoVenta() ? telefono : (telefono || fallback.telefono)
   };
 }
 function loadOdontoPrintCompanyConfig() {
   if (odontoPrintCompanyConfigLoaded) return;
   odontoPrintCompanyConfigLoaded = true;
   try {
-    const raw = localStorage.getItem(ODONTO_PRINT_COMPANY_STORAGE_KEY);
+    const raw = localStorage.getItem(getOdontoPrintCompanyStorageKey());
     if (!raw) {
-      odontoPrintCompanyConfig = { ...ODONTO_PRINT_COMPANY_DEFAULT_CONFIG };
+      odontoPrintCompanyConfig = getOdontoPrintCompanyDefaultConfig();
       return;
     }
     const parsed = JSON.parse(raw);
     odontoPrintCompanyConfig = normalizeOdontoPrintCompanyConfig(parsed);
   } catch {
-    odontoPrintCompanyConfig = { ...ODONTO_PRINT_COMPANY_DEFAULT_CONFIG };
+    odontoPrintCompanyConfig = getOdontoPrintCompanyDefaultConfig();
   }
 }
 function saveOdontoPrintCompanyConfig(rawConfig) {
   odontoPrintCompanyConfig = normalizeOdontoPrintCompanyConfig(rawConfig);
   try {
     localStorage.setItem(
-      ODONTO_PRINT_COMPANY_STORAGE_KEY,
+      getOdontoPrintCompanyStorageKey(),
       JSON.stringify(odontoPrintCompanyConfig)
     );
   } catch {
@@ -4283,9 +4310,9 @@ function saveOdontoPrintCompanyConfig(rawConfig) {
   }
 }
 function resetOdontoPrintCompanyConfig() {
-  odontoPrintCompanyConfig = { ...ODONTO_PRINT_COMPANY_DEFAULT_CONFIG };
+  odontoPrintCompanyConfig = getOdontoPrintCompanyDefaultConfig();
   try {
-    localStorage.removeItem(ODONTO_PRINT_COMPANY_STORAGE_KEY);
+    localStorage.removeItem(getOdontoPrintCompanyStorageKey());
   } catch {
     // ignore storage failures
   }
@@ -5051,7 +5078,9 @@ function renderOdontoPrintEditorList() {
   if (!items.length) {
     const empty = document.createElement("div");
     empty.className = "odonto-print-editor-empty";
-    empty.textContent = "No hay lineas. Agregue tratamientos o promociones para imprimir.";
+    empty.textContent = isClinicaModoVenta()
+      ? "No hay lineas. Agregue tratamientos para imprimir."
+      : "No hay lineas. Agregue tratamientos o promociones para imprimir.";
     refs.editorList.appendChild(empty);
     return;
   }
@@ -5182,6 +5211,7 @@ function renderOdontoPrintModal() {
 }
 function addOdontoPrintItem(rawText, kind = "manual") {
   if (isOdontoPrintModeAsistencia() || isOdontoPrintModeConsentimiento() || isOdontoPrintModeConsentimientoOrtodoncia()) return;
+  if (isClinicaModoVenta() && kind === "promo") return;
   const preparedText = kind === "promo"
     ? ensurePromoPrefix(rawText)
     : rawText;
@@ -5198,6 +5228,7 @@ function addOdontoPrintItem(rawText, kind = "manual") {
 }
 function addOdontoPrintItemsBatch(lines, kind = "manual") {
   if (isOdontoPrintModeAsistencia() || isOdontoPrintModeConsentimiento() || isOdontoPrintModeConsentimientoOrtodoncia()) return;
+  if (isClinicaModoVenta() && kind === "promo") return;
   const sourceLines = Array.isArray(lines) ? lines : [];
   const preparedItems = sourceLines.map((line) => {
     const preparedText = kind === "promo"
@@ -6210,6 +6241,12 @@ async function openOdontoPrintModal() {
 async function openOdontoPrintModalByMode(mode = ODONTO_PRINT_MODE_PENDIENTE) {
   const refs = getOdontoPrintRefs();
   if (!refs.modal) return;
+  if (
+    isClinicaModoVenta() &&
+    (isOdontoPrintModeConsentimiento(mode) || isOdontoPrintModeConsentimientoOrtodoncia(mode))
+  ) {
+    return;
+  }
   odontoPrintMode = isOdontoPrintModeConsentimientoOrtodoncia(mode)
     ? ODONTO_PRINT_MODE_CONSENTIMIENTO_ORTODONCIA
     : isOdontoPrintModeConsentimiento(mode)
@@ -6527,8 +6564,6 @@ function bindOdontoPrintFeature() {
     !refs.printBtn ||
     !refs.expBtn ||
     !refs.assistBtn ||
-    !refs.consentBtn ||
-    !refs.orthoConsentBtn ||
     !refs.configBtn ||
     !refs.multiBtn ||
     !refs.multiModal
@@ -6538,7 +6573,9 @@ function bindOdontoPrintFeature() {
   loadOdontoPrintBrandingConfig();
   loadOdontoPrintConsentConfig();
 
-  renderOdontoPrintPresetButtons();
+  if (!isClinicaModoVenta()) {
+    renderOdontoPrintPresetButtons();
+  }
   renderOdontoAssistPresetButtons();
   syncOdontoPrintCompanyHeader();
   syncOdontoPrintBrandingUi();
@@ -6578,24 +6615,28 @@ function bindOdontoPrintFeature() {
       if (refs.assistBtn) refs.assistBtn.disabled = false;
     }
   };
-  refs.consentBtn.onclick = async () => {
-    if (refs.consentBtn.disabled) return;
-    refs.consentBtn.disabled = true;
-    try {
-      await openOdontoPrintModalByMode(ODONTO_PRINT_MODE_CONSENTIMIENTO);
-    } finally {
-      if (refs.consentBtn) refs.consentBtn.disabled = false;
-    }
-  };
-  refs.orthoConsentBtn.onclick = async () => {
-    if (refs.orthoConsentBtn.disabled) return;
-    refs.orthoConsentBtn.disabled = true;
-    try {
-      await openOdontoPrintModalByMode(ODONTO_PRINT_MODE_CONSENTIMIENTO_ORTODONCIA);
-    } finally {
-      if (refs.orthoConsentBtn) refs.orthoConsentBtn.disabled = false;
-    }
-  };
+  if (refs.consentBtn) {
+    refs.consentBtn.onclick = async () => {
+      if (refs.consentBtn.disabled) return;
+      refs.consentBtn.disabled = true;
+      try {
+        await openOdontoPrintModalByMode(ODONTO_PRINT_MODE_CONSENTIMIENTO);
+      } finally {
+        if (refs.consentBtn) refs.consentBtn.disabled = false;
+      }
+    };
+  }
+  if (refs.orthoConsentBtn) {
+    refs.orthoConsentBtn.onclick = async () => {
+      if (refs.orthoConsentBtn.disabled) return;
+      refs.orthoConsentBtn.disabled = true;
+      try {
+        await openOdontoPrintModalByMode(ODONTO_PRINT_MODE_CONSENTIMIENTO_ORTODONCIA);
+      } finally {
+        if (refs.orthoConsentBtn) refs.orthoConsentBtn.disabled = false;
+      }
+    };
+  }
   refs.multiBtn.onclick = async () => {
     if (refs.multiBtn.disabled) return;
     refs.multiBtn.disabled = true;
@@ -6801,30 +6842,34 @@ function bindOdontoPrintFeature() {
     event.preventDefault();
     refs.addItemBtn?.click();
   };
-  refs.promoBtn.onclick = () => {
-    const text = String(refs.promoInput?.value || "");
-    addOdontoPrintItem(text, "promo");
-    if (refs.promoInput) refs.promoInput.value = "";
-  };
-  refs.promoInput.onkeydown = (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    refs.promoBtn?.click();
-  };
-  refs.presetList.onclick = (event) => {
-    const textPresetBtn = event.target?.closest?.("button[data-text-preset-index]");
-    if (textPresetBtn) {
-      const index = Number(textPresetBtn.dataset.textPresetIndex);
-      const preset = Number.isInteger(index) ? ODONTO_PRINT_TEXT_PRESETS[index] : null;
-      if (preset?.lines) {
-        addOdontoPrintItemsBatch(preset.lines, preset.kind || "manual");
+  if (refs.promoBtn && refs.promoInput) {
+    refs.promoBtn.onclick = () => {
+      const text = String(refs.promoInput?.value || "");
+      addOdontoPrintItem(text, "promo");
+      if (refs.promoInput) refs.promoInput.value = "";
+    };
+    refs.promoInput.onkeydown = (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      refs.promoBtn?.click();
+    };
+  }
+  if (refs.presetList) {
+    refs.presetList.onclick = (event) => {
+      const textPresetBtn = event.target?.closest?.("button[data-text-preset-index]");
+      if (textPresetBtn) {
+        const index = Number(textPresetBtn.dataset.textPresetIndex);
+        const preset = Number.isInteger(index) ? ODONTO_PRINT_TEXT_PRESETS[index] : null;
+        if (preset?.lines) {
+          addOdontoPrintItemsBatch(preset.lines, preset.kind || "manual");
+        }
+        return;
       }
-      return;
-    }
-    const button = event.target?.closest?.("button[data-promo]");
-    if (!button) return;
-    addOdontoPrintItem(button.dataset.promo, "promo");
-  };
+      const button = event.target?.closest?.("button[data-promo]");
+      if (!button) return;
+      addOdontoPrintItem(button.dataset.promo, "promo");
+    };
+  }
   if (refs.assistPresetList) {
     refs.assistPresetList.onclick = (event) => {
       const button = event.target?.closest?.("button[data-assist-preset]");

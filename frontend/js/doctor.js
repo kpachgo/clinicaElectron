@@ -35,6 +35,27 @@
     return `${clean}${sep}v=${Date.now()}`;
   }
 
+  async function leerRespuestaApi(res, fallbackMessage) {
+    const text = await res.text();
+    const contentType = String(res.headers?.get?.("content-type") || "").toLowerCase();
+    if (contentType.includes("application/json") || /^[\s\r\n]*[{[]/.test(text)) {
+      try {
+        return text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(fallbackMessage || "Respuesta invalida del servidor");
+      }
+    }
+
+    if (!res.ok) {
+      if (res.status === 413) {
+        throw new Error("La imagen es demasiado grande. Seleccione una firma mas liviana.");
+      }
+      throw new Error(fallbackMessage || "El servidor devolvio una respuesta no valida");
+    }
+
+    throw new Error(fallbackMessage || "Respuesta invalida del servidor");
+  }
+
   function formatDate(value) {
     const raw = String(value || "").trim();
     if (!raw) return "--";
@@ -537,7 +558,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ firmaBase64 })
         });
-        const json = await res.json();
+        const json = await leerRespuestaApi(res, "No se pudo actualizar la firma");
         if (!res.ok || !json?.ok) {
           throw new Error(json?.message || "No se pudo actualizar la firma");
         }
@@ -562,7 +583,7 @@
       if (!esDoctorLogueado) return;
 
       try {
-        const res = await fetch("/api/doctor/select", { cache: "no-store" });
+        const res = await fetch("/api/doctor/select?soloVinculado=1", { cache: "no-store" });
         const json = await res.json();
         if (
           json?.ok &&
@@ -1069,8 +1090,12 @@
         const tdAcciones = document.createElement("td");
         tdAcciones.className = "doctor-row-actions";
         if (puedeCambiarEstado) {
+          const actionsPanel = document.createElement("div");
+          actionsPanel.className = "doctor-own-actions-panel";
+
           const btnEstado = document.createElement("button");
-          btnEstado.className = "ui-action-btn is-warning row-btn doctor-toggle-estado";
+          btnEstado.type = "button";
+          btnEstado.className = "doctor-own-action-btn is-warning row-btn doctor-toggle-estado";
           btnEstado.dataset.id = String(doctor.id);
           btnEstado.dataset.estadoTarget = String(estadoDestino);
           btnEstado.title = esActivo ? "Marcar inactivo" : "Marcar activo";
@@ -1078,31 +1103,43 @@
             "aria-label",
             esActivo ? "Marcar doctor inactivo" : "Marcar doctor activo"
           );
-          btnEstado.innerHTML = renderIcon("arrow-path");
+          btnEstado.innerHTML = `
+            ${renderIcon("arrow-path", "doctor-own-action-icon")}
+            <span>${esActivo ? "Marcar inactivo" : "Marcar activo"}</span>
+          `;
           btnEstado.addEventListener("click", () => {
             abrirModalEstadoDoctor(doctor, estadoDestino);
           });
-          tdAcciones.appendChild(btnEstado);
+          actionsPanel.appendChild(btnEstado);
 
           const btnFirmaUpdate = document.createElement("button");
-          btnFirmaUpdate.className = "ui-action-btn is-info row-btn doctor-update-firma";
+          btnFirmaUpdate.type = "button";
+          btnFirmaUpdate.className = "doctor-own-action-btn is-info row-btn doctor-update-firma";
           btnFirmaUpdate.dataset.id = String(doctor.id);
           btnFirmaUpdate.title = "Actualizar firma";
           btnFirmaUpdate.setAttribute("aria-label", "Actualizar firma del doctor");
-          btnFirmaUpdate.innerHTML = renderIcon("document-text");
+          btnFirmaUpdate.innerHTML = `
+            ${renderIcon("document-text", "doctor-own-action-icon")}
+            <span>Actualizar firma</span>
+          `;
           btnFirmaUpdate.addEventListener("click", () => {
             abrirModalActualizarFirma(doctor);
           });
-          tdAcciones.appendChild(btnFirmaUpdate);
+          actionsPanel.appendChild(btnFirmaUpdate);
 
           const btnSelloUpdate = document.createElement("button");
-          btnSelloUpdate.className = "ui-action-btn is-success row-btn doctor-update-sello";
+          btnSelloUpdate.type = "button";
+          btnSelloUpdate.className = "doctor-own-action-btn is-success row-btn doctor-update-sello";
           btnSelloUpdate.dataset.id = String(doctor.id);
           btnSelloUpdate.title = "Actualizar sello";
           btnSelloUpdate.setAttribute("aria-label", "Actualizar sello del doctor");
-          btnSelloUpdate.innerHTML = renderIcon("shield-check");
+          btnSelloUpdate.innerHTML = `
+            ${renderIcon("shield-check", "doctor-own-action-icon")}
+            <span>Actualizar sello</span>
+          `;
           btnSelloUpdate.addEventListener("click", onUploadSello);
-          tdAcciones.appendChild(btnSelloUpdate);
+          actionsPanel.appendChild(btnSelloUpdate);
+          tdAcciones.appendChild(actionsPanel);
         } else {
           const noAction = document.createElement("em");
           noAction.style.color = "#94a3b8";
@@ -1487,7 +1524,7 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ nombre, telefono, firmaBase64 })
           });
-          const json = await res.json();
+          const json = await leerRespuestaApi(res, "No se pudo registrar doctor");
           if (!res.ok || !json?.ok) {
             throw new Error(json?.message || "No se pudo registrar doctor");
           }

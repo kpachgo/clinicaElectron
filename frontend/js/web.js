@@ -164,6 +164,26 @@ function getCurrentUser() {
 // FETCH GLOBAL CON JWT
 // =========================================
 const originalFetch = window.fetch;
+window.__clinicaAppConfig = window.__clinicaAppConfig || { modoVenta: false };
+window.isModoVenta = function () {
+    return window.__clinicaAppConfig?.modoVenta === true;
+};
+
+async function loadPublicAppConfig() {
+    try {
+        const res = await originalFetch(`/api/app-config/public?_ts=${Date.now()}`, {
+            cache: "no-store"
+        });
+        const data = await res.json();
+        window.__clinicaAppConfig = {
+            modoVenta: data?.ok === true && data?.data?.modoVenta === true
+        };
+    } catch (err) {
+        console.warn("No se pudo cargar configuracion publica de app", err);
+        window.__clinicaAppConfig = { modoVenta: false };
+    }
+    return window.__clinicaAppConfig;
+}
 const NETWORK_ERROR_STREAK_RESET_MS = 45000;
 const NETWORK_ERROR_NOTIFY_THROTTLE_MS = 20000;
 const NETWORK_ERROR_FOREGROUND_GET_THRESHOLD = 2;
@@ -1368,6 +1388,7 @@ window.loadView = loadView;
 window.applyMenuPermissions = applyMenuPermissions;
 window.__setAppChromeVisible = setAppChromeVisible;
 window.__applyTheme = applyTheme;
+window.__loadPublicAppConfig = loadPublicAppConfig;
 window.refreshLicenseWarning = refreshLicenseWarning;
 window.refreshSecurityProtocolStatus = refreshSecurityProtocolStatus;
 window.getSecurityProtocolState = function () {
@@ -1375,10 +1396,11 @@ window.getSecurityProtocolState = function () {
 };
 
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     initTopbarEnhancements();
     bindLicenseBellEvents();
     bindSecurityProtocolShortcut();
+    await loadPublicAppConfig();
     if (isAuthenticated()) {
         setAppChromeVisible(true);
 

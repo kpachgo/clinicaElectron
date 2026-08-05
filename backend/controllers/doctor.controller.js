@@ -125,10 +125,16 @@ const crear = async (req, res) => {
     }
 
     // 1️⃣ Insertar doctor SIN firma
-    const [result] = await pool.query(
-      "INSERT INTO doctor (nombreD, TelefonoD) VALUES (?, ?)",
-      [nombre, telefono || null]
-    );
+    const tieneColumnaEstado = await existeColumnaEstadoDoctor();
+    const [result] = tieneColumnaEstado
+      ? await pool.query(
+          "INSERT INTO doctor (nombreD, TelefonoD, estadoD) VALUES (?, ?, 1)",
+          [nombre, telefono || null]
+        )
+      : await pool.query(
+          "INSERT INTO doctor (nombreD, TelefonoD) VALUES (?, ?)",
+          [nombre, telefono || null]
+        );
 
     const idDoctor = result.insertId;
     let rutaFirma = null;
