@@ -2250,6 +2250,9 @@
         const agendaRows = agendaRowsRaw.map((item) => normalizarAgendaRow(item, fechaISO, true));
         const candidatos = agendaRows.filter((item) => {
           const estado = normalizarTexto(item?.estado);
+          // Una cita marcada como presente no puede tratarse como inasistencia,
+          // aunque el registro correspondiente de En Cola ya no exista.
+          if (item?.presente) return false;
           return estado === "confirmado" || estado === "pendiente";
         });
 

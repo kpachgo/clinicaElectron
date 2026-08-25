@@ -3,7 +3,7 @@
   const PAGE_SIZE_OPTIONS = [10, 25, 50];
   const DEFAULT_PAGE_SIZE = 25;
   const SEARCH_DEBOUNCE_MS = 220;
-  const SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3"]);
+  const SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3", "cancelados"]);
   const ESTADO_VALUES = new Set(["all", "activo", "inactivo"]);
   const TRATAMIENTO_VALUES = new Set(["all", "odontologia", "ortodoncia", "sin_registrar"]);
 
@@ -123,6 +123,7 @@
   }
 
   function getSegmentLabel(segmentKey) {
+    if (segmentKey === "cancelados") return "Cancelados sin reprogramar";
     if (segmentKey === "retrasado") return "Retrasado";
     if (segmentKey === "m2") return "+2 meses";
     if (segmentKey === "m3") return "+3 meses";
@@ -315,7 +316,8 @@
         tipoTratamientoP: tratamientoLabel,
         tratamientoKey: getTratamientoKey(tratamientoLabel),
         sms: toBit(item?.sms, 0),
-        llamada: toBit(item?.llamada, 0)
+        llamada: toBit(item?.llamada, 0),
+        fechaCancelacion: item?.fechaCancelacion ? String(item.fechaCancelacion).trim() : null
       };
     });
 
@@ -333,7 +335,8 @@
         total: Math.max(0, toInt(rawTotales.total, total)),
         retrasado: Math.max(0, toInt(rawTotales.retrasado, 0)),
         m2: Math.max(0, toInt(rawTotales.m2, 0)),
-        m3: Math.max(0, toInt(rawTotales.m3, 0))
+        m3: Math.max(0, toInt(rawTotales.m3, 0)),
+        cancelados: Math.max(0, toInt(rawTotales.cancelados, 0))
       },
       pagination: {
         page,
@@ -389,6 +392,16 @@
                 <option value="inactivo">Inactivos</option>
               </select>
             </label>
+            <label class="ms-control-field" for="ms-segmento">
+              <span>Seguimiento</span>
+              <select id="ms-segmento" class="ui-control">
+                <option value="all">Todos</option>
+                <option value="retrasado">Retrasados</option>
+                <option value="m2">+2 meses</option>
+                <option value="m3">+3 meses</option>
+                <option value="cancelados">Cancelados sin reprogramar</option>
+              </select>
+            </label>
             <button id="ms-clear" class="ui-toolbar-btn is-neutral" type="button">Limpiar filtros</button>
           </div>
           <div class="ms-control-row ms-control-row-flags">
@@ -424,7 +437,7 @@
                 <th>Paciente</th>
                 <th class="ms-col-accion">Accion</th>
                 <th>Telefono</th>
-                <th>Ultima visita</th>
+                <th>Ultima visita / cancelacion</th>
                 <th>Meses ausencia</th>
                 <th>Tratamiento</th>
                 <th>Estado</th>
@@ -457,6 +470,7 @@
       inputSearch: container.querySelector("#ms-search"),
       inputTratamiento: container.querySelector("#ms-tratamiento"),
       inputEstado: container.querySelector("#ms-estado"),
+      inputSegmento: container.querySelector("#ms-segmento"),
       toggleNumeracion: container.querySelector("#ms-toggle-numeracion"),
       toggleSms: container.querySelector("#ms-toggle-sms"),
       toggleLlamada: container.querySelector("#ms-toggle-llamada"),
@@ -496,7 +510,7 @@
       rows: [],
       loading: false,
       errorText: "",
-      totales: { total: 0, retrasado: 0, m2: 0, m3: 0 },
+      totales: { total: 0, retrasado: 0, m2: 0, m3: 0, cancelados: 0 },
       pagination: { page: 1, pageSize: DEFAULT_PAGE_SIZE, total: 0, totalPages: 1, from: 0, to: 0 }
     };
 
@@ -555,7 +569,8 @@
         { key: "total", label: "Total", value: counts.total, tone: "total" },
         { key: "retrasado", label: "Retrasado", value: counts.retrasado, tone: "retrasado" },
         { key: "m2", label: "+2 meses", value: counts.m2, tone: "m2" },
-        { key: "m3", label: "+3 meses", value: counts.m3, tone: "m3" }
+        { key: "m3", label: "+3 meses", value: counts.m3, tone: "m3" },
+        { key: "cancelados", label: "Cancelados sin reprogramar", value: counts.cancelados, tone: "cancelados" }
       ];
 
       refs.kpiGrid.innerHTML = cards.map((card) => {
@@ -717,7 +732,7 @@
               </div>
             </td>
             <td class="ms-col-telefono">${escapeHtml(row.telefonoP || "-")}</td>
-            <td class="ms-col-ultima">${escapeHtml(formatDateShort(row.ultimaVisitaP))}</td>
+            <td class="ms-col-ultima">${escapeHtml(formatDateShort(row.segmentoKey === "cancelados" ? row.fechaCancelacion : row.ultimaVisitaP))}</td>
             <td class="ms-col-meses">${row.mesesAusencia}</td>
             <td class="ms-col-tratamiento"><span class="ms-chip is-tratamiento">${escapeHtml(row.tipoTratamientoP || "Sin registrar")}</span></td>
             <td class="ms-col-estado"><span class="ms-chip ${estadoClass}">${row.estadoLabel}</span></td>
@@ -840,6 +855,7 @@
       if (refs.inputSearch) refs.inputSearch.value = state.q;
       if (refs.inputTratamiento) refs.inputTratamiento.value = state.tratamientoFilter;
       if (refs.inputEstado) refs.inputEstado.value = state.estadoFilter;
+      if (refs.inputSegmento) refs.inputSegmento.value = state.segmentFilter;
       if (refs.pageSize) refs.pageSize.value = String(state.pageSize);
 
       persistMonitorUiState();
@@ -885,6 +901,15 @@
       void refreshData();
     });
 
+    bind(refs.inputSegmento, "change", (e) => {
+      if (!isViewActive()) return;
+      const next = String(e?.target?.value || "all").trim().toLowerCase();
+      state.segmentFilter = SEGMENT_VALUES.has(next) ? next : "all";
+      state.page = 1;
+      persistMonitorUiState();
+      void refreshData();
+    });
+
     bind(refs.btnClear, "click", () => {
       if (!isViewActive()) return;
       resetFilters();
@@ -899,6 +924,8 @@
 
       if (key === "total") state.segmentFilter = "all";
       else state.segmentFilter = state.segmentFilter === key ? "all" : key;
+
+      if (refs.inputSegmento) refs.inputSegmento.value = state.segmentFilter;
 
       state.page = 1;
       persistMonitorUiState();
@@ -1088,6 +1115,7 @@
 
     if (refs.inputFecha) refs.inputFecha.value = state.fechaCorte;
     if (refs.inputSearch) refs.inputSearch.value = state.q;
+    if (refs.inputSegmento) refs.inputSegmento.value = state.segmentFilter;
     if (refs.inputTratamiento) refs.inputTratamiento.value = state.tratamientoFilter;
     if (refs.inputEstado) refs.inputEstado.value = state.estadoFilter;
     if (refs.pageSize) refs.pageSize.value = String(state.pageSize);

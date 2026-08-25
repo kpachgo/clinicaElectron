@@ -294,7 +294,7 @@
 .ms-kpi-grid {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
   gap: 6px;
 }
 
@@ -373,6 +373,12 @@
   background: var(--ms-m3-bg);
   border-color: var(--ms-m3-border);
   color: var(--ms-m3-text);
+}
+
+.ms-kpi-card.tone-cancelados {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
 }
 
 .ms-kpi-card.tone-activo {

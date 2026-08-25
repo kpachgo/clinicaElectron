@@ -15,7 +15,7 @@ const METODO_AUTORIZACION_VALIDACION = "VALIDACION_CREDENCIAL";
 const METODO_AUTORIZACION_SIN_DOCTOR = "SIN_DOCTOR";
 const DOCTOR_REGISTRO_FISICO = "registro fisico";
 const MAX_PROCEDIMIENTO_CITA = 500;
-const MONITOR_SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3"]);
+const MONITOR_SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3", "cancelados"]);
 const MONITOR_ESTADO_VALUES = new Set(["all", "activo", "inactivo"]);
 const MONITOR_TRATAMIENTO_VALUES = new Set(["all", "odontologia", "ortodoncia", "sin_registrar"]);
 const MONITOR_PAGE_SIZE_VALUES = new Set([10, 25, 50]);
@@ -37,6 +37,77 @@ function isTransientDbError(err) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getMonitorCanceladosMatchSql(leftAlias, rightAlias) {
+  const leftNameValue = `LOWER(TRIM(IFNULL(${leftAlias}.nombreAP, ''))) COLLATE utf8mb4_unicode_ci`;
+  const rightNameValue = `LOWER(TRIM(IFNULL(${rightAlias}.NombreP, ''))) COLLATE utf8mb4_unicode_ci`;
+  const leftName = `${leftNameValue} = ${rightNameValue}`;
+  const leftPhone = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(TRIM(IFNULL(${leftAlias}.contactoAP, ''))), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') COLLATE utf8mb4_unicode_ci`;
+  const rightPhone = `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(TRIM(IFNULL(${rightAlias}.telefonoP, ''))), ' ', ''), '-', ''), '(', ''), ')', ''), '+', '') COLLATE utf8mb4_unicode_ci`;
+  return `(${leftName} AND ((${leftPhone} <> '' AND ${leftPhone} = ${rightPhone}) OR (${leftPhone} = '' AND (SELECT COUNT(*) FROM paciente p2 WHERE LOWER(TRIM(IFNULL(p2.NombreP, ''))) COLLATE utf8mb4_unicode_ci = ${rightNameValue}) = 1)))`;
+}
+
+function buildMonitorCanceladosSql({ fechaCorte, estado, tratamiento, q, mode, page, pageSize }) {
+  const inicioMes = `${String(fechaCorte).slice(0, 7)}-01`;
+  const matchAgendaPaciente = getMonitorCanceladosMatchSql("a", "p");
+  const matchAgendaCandidato = getMonitorCanceladosMatchSql("a2", "c");
+  const params = [inicioMes, fechaCorte];
+  const filters = [
+    "(c.ultimaVisitaP IS NULL OR c.ultimaVisitaP <= c.fechaCancelacion)",
+    `NOT EXISTS (SELECT 1 FROM agendapersona a2 WHERE ${matchAgendaCandidato} AND a2.fechaAP > c.fechaCancelacion AND LOWER(TRIM(IFNULL(a2.estadoAP, ''))) NOT IN ('cancelado', 'cancelada'))`,
+    "NOT EXISTS (SELECT 1 FROM cola_paciente cp WHERE LOWER(TRIM(IFNULL(cp.nombrePaciente, ''))) COLLATE utf8mb4_unicode_ci = LOWER(TRIM(IFNULL(c.NombreP, ''))) COLLATE utf8mb4_unicode_ci AND BINARY cp.estado = BINARY 'Atendido' AND cp.fechaAgenda > c.fechaCancelacion)",
+    "(c.estadoKey = ? OR ? = 'all')",
+    "(c.tratamientoKey = ? OR ? = 'all')",
+    "(? = '' OR LOWER(IFNULL(c.NombreP, '')) LIKE CONCAT('%', ?, '%') OR c.telefonoNorm LIKE CONCAT('%', ?, '%'))"
+  ];
+  params.push(estado, estado, tratamiento, tratamiento, q, q, q);
+
+  const selectRows = `c.idPaciente, c.NombreP, c.telefonoP,
+      DATE_FORMAT(c.ultimaVisitaP, '%Y-%m-%d') AS ultimaVisitaP,
+      DATE_FORMAT(c.fechaCancelacion, '%Y-%m-%d') AS fechaCancelacion,
+      0 AS mesesAusencia, 'cancelados' AS segmentoKey, 'Cancelado sin reprogramar' AS segmentoLabel,
+      c.estadoKey, c.estadoLabel, c.tipoTratamientoP, c.tratamientoKey, 0 AS sms, 0 AS llamada`;
+  const base = `
+    WITH candidatos AS (
+      SELECT
+        p.idPaciente,
+        p.NombreP,
+        p.telefonoP,
+        p.ultimaVisitaP,
+        LOWER(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(p.telefonoP, ''), ' ', ''), '-', ''), '(', ''), ')', '')) AS telefonoNorm,
+        CASE WHEN IFNULL(p.estadoP, 1) = 1 THEN 'activo' ELSE 'inactivo' END AS estadoKey,
+        CASE WHEN IFNULL(p.estadoP, 1) = 1 THEN 'Activo' ELSE 'Inactivo' END AS estadoLabel,
+        CASE WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'odontologia' THEN 'Odontologia' WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'ortodoncia' THEN 'Ortodoncia' ELSE 'Sin registrar' END AS tipoTratamientoP,
+        CASE WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'odontologia' THEN 'odontologia' WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'ortodoncia' THEN 'ortodoncia' ELSE 'sin_registrar' END AS tratamientoKey,
+        MAX(a.fechaAP) AS fechaCancelacion
+      FROM paciente p
+      INNER JOIN agendapersona a ON ${matchAgendaPaciente}
+      WHERE a.fechaAP BETWEEN ? AND ?
+        AND LOWER(TRIM(IFNULL(a.estadoAP, ''))) COLLATE utf8mb4_unicode_ci IN ('cancelado', 'cancelada')
+      GROUP BY p.idPaciente, p.NombreP, p.telefonoP, p.ultimaVisitaP, p.estadoP, p.tipoTratamientoP
+    )
+    SELECT ${selectRows}
+    FROM candidatos c
+    WHERE ${filters.join(" AND ")}
+  `;
+  const sql = mode === "count"
+    ? `${base.replace(`SELECT ${selectRows}`, "SELECT COUNT(*) AS totalRows")} `
+    : `${base} ORDER BY c.fechaCancelacion DESC, c.NombreP ASC LIMIT ?, ?`;
+  if (mode !== "count") params.push((page - 1) * pageSize, pageSize);
+  return { sql, params };
+}
+
+async function consultarMonitorCanceladosListado(options) {
+  const built = buildMonitorCanceladosSql({ ...options, mode: "list" });
+  const [rows] = await queryReadWithRetry(built.sql, built.params);
+  return { dataRows: Array.isArray(rows) ? rows : [], totalRows: 0 };
+}
+
+async function contarMonitorCancelados(options) {
+  const built = buildMonitorCanceladosSql({ ...options, mode: "count" });
+  const [rows] = await queryReadWithRetry(built.sql, built.params);
+  return Number(Array.isArray(rows) ? rows[0]?.totalRows || 0 : 0);
 }
 
 async function queryReadWithRetry(sql, params = [], options = {}) {
@@ -283,6 +354,7 @@ function normalizeBitValue(rawValue, fallback = "__INVALID__") {
 }
 
 function getMonitorSegmentLabel(segmentKey) {
+  if (segmentKey === "cancelados") return "Cancelado sin reprogramar";
   if (segmentKey === "retrasado") return "Retrasado";
   if (segmentKey === "m2") return "+2 meses";
   if (segmentKey === "m3") return "+3 meses";
@@ -513,7 +585,7 @@ const monitorSeguimiento = async (req, res) => {
 
     const segmento = normalizeMonitorEnum(req.query?.segmento, MONITOR_SEGMENT_VALUES, "all");
     if (segmento === "__INVALID__") {
-      return badRequest(res, "segmento invalido. Use all|retrasado|m2|m3");
+      return badRequest(res, "segmento invalido. Use all|retrasado|m2|m3|cancelados");
     }
 
     const estado = normalizeMonitorEnum(req.query?.estado, MONITOR_ESTADO_VALUES, "all");
@@ -529,30 +601,23 @@ const monitorSeguimiento = async (req, res) => {
     const q = normalizeMonitorQuery(req.query?.q);
     let page = normalizeMonitorPage(req.query?.page);
     const pageSize = normalizeMonitorPageSize(req.query?.pageSize);
+    const canceladosTotal = await contarMonitorCancelados({ fechaCorte, estado, tratamiento, q });
 
-    let listado = await consultarMonitorSeguimientoListado({
-      fechaCorte,
-      segmento,
-      estado,
-      tratamiento,
-      q,
-      page,
-      pageSize
-    });
+    let listado;
+    if (segmento === "cancelados") {
+      listado = await consultarMonitorCanceladosListado({ fechaCorte, estado, tratamiento, q, page, pageSize });
+      listado.totalRows = canceladosTotal;
+    } else {
+      listado = await consultarMonitorSeguimientoListado({ fechaCorte, segmento, estado, tratamiento, q, page, pageSize });
+    }
 
     let total = Number(listado.totalRows || 0);
     let totalPages = Math.max(1, Math.ceil(total / pageSize));
     if (total > 0 && page > totalPages) {
       page = totalPages;
-      listado = await consultarMonitorSeguimientoListado({
-        fechaCorte,
-        segmento,
-        estado,
-        tratamiento,
-        q,
-        page,
-        pageSize
-      });
+      listado = segmento === "cancelados"
+        ? await consultarMonitorCanceladosListado({ fechaCorte, estado, tratamiento, q, page, pageSize })
+        : await consultarMonitorSeguimientoListado({ fechaCorte, segmento, estado, tratamiento, q, page, pageSize });
       total = Number(listado.totalRows || 0);
       totalPages = Math.max(1, Math.ceil(total / pageSize));
     }
@@ -575,6 +640,7 @@ const monitorSeguimiento = async (req, res) => {
         NombreP: String(row.NombreP || "").trim(),
         telefonoP: String(row.telefonoP || "").trim(),
         ultimaVisitaP: row.ultimaVisitaP ? String(row.ultimaVisitaP).trim() : null,
+        fechaCancelacion: row.fechaCancelacion ? String(row.fechaCancelacion).trim() : null,
         mesesAusencia: Number.isFinite(mesesAusencia) && mesesAusencia >= 0 ? mesesAusencia : 0,
         segmentoKey,
         segmentoLabel: getMonitorSegmentLabel(segmentoKey),
@@ -587,11 +653,13 @@ const monitorSeguimiento = async (req, res) => {
       };
     });
 
-    const [rowsTotales] = await queryReadWithRetry(
-      "CALL sp_paciente_monitor_seguimiento_totales(?,?,?,?)",
-      [fechaCorte, estado, tratamiento, q]
-    );
-    const totalesRow = firstRow(rowsTotales) || {};
+    const totalesRow = segmento === "cancelados" ? {} : await (async () => {
+      const [rowsTotales] = await queryReadWithRetry(
+        "CALL sp_paciente_monitor_seguimiento_totales(?,?,?,?)",
+        [fechaCorte, estado, tratamiento, q]
+      );
+      return firstRow(rowsTotales) || {};
+    })();
 
     totalPages = Math.max(1, Math.ceil(total / pageSize));
     const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -604,7 +672,8 @@ const monitorSeguimiento = async (req, res) => {
         total,
         retrasado: Number(totalesRow.retrasado || 0),
         m2: Number(totalesRow.m2 || 0),
-        m3: Number(totalesRow.m3 || 0)
+        m3: Number(totalesRow.m3 || 0),
+        cancelados: canceladosTotal
       },
       pagination: {
         page,
