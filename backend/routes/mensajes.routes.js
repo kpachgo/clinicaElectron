@@ -1,0 +1,11 @@
+const router = require("express").Router();
+const auth = require("../middlewares/auth.middleware");
+const controller = require("../controllers/mensajes.controller");
+router.use(auth);
+router.get("/patient-by-phone", controller.findPatientByPhone);
+router.get("/services/:id", controller.getService);
+router.get("/availability", controller.searchAvailability);
+router.post("/appointments", controller.createAppointment);
+router.post("/appointments/reschedule", controller.rescheduleAppointment);
+router.post("/appointments/cancel", controller.cancelAppointment);
+module.exports = router;

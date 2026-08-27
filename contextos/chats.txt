@@ -1,0 +1,145 @@
+Paciente directo, sabe qué tratamiento quiere
+
+Paciente: Buenas tardes, quiero hacer una cita para una limpieza dental.
+Clínica: Claro. ¿La cita sería para usted?
+Paciente: Sí.
+Clínica: ¿Qué día le gustaría asistir?
+Paciente: Mañana.
+Clínica: Tenemos disponibilidad mañana a las 10:00 a. m., 2:00 p. m. y 4:30 p. m. ¿Cuál horario prefiere?
+Paciente: A las 2.
+Clínica: Perfecto. ¿Me brinda su nombre completo, por favor?
+Paciente: Carlos Hernández.
+Clínica: Listo, Carlos. Su cita para limpieza dental queda para mañana a las 2:00 p. m.
+
+Paciente pregunta precio y luego decide agendar
+
+Paciente: Hola, ¿cuánto cuesta una extracción?
+Clínica: La extracción tiene un costo desde $XX, dependiendo de la evaluación y del tipo de extracción.
+Paciente: Ah ok.
+Clínica: Si desea, podemos programarle una evaluación.
+Paciente: Sí, quisiera ir el viernes.
+Clínica: Claro. ¿La consulta sería para usted o para otra persona?
+Paciente: Para mí.
+Clínica: ¿Prefiere horario de mañana o de tarde?
+Paciente: En la tarde.
+Clínica: El viernes tenemos 2:30 p. m. y 4:00 p. m.
+Paciente: 4 está bien.
+Clínica: Perfecto. ¿Me indica su nombre completo?
+
+Paciente no sabe qué tratamiento necesita
+
+Paciente: Quiero hacer una cita porque me duele una muela.
+Clínica: Claro. Podemos programarle una evaluación para que el odontólogo determine qué tratamiento necesita. ¿Desde cuándo tiene el dolor?
+Paciente: Desde ayer.
+Clínica: Entendido. ¿La cita sería para usted?
+Paciente: Sí.
+Clínica: ¿Desea venir hoy o prefiere otro día?
+Paciente: Hoy si se puede.
+Clínica: Tenemos disponibilidad a las 3:00 p. m. y 5:00 p. m.
+Paciente: 3.
+Clínica: Perfecto. ¿Me brinda su nombre?
+
+Paciente escribe todo de una vez
+
+Paciente: Hola quiero cita para limpieza el sábado como a las 10 soy Juan Pérez.
+Clínica: Claro, Juan. Revisaré disponibilidad para limpieza dental el sábado alrededor de las 10:00 a. m. Tenemos espacio a las 10:30 a. m. ¿Le funciona?
+Paciente: Sí.
+Clínica: Perfecto. Su cita queda programada para el sábado a las 10:30 a. m.
+
+Este ejemplo es importante porque el agente no debería volver a preguntar nombre, tratamiento, día ni horario si el paciente ya los proporcionó.
+
+Paciente cambia de opinión durante el proceso
+
+Paciente: Quiero cita para una limpieza.
+Clínica: Claro. ¿Qué día le gustaría asistir?
+Paciente: El miércoles.
+Clínica: Tenemos 9:00 a. m., 11:00 a. m. y 3:00 p. m.
+Paciente: Mejor quiero una evaluación porque me está doliendo una muela.
+Clínica: Entendido. Entonces programaremos una evaluación por el dolor de muela. ¿Desea mantener el miércoles?
+Paciente: Sí.
+Clínica: Perfecto. Para evaluación tenemos 11:30 a. m. y 3:30 p. m.
+Paciente: 3:30.
+
+Aquí el agente debe entender que cambió el motivo de la cita.
+
+Paciente da una respuesta ambigua
+
+Paciente: Quiero cita.
+Clínica: Claro. ¿Para qué tratamiento o motivo desea la cita?
+Paciente: Para los dientes.
+Clínica: Entiendo. ¿Desea una evaluación general o tiene alguna molestia específica?
+Paciente: Se me quebró uno.
+Clínica: En ese caso podemos programarle una evaluación para revisar el diente quebrado. ¿Qué día podría asistir?
+
+Paciente pide un horario que no existe
+
+Paciente: Quiero una cita para mañana a las 7 de la noche.
+Clínica: Mañana no tenemos atención a las 7:00 p. m. El último horario disponible es a las 5:00 p. m. También tenemos 3:30 p. m. ¿Alguno le funciona?
+Paciente: 5 está bien.
+Clínica: Perfecto. ¿Para qué tratamiento o motivo sería la cita?
+
+Paciente no responde exactamente lo preguntado
+
+Clínica: ¿Qué día desea asistir?
+Paciente: Yo salgo del trabajo después de las 4.
+Clínica: Entendido, entonces buscaré horarios después de las 4:00 p. m. ¿Qué día le conviene?
+Paciente: El jueves.
+Clínica: El jueves tenemos 4:30 p. m. y 5:00 p. m.
+Paciente: La última.
+
+El agente debe interpretar “la última” = 5:00 p. m.
+
+Cita para otra persona
+
+Paciente: Quiero hacer una cita para mi hija.
+Clínica: Claro. ¿Qué edad tiene su hija?
+Paciente: 12 años.
+Clínica: Perfecto. Al ser menor de edad deberá asistir acompañada por su encargado. ¿Cuál es el motivo de la consulta?
+Paciente: Tiene una caries.
+Clínica: Podemos programarle una evaluación. ¿Qué día desea asistir?
+
+Paciente quiere brackets
+
+Paciente: Buenas, quiero una cita para ponerme brackets.
+Clínica: Claro. Para orientarle correctamente, ¿qué edad tiene?
+Paciente: 25.
+Clínica: ¿Ha utilizado brackets anteriormente?
+Paciente: No, nunca.
+Clínica: Perfecto. Le puedo brindar la información para iniciar el tratamiento de ortodoncia y posteriormente revisar disponibilidad para su cita.
+
+Este ejemplo te sirve especialmente para probar que el agente no entre directamente a agendar sin completar primero el flujo propio de ortodoncia.
+
+Paciente ya utilizó brackets
+
+Paciente: Quisiera volver a ponerme brackets.
+Clínica: Claro. ¿Qué edad tiene?
+Paciente: 31.
+Clínica: ¿Ya utilizó brackets anteriormente?
+Paciente: Sí, hace como cinco años.
+Clínica: Entendido. En ese caso necesitaremos una radiografía panorámica para iniciar la evaluación de ortodoncia. Después podemos coordinar su cita.
+
+Paciente mezcla varias intenciones
+
+Paciente: Hola, cuánto cuesta una limpieza y también quisiera saber si tienen espacio mañana porque me duele una muela.
+Clínica: Claro. Le puedo brindar el precio de la limpieza. Sobre el dolor de muela, lo recomendable sería programar una evaluación. ¿Desea que revisemos disponibilidad para mañana?
+Paciente: Sí.
+Clínica: Tenemos 9:30 a. m., 1:00 p. m. y 4:00 p. m.
+Paciente: Y la limpieza me la pueden hacer de una vez?
+Clínica: Dependerá de la evaluación y de la disponibilidad durante su visita. Podemos dejar la cita inicialmente como evaluación por dolor dental.
+
+Paciente se desvía de la conversación
+
+Clínica: ¿Qué horario prefiere, 10:00 a. m. o 2:00 p. m.?
+Paciente: ¿Aceptan tarjeta?
+Clínica: Sí, aceptamos tarjeta. Para continuar con su cita, ¿prefiere las 10:00 a. m. o las 2:00 p. m.?
+Paciente: 2.
+Clínica: Perfecto.
+
+Este es muy importante para tu agente: debe responder la pregunta secundaria y luego regresar al punto pendiente del flujo.
+
+Paciente corrige información anterior
+
+Paciente: Quiero cita el martes.
+Clínica: Claro. ¿Para qué tratamiento?
+Paciente: Limpieza. Perdón, dije martes pero quería decir miércoles.
+Clínica: No hay problema. Entonces buscamos disponibilidad para limpieza el miércoles. ¿Prefiere mañana o tarde?

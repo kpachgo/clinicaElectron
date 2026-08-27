@@ -1,0 +1,368 @@
+const { getDb } = require("../../services/mensajesDatabase.service");
+const { normalizePhone } = require("./connectors/messagingConnector");
+
+function toConversation(row) {
+  return row ? { ...row, patientId: row.patient_id, attentionMode: row.attention_mode, humanOwnerId: row.human_owner_id, responseDelayMin: row.response_delay_min, responseDelayMax: row.response_delay_max, waChatId: row.wa_chat_id, waContactNumber: row.wa_contact_number, waDisplayName: row.wa_display_name, lifecycleState: row.lifecycle_state, lastMessageDirection: row.last_message_direction, lastMessageAt: row.last_message_at, lastMessageType: row.last_message_type, lastMessageSource: row.last_message_source, lastInboundAt: row.last_inbound_at, lastOutboundAt: row.last_outbound_at, followUpSent: Boolean(row.follow_up_sent), humanReviewReason: row.human_review_reason, phoneResolved: Boolean(row.wa_contact_number || /^\d{7,15}$/.test(String(row.phone || ""))), createdAt: row.created_at, updatedAt: row.updated_at } : null;
+}
+
+function toMessage(row) {
+  return row ? { ...row, conversationId: row.conversation_id, externalId: row.external_id, deliveryStatus: row.delivery_status, messageAt: row.message_at, createdAt: row.created_at } : null;
+}
+function phoneRuleVariants(value) { const digits = String(value || "").replace(/\D/g, ""); return [...new Set([digits, digits.length === 11 && digits.startsWith("503") ? digits.slice(3) : ""].filter(Boolean))]; }
+
+class MensajesRepository {
+  constructor(database = getDb()) {
+    this.db = database;
+  }
+
+  findOrCreateConversation(phone, options = {}) {
+    const waChatId = typeof options.waChatId === "string" && options.waChatId.trim() ? options.waChatId.trim() : null;
+    const rawPhone = String(phone || "");
+    const normalizedPhone = waChatId?.endsWith("@lid") && rawPhone === waChatId ? null : (phone ? normalizePhone(phone) : null);
+    const waContactNumber = options.waContactNumber ? normalizePhone(options.waContactNumber) : null;
+    const waDisplayName = typeof options.waDisplayName === "string" && options.waDisplayName.trim() ? options.waDisplayName.trim() : null;
+    const existing = waChatId
+      ? this.db.prepare("SELECT * FROM conversations WHERE wa_chat_id=? AND status <> 'closed' LIMIT 1").get(waChatId)
+      : (normalizedPhone ? this.db.prepare("SELECT * FROM conversations WHERE phone=? AND status <> 'closed' LIMIT 1").get(normalizedPhone) : null);
+    if (existing) {
+      // Primero fusionamos una conversación que ya tenga el teléfono real.
+      // Si actualizamos el teléfono antes, el índice único de conversaciones
+      // aborta la operación y el mensaje no llega a SQLite.
+      if (waContactNumber) this.mergeDuplicateWhatsAppConversation(waChatId, waContactNumber);
+      const replaceSimulationChat = waChatId && !waChatId.startsWith("simulated:") && String(existing.wa_chat_id || "").startsWith("simulated:");
+      const chatId = replaceSimulationChat ? waChatId : (existing.wa_chat_id || waChatId);
+      this.db.prepare("UPDATE conversations SET wa_chat_id=?, wa_contact_number=COALESCE(?,wa_contact_number), wa_display_name=COALESCE(?,wa_display_name), phone=CASE WHEN ? IS NOT NULL THEN ? ELSE phone END WHERE id=?").run(chatId, waContactNumber, waDisplayName, waContactNumber, waContactNumber, existing.id);
+      return this.getConversation(existing.id);
+    }
+    const byPhone = waChatId && normalizedPhone ? this.db.prepare("SELECT * FROM conversations WHERE phone=? AND status <> 'closed' LIMIT 1").get(normalizedPhone) : null;
+    if (byPhone) {
+      const replaceSimulationChat = waChatId && !waChatId.startsWith("simulated:") && String(byPhone.wa_chat_id || "").startsWith("simulated:");
+      const chatId = replaceSimulationChat ? waChatId : (byPhone.wa_chat_id || waChatId);
+      this.db.prepare("UPDATE conversations SET wa_chat_id=?, wa_contact_number=COALESCE(?,wa_contact_number), wa_display_name=COALESCE(?,wa_display_name) WHERE id=?").run(chatId, waContactNumber, waDisplayName, byPhone.id);
+      return this.getConversation(byPhone.id);
+    }
+    const result = this.db.prepare("INSERT INTO conversations (phone, patient_id, attention_mode, wa_chat_id, wa_contact_number, wa_display_name) VALUES (?, ?, ?, ?, ?, ?)").run(waContactNumber || normalizedPhone || waChatId, options.patientId || null, options.attentionMode || "assistant", waChatId, waContactNumber, waDisplayName);
+    return toConversation(this.db.prepare("SELECT * FROM conversations WHERE id=?").get(result.lastInsertRowid));
+  }
+
+  getConversation(id) {
+    return toConversation(this.db.prepare("SELECT * FROM conversations WHERE id=?").get(id));
+  }
+
+  updateWhatsAppContact(conversationId, phone, displayName = null) {
+    const normalized = normalizePhone(phone);
+    const duplicate = this.db.prepare("SELECT * FROM conversations WHERE phone=? AND id<>? AND status <> 'closed' LIMIT 1").get(normalized, conversationId);
+    if (duplicate) this.mergeConversation(duplicate.id, conversationId);
+    this.db.prepare("UPDATE conversations SET phone=?, wa_contact_number=?, wa_display_name=COALESCE(?,wa_display_name), updated_at=datetime('now') WHERE id=?").run(normalized, normalized, displayName || null, conversationId);
+    return this.getConversation(conversationId);
+  }
+
+  mergeConversation(sourceId, targetId) {
+    if (sourceId === targetId) return this.getConversation(targetId);
+    const tables = ["messages", "message_actions", "ai_runs", "automation_jobs", "outgoing_queue"];
+    const transaction = this.db.transaction(() => {
+      for (const table of tables) {
+        if (table === "outgoing_queue") continue;
+        this.db.prepare(`UPDATE ${table} SET conversation_id=? WHERE conversation_id=?`).run(targetId, sourceId);
+      }
+      this.db.prepare("DELETE FROM response_queue WHERE conversation_id=?").run(sourceId);
+      this.db.prepare("DELETE FROM conversation_state WHERE conversation_id=?").run(sourceId);
+      this.db.prepare("DELETE FROM conversations WHERE id=?").run(sourceId);
+    });
+    transaction();
+    return this.getConversation(targetId);
+  }
+
+  mergeDuplicateWhatsAppConversation(waChatId, phone) {
+    if (!waChatId || !phone) return null;
+    const normalized = normalizePhone(phone);
+    const target = this.db.prepare("SELECT * FROM conversations WHERE wa_chat_id=? AND status <> 'closed' LIMIT 1").get(waChatId);
+    if (!target) return null;
+    const duplicate = this.db.prepare("SELECT * FROM conversations WHERE phone=? AND id<>? AND status <> 'closed' ORDER BY id LIMIT 1").get(normalized, target.id);
+    if (duplicate) this.mergeConversation(duplicate.id, target.id);
+    this.db.prepare("UPDATE conversations SET phone=?, wa_contact_number=? WHERE id=?").run(normalized, normalized, target.id);
+    return this.getConversation(target.id);
+  }
+
+  listConversations(options = {}) {
+    const limit = Math.min(Math.max(Number(options.limit) || 50, 1), 200);
+    return this.db.prepare("SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.author='patient' AND m.read_at IS NULL) AS unread_count FROM conversations c WHERE NOT (c.wa_chat_id LIKE '%@lid' AND NOT EXISTS (SELECT 1 FROM messages incoming WHERE incoming.conversation_id=c.id AND incoming.direction='incoming')) ORDER BY c.updated_at DESC LIMIT ?").all(limit).map((row) => ({ ...toConversation(row), unreadCount: row.unread_count }));
+  }
+
+  saveMessage({ conversationId, externalId, direction, author, text, messageAt, rawType = "text", source = "live" }) {
+    if (!conversationId || !externalId || !direction || !author || typeof text !== "string" || !text.trim()) {
+      throw new TypeError("Datos de mensaje incompletos");
+    }
+    const existing = this.db.prepare("SELECT * FROM messages WHERE external_id=? LIMIT 1").get(externalId);
+    if (existing) {
+      if (direction === "outgoing" && author && existing.author !== author) {
+        this.db.prepare("UPDATE messages SET author=? WHERE id=?").run(author, existing.id);
+        return { message: toMessage(this.db.prepare("SELECT * FROM messages WHERE id=?").get(existing.id)), duplicate: true };
+      }
+      return { message: toMessage(existing), duplicate: true };
+    }
+    const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    const update = this.db.prepare(`UPDATE conversations SET updated_at=datetime('now'), lifecycle_state=CASE WHEN ?='incoming' THEN 'active' ELSE lifecycle_state END, last_message_direction=?, last_message_at=?, last_message_type=?, last_message_source=?, last_inbound_at=CASE WHEN ?='incoming' THEN ? ELSE last_inbound_at END, last_outbound_at=CASE WHEN ?='outgoing' THEN ? ELSE last_outbound_at END WHERE id=?`);
+    const transaction = this.db.transaction(() => {
+      const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", messageAt || new Date().toISOString());
+      const effectiveMessageAt = messageAt || new Date().toISOString();
+      update.run(direction, direction, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
+      return this.db.prepare("SELECT * FROM messages WHERE id=?").get(result.lastInsertRowid);
+    });
+    return { message: toMessage(transaction()), duplicate: false };
+  }
+
+  saveIncomingMessage(event) {
+    const conversation = this.findOrCreateConversation(event.waContactNumber || event.phone || event.waChatId, event);
+    const identity = this.getPatientLink(conversation.id);
+    if (identity && conversation.patientId !== identity.patientId) this.updateConversation(conversation.id, { patientId: identity.patientId });
+    const saved = this.saveMessage({ conversationId: conversation.id, externalId: event.externalId, direction: "incoming", author: "patient", text: event.text, messageAt: event.messageAt, rawType: event.rawType, source: event.source });
+    return { conversation, ...saved };
+  }
+
+  saveOutgoingMessage({ phone, externalId, text, author = "human", messageAt, waChatId = null, waContactNumber = null, waDisplayName = null, rawType = "text", source = "live" }) {
+    const conversation = this.findOrCreateConversation(waContactNumber || phone, { waChatId, waContactNumber, waDisplayName });
+    const saved = this.saveMessage({ conversationId: conversation.id, externalId, direction: "outgoing", author, text, messageAt, rawType, source });
+    return { conversation, ...saved };
+  }
+  saveAutomationMessage({ phone, externalId, text, messageAt }) { const conversation = this.findOrCreateConversation(phone); const saved = this.saveMessage({ conversationId: conversation.id, externalId, direction: "outgoing", author: "system", text, messageAt }); return { conversation, ...saved }; }
+
+  updateMessageStatus(externalId, status, error = null) {
+    this.db.prepare("UPDATE messages SET delivery_status=?, error=? WHERE external_id=?").run(status, error, externalId);
+    return toMessage(this.db.prepare("SELECT * FROM messages WHERE external_id=? LIMIT 1").get(externalId));
+  }
+
+  enqueueOutgoing(phone, content, idempotencyKey, options = {}) {
+    const waChatId = options.waChatId || null;
+    const duplicate = this.db.prepare("SELECT * FROM outgoing_queue WHERE phone=? AND content=? AND status='sent' AND updated_at >= datetime('now','-60 seconds') AND ((wa_chat_id IS NULL AND ? IS NULL) OR wa_chat_id=?) ORDER BY id DESC LIMIT 1").get(phone, content, waChatId, waChatId);
+    if (duplicate) return duplicate;
+    this.db.prepare("INSERT OR IGNORE INTO outgoing_queue(phone, wa_chat_id, content, idempotency_key) VALUES (?, ?, ?, ?)").run(phone, waChatId, content, idempotencyKey);
+    return this.db.prepare("SELECT * FROM outgoing_queue WHERE idempotency_key=?").get(idempotencyKey);
+  }
+  listPendingOutgoing(limit = 20) { return this.db.prepare("SELECT * FROM outgoing_queue WHERE status='pending' ORDER BY id LIMIT ?").all(Math.min(Math.max(Number(limit) || 20, 1), 100)); }
+  claimOutgoing(id) { return this.db.prepare("UPDATE outgoing_queue SET status='sending', updated_at=datetime('now') WHERE id=? AND status='pending'").run(id).changes > 0; }
+  markOutgoingSent(id) { this.db.prepare("UPDATE outgoing_queue SET status='sent', updated_at=datetime('now') WHERE id=?").run(id); }
+  // Un error de WhatsApp puede ocurrir despues de que el servidor haya aceptado
+  // el mensaje. No se reintenta automaticamente para evitar duplicados; el
+  // usuario puede usar el boton Reintentar de forma explicita.
+  markOutgoingFailed(id, error) { this.db.prepare("UPDATE outgoing_queue SET status='failed', attempts=attempts+1, last_error=?, updated_at=datetime('now') WHERE id=?").run(String(error || "Error de envio"), id); }
+  getReminderSettings() { const row = this.db.prepare("SELECT reminder_template AS template, reminder_min_delay_seconds AS minDelaySeconds, reminder_max_delay_seconds AS maxDelaySeconds FROM message_settings WHERE id=1").get(); return { template: row?.template || "Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.", minDelaySeconds: Number(row?.minDelaySeconds ?? 30), maxDelaySeconds: Number(row?.maxDelaySeconds ?? 90) }; }
+  updateReminderSettings(settings) { this.db.prepare("UPDATE message_settings SET reminder_template=?, reminder_min_delay_seconds=?, reminder_max_delay_seconds=?, updated_at=datetime('now') WHERE id=1").run(settings.template, settings.minDelaySeconds, settings.maxDelaySeconds); return this.getReminderSettings(); }
+  createReminderBatch({ date, template, minDelay, maxDelay, items }) { return this.db.transaction(() => { const b = this.db.prepare("INSERT INTO reminder_batches (appointment_date,template,min_delay_seconds,max_delay_seconds,total_count,status) VALUES (?,?,?,?,?,'queued')").run(date, template, minDelay, maxDelay, items.length); const insert = this.db.prepare("INSERT INTO reminder_batch_items (batch_id,appointment_id,patient_name,phone,appointment_date,appointment_time,treatment,appointment_status,content) VALUES (?,?,?,?,?,?,?,?,?)"); for (const x of items) insert.run(b.lastInsertRowid, x.appointmentId, x.patientName, x.phone, date, x.time, x.treatment || "", x.status || "", x.content); return this.getReminderBatch(b.lastInsertRowid); })(); }
+  getReminderBatch(id) { const batch = this.db.prepare("SELECT * FROM reminder_batches WHERE id=?").get(id); if (!batch) return null; const items = this.db.prepare("SELECT * FROM reminder_batch_items WHERE batch_id=? ORDER BY id").all(id); return { ...batch, items, totalCount: batch.total_count, sentCount: batch.sent_count, failedCount: batch.failed_count, cancelledCount: batch.cancelled_count, minDelaySeconds: batch.min_delay_seconds, maxDelaySeconds: batch.max_delay_seconds }; }
+  getActiveReminderBatch() { const row = this.db.prepare("SELECT id FROM reminder_batches WHERE status IN ('queued','processing') ORDER BY id DESC LIMIT 1").get(); return row ? this.getReminderBatch(row.id) : null; }
+  claimReminderItem(batchId) { const item = this.db.prepare("SELECT * FROM reminder_batch_items WHERE batch_id=? AND status='pending' ORDER BY id LIMIT 1").get(batchId); if (!item) return null; this.db.prepare("UPDATE reminder_batch_items SET status='sending', updated_at=datetime('now') WHERE id=? AND status='pending'").run(item.id); return this.db.prepare("SELECT * FROM reminder_batch_items WHERE id=?").get(item.id); }
+  updateReminderItem(id, status, changes = {}) { this.db.prepare("UPDATE reminder_batch_items SET status=?, queue_id=COALESCE(?,queue_id), error=?, sent_at=CASE WHEN ?='sent' THEN datetime('now') ELSE sent_at END, updated_at=datetime('now') WHERE id=?").run(status, changes.queueId || null, changes.error || null, status, id); }
+  refreshReminderBatch(id) { this.db.prepare("UPDATE reminder_batches SET sent_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='sent'), failed_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='failed'), cancelled_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='cancelled'), updated_at=datetime('now') WHERE id=?").run(id,id,id,id); return this.getReminderBatch(id); }
+  cancelReminderBatch(id) { this.db.prepare("UPDATE reminder_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending')").run(id); this.db.prepare("UPDATE reminder_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.getReminderBatch(id); }
+  retryOutgoing(id, phone) { return this.db.prepare("UPDATE outgoing_queue SET status='pending', attempts=0, last_error=NULL, updated_at=datetime('now') WHERE id=? AND phone=? AND status='failed'").run(id, phone).changes > 0; }
+  getGlobalSettings() { const row = this.db.prepare("SELECT response_delay_min AS responseDelayMin, response_delay_max AS responseDelayMax, response_group_delay_seconds AS responseGroupDelaySeconds, automation_phone_mode AS automationPhoneMode, automation_phone_numbers AS automationPhoneNumbers, updated_at AS updatedAt FROM message_settings WHERE id=1").get(); return { ...row, automationPhoneNumbers: JSON.parse(row?.automationPhoneNumbers || "[]") }; }
+  updateGlobalSettings(min, max, mode = null, numbers = null, groupDelay = null) { const current = this.getGlobalSettings(); this.db.prepare("UPDATE message_settings SET response_delay_min=?, response_delay_max=?, response_group_delay_seconds=?, automation_phone_mode=?, automation_phone_numbers=?, updated_at=datetime('now') WHERE id=1").run(min, max, groupDelay === null ? current.responseGroupDelaySeconds : groupDelay, mode || current.automationPhoneMode, JSON.stringify(numbers || current.automationPhoneNumbers)); return this.getGlobalSettings(); }
+  shouldAllowAutomatedResponse(phone) { const settings = this.getGlobalSettings(); if (settings.automationPhoneMode === "all") return true; const variants = phoneRuleVariants(phone); const rules = settings.automationPhoneNumbers.flatMap(phoneRuleVariants); const included = variants.some((value) => rules.includes(value)); return settings.automationPhoneMode === "allow_only" ? included : !included; }
+  shouldAllowAutomatedResponseForConversation(conversationId, fallbackPhone = "") {
+    const link = conversationId ? this.getPatientLink(conversationId) : null;
+    // En chats @lid el identificador no es el teléfono del paciente. Si el
+    // personal ya vinculó el chat, usamos el teléfono real guardado desde MySQL.
+    return this.shouldAllowAutomatedResponse(link?.phone || fallbackPhone);
+  }
+  getAutomationSettings() { const row = this.db.prepare("SELECT enabled, appointment_confirmation AS appointmentConfirmation, appointment_reminder AS appointmentReminder, appointment_change_notice AS appointmentChangeNotice, after_hours_reply AS afterHoursReply, human_intervention_pause AS humanInterventionPause, allowed_start AS allowedStart, allowed_end AS allowedEnd, updated_at AS updatedAt FROM automation_settings WHERE id=1").get(); return { ...row, enabled: Boolean(row.enabled), appointmentConfirmation: Boolean(row.appointmentConfirmation), appointmentReminder: Boolean(row.appointmentReminder), appointmentChangeNotice: Boolean(row.appointmentChangeNotice), afterHoursReply: Boolean(row.afterHoursReply), humanInterventionPause: Boolean(row.humanInterventionPause) }; }
+  updateAutomationSettings(settings) { this.db.prepare("UPDATE automation_settings SET enabled=?, appointment_confirmation=?, appointment_reminder=?, appointment_change_notice=?, after_hours_reply=?, human_intervention_pause=?, allowed_start=?, allowed_end=?, updated_at=datetime('now') WHERE id=1").run(settings.enabled ? 1 : 0, settings.appointmentConfirmation ? 1 : 0, settings.appointmentReminder ? 1 : 0, settings.appointmentChangeNotice ? 1 : 0, settings.afterHoursReply ? 1 : 0, settings.humanInterventionPause ? 1 : 0, settings.allowedStart, settings.allowedEnd); return this.getAutomationSettings(); }
+  enqueueAutomation(job) { const result = this.db.prepare("INSERT OR IGNORE INTO automation_jobs(job_type, conversation_id, appointment_id, scheduled_at, idempotency_key) VALUES (?, ?, ?, ?, ?)").run(job.jobType, job.conversationId || null, job.appointmentId || null, job.scheduledAt, job.idempotencyKey); return this.db.prepare("SELECT * FROM automation_jobs WHERE idempotency_key=?").get(job.idempotencyKey) || { id: result.lastInsertRowid }; }
+  listDueAutomationJobs(limit = 20) { return this.db.prepare("SELECT * FROM automation_jobs WHERE status='pending' AND scheduled_at <= datetime('now') ORDER BY scheduled_at, id LIMIT ?").all(Math.min(Math.max(Number(limit) || 20, 1), 100)); }
+  listAutomationJobs(options = {}) { const status = options.status || "pending"; return this.db.prepare("SELECT * FROM automation_jobs WHERE status=? ORDER BY scheduled_at, id LIMIT ?").all(status, Math.min(Math.max(Number(options.limit) || 100, 1), 200)); }
+  claimAutomationJob(id) { return this.db.prepare("UPDATE automation_jobs SET status='processing', attempts=attempts+1, updated_at=datetime('now') WHERE id=? AND status='pending'").run(id).changes > 0; }
+  completeAutomationJob(id) { this.db.prepare("UPDATE automation_jobs SET status='completed', updated_at=datetime('now'), last_error=NULL WHERE id=?").run(id); }
+  failAutomationJob(id, error) { this.db.prepare("UPDATE automation_jobs SET status=CASE WHEN attempts >= 3 THEN 'failed' ELSE 'pending' END, last_error=?, updated_at=datetime('now') WHERE id=?").run(String(error || "Error de automatizacion"), id); }
+  cancelAutomationJob(id) { return this.db.prepare("UPDATE automation_jobs SET status='cancelled', updated_at=datetime('now') WHERE id=? AND status IN ('pending','processing')").run(id).changes > 0; }
+  getAdministrativeSettings() { const row = this.db.prepare("SELECT clinic_name AS clinicName, phone, address, payment_methods AS paymentMethods, cancellation_policy AS cancellationPolicy, faq, updated_at AS updatedAt FROM administrative_settings WHERE id=1").get(); return { ...row, paymentMethods: JSON.parse(row.paymentMethods || "[]"), faq: JSON.parse(row.faq || "[]") }; }
+  updateAdministrativeSettings(settings) { this.db.prepare("UPDATE administrative_settings SET clinic_name=?, phone=?, address=?, payment_methods=?, cancellation_policy=?, faq=?, updated_at=datetime('now') WHERE id=1").run(settings.clinicName, settings.phone, settings.address, JSON.stringify(settings.paymentMethods), settings.cancellationPolicy, JSON.stringify(settings.faq)); return this.getAdministrativeSettings(); }
+
+  getAssistantKnowledge() { const row = this.db.prepare("SELECT knowledge, updated_at AS updatedAt FROM ai_assistant_knowledge WHERE id=1").get(); return { knowledge: row?.knowledge || "", updatedAt: row?.updatedAt || null }; }
+  updateAssistantKnowledge(knowledge) { this.db.prepare("UPDATE ai_assistant_knowledge SET knowledge=?, updated_at=datetime('now') WHERE id=1").run(String(knowledge ?? "")); return this.getAssistantKnowledge(); }
+
+  // Memoria del agente por conversación (guardrails). Vive dentro de collected._assistant.
+  getAssistantMemory(conversationId) { return this.getConversationState(conversationId).collected?._assistant || {}; }
+  setAssistantMemory(conversationId, patch) {
+    const state = this.getConversationState(conversationId);
+    const collected = { ...(state.collected || {}), _assistant: { ...(state.collected?._assistant || {}), ...patch } };
+    return this.updateConversationState(conversationId, { intent: state.intent, collected, missing: state.missing || [], offeredSlots: state.offeredSlots || [], pendingAction: state.pendingAction || null });
+  }
+
+  getConversationState(conversationId) { const row = this.db.prepare("SELECT conversation_id AS conversationId, intent, collected_json AS collected, missing_json AS missing, offered_slots_json AS offeredSlots, pending_action_json AS pendingAction, version, updated_at AS updatedAt FROM conversation_state WHERE conversation_id=?").get(conversationId); if (!row) return { conversationId, intent: null, collected: {}, missing: [], offeredSlots: [], pendingAction: null, version: 1, updatedAt: null }; return { ...row, collected: JSON.parse(row.collected || "{}"), missing: JSON.parse(row.missing || "[]"), offeredSlots: JSON.parse(row.offeredSlots || "[]"), pendingAction: row.pendingAction ? JSON.parse(row.pendingAction) : null }; }
+  updateConversationState(conversationId, state) { this.db.prepare("INSERT INTO conversation_state (conversation_id, intent, collected_json, missing_json, offered_slots_json, pending_action_json, clinical_workflow_json, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, 1, datetime('now')) ON CONFLICT(conversation_id) DO UPDATE SET intent=excluded.intent, collected_json=excluded.collected_json, missing_json=excluded.missing_json, offered_slots_json=excluded.offered_slots_json, pending_action_json=excluded.pending_action_json, clinical_workflow_json=NULL, version=conversation_state.version+1, updated_at=datetime('now')").run(conversationId, state.intent || null, JSON.stringify(state.collected || {}), JSON.stringify(state.missing || []), JSON.stringify(state.offeredSlots || []), state.pendingAction ? JSON.stringify(state.pendingAction) : null); if (state.humanTransition === true) { this.updateConversation(conversationId, { attentionMode: "review_required" }); this.db.prepare("UPDATE conversations SET human_review_reason=COALESCE(?,human_review_reason), lifecycle_state='human_review' WHERE id=?").run(state.collected?._humanReviewReason || null, conversationId); } return this.getConversationState(conversationId); }
+  markFollowUpSent(conversationId) { this.db.prepare("UPDATE conversations SET follow_up_sent=1, updated_at=datetime('now') WHERE id=?").run(conversationId); return this.getConversation(conversationId); }
+  setConversationLifecycle(conversationId, lifecycleState, humanReviewReason = null) { this.db.prepare("UPDATE conversations SET lifecycle_state=?, human_review_reason=COALESCE(?,human_review_reason), updated_at=datetime('now') WHERE id=?").run(lifecycleState, humanReviewReason, conversationId); return this.getConversation(conversationId); }
+  getHumanReviewRules() { const row = this.db.prepare("SELECT rules_json AS rules, updated_at AS updatedAt FROM human_review_rules WHERE id=1").get(); return { rules: JSON.parse(row.rules || "[]"), updatedAt: row.updatedAt }; }
+  updateHumanReviewRules(rules) { this.db.prepare("UPDATE human_review_rules SET rules_json=?, updated_at=datetime('now') WHERE id=1").run(JSON.stringify(rules)); return this.getHumanReviewRules(); }
+  enqueueResponseMessage(conversationId, messageId, text, groupDelaySeconds = 4) { const now = Date.now(); const due = new Date(now + Math.max(0, Number(groupDelaySeconds) || 0) * 1000).toISOString(); const active = this.db.prepare("SELECT * FROM response_queue WHERE conversation_id=? AND status IN ('generating','ready_to_send','sending') ORDER BY id DESC LIMIT 1").get(conversationId); if (active && active.status === "generating" && !active.response_text) { const ids = JSON.parse(active.message_ids_json || "[]"); ids.push(messageId); this.db.prepare("UPDATE response_queue SET due_at=?, message_ids_json=?, updated_at=datetime('now') WHERE id=?").run(due, JSON.stringify(ids), active.id); return this.getResponseQueueItem(active.id); } if (active) this.db.prepare("UPDATE response_queue SET status='cancelled', error='Nuevo mensaje recibido', updated_at=datetime('now') WHERE id=?").run(active.id); const result = this.db.prepare("INSERT INTO response_queue (conversation_id, status, due_at, batch_version, message_ids_json, consolidated_text) VALUES (?, 'generating', ?, ?, ?, ?)").run(conversationId, due, (active?.batch_version || 0) + 1, JSON.stringify([messageId]), text); return this.getResponseQueueItem(result.lastInsertRowid); }
+  listUnansweredAssistantMessages(limit = 100, conversationId = null) {
+    return this.db.prepare(`SELECT c.id AS conversation_id, c.phone, m.id AS message_id, m.content
+      FROM conversations c
+      JOIN messages m ON m.id = (
+        SELECT id FROM messages
+        WHERE conversation_id=c.id AND direction='incoming' AND author='patient'
+        ORDER BY datetime(message_at) DESC, id DESC LIMIT 1
+      )
+      WHERE c.status <> 'closed'
+        AND c.attention_mode='assistant'
+        AND (? IS NULL OR c.id=?)
+        AND NOT EXISTS (
+          SELECT 1 FROM messages o
+          WHERE o.conversation_id=c.id AND o.direction='outgoing'
+            AND (datetime(o.message_at) > datetime(m.message_at) OR (datetime(o.message_at)=datetime(m.message_at) AND o.id > m.id))
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM response_queue rq
+          WHERE rq.conversation_id=c.id AND rq.status IN ('generating','ready_to_send','sending')
+      )
+      ORDER BY datetime(m.message_at) ASC, m.id ASC
+      LIMIT ?`).all(conversationId || null, conversationId || null, Math.min(Math.max(Number(limit) || 100, 1), 500));
+  }
+  enqueueUnansweredAssistantMessages(groupDelaySeconds = 4, limit = 100, conversationId = null) {
+    const candidates = this.listUnansweredAssistantMessages(limit, conversationId).filter((item) => this.shouldAllowAutomatedResponseForConversation(item.conversation_id, item.phone));
+    return candidates.map((item) => this.enqueueResponseMessage(item.conversation_id, item.message_id, item.content, groupDelaySeconds));
+  }
+  getResponseQueueItem(id) { const row = this.db.prepare("SELECT * FROM response_queue WHERE id=?").get(id); return row ? { ...row, conversationId: row.conversation_id, bufferStartedAt: row.buffer_started_at, dueAt: row.due_at, batchVersion: row.batch_version, messageIds: JSON.parse(row.message_ids_json || "[]"), consolidatedText: row.consolidated_text, responseText: row.response_text, createdAt: row.created_at, updatedAt: row.updated_at } : null; }
+  hasAiResponseForQueue(queueId) { const row = this.db.prepare("SELECT conversation_id,message_ids_json FROM response_queue WHERE id=?").get(queueId); if (!row) return false; let ids = []; try { ids = JSON.parse(row.message_ids_json || "[]"); } catch {} const lastIncomingId = ids.map(Number).filter(Number.isInteger).sort((a, b) => b - a)[0] || 0; return Boolean(this.db.prepare("SELECT 1 FROM messages WHERE conversation_id=? AND direction='outgoing' AND author='ai' AND id>? LIMIT 1").get(row.conversation_id, lastIncomingId)); }
+  listResponseQueue(conversationId = null, limit = 50) { const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200); const rows = conversationId ? this.db.prepare("SELECT * FROM response_queue WHERE conversation_id=? ORDER BY id DESC LIMIT ?").all(conversationId, safeLimit) : this.db.prepare("SELECT * FROM response_queue ORDER BY id DESC LIMIT ?").all(safeLimit); return rows.map((row) => this.getResponseQueueItem(row.id)); }
+  claimDueResponseQueue() {
+    // Corta lotes que superaron el maximo de intentos para que no se reprocesen sin fin.
+    this.db.prepare("UPDATE response_queue SET status='failed', error=COALESCE(error,'Máximo de reintentos alcanzado'), updated_at=datetime('now') WHERE status IN ('generating','ready_to_send') AND attempts >= 8").run();
+    // El tick esta serializado (una sola ejecucion a la vez), asi que cuando esto corre
+    // no hay ningun lote en proceso: se puede reclamar el siguiente lote vencido.
+    const row = this.db.prepare("SELECT * FROM response_queue WHERE status IN ('generating','ready_to_send') AND attempts < 8 AND datetime(due_at) <= datetime('now') ORDER BY due_at, id LIMIT 1").get();
+    if (!row) return null;
+    const claimed = this.db.prepare("UPDATE response_queue SET status='generating', attempts=attempts+1, updated_at=datetime('now') WHERE id=? AND status IN ('generating','ready_to_send')").run(row.id);
+    return claimed.changes ? this.getResponseQueueItem(row.id) : null;
+  }
+  recoverStaleResponseQueue(maxAgeSeconds = 30) { const seconds = Math.max(10, Number(maxAgeSeconds) || 30); return this.db.prepare("UPDATE response_queue SET status=CASE WHEN response_text IS NULL THEN 'generating' ELSE 'ready_to_send' END, due_at=datetime('now'), error=COALESCE(error,'Cola recuperada después de quedar detenida'), updated_at=datetime('now') WHERE status IN ('generating','sending') AND datetime(updated_at) <= datetime('now', ?)").run(`-${seconds} seconds`).changes; }
+  updateResponseQueue(id, changes = {}) { const fields = []; const values = []; const allowed = { status: "status", consolidatedText: "consolidated_text", responseText: "response_text", error: "error", dueAt: "due_at", attempts: "attempts" }; for (const [key, value] of Object.entries(changes)) if (allowed[key]) { fields.push(`${allowed[key]}=?`); values.push(value); } if (!fields.length) return this.getResponseQueueItem(id); values.push(id); this.db.prepare(`UPDATE response_queue SET ${fields.join(", ")}, updated_at=datetime('now') WHERE id=?`).run(...values); return this.getResponseQueueItem(id); }
+  cancelResponseQueue(id) { return this.db.prepare("UPDATE response_queue SET status='cancelled', error='Cancelado por el usuario', updated_at=datetime('now') WHERE id=? AND status IN ('generating','ready_to_send','sending')").run(id).changes > 0; }
+  getAiProviderSettings() { const row = this.db.prepare("SELECT provider_mode AS providerMode, base_url AS baseUrl, model, api_key AS apiKey, timeout_ms AS timeoutMs, updated_at AS updatedAt FROM ai_provider_settings WHERE id=1").get(); return { ...row, apiKeyConfigured: Boolean(row.apiKey), apiKey: undefined }; }
+  updateAiProviderSettings(settings) { this.db.prepare("UPDATE ai_provider_settings SET provider_mode=?, base_url=?, model=?, api_key=CASE WHEN ?='' THEN api_key ELSE ? END, timeout_ms=?, updated_at=datetime('now') WHERE id=1").run(settings.providerMode, settings.baseUrl, settings.model, settings.apiKey || "", settings.apiKey || "", settings.timeoutMs); return this.getAiProviderSettings(); }
+  getAiProviderSecret() { return this.db.prepare("SELECT provider_mode AS providerMode, base_url AS baseUrl, model, api_key AS apiKey, timeout_ms AS timeoutMs FROM ai_provider_settings WHERE id=1").get(); }
+  listMessages(conversationId, options = {}) {
+    const limit = Math.min(Math.max(Number(options.limit) || 100, 1), 500);
+    const offset = Math.max(Number(options.offset) || 0, 0);
+    const rows = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY message_at DESC, id DESC LIMIT ? OFFSET ?").all(conversationId, limit, offset).map(toMessage).reverse();
+    const conversation = this.db.prepare("SELECT phone, wa_chat_id FROM conversations WHERE id=?").get(conversationId);
+    if (!conversation || offset > 0) return rows;
+    const queued = this.db.prepare("SELECT id, content, status, last_error, created_at FROM outgoing_queue WHERE (phone=? OR (wa_chat_id IS NOT NULL AND wa_chat_id=?)) AND status IN ('pending','sending','failed') ORDER BY id").all(conversation.phone, conversation.wa_chat_id || "").map((item) => ({ id: `queue-${item.id}`, conversationId, externalId: null, direction: "outgoing", author: "human", content: item.content, deliveryStatus: item.status === "failed" ? "failed" : "queued", error: item.last_error, messageAt: item.created_at, createdAt: item.created_at, queued: true }));
+    return [...rows, ...queued];
+  }
+
+  getLatestMessage(conversationId) {
+    const row = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY datetime(message_at) DESC, id DESC LIMIT 1").get(conversationId);
+    return toMessage(row);
+  }
+
+  markConversationRead(conversationId) {
+    this.db.prepare("UPDATE messages SET read_at=datetime('now') WHERE conversation_id=? AND author='patient' AND read_at IS NULL").run(conversationId);
+  }
+
+  deleteMessage(conversationId, messageId) {
+    const idText = String(messageId || "");
+    if (idText.startsWith("queue-")) {
+      const queueId = Number(idText.slice(6));
+      if (!Number.isInteger(queueId) || queueId < 1) return false;
+      const conversation = this.db.prepare("SELECT phone, wa_chat_id FROM conversations WHERE id=?").get(conversationId);
+      if (!conversation) return false;
+      return this.db.prepare("DELETE FROM outgoing_queue WHERE id=? AND (phone=? OR (wa_chat_id IS NOT NULL AND wa_chat_id=?))").run(queueId, conversation.phone, conversation.wa_chat_id || "").changes > 0;
+    }
+    const numericId = Number(idText);
+    if (!Number.isInteger(numericId) || numericId < 1) return false;
+    return this.db.prepare("DELETE FROM messages WHERE id=? AND conversation_id=?").run(numericId, conversationId).changes > 0;
+  }
+
+  updateConversation(conversationId, changes = {}) {
+    const allowed = { attentionMode: "attention_mode", patientId: "patient_id", humanOwnerId: "human_owner_id", responseDelayMin: "response_delay_min", responseDelayMax: "response_delay_max" };
+    const entries = Object.entries(changes).filter(([key, value]) => Object.hasOwn(allowed, key) && value !== undefined);
+    if (!entries.length) return this.getConversation(conversationId);
+    const sets = entries.map(([key]) => `${allowed[key]}=?`).join(", ");
+    const values = entries.map(([, value]) => value === "" ? null : value);
+    this.db.prepare(`UPDATE conversations SET ${sets}, updated_at=datetime('now') WHERE id=?`).run(...values, conversationId);
+    return this.getConversation(conversationId);
+  }
+
+  getPatientLink(conversationId) {
+    const conversation = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=? LIMIT 1").get(conversationId);
+    const row = conversation?.wa_chat_id
+      ? this.db.prepare("SELECT id,wa_chat_id,patient_id,phone,patient_name,treatment_type,verified_at,verified_by,active FROM patient_chat_identities WHERE wa_chat_id=? AND active=1 LIMIT 1").get(conversation.wa_chat_id)
+      : this.db.prepare("SELECT * FROM conversation_patient_links WHERE conversation_id=? AND active=1 ORDER BY id DESC LIMIT 1").get(conversationId);
+    return row ? { id: row.id, conversationId: row.conversation_id, patientId: row.patient_id, waChatId: row.wa_chat_id, phone: row.phone, patientName: row.patient_name, treatmentType: row.treatment_type, verifiedAt: row.verified_at, verifiedBy: row.verified_by, active: Boolean(row.active) } : null;
+  }
+
+  setPatientLink(conversationId, patient, verifiedBy = null) {
+    return this.db.transaction(() => {
+      const conversation = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=? LIMIT 1").get(conversationId);
+      const waChatId = conversation?.wa_chat_id || `conversation:${conversationId}`;
+      // Un paciente puede cambiar de número o de sesión. Conservamos el
+      // historial, pero solo dejamos una vinculación activa por paciente.
+      this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE patient_id=? AND wa_chat_id<>? AND active=1").run(patient.id, waChatId);
+      this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE patient_id=? AND wa_chat_id<>? AND active=1").run(patient.id, waChatId);
+      this.db.prepare("INSERT INTO patient_chat_identities (wa_chat_id,patient_id,phone,patient_name,treatment_type,verified_by,active) VALUES (?,?,?,?,?,?,1) ON CONFLICT(wa_chat_id) DO UPDATE SET patient_id=excluded.patient_id,phone=excluded.phone,patient_name=excluded.patient_name,treatment_type=excluded.treatment_type,verified_at=datetime('now'),verified_by=excluded.verified_by,active=1").run(waChatId, patient.id, patient.phone || null, patient.name, patient.treatment || null, verifiedBy);
+      this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE conversation_id=?").run(conversationId);
+      this.db.prepare("INSERT INTO conversation_patient_links (conversation_id,patient_id,wa_chat_id,phone,patient_name,treatment_type,verified_by,active) VALUES (?,?,?,?,?,?,?,1) ON CONFLICT(conversation_id,patient_id) DO UPDATE SET wa_chat_id=excluded.wa_chat_id,phone=excluded.phone,patient_name=excluded.patient_name,treatment_type=excluded.treatment_type,verified_at=datetime('now'),verified_by=excluded.verified_by,active=1").run(conversationId, patient.id, waChatId, patient.phone || null, patient.name, patient.treatment || null, verifiedBy);
+      this.db.prepare("UPDATE conversations SET patient_id=?, phone=COALESCE(?,phone), wa_contact_number=COALESCE(?,wa_contact_number), updated_at=datetime('now') WHERE id=?").run(patient.id, patient.phone || null, patient.phone || null, conversationId);
+      return this.getPatientLink(conversationId);
+    })();
+  }
+
+  clearPatientLink(conversationId) {
+    const conversation = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=? LIMIT 1").get(conversationId);
+    if (conversation?.wa_chat_id) this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE wa_chat_id=?").run(conversation.wa_chat_id);
+    this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE conversation_id=?").run(conversationId);
+    this.db.prepare("UPDATE conversations SET patient_id=NULL, updated_at=datetime('now') WHERE id=?").run(conversationId);
+    return true;
+  }
+
+  listPatientIdentities(search = "") {
+    const needle = `%${String(search || "").trim()}%`;
+    return this.db.prepare("SELECT id,wa_chat_id AS waChatId,patient_id AS patientId,phone,patient_name AS patientName,treatment_type AS treatmentType,verified_at AS verifiedAt,verified_by AS verifiedBy FROM patient_chat_identities WHERE active=1 AND (patient_name LIKE ? OR IFNULL(phone,'') LIKE ? OR wa_chat_id LIKE ?) ORDER BY patient_name LIMIT 200").all(needle, needle, needle);
+  }
+
+  clearPatientIdentity(identityId) {
+    return this.db.transaction(() => {
+      const identity = this.db.prepare("SELECT wa_chat_id FROM patient_chat_identities WHERE id=? AND active=1").get(identityId);
+      if (!identity) return false;
+      this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE id=?").run(identityId);
+      this.db.prepare("UPDATE conversations SET patient_id=NULL, updated_at=datetime('now') WHERE wa_chat_id=?").run(identity.wa_chat_id);
+      this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE wa_chat_id=?").run(identity.wa_chat_id);
+      return true;
+    })();
+  }
+
+  clearAllPatientIdentities() {
+    return this.db.transaction(() => {
+      const result = this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE active=1").run();
+      this.db.prepare("UPDATE conversations SET patient_id=NULL, updated_at=datetime('now') WHERE patient_id IS NOT NULL").run();
+      this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE active=1").run();
+      return result.changes;
+    })();
+  }
+
+  deleteConversation(conversationId) {
+    return this.db.transaction(() => {
+      const conversation = this.db.prepare("SELECT phone FROM conversations WHERE id=?").get(conversationId);
+      if (conversation) this.db.prepare("DELETE FROM outgoing_queue WHERE phone=?").run(conversation.phone);
+      const result = this.db.prepare("DELETE FROM conversations WHERE id=?").run(conversationId);
+      return result.changes > 0;
+    })();
+  }
+  deleteAllConversations() {
+    // Se borra todo: vaciar cada tabla hija directamente es O(filas) sin evaluar el
+    // cascade fila por fila. El DELETE de conversations al final limpia por cascade
+    // cualquier tabla hija que no esté en la lista.
+    const changes = this.db.transaction(() => {
+      for (const table of ["messages", "conversation_state", "message_actions", "ai_runs", "response_queue", "conversation_patient_links", "outgoing_queue"]) {
+        this.db.prepare(`DELETE FROM ${table}`).run();
+      }
+      this.db.prepare("UPDATE automation_jobs SET conversation_id=NULL WHERE conversation_id IS NOT NULL").run();
+      return this.db.prepare("DELETE FROM conversations").run().changes;
+    })();
+    try { this.db.pragma("wal_checkpoint(TRUNCATE)"); } catch {}
+    return changes;
+  }
+}
+
+module.exports = { MensajesRepository };

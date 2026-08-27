@@ -1,9 +1,38 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env"), quiet: true });
+console.log("[BACKEND START]", {
+  pid: process.pid,
+  time: new Date().toISOString()
+});
 const express = require("express");
 const storagePaths = require("./config/storagePaths");
 const licenciaService = require("./services/licencia.service");
 const licenciaMiddleware = require("./middlewares/licencia.middleware");
+const mensajesRuntime = require("./services/mensajes/mensajesRuntime.service");
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log("[BACKEND SHUTDOWN]", {
+    pid: process.pid,
+    signal,
+    time: new Date().toISOString()
+  });
+  try {
+    await mensajesRuntime.stop();
+  } catch (error) {
+    console.error("[BACKEND SHUTDOWN ERROR]", {
+      pid: process.pid,
+      message: error?.message,
+      stack: error?.stack,
+      time: new Date().toISOString()
+    });
+  }
+  process.exit(0);
+}
+process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
 
 const app = express();
 const PORT = 3000;
@@ -49,6 +78,22 @@ app.get("/health", (req, res) => {
   res.json({ ok: true, port: PORT });
 });
 
+app.post("/internal/shutdown", (req, res) => {
+  const remote = req.socket.remoteAddress;
+  if (remote !== "127.0.0.1" && remote !== "::1" && remote !== "::ffff:127.0.0.1") {
+    return res.status(403).json({ ok: false, message: "Shutdown local solamente" });
+  }
+  console.log("[BACKEND] Shutdown iniciado", { pid: process.pid, time: new Date().toISOString() });
+  void mensajesRuntime.stop().then(() => {
+    console.log("[BACKEND] Shutdown completado", { pid: process.pid, time: new Date().toISOString() });
+    res.json({ ok: true });
+    setTimeout(() => process.exit(0), 50).unref?.();
+  }).catch((error) => {
+    console.error("[BACKEND SHUTDOWN ERROR]", error);
+    res.status(500).json({ ok: false, message: error?.message || "Shutdown fallido" });
+  });
+});
+
 // Rutas API
 app.use("/api/app-config", require("./routes/appConfig.routes"));
 app.use("/api/licencia", require("./routes/licencia.routes"));
@@ -64,8 +109,12 @@ app.use("/api/cuenta", licenciaMiddleware.requireLicensedAccess, require("./rout
 app.use("/api/odontograma", licenciaMiddleware.requireLicensedAccess, require("./routes/odontograma.routes"));
 app.use("/api/foto-paciente", licenciaMiddleware.requireLicensedAccess, require("./routes/fotoPaciente.routes"));
 app.use("/api/cola", licenciaMiddleware.requireLicensedAccess, require("./routes/cola.routes"));
+app.use("/api/mensajes", licenciaMiddleware.requireLicensedAccess, require("./routes/mensajes.routes"));
+app.use("/api/mensajes-view", licenciaMiddleware.requireLicensedAccess, require("./routes/mensajesView.routes"));
 
 storagePaths.ensureDataDirsSync();
+require("./services/mensajesDatabase.service").getDb();
+mensajesRuntime.start().catch((error) => console.error("[Mensajes] No se pudo iniciar simulador:", error));
 
 const pool = require("./config/db");
 

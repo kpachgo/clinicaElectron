@@ -36,6 +36,7 @@ const configDir = path.join(dataRootDir, "config");
 const systemDir = path.join(dataRootDir, "system");
 const protectedConfigDir = path.join(systemDir, "electrondump");
 const tempDir = path.join(dataRootDir, "tmp");
+const mensajesDir = path.join(dataRootDir, "mensajes");
 
 function ensureDataDirsSync() {
   for (const dir of [
@@ -48,6 +49,7 @@ function ensureDataDirsSync() {
     systemDir,
     protectedConfigDir,
     tempDir
+    ,mensajesDir
   ]) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -65,6 +67,7 @@ module.exports = {
   systemDir,
   protectedConfigDir,
   tempDir,
+  mensajesDir,
   legacyFrontendDir,
   ensureDataDirsSync
 };

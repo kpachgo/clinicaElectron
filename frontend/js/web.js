@@ -113,8 +113,8 @@ themeBtn?.addEventListener("click", () => {
    AUTENTICACION
 ========================================================= */
 const ROLE_VIEWS = {
-    Administrador: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro"],
-    Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro"],
+    Administrador: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro", "Mensajes"],
+    Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro", "Mensajes"],
     Redes: ["Agenda", "Monitor de Seguimiento"],
     Doctor: ["Paciente", "En Cola", "Doctores"],
     Asistente: ["Paciente", "En Cola"]
@@ -1123,6 +1123,7 @@ const VIEW_MOUNTERS = {
     Doctores: "__mountDoctor",
     Servicios: "__mountServicios",
     Cobro: "__mountCobro"
+    ,Mensajes: "__mountMensajes"
 };
 
 function resetContentAnimationState() {

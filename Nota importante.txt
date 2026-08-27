@@ -1,0 +1,209 @@
+============================================================
+ GUIA: MOVER EL PROYECTO A OTRA COMPUTADORA
+============================================================
+Ultima actualizacion: 2026-08-26
+
+------------------------------------------------------------
+ QUE SE MUEVE Y QUE NO
+------------------------------------------------------------
+El proyecto tiene los datos en TRES lugares distintos:
+
+1) Carpeta del proyecto (codigo)
+   c:\Users\gkpac\Desktop\Proyectos\clinicaElectron
+   -> Se comprime y se copia. SIN node_modules.
+
+2) Datos locales de la app (SQLite + config de la IA)
+   C:\ProgramData\ClinicaElectron\
+   -> NO esta en la carpeta del proyecto. HAY QUE COPIARLO APARTE.
+   -> Aca vive: conversaciones, API key de DeepSeek, texto de
+      conocimiento de la clinica, ventana horaria de ortodoncia,
+      capacidades/alias de servicios, pacientes vinculados, fotos.
+
+3) Base MySQL (Railway, en la nube)
+   -> Pacientes, agenda, servicios, mensajes_auditoria.
+   -> Viaja solo. Solo necesita el archivo .env con las credenciales.
+
+------------------------------------------------------------
+ REQUISITOS EN LA PC NUEVA
+------------------------------------------------------------
+- Node.js LTS (misma version mayor que la actual; hoy Node 22).
+  Verificar:  node -v
+- Git (opcional, solo si vas a seguir usando control de versiones).
+- Conexion a internet para la instalacion (se baja Chromium).
+
+
+============================================================
+ PARTE A - PREPARAR (en la PC ACTUAL)
+============================================================
+
+PASO 1. Cerrar la aplicacion por completo
+------------------------------------------------------------
+Cerra la app de Electron y cualquier "node" que quede corriendo.
+En PowerShell, dentro de la carpeta del proyecto:
+
+    npm run stop
+
+(o cerra la ventana y verifica en el Administrador de tareas que
+ no queden procesos "node.exe" de este proyecto).
+IMPORTANTE: si la app esta abierta, la base SQLite se copia a medias.
+
+
+PASO 2. Backup de los datos locales (ProgramData)
+------------------------------------------------------------
+Copiar en una carpeta aparte (ej. en el Escritorio: "datos-clinica").
+Pega esto en PowerShell:
+
+    $destino = "$env:USERPROFILE\Desktop\datos-clinica"
+    New-Item -ItemType Directory -Force -Path "$destino\mensajes" | Out-Null
+
+    # Base SQLite: los TRES archivos (asi no se pierde lo del WAL)
+    Copy-Item "C:\ProgramData\ClinicaElectron\mensajes\mensajes.sqlite*" "$destino\mensajes\" -Force
+
+    # Opcional: fotos, firmas y documentos de pacientes (~3 MB)
+    foreach ($c in "fotos","firmas","img-docs","docs","config") {
+        $src = "C:\ProgramData\ClinicaElectron\$c"
+        if (Test-Path $src) { Copy-Item $src "$destino\" -Recurse -Force }
+    }
+
+    Write-Output "Backup listo en: $destino"
+
+NO copies la carpeta:
+    C:\ProgramData\ClinicaElectron\mensajes\whatsapp-auth\
+Son 327 MB de sesion de WhatsApp / cache de Chromium. No hace falta.
+En la PC nueva se vuelve a escanear el QR cuando quieras conectar WhatsApp.
+
+
+PASO 3. Guardar el .env aparte (por si acaso)
+------------------------------------------------------------
+El .env NO esta en Git pero SI lo mete WinRAR al comprimir la carpeta.
+Igual, por seguridad, copia una copia suelta:
+
+    Copy-Item "c:\Users\gkpac\Desktop\Proyectos\clinicaElectron\backend\.env" "$env:USERPROFILE\Desktop\datos-clinica\backend.env" -Force
+
+(si tambien hay un .env en la raiz del proyecto, copialo tambien)
+
+
+PASO 4. Borrar node_modules y cache
+------------------------------------------------------------
+En PowerShell, dentro de la carpeta del proyecto:
+
+    Remove-Item .\node_modules, .\backend\node_modules, .\electron-app\node_modules, .\.wwebjs_cache -Recurse -Force -ErrorAction SilentlyContinue
+
+Esto baja el peso de ~750 MB a unos ~75 MB (codigo + .git).
+No borres nada mas. node_modules se regenera del package-lock.json.
+
+
+PASO 5. Comprimir
+------------------------------------------------------------
+Con WinRAR: click derecho sobre la carpeta "clinicaElectron" ->
+"Anadir al archivo..." -> formato ZIP o RAR.
+
+O con PowerShell (sin WinRAR):
+
+    Compress-Archive -Path "c:\Users\gkpac\Desktop\Proyectos\clinicaElectron\*" -DestinationPath "$env:USERPROFILE\Desktop\clinicaElectron.zip" -Force
+
+
+PASO 6. Llevar a la PC nueva
+------------------------------------------------------------
+Copia DOS cosas (USB, nube, red):
+  - clinicaElectron.zip  (o .rar)   <- el proyecto
+  - datos-clinica\        (carpeta)  <- el backup del PASO 2 y 3
+
+
+============================================================
+ PARTE B - RESTAURAR (en la PC NUEVA)
+============================================================
+
+PASO 1. Descomprimir el proyecto
+------------------------------------------------------------
+Descomprimi "clinicaElectron.zip" donde quieras, por ejemplo:
+    C:\Proyectos\clinicaElectron
+
+
+PASO 2. Restaurar los datos locales (ProgramData)
+------------------------------------------------------------
+Pega esto en PowerShell (ajusta la ruta de $origen si tu carpeta
+de backup quedo en otro lado):
+
+    $origen = "$env:USERPROFILE\Desktop\datos-clinica"
+    New-Item -ItemType Directory -Force -Path "C:\ProgramData\ClinicaElectron\mensajes" | Out-Null
+
+    Copy-Item "$origen\mensajes\mensajes.sqlite*" "C:\ProgramData\ClinicaElectron\mensajes\" -Force
+
+    foreach ($c in "fotos","firmas","img-docs","docs","config") {
+        if (Test-Path "$origen\$c") { Copy-Item "$origen\$c" "C:\ProgramData\ClinicaElectron\" -Recurse -Force }
+    }
+
+    Write-Output "Datos locales restaurados."
+
+
+PASO 3. Restaurar el .env (si no vino en el zip)
+------------------------------------------------------------
+El .env deberia haber viajado dentro del zip (WinRAR lo incluye).
+Verifica que exista:
+    C:\Proyectos\clinicaElectron\backend\.env
+
+Si NO esta, copialo del backup:
+    Copy-Item "$env:USERPROFILE\Desktop\datos-clinica\backend.env" "C:\Proyectos\clinicaElectron\backend\.env" -Force
+
+
+PASO 4. Instalar dependencias
+------------------------------------------------------------
+En PowerShell, dentro de C:\Proyectos\clinicaElectron:
+
+    npm ci
+    npm --prefix backend ci
+    npm --prefix electron-app ci
+
+(usar "ci" y no "install": instala las versiones EXACTAS del
+ package-lock.json. Tarda unos minutos: se baja Chromium para
+ whatsapp-web.js.)
+
+Si "npm ci" falla por better-sqlite3 o bcrypt (modulos nativos),
+instala las herramientas de compilacion y reintenta:
+    npm install --global windows-build-tools
+    (o instalar "Desktop development with C++" desde Visual Studio Build Tools)
+
+
+PASO 5. Arrancar y verificar
+------------------------------------------------------------
+    npm run electron
+    (o  npm start  para solo el backend)
+
+Revisar en la app -> Mensajes -> Ajustes:
+  [ ] Asistente IA: el texto de conocimiento de la clinica esta cargado
+  [ ] Configuracion IA: la API key / modelo de DeepSeek estan
+  [ ] Servicios IA: "Control Mensual" tiene su horario propio
+      (Lun-Vie 13:00-16:30, Sab 08:00-11:30)
+  [ ] Las conversaciones viejas del simulador aparecen
+
+Si todo eso esta -> la base local se restauro bien.
+Los pacientes y la agenda salen de MySQL (Railway) automaticamente.
+
+
+PASO 6. Reconectar WhatsApp (cuando lo necesites)
+------------------------------------------------------------
+La sesion de WhatsApp NO se copio. En la app, en la seccion de
+conexion de WhatsApp, escanea el QR nuevo con el telefono.
+Para trabajar en el simulador NO hace falta.
+
+
+============================================================
+ NOTAS
+============================================================
+- La base MySQL es COMPARTIDA (Railway). Si trabajas en las dos PC
+  contra el mismo .env, las dos ven los mismos pacientes/agenda.
+  La base SQLite (conversaciones, config IA) es LOCAL de cada PC:
+  NO se sincroniza sola. Lo que cambies en una no aparece en la otra
+  hasta que vuelvas a copiar mensajes.sqlite.
+
+- Para evitar lios: trabaja en UNA PC a la vez y cada vez que cambies
+  de maquina, volve a copiar la carpeta "mensajes\" del ProgramData.
+
+- Alternativa mas limpia (si usas Git): hacer commit + push de todo,
+  "git clone" en la PC nueva, y copiar a mano solo el .env y el
+  mensajes.sqlite. Pero hoy hay mucho trabajo sin commitear.
+
+- La carpeta C:\ProgramData\ClinicaElectron\mensajes\whatsapp-auth
+  se puede borrar en cualquier momento para liberar espacio; solo
+  implica volver a escanear el QR.

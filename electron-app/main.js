@@ -1,7 +1,7 @@
 const { app, BrowserWindow, Menu, dialog, safeStorage, session } = require("electron");
 const { spawn } = require("child_process");
-const path = require("path");
 const http = require("http");
+const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 let autoUpdater = null;
@@ -649,34 +649,67 @@ function killBackendProcess() {
       return;
     }
 
-    const pid = backendProcess.pid;
-    backendProcess = null;
+    const child = backendProcess;
+    const pid = child.pid;
 
     if (!pid) {
       resolve();
       return;
     }
 
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(forceTimer);
+      resolve();
+    };
+    const forceTimer = setTimeout(() => {
+      logLine("[ELECTRON]", `Backend no cerro limpiamente; forzando PID ${pid}.`);
+      if (process.platform === "win32") {
+        const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
+          windowsHide: true,
+          stdio: "ignore"
+        });
+        killer.on("exit", finish);
+        killer.on("error", finish);
+      } else {
+        try { process.kill(-pid, "SIGKILL"); } catch { try { process.kill(pid, "SIGKILL"); } catch {} }
+        finish();
+      }
+    }, 15000);
+    forceTimer.unref?.();
+    child.once("exit", finish);
+    child.once("error", finish);
+
+    const shutdownRequest = http.request({
+      hostname: "127.0.0.1",
+      port: SERVER_PORT,
+      path: "/internal/shutdown",
+      method: "POST",
+      timeout: 5000
+    }, (response) => {
+      response.resume();
+      response.on("end", () => logLine("[ELECTRON]", "Cierre solicitado al backend."));
+    });
+    shutdownRequest.on("error", () => {});
+    shutdownRequest.on("timeout", () => shutdownRequest.destroy());
+    shutdownRequest.end();
+
     if (process.platform === "win32") {
-      const killer = spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
-        windowsHide: true,
-        stdio: "ignore"
-      });
-      killer.on("exit", () => resolve());
-      killer.on("error", () => resolve());
+      logLine("[ELECTRON]", `Cierre solicitado para backend PID ${pid}.`);
       return;
     }
 
     try {
+      logLine("[ELECTRON]", `Solicitando cierre limpio del backend PID ${pid}.`);
       process.kill(-pid, "SIGTERM");
-      resolve();
     } catch {
       try {
         process.kill(pid, "SIGTERM");
       } catch {
-        // Ignore kill failures to avoid blocking close.
+        finish();
       }
-      resolve();
     }
   });
 }
@@ -965,6 +998,7 @@ app.on("before-quit", async (event) => {
   if (isQuitting) return;
   isQuitting = true;
   event.preventDefault();
+  logLine("[ELECTRON]", "Cierre solicitado");
   await killBackendProcess();
   if (updaterEnabled && autoUpdater && updateDownloadedInfo) {
     const mode = quitForUpdate ? "instalacion inmediata" : "instalacion al cerrar";

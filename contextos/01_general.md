@@ -45,6 +45,7 @@
 - `/api/cuenta`
 - `/api/odontograma` (no analizado en este contexto)
 - `/api/foto-paciente`
+- `/api/mensajes` y `/api/mensajes-view` (vista Mensajes; ver `20_estado_actual_vista_mensajes.md`)
 
 ## Navegacion SPA y permisos
 - Archivo: `frontend/js/web.js`.
