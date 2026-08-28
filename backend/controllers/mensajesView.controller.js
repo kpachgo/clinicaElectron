@@ -4,7 +4,7 @@ const { previewAutomation, templates } = require("../services/mensajes/automatio
 const { enqueueIncomingResponse } = require("../services/mensajes/aiObserver.service");
 const { getRuntime, getMetrics, sendQueuedMessage, connectConnector, disconnectConnector, clearConnectorSession } = require("../services/mensajes/mensajesRuntime.service");
 const pool = require("../config/db");
-const { getClinicSchedule, updateClinicSchedule, listAiServices, updateAiService } = require("../services/mensajes/aiAvailability.service");
+const { getClinicSchedule, updateClinicSchedule, updateDailyCap, listBlockedDates, addBlockedDate, removeBlockedDate, listAiServices, updateAiService } = require("../services/mensajes/aiAvailability.service");
 const { to12h } = require("../services/mensajes/timeFormat.service");
 const repo = new MensajesRepository();
 const ROLES = ["Administrador", "Recepcion"];
@@ -68,6 +68,10 @@ exports.updateAutomationSettings = (req, res) => { if (!allowed(req, res)) retur
 exports.getAdministrativeSettings = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, settings: repo.getAdministrativeSettings() }); };
 exports.getAiClinicSchedule = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, schedule: getClinicSchedule() }); };
 exports.updateAiClinicSchedule = (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, schedule: updateClinicSchedule(req.body || {}) }); } catch (error) { return bad(res, error.message || "Horario invalido"); } };
+exports.updateAiDailyCap = (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, schedule: updateDailyCap(req.body?.dailyCap) }); } catch (error) { return bad(res, error.message || "Tope diario invalido"); } };
+exports.listAiBlockedDates = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, dates: listBlockedDates() }); };
+exports.addAiBlockedDate = (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, dates: addBlockedDate({ date: req.body?.date, reason: req.body?.reason }) }); } catch (error) { return bad(res, error.message || "No se pudo bloquear la fecha"); } };
+exports.removeAiBlockedDate = (req, res) => { if (!allowed(req, res)) return; if (!id(req.params.id)) return bad(res, "Registro invalido"); res.json({ ok: true, dates: removeBlockedDate(req.params.id) }); };
 exports.listAiServices = async (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, services: await listAiServices(req.query?.search || "") }); } catch (error) { res.status(500).json({ ok: false, message: "No se pudieron consultar los servicios" }); } };
 exports.updateAiService = async (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, service: await updateAiService(req.params.id, req.body || {}) }); } catch (error) { res.status(error.status || 400).json({ ok: false, message: error.message || "No se pudo guardar el servicio" }); } };
 exports.updateAdministrativeSettings = (req, res) => { if (!allowed(req, res)) return; const body = req.body || {}; if (!["clinicName", "phone", "address", "paymentMethods", "cancellationPolicy", "faq"].every((key) => Object.hasOwn(body, key))) return bad(res, "Faltan datos administrativos"); if (![body.clinicName, body.phone, body.address, body.cancellationPolicy].every((value) => typeof value === "string") || !Array.isArray(body.paymentMethods) || !Array.isArray(body.faq)) return bad(res, "Datos administrativos invalidos"); res.json({ ok: true, settings: repo.updateAdministrativeSettings(body) }); };

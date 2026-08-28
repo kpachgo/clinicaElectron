@@ -251,6 +251,15 @@ const migrations = [
   ,`CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages(conversation_id) WHERE author='patient' AND read_at IS NULL;
     CREATE INDEX IF NOT EXISTS idx_messages_conv_direction ON messages(conversation_id, direction);
     CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);`
+  // Tope diario total de la clínica para la IA (NULL = sin tope) + fechas bloqueadas a mano
+  // (asueto / cierre administrativo / día lleno). El gate vive en searchAvailability.
+  ,`ALTER TABLE ai_clinic_schedule ADD COLUMN daily_cap INTEGER NULL DEFAULT NULL;
+    CREATE TABLE IF NOT EXISTS ai_blocked_dates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL UNIQUE,
+      reason TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );`
 ];
 
 function getDb() {

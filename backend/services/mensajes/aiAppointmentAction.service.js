@@ -19,6 +19,7 @@ async function createAppointmentForAssistant({ patientId, serviceId, date, time,
   const [existing] = await pool.query("SELECT detalle FROM mensajes_auditoria WHERE operacion='create_appointment' AND idempotencyKey=? LIMIT 1", [idempotencyKey]);
   if (existing[0]?.detalle) return { ok: true, duplicate: true, idAgendaAP: Number(existing[0].detalle) };
   const availability = await searchAvailability({ serviceId, date });
+  if (availability.dayUnavailable) { const error = new Error("Ese día no está disponible para agendar"); error.status = 409; throw error; }
   const requested = availability.slots.find((slot) => slot.time === String(time).slice(0, 5));
   if (!requested) { const error = new Error("El horario ya no está disponible"); error.status = 409; throw error; }
   const [services] = await pool.query("SELECT nombreS FROM servicio WHERE idServicio=? LIMIT 1", [Number(serviceId)]);
@@ -48,6 +49,7 @@ async function createAppointmentForAssistantWithCapacity({ patientId, patientNam
     const [lockedExisting] = await connection.query("SELECT detalle FROM mensajes_auditoria WHERE operacion='create_appointment' AND idempotencyKey=? LIMIT 1", [idempotencyKey]);
     if (lockedExisting[0]?.detalle) return { ok: true, duplicate: true, idAgendaAP: Number(lockedExisting[0].detalle) };
     const availability = await searchAvailability({ serviceId, date }, getDb(), connection);
+    if (availability.dayUnavailable) { const error = new Error("Ese día no está disponible para agendar"); error.status = 409; throw error; }
     const requested = availability.slots.find((slot) => slot.time === String(time).slice(0, 5));
     if (!requested) { const error = new Error("El horario ya no esta disponible"); error.status = 409; throw error; }
     const [services] = await connection.query("SELECT nombreS FROM servicio WHERE idServicio=? LIMIT 1", [Number(serviceId)]);
@@ -109,6 +111,7 @@ async function rescheduleAppointment({ patientId, appointmentId, newDate, newTim
     if (!serviceId && appointment.comentarioAP) serviceId = (await resolveService(appointment.comentarioAP)).service?.serviceId || null;
     if (!serviceId) { const error = new Error("La cita no tiene un servicio identificable para validar disponibilidad"); error.status = 409; throw error; }
     const availability = await searchAvailability({ serviceId, date: newDate }, getDb(), connection);
+    if (availability.dayUnavailable) { const error = new Error("Ese día no está disponible para agendar"); error.status = 409; throw error; }
     if (!availability.slots.some((slot) => slot.time === String(newTime).slice(0, 5))) { const error = new Error("El nuevo horario no está disponible"); error.status = 409; throw error; }
     const [result] = await connection.query("UPDATE agendapersona SET fechaAP=?, horaAP=?, servicioIdAP=COALESCE(servicioIdAP,?) WHERE idAgendaAP=? AND (pacienteIdAP=? OR pacienteIdAP IS NULL)", [newDate, String(newTime).slice(0, 5), serviceId, Number(appointmentId), Number(patientId)]);
     if (!result.affectedRows) { const error = new Error("No se pudo reprogramar la cita"); error.status = 409; throw error; }

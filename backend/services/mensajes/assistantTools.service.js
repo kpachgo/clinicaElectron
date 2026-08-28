@@ -196,6 +196,9 @@ async function consultarDisponibilidad(args) {
   } catch (error) {
     return { estado: "error", mensaje: error.message || "No se pudo consultar la disponibilidad." };
   }
+  if (result.dayUnavailable) {
+    return { estado: "dia_no_disponible", servicio: resolved.service.serviceName, fecha: date, mensaje: "Ese día no está disponible para agendar. Ofrecé al paciente otra fecha." };
+  }
   const windowText = result.serviceWindow ? describeServiceWindow(result.serviceWindow) : "";
   if (result.serviceClosedThatDay) {
     return { estado: "servicio_no_disponible_ese_dia", servicio: resolved.service.serviceName, fecha: date, horario_atencion: windowText, mensaje: `Ese servicio no se atiende ese día. Su horario de atención es: ${windowText}. Ofrecé una fecha dentro de ese horario.` };

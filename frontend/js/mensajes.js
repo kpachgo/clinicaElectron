@@ -416,7 +416,7 @@
         const knowledgeNorm = normTxt(knowledgeData.knowledge);
         const inKnowledge = (service) => [service.serviceName, ...(service.aliases || [])].map(normTxt).filter((n) => n.length >= 4).some((n) => knowledgeNorm.includes(n));
         nav.insertAdjacentHTML("beforeend", '<button data-settings-section="ai-services">Servicios IA</button>');
-        content.insertAdjacentHTML("beforeend", `<section data-settings-content="ai-services" hidden class="ai-services-settings"><h3>Servicios IA</h3><p>La IA usa el catálogo y el horario general de la clínica.</p><label>Buscar servicio<input id="simple-ai-service-search" placeholder="Nombre o alias"></label><label>Servicio<select id="simple-ai-service-select"></select></label><div id="simple-ai-service-fields"><label>Duración (minutos)<input id="simple-ai-duration" type="number" min="5" max="1440" step="5"></label><label>Capacidad por hora<input id="simple-ai-capacity" type="number" min="1" max="100"><small>Déjalo vacío para no limitar.</small></label><label>Alias (uno por línea)<textarea id="simple-ai-aliases" rows="3"></textarea></label><label>Anticipación mínima (minutos)<input id="simple-ai-advance" type="number" min="0" max="43200"></label><label class="ai-enabled"><input id="simple-ai-own-hours" type="checkbox"> Este servicio tiene su propio horario</label><label id="simple-ai-copy-wrap" hidden>Reutilizar horario de otro servicio<select id="simple-ai-copy-hours"></select></label><div id="simple-ai-own-week-wrap" hidden><p class="ai-help">La IA solo ofrecerá este servicio en estas franjas (dentro del horario general). Un día sin franjas queda cerrado para este servicio.</p><div id="simple-ai-own-week" class="ai-week-schedule"></div></div><label class="ai-enabled"><input id="simple-ai-enabled" type="checkbox"> Permitir que la IA ofrezca este servicio</label><label class="ai-enabled"><input id="simple-ai-share-price" type="checkbox"> La IA puede decir el precio<small id="simple-ai-price-hint"></small></label><div id="simple-ai-price-warn" class="ai-help" style="color:#b45309"></div><button id="simple-ai-service-save" type="button">Guardar servicio</button><div id="simple-ai-service-result" class="settings-state-card"></div></div><details class="ai-collapse"><summary>Horario general de la clínica</summary><div class="ai-collapse-body"><p>Agregá turnos por día. Si un día no tiene turnos, queda cerrado. Este horario aplica a todos los servicios que ofrece la IA.</p><label class="ai-inline-field">Intervalo de opciones<select id="simple-ai-interval-sel"><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div id="simple-ai-week" class="ai-week-schedule"></div></div></details><details class="ai-collapse"><summary>Pausas generales</summary><div class="ai-collapse-body ai-general-breaks"><div class="ai-blocked-heading"><div><small class="ai-help">Por ejemplo, almuerzo de lunes a viernes de 12:00 a 13:00.</small></div><button id="simple-ai-add-break" class="ai-secondary-btn" type="button">+ Agregar pausa</button></div><div id="simple-ai-breaks" class="ai-blocked-rows"></div></div></details><div class="ai-settings-actions"><button id="simple-ai-schedule-save" type="button">Guardar horario general</button><span id="simple-ai-schedule-result" class="settings-state-card"></span></div></section>`);
+        content.insertAdjacentHTML("beforeend", `<section data-settings-content="ai-services" hidden class="ai-services-settings"><h3>Servicios IA</h3><p>La IA usa el catálogo y el horario general de la clínica.</p><label>Buscar servicio<input id="simple-ai-service-search" placeholder="Nombre o alias"></label><label>Servicio<select id="simple-ai-service-select"></select></label><details id="simple-ai-active-box" class="ai-collapse"><summary>Servicios activos para la IA (<span id="simple-ai-active-count">0</span>)</summary><div class="ai-collapse-body"><p class="ai-help">Solo estos servicios los puede ofrecer y agendar la IA. El resto quedan invisibles para ella.</p><div id="simple-ai-active-list" class="ai-active-list"></div></div></details><div id="simple-ai-service-fields"><label>Duración (minutos)<input id="simple-ai-duration" type="number" min="5" max="1440" step="5"></label><label>Capacidad por hora<input id="simple-ai-capacity" type="number" min="1" max="100"><small>Déjalo vacío para no limitar.</small></label><label>Alias (uno por línea)<textarea id="simple-ai-aliases" rows="3"></textarea></label><label>Anticipación mínima (minutos)<input id="simple-ai-advance" type="number" min="0" max="43200"></label><label class="ai-enabled"><input id="simple-ai-own-hours" type="checkbox"> Este servicio tiene su propio horario</label><label id="simple-ai-copy-wrap" hidden>Reutilizar horario de otro servicio<select id="simple-ai-copy-hours"></select></label><div id="simple-ai-own-week-wrap" hidden><p class="ai-help">La IA solo ofrecerá este servicio en estas franjas (dentro del horario general). Un día sin franjas queda cerrado para este servicio.</p><div id="simple-ai-own-week" class="ai-week-schedule"></div></div><label class="ai-enabled"><input id="simple-ai-enabled" type="checkbox"> Permitir que la IA ofrezca este servicio</label><label class="ai-enabled"><input id="simple-ai-share-price" type="checkbox"> La IA puede decir el precio<small id="simple-ai-price-hint"></small></label><div id="simple-ai-price-warn" class="ai-help" style="color:#b45309"></div><button id="simple-ai-service-save" type="button">Guardar servicio</button><div id="simple-ai-service-result" class="settings-state-card"></div></div><details class="ai-collapse"><summary>Horario general de la clínica</summary><div class="ai-collapse-body"><p>Agregá turnos por día. Si un día no tiene turnos, queda cerrado. Este horario aplica a todos los servicios que ofrece la IA.</p><label class="ai-inline-field">Intervalo de opciones<select id="simple-ai-interval-sel"><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option></select></label><div id="simple-ai-week" class="ai-week-schedule"></div></div></details><details class="ai-collapse"><summary>Pausas generales</summary><div class="ai-collapse-body ai-general-breaks"><div class="ai-blocked-heading"><div><small class="ai-help">Por ejemplo, almuerzo de lunes a viernes de 12:00 a 13:00.</small></div><button id="simple-ai-add-break" class="ai-secondary-btn" type="button">+ Agregar pausa</button></div><div id="simple-ai-breaks" class="ai-blocked-rows"></div></div></details><div class="ai-settings-actions"><button id="simple-ai-schedule-save" type="button">Guardar horario general</button><span id="simple-ai-schedule-result" class="settings-state-card"></span></div></section>`);
         const select = modal.querySelector("#simple-ai-service-select"); const search = modal.querySelector("#simple-ai-service-search"); let visible = services.slice();
         const scheduleDays = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
         const renderWeek = (weekly, host = "#simple-ai-week") => { modal.querySelector(host).innerHTML = scheduleDays.map((name, day) => { const ranges = Array.isArray(weekly?.[day]) ? weekly[day] : []; return `<div class="ai-day-card" data-day="${day}"><div class="ai-day-head"><strong>${name}</strong><button type="button" class="ai-secondary-btn simple-add-range">+ Turno</button></div><div class="ai-day-ranges">${ranges.length ? ranges.map((r) => `<div class="ai-range-row">${t12Html("simple-start", r.start)}<span>a</span>${t12Html("simple-end", r.end)}<button type="button" class="simple-remove-range">×</button></div>`).join("") : `<span class="ai-day-closed">Cerrado</span>`}</div></div>`; }).join(""); };
@@ -430,7 +430,14 @@
         });
         const updatePriceWarn = (service) => { modal.querySelector("#simple-ai-price-warn").textContent = (modal.querySelector("#simple-ai-share-price").checked && service && inKnowledge(service)) ? "⚠ Este servicio aparece en el texto de conocimiento. Si ahí tiene precio o promoción, apagá este switch para que la IA use solo ese precio y no el del catálogo." : ""; };
         const render = () => { const service = visible.find((item) => item.serviceId === Number(select.value)); if (!service) return; modal.querySelector("#simple-ai-duration").value = service.durationMinutes; modal.querySelector("#simple-ai-capacity").value = service.capacityPerHour ?? ""; modal.querySelector("#simple-ai-aliases").value = (service.aliases || []).join("\n"); modal.querySelector("#simple-ai-advance").value = service.minimumAdvanceMinutes; modal.querySelector("#simple-ai-enabled").checked = service.enabled; modal.querySelector("#simple-ai-share-price").checked = Boolean(service.sharePrice); modal.querySelector("#simple-ai-price-hint").textContent = service.price != null ? ` (catálogo: $${service.price})` : " (este servicio no tiene precio en el catálogo)"; updatePriceWarn(service); modal.querySelector("#simple-ai-own-hours").checked = Boolean(service.hasWeeklyHours); modal.querySelector("#simple-ai-own-week-wrap").hidden = !service.hasWeeklyHours; renderWeek(service.weeklyHours || {}, "#simple-ai-own-week"); const sources = services.filter((s) => s.serviceId !== service.serviceId && s.hasWeeklyHours); modal.querySelector("#simple-ai-copy-wrap").hidden = !sources.length; modal.querySelector("#simple-ai-copy-hours").innerHTML = `<option value="">— elegir servicio —</option>` + sources.map((s) => `<option value="${s.serviceId}">${esc(s.serviceName)} · ${esc(summarizeWeek(s.weeklyHours))}</option>`).join(""); };
-        const fill = () => { select.innerHTML = visible.length ? visible.map((item) => `<option value="${item.serviceId}">${esc(item.serviceName)}</option>`).join("") : '<option value="">No hay servicios</option>'; render(); };
+        const renderActiveSummary = () => {
+            const active = services.filter((item) => item.enabled).sort((a, b) => a.serviceName.localeCompare(b.serviceName));
+            modal.querySelector("#simple-ai-active-count").textContent = String(active.length);
+            modal.querySelector("#simple-ai-active-list").innerHTML = active.length
+                ? active.map((item) => `<span class="ai-active-chip">${esc(item.serviceName)}${item.hasWeeklyHours ? " ⏰" : ""}${item.sharePrice ? " 💲" : ""}</span>`).join("")
+                : '<span class="ai-empty-note">Ningún servicio activo. La IA no puede agendar nada.</span>';
+        };
+        const fill = () => { select.innerHTML = visible.length ? visible.map((item) => `<option value="${item.serviceId}">${item.enabled ? "● " : "○ "}${esc(item.serviceName)}</option>`).join("") : '<option value="">No hay servicios</option>'; renderActiveSummary(); render(); };
         fill(); search.addEventListener("input", () => { const needle = search.value.trim().toLowerCase(); visible = services.filter((item) => `${item.serviceName} ${(item.aliases || []).join(" ")}`.toLowerCase().includes(needle)); fill(); }); select.addEventListener("change", render); modal.querySelector("#simple-ai-share-price").addEventListener("change", () => updatePriceWarn(visible.find((item) => item.serviceId === Number(select.value))));
         modal.querySelector("#simple-ai-service-save").addEventListener("click", async () => {
             const ownEnabled = modal.querySelector("#simple-ai-own-hours").checked;
@@ -461,6 +468,72 @@
         });
         const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); }; nav.querySelector('[data-settings-section="ai-services"]').addEventListener("click", (event) => activate(event.currentTarget));
     }
+    async function enrichAiAgendaSettings() {
+        const modal = document.getElementById("mensajes-settings-modal");
+        const nav = modal?.querySelector(".mensajes-settings-nav");
+        const content = modal?.querySelector(".mensajes-settings-content");
+        if (!modal || modal.querySelector('[data-settings-section="ai-agenda"]')) return;
+        const [{ schedule }, { dates }] = await Promise.all([
+            api("/api/mensajes-view/ai-clinic-schedule"),
+            api("/api/mensajes-view/ai-blocked-dates")
+        ]);
+        nav.insertAdjacentHTML("beforeend", '<button data-settings-section="ai-agenda">Agenda IA</button>');
+        content.insertAdjacentHTML("beforeend", `<section data-settings-content="ai-agenda" hidden class="ai-agenda-settings">
+            <h3>Agenda IA</h3>
+            <p>Límites que la IA respeta al agendar, además del horario y la capacidad por servicio.</p>
+            <label>Tope de citas por día (toda la clínica)
+                <input id="ai-agenda-daily-cap" type="number" min="1" max="1000" placeholder="Sin tope">
+                <small>Cuenta todas las citas activas del día (IA y recepción). Al llegar al tope, la IA responde que ese día no está disponible. Vacío = sin tope.</small>
+            </label>
+            <button id="ai-agenda-cap-save" type="button">Guardar tope diario</button>
+            <span id="ai-agenda-cap-result" class="settings-state-card"></span>
+            <hr>
+            <h3>Días bloqueados</h3>
+            <p>Cerrá una fecha para la IA: asueto, cierre administrativo o día ya lleno. Ese día la IA no agenda, no reprograma y no ofrece horarios.</p>
+            <div class="ai-block-form">
+                <input id="ai-agenda-block-date" type="date">
+                <input id="ai-agenda-block-reason" type="text" placeholder="Motivo (opcional, uso interno)" maxlength="200">
+                <button id="ai-agenda-block-add" type="button">Bloquear fecha</button>
+            </div>
+            <div id="ai-agenda-block-result" class="settings-state-card"></div>
+            <div id="ai-agenda-block-list" class="ai-block-list"></div>
+        </section>`);
+        const capInput = modal.querySelector("#ai-agenda-daily-cap");
+        capInput.value = schedule.dailyCap ?? "";
+        modal.querySelector("#ai-agenda-cap-save").addEventListener("click", async () => {
+            const result = modal.querySelector("#ai-agenda-cap-result");
+            try {
+                const data = await api("/api/mensajes-view/ai-daily-cap", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dailyCap: capInput.value.trim() === "" ? null : Number(capInput.value) }) });
+                result.textContent = data.schedule.dailyCap ? `Tope guardado: ${data.schedule.dailyCap} citas/día` : "Tope quitado";
+            } catch (error) { result.textContent = error.message || "No se pudo guardar"; }
+        });
+        const dateInput = modal.querySelector("#ai-agenda-block-date");
+        const reasonInput = modal.querySelector("#ai-agenda-block-reason");
+        const list = modal.querySelector("#ai-agenda-block-list");
+        const today = new Date(); today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+        dateInput.min = today.toISOString().slice(0, 10);
+        const renderDates = (rows) => {
+            list.innerHTML = rows.length
+                ? rows.map((row) => `<div class="ai-block-item"><div><strong>${esc(new Date(`${row.date}T12:00:00`).toLocaleDateString("es-SV", { weekday: "long", day: "numeric", month: "long" }))}</strong>${row.reason ? `<span>${esc(row.reason)}</span>` : ""}</div><button type="button" data-unblock="${row.id}">Reabrir</button></div>`).join("")
+                : `<div class="ai-empty-note">No hay días bloqueados próximos.</div>`;
+            list.querySelectorAll("[data-unblock]").forEach((button) => button.addEventListener("click", async () => {
+                const data = await api(`/api/mensajes-view/ai-blocked-dates/${button.dataset.unblock}`, { method: "DELETE" });
+                renderDates(data.dates);
+            }));
+        };
+        renderDates(dates);
+        modal.querySelector("#ai-agenda-block-add").addEventListener("click", async () => {
+            const result = modal.querySelector("#ai-agenda-block-result");
+            if (!dateInput.value) { result.textContent = "Elegí una fecha"; return; }
+            try {
+                const data = await api("/api/mensajes-view/ai-blocked-dates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: dateInput.value, reason: reasonInput.value }) });
+                dateInput.value = ""; reasonInput.value = ""; result.textContent = "Fecha bloqueada";
+                renderDates(data.dates);
+            } catch (error) { result.textContent = error.message || "No se pudo bloquear"; }
+        });
+        const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); };
+        nav.querySelector('[data-settings-section="ai-agenda"]').addEventListener("click", (event) => activate(event.currentTarget));
+    }
     async function ensurePhoneRules() {
         const modal = document.getElementById("mensajes-settings-modal"); const section = modal?.querySelector('[data-settings-content="automation"]');
         if (!section || section.querySelector("#settings-phone-rules")) return;
@@ -489,7 +562,7 @@
                 // Las secciones son independientes: cargarlas en paralelo en vez de en cadena.
                 await Promise.allSettled([
                     enrichPatientIdentitySettings(), enrichAssistantKnowledge(), enrichHumanReviewSettings(),
-                    enrichAiProviderSettings(), enrichAiServicesSettingsSimple(), enrichAutomationBuffer(),
+                    enrichAiProviderSettings(), enrichAiServicesSettingsSimple(), enrichAiAgendaSettings(), enrichAutomationBuffer(),
                     enrichReminderSettings(), ensurePhoneRules()
                 ]);
             } finally { btn.dataset.loading = "0"; }
