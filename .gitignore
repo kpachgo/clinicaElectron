@@ -20,6 +20,7 @@ build/icons/*
 !build/icons/incisoft.icns
 # Allow electron-builder hook scripts.
 !build/afterPack.js
+!build/afterAllArtifactBuild.js
 
 .env
 .env.*

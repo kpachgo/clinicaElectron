@@ -38,6 +38,7 @@
     "appId": "com.clinica.electron",
     "productName": "ClinicaElectron",
     "afterPack": "build/afterPack.js",
+    "afterAllArtifactBuild": "build/afterAllArtifactBuild.js",
     "asar": true,
     "files": [
       "**/*",
