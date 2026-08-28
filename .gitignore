@@ -18,6 +18,8 @@ build/*
 !build/icons/
 build/icons/*
 !build/icons/incisoft.icns
+# Allow electron-builder hook scripts.
+!build/afterPack.js
 
 .env
 .env.*

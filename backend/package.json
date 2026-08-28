@@ -5,7 +5,7 @@
     "stop": "node scripts/stop-server.js"
   },
   "dependencies": {
-    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "better-sqlite3": "^11.10.0",
     "clinica": "file:..",
     "cors": "^2.8.5",

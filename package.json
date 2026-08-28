@@ -26,13 +26,18 @@
     "dist:mac": "electron-builder --mac --publish never",
     "dist:linux": "electron-builder --linux --publish never"
   },
+  "engines": {
+    "node": ">=20 <23"
+  },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.2",
     "electron": "^37.2.0",
     "electron-builder": "26.0.12"
   },
   "build": {
     "appId": "com.clinica.electron",
     "productName": "ClinicaElectron",
+    "afterPack": "build/afterPack.js",
     "asar": true,
     "files": [
       "**/*",

@@ -1,6 +1,6 @@
 // backend/controllers/auth.controller.js
 const jwt = require("jsonwebtoken");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 
 const authService = require("../services/auth.service");
 const licenciaService = require("../services/licencia.service");

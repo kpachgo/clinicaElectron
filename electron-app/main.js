@@ -507,6 +507,19 @@ async function stopExternalBackendOnPortInPackaged() {
   );
 }
 
+// En modo empaquetado arrancamos el backend con el Node embebido de Electron
+// (ELECTRON_RUN_AS_NODE): el equipo destino NO necesita Node/npm instalado, y
+// los modulos nativos (better-sqlite3) se recompilan para el ABI de Electron en
+// afterPack. En desarrollo usamos "npm start" contra el Node del sistema, que es
+// para el que estan compilados los modulos nativos de backend/node_modules.
+function startBackend() {
+  if (app.isPackaged) {
+    startBackendWithElectronNode();
+  } else {
+    startBackendWithNpm();
+  }
+}
+
 function startBackendWithNpm() {
   if (backendProcess) return;
   if (backendRestartTimer) {
@@ -608,7 +621,12 @@ function startBackendWithElectronNode() {
       stdio: ["ignore", "pipe", "pipe"]
     });
   } catch (err) {
-    logLine("[ELECTRON]", `Excepcion en fallback Node: ${err.message}`);
+    logLine("[ELECTRON]", `Excepcion al iniciar backend con Node embebido: ${err.message}`);
+    if (!fallbackAttempted) {
+      fallbackAttempted = true;
+      logLine("[ELECTRON]", "Probando arranque con npm start como ultimo recurso.");
+      startBackendWithNpm();
+    }
     return;
   }
   backendStartedByElectron = true;
@@ -620,11 +638,18 @@ function startBackendWithElectronNode() {
     logLine("[BACKEND-FALLBACK:ERR]", chunk.toString("utf8"));
   });
   backendProcess.on("exit", (code, signal) => {
+    const shouldFallback = !isQuitting && !backendReady && !fallbackAttempted;
     const shouldRestart = !isQuitting && backendReady && backendStartedByElectron;
-    logLine("[ELECTRON]", `Fallback backend finalizado (code=${code}, signal=${signal || "none"})`);
+    logLine("[ELECTRON]", `Backend (Node embebido) finalizado (code=${code}, signal=${signal || "none"})`);
     backendProcess = null;
+    if (shouldFallback) {
+      fallbackAttempted = true;
+      logLine("[ELECTRON]", "Backend con Node embebido se cerro antes de estar saludable; probando npm start.");
+      startBackendWithNpm();
+      return;
+    }
     if (shouldRestart) {
-      logLine("[ELECTRON]", "Fallback backend finalizo despues del arranque; reiniciando.");
+      logLine("[ELECTRON]", "Backend finalizo despues del arranque; reiniciando.");
       backendReady = false;
       backendRestartTimer = setTimeout(() => {
         backendRestartTimer = null;
@@ -919,7 +944,7 @@ async function bootApp() {
 
   const isAlreadyRunning = await checkServerHealth();
   if (!isAlreadyRunning) {
-    startBackendWithNpm();
+    startBackend();
   } else if (app.isPackaged) {
     logLine("[ELECTRON]", `Puerto ${SERVER_PORT} sigue ocupado en modo empaquetado; se aborta arranque seguro.`);
     dialog.showErrorBox(
@@ -946,7 +971,9 @@ async function bootApp() {
         `URL esperada: ${SERVER_URL}${HEALTH_PATH}`,
         `Runtime: ${getRuntimeDir()}`,
         `Log: ${getLogFilePath()}`,
-        "Verifica Node.js/npm instalados, puerto 3000 libre y firewall."
+        app.isPackaged
+          ? "Verifica que el puerto 3000 este libre y el firewall no bloquee la app."
+          : "Verifica Node.js/npm instalados, puerto 3000 libre y firewall."
       ].join("\n")
     );
     await killBackendProcess();

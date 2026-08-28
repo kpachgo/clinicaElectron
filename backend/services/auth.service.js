@@ -1,5 +1,5 @@
 const db = require("../config/db");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 
 function normalizeSecurityQuestion(value) {
     return String(value || "").trim().replace(/\s+/g, " ");
