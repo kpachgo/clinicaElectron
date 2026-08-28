@@ -619,6 +619,11 @@
                     enrichAiProviderSettings(), enrichAiServicesSettingsSimple(), enrichAiAgendaSettings(), enrichAutomationBuffer(),
                     enrichReminderSettings(), ensurePhoneRules(), enrichConfigTransfer()
                 ]);
+                // Las pestañas se agregan con insertAdjacentHTML("beforeend"): reubicar
+                // "Cerrar" al final para que quede siempre como última opción del nav.
+                const settingsNav = document.querySelector("#mensajes-settings-modal .mensajes-settings-nav");
+                const closeButton = settingsNav?.querySelector(".settings-close");
+                if (settingsNav && closeButton) settingsNav.appendChild(closeButton);
             } finally { btn.dataset.loading = "0"; }
         });
         const deleteAllButton = document.createElement("button"); deleteAllButton.id = "mensajes-delete-all"; deleteAllButton.type = "button"; deleteAllButton.textContent = "Borrar todo"; document.getElementById("mensajes-simulator").appendChild(deleteAllButton); deleteAllButton.addEventListener("click", deleteAllConversations); const reminderButton = document.createElement("button"); reminderButton.id = "mensajes-send-reminders"; reminderButton.type = "button"; reminderButton.textContent = "Enviar recordatorios"; document.getElementById("mensajes-simulator").appendChild(reminderButton); reminderButton.addEventListener("click", () => void openReminderModal()); const pauseButton = document.createElement("button"); pauseButton.id = "mensajes-pause-ai"; pauseButton.type = "button"; pauseButton.textContent = "Pausar IA"; document.getElementById("mensajes-simulator").appendChild(pauseButton); pauseButton.addEventListener("click", () => void setGlobalAiMode("paused")); const aiButton = document.createElement("button"); aiButton.id = "mensajes-global-ai"; aiButton.type = "button"; aiButton.textContent = "Pasar todos a IA"; document.getElementById("mensajes-simulator").appendChild(aiButton); aiButton.addEventListener("click", () => void setGlobalAiMode("assistant")); 
