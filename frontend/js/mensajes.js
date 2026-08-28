@@ -581,7 +581,8 @@
             result.textContent = "Importando…";
             try {
                 const data = await api("/api/mensajes-view/config-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-                result.textContent = `Configuración importada: ${data.summary.services} servicios, ${data.summary.aliases} alias, ${data.summary.blockedDates} días bloqueados. Cerrá y volvé a abrir Ajustes para ver los cambios.`;
+                result.textContent = `Configuración importada: ${data.summary.services} servicios, ${data.summary.aliases} alias, ${data.summary.blockedDates} días bloqueados. Recargando la vista…`;
+                setTimeout(() => window.location.reload(), 1600);
             } catch (error) { result.textContent = error.message || "No se pudo importar."; }
         });
         const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); };
