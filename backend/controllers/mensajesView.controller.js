@@ -5,6 +5,7 @@ const { enqueueIncomingResponse } = require("../services/mensajes/aiObserver.ser
 const { getRuntime, getMetrics, sendQueuedMessage, connectConnector, disconnectConnector, clearConnectorSession } = require("../services/mensajes/mensajesRuntime.service");
 const pool = require("../config/db");
 const { getClinicSchedule, updateClinicSchedule, updateDailyCap, listBlockedDates, addBlockedDate, removeBlockedDate, listAiServices, updateAiService } = require("../services/mensajes/aiAvailability.service");
+const { exportConfig, importConfig } = require("../services/mensajes/configTransfer.service");
 const { to12h } = require("../services/mensajes/timeFormat.service");
 const repo = new MensajesRepository();
 const ROLES = ["Administrador", "Recepcion"];
@@ -68,6 +69,8 @@ exports.updateAutomationSettings = (req, res) => { if (!allowed(req, res)) retur
 exports.getAdministrativeSettings = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, settings: repo.getAdministrativeSettings() }); };
 exports.getAiClinicSchedule = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, schedule: getClinicSchedule() }); };
 exports.updateAiClinicSchedule = (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, schedule: updateClinicSchedule(req.body || {}) }); } catch (error) { return bad(res, error.message || "Horario invalido"); } };
+exports.exportMensajesConfig = (req, res) => { if (!allowed(req, res)) return; try { const data = exportConfig(); res.setHeader("Content-Disposition", `attachment; filename="clinica-config-${new Date().toISOString().slice(0, 10)}.json"`); res.json(data); } catch (error) { res.status(500).json({ ok: false, message: error.message || "No se pudo exportar la configuracion" }); } };
+exports.importMensajesConfig = (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, summary: importConfig(req.body || {}) }); } catch (error) { return bad(res, error.message || "No se pudo importar la configuracion"); } };
 exports.updateAiDailyCap = (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, schedule: updateDailyCap(req.body?.dailyCap) }); } catch (error) { return bad(res, error.message || "Tope diario invalido"); } };
 exports.listAiBlockedDates = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, dates: listBlockedDates() }); };
 exports.addAiBlockedDate = (req, res) => { if (!allowed(req, res)) return; try { res.json({ ok: true, dates: addBlockedDate({ date: req.body?.date, reason: req.body?.reason }) }); } catch (error) { return bad(res, error.message || "No se pudo bloquear la fecha"); } };

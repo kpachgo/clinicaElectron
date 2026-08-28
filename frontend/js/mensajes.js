@@ -401,6 +401,7 @@
         nav.insertAdjacentHTML("beforeend", `<button data-settings-section="ai-provider">Configuración IA</button>`);
         content.insertAdjacentHTML("beforeend", `<section data-settings-content="ai-provider" hidden><h3>Configuración IA</h3><p>Conecta un proveedor local o en la nube mediante un estándar compatible con OpenAI.</p><label>Tipo de proveedor<select id="ai-provider-mode"><option value="local">Local</option><option value="cloud">Nube</option></select></label><label>URL base<input id="ai-provider-url" type="url" placeholder="http://localhost:11434/v1"></label><label>Modelo<input id="ai-provider-model" placeholder="llama3.2"></label><label>Clave API (opcional)<input id="ai-provider-key" type="password" placeholder="Se conserva la clave actual si se deja vacío"></label><label>Tiempo máximo (ms)<input id="ai-provider-timeout" type="number" min="1000" max="120000" step="1000"></label><button id="ai-provider-save" type="button">Guardar configuración</button><button id="ai-provider-test" type="button">Probar conexión</button><div id="ai-provider-result" class="settings-state-card"></div></section>`);
         modal.querySelector("#ai-provider-mode").value = data.settings.providerMode; modal.querySelector("#ai-provider-url").value = data.settings.baseUrl; modal.querySelector("#ai-provider-model").value = data.settings.model; modal.querySelector("#ai-provider-timeout").value = data.settings.timeoutMs;
+        if (data.settings.apiKeyConfigured) { modal.querySelector("#ai-provider-key").placeholder = "••••••••••••••••  ·  hay una clave guardada (dejá vacío para conservarla)"; }
         const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); };
         nav.querySelector('[data-settings-section="ai-provider"]').addEventListener("click", (event) => activate(event.currentTarget));
         modal.querySelector("#ai-provider-save").addEventListener("click", async () => { await api("/api/mensajes-view/ai-provider-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerMode: modal.querySelector("#ai-provider-mode").value, baseUrl: modal.querySelector("#ai-provider-url").value, model: modal.querySelector("#ai-provider-model").value, apiKey: modal.querySelector("#ai-provider-key").value, timeoutMs: Number(modal.querySelector("#ai-provider-timeout").value) }) }); alert("Configuración IA guardada"); });
@@ -534,6 +535,58 @@
         const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); };
         nav.querySelector('[data-settings-section="ai-agenda"]').addEventListener("click", (event) => activate(event.currentTarget));
     }
+    async function enrichConfigTransfer() {
+        const modal = document.getElementById("mensajes-settings-modal");
+        const nav = modal?.querySelector(".mensajes-settings-nav");
+        const content = modal?.querySelector(".mensajes-settings-content");
+        if (!modal || modal.querySelector('[data-settings-section="config-transfer"]')) return;
+        nav.insertAdjacentHTML("beforeend", '<button data-settings-section="config-transfer">Copia de configuración</button>');
+        content.insertAdjacentHTML("beforeend", `<section data-settings-content="config-transfer" hidden>
+            <h3>Copia de configuración</h3>
+            <p>Exportá la configuración de la IA de este equipo a un archivo y cargala en otro. Incluye: texto de conocimiento, servicios IA y alias, horario general, pausas, días bloqueados, tope diario, configuración del proveedor IA (con su clave), revisión humana, automatizaciones, recordatorios y reglas de teléfonos. <strong>No</strong> incluye conversaciones ni vinculaciones de pacientes.</p>
+            <p class="ai-help" style="color:#b45309">El archivo contiene la clave del proveedor IA. Guardalo en un lugar seguro y no lo subas a repositorios ni lo compartas.</p>
+            <button id="config-export-btn" type="button">Exportar configuración</button>
+            <hr>
+            <p>Importar reemplaza la configuración de este equipo con la del archivo. Las citas ya agendadas no se tocan.</p>
+            <input id="config-import-file" type="file" accept="application/json,.json" hidden>
+            <button id="config-import-btn" type="button">Importar configuración…</button>
+            <div id="config-transfer-result" class="settings-state-card"></div>
+        </section>`);
+        modal.querySelector("#config-export-btn").addEventListener("click", async () => {
+            const result = modal.querySelector("#config-transfer-result");
+            result.textContent = "Generando archivo…";
+            try {
+                const cfg = await api("/api/mensajes-view/config-export");
+                const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = url;
+                link.download = `clinica-config-${String(cfg.exportedAt || "").slice(0, 10) || "export"}.json`;
+                document.body.appendChild(link); link.click(); link.remove();
+                URL.revokeObjectURL(url);
+                result.textContent = `Configuración exportada (${cfg.serviceSettings?.length || 0} servicios, ${cfg.blockedDates?.length || 0} días bloqueados).`;
+            } catch (error) { result.textContent = error.message || "No se pudo exportar."; }
+        });
+        const fileInput = modal.querySelector("#config-import-file");
+        modal.querySelector("#config-import-btn").addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", async () => {
+            const result = modal.querySelector("#config-transfer-result");
+            const file = fileInput.files && fileInput.files[0];
+            fileInput.value = "";
+            if (!file) return;
+            let payload;
+            try { payload = JSON.parse(await file.text()); }
+            catch { result.textContent = "El archivo no es un JSON válido."; return; }
+            if (!confirm("Importar esta configuración reemplaza el texto de conocimiento, los servicios IA, el horario, las pausas, los días bloqueados, el tope diario y la configuración del proveedor IA de este equipo. ¿Continuar?")) return;
+            result.textContent = "Importando…";
+            try {
+                const data = await api("/api/mensajes-view/config-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+                result.textContent = `Configuración importada: ${data.summary.services} servicios, ${data.summary.aliases} alias, ${data.summary.blockedDates} días bloqueados. Cerrá y volvé a abrir Ajustes para ver los cambios.`;
+            } catch (error) { result.textContent = error.message || "No se pudo importar."; }
+        });
+        const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); };
+        nav.querySelector('[data-settings-section="config-transfer"]').addEventListener("click", (event) => activate(event.currentTarget));
+    }
     async function ensurePhoneRules() {
         const modal = document.getElementById("mensajes-settings-modal"); const section = modal?.querySelector('[data-settings-content="automation"]');
         if (!section || section.querySelector("#settings-phone-rules")) return;
@@ -563,7 +616,7 @@
                 await Promise.allSettled([
                     enrichPatientIdentitySettings(), enrichAssistantKnowledge(), enrichHumanReviewSettings(),
                     enrichAiProviderSettings(), enrichAiServicesSettingsSimple(), enrichAiAgendaSettings(), enrichAutomationBuffer(),
-                    enrichReminderSettings(), ensurePhoneRules()
+                    enrichReminderSettings(), ensurePhoneRules(), enrichConfigTransfer()
                 ]);
             } finally { btn.dataset.loading = "0"; }
         });
