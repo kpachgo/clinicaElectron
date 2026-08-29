@@ -16,8 +16,8 @@
     "start": "node backend/server.js",
     "dev": "node --watch backend/server.js",
     "stop": "node backend/scripts/stop-server.js",
-    "install:backend": "npm --prefix backend install",
-    "install:electron-app": "npm --prefix electron-app install",
+    "install:backend": "cd backend && npm install",
+    "install:electron-app": "cd electron-app && npm install",
     "electron": "electron electron-app/main.js",
     "electron:dev": "electron electron-app/main.js",
     "dist": "electron-builder --publish never",
@@ -51,14 +51,16 @@
         "filter": [
           "**/*",
           ".env",
-          "node_modules{,/**}"
+          "node_modules{,/**}",
+          "!node_modules/clinica{,/**}"
         ]
       },
       {
         "from": "backend/node_modules",
         "to": "runtime/backend/node_modules",
         "filter": [
-          "**/*"
+          "**/*",
+          "!clinica{,/**}"
         ]
       },
       {

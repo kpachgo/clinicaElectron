@@ -23,6 +23,7 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `17_release_linux_github_actions.md`
 - `18_modo_venta.md`
 - `20_estado_actual_vista_mensajes.md`
+- `21_build_win_local.md`
 
 ## Nota
 - `01_general.md` incluye un resumen fechado de cambios recientes para reubicarse rapido entre sesiones.
@@ -35,3 +36,4 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `17_release_linux_github_actions.md` documenta el flujo oficial de Linux, errores ya resueltos y el procedimiento correcto para relanzar builds nuevas.
 - `18_modo_venta.md` documenta la variante comercial activada por `CLINICA_MODO_VENTA=1`.
 - `20_estado_actual_vista_mensajes.md` documenta la Vista Mensajes: agente IA con herramientas, agenda, identidad de pacientes y configuración por clínica.
+- `21_build_win_local.md` guia del instalador Windows local: pasos, validacion del paquete y los 3 errores conocidos (self-link `clinica` -> recursion de 7za, ABI de `better-sqlite3` vs Electron, `node_modules` del backend vacio en el paquete).
