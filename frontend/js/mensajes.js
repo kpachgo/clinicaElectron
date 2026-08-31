@@ -9,6 +9,13 @@
     let lastListSig = "";
     let lastChatSig = "";
     let simulatingIncoming = false;
+    // --- Lista de conversaciones: datos crudos + filtro/búsqueda + metadatos ---
+    let allConversations = [];
+    let convListFilter = "all";        // "all" | "review" | "ai"
+    let convSearchTerm = "";
+    let patientNameByChat = new Map(); // waChatId -> { name, treatment } (vinculaciones activas)
+    let patientNamesFetchedAt = 0;
+    let aiWorkingConvIds = new Set();  // conversaciones con la IA generando respuesta
 
     // --- Estado y utilidades ---
 
@@ -60,13 +67,30 @@
     function renderShell() {
         const content = document.querySelector(".content");
         content.innerHTML = `<section class="mensajes-view">
-          <form id="mensajes-simulator" class="mensajes-simulator"><strong>WhatsApp Web</strong><span id="mensajes-whatsapp-status" class="mensajes-wa-state">Desconectado</span><button id="mensajes-whatsapp-start" type="button">Iniciar</button><button id="mensajes-whatsapp-stop" type="button" disabled>Cerrar</button><button id="mensajes-whatsapp-clear" type="button">Quitar sesión</button><span class="mensajes-sim-divider"></span><input id="mensajes-sim-phone" placeholder="Numero de telefono" inputmode="tel"><input id="mensajes-sim-text" placeholder="Mensaje del paciente"><button id="mensajes-sim-submit" type="button">Simular mensaje</button><button id="mensajes-global-settings" type="button" title="Ajustes globales">⚙ Ajustes</button></form>
-          <div class="mensajes-hero"><div><p class="mensajes-kicker">Comunicación</p><h1>Mensajes</h1><p class="mensajes-subtitle">Conversaciones atendidas desde la clínica</p></div><span id="mensajes-connection-status" class="mensajes-status">Simulador listo</span></div>
+          <form id="mensajes-simulator" class="mensajes-simulator">
+            <div class="sim-group"><span class="sim-group-label">WhatsApp</span><span id="mensajes-whatsapp-status" class="mensajes-wa-state">Desconectado</span><button id="mensajes-whatsapp-start" type="button" class="sim-btn sim-btn-primary">Iniciar</button><button id="mensajes-whatsapp-stop" type="button" class="sim-btn" disabled>Cerrar</button><button id="mensajes-whatsapp-clear" type="button" class="sim-btn sim-btn-danger">Quitar sesión</button></div>
+            <div class="sim-group"><span class="sim-group-label">Simular</span><input id="mensajes-sim-phone" placeholder="Teléfono" inputmode="tel"><input id="mensajes-sim-text" placeholder="Mensaje del paciente"><button id="mensajes-sim-submit" type="button" class="sim-btn sim-btn-primary">Enviar</button></div>
+            <div class="sim-group" id="mensajes-actions-group"><span class="sim-group-label">Acciones</span><button id="mensajes-global-settings" type="button" class="sim-btn" title="Ajustes globales">⚙ Ajustes</button></div>
+            <div class="sim-group" id="mensajes-ai-group"><span class="sim-group-label">IA</span></div>
+          </form>
           <div class="mensajes-layout">
-            <aside class="mensajes-conversations"><div class="mensajes-section-title"><span>Conversaciones</span><button id="mensajes-refresh" class="ui-toolbar-btn">Actualizar</button></div><div id="mensajes-list" class="mensajes-list"></div></aside>
+            <aside class="mensajes-conversations"><div class="mensajes-section-title"><span class="mensajes-section-heading">Conversaciones<button id="mensajes-toggle-tools" type="button" class="mensajes-icon-btn" title="Mostrar u ocultar herramientas" aria-label="Mostrar u ocultar herramientas"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></button></span><button id="mensajes-refresh" class="ui-toolbar-btn">Actualizar</button></div><div class="mensajes-list-toolbar"><input id="mensajes-search" type="search" autocomplete="off" placeholder="Buscar por nombre o número"><div id="mensajes-filters" class="mensajes-filters"><button type="button" data-filter="all" class="is-active">Todas</button><button type="button" data-filter="review">⚠ Necesitan revisión<span class="chip-count"></span></button><button type="button" data-filter="ai">🤖 IA</button></div></div><div id="mensajes-list" class="mensajes-list"></div></aside>
             <main class="mensajes-chat"><div id="mensajes-chat-head" class="mensajes-chat-head"><span>Selecciona una conversación</span></div><div id="mensajes-chat-body" class="mensajes-chat-body"><div class="mensajes-empty">Selecciona una conversación para ver el historial.</div></div><form id="mensajes-compose" class="mensajes-compose"><input id="mensajes-input" maxlength="2000" autocomplete="off" placeholder="Escribe una respuesta..."><button type="submit">Enviar</button></form></main>
           </div>
         </section>`;
+    }
+    // --- Barra de herramientas (WhatsApp / simulador / acciones): colapsable ---
+    const TOOLS_KEY = "mensajes-tools-collapsed";
+    function toolsCollapsed() {
+        try { const value = localStorage.getItem(TOOLS_KEY); return value === null ? true : value === "1"; }
+        catch (_) { return true; }
+    }
+    function applyToolsCollapsed(collapsed) {
+        const bar = document.getElementById("mensajes-simulator");
+        const button = document.getElementById("mensajes-toggle-tools");
+        if (bar) bar.classList.toggle("is-collapsed", collapsed);
+        if (button) { button.classList.toggle("is-active", !collapsed); button.title = collapsed ? "Mostrar herramientas" : "Ocultar herramientas"; }
+        try { localStorage.setItem(TOOLS_KEY, collapsed ? "1" : "0"); } catch (_) {}
     }
     // --- Recordatorios ---
     async function openReminderModal() { let modal = document.getElementById("mensajes-reminder-modal"); if (!modal) { modal = document.createElement("div"); modal.id = "mensajes-reminder-modal"; modal.className = "mensajes-settings-overlay"; modal.innerHTML = `<form class="mensajes-reminder-card"><button type="button" data-close>×</button><h2>Enviar recordatorios</h2><label>Fecha<input id="reminder-date" type="date" required></label><label>Plantilla<textarea id="reminder-template" rows="4">Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.</textarea></label><label class="ai-enabled"><input id="reminder-force-resend" type="checkbox"> Permitir reenviar recordatorios ya enviados</label><div class="reminder-toolbar"><button type="button" id="reminder-load">Cargar pacientes</button><span id="reminder-progress">Aún no cargados</span></div><div id="reminder-items" class="reminder-items"></div><div class="reminder-actions"><button type="submit" id="reminder-send">Enviar recordatorios</button><button type="button" id="reminder-cancel" disabled>Cancelar lote</button></div></form>`; document.body.appendChild(modal); modal.querySelector("[data-close]").addEventListener("click", () => { modal.hidden = true; }); modal.querySelector("#reminder-load").addEventListener("click", loadReminderCandidates); modal.querySelector("form").addEventListener("submit", startReminder); modal.querySelector("#reminder-cancel").addEventListener("click", cancelReminder); } modal.querySelector("#reminder-date").value = new Date().toISOString().slice(0,10); modal.hidden = false; await loadReminderCandidates(); }
@@ -75,7 +99,7 @@
     }
     async function pollReminder() { const modal = document.getElementById("mensajes-reminder-modal"); const batchId = modal?.dataset.batchId; if (!batchId || modal.hidden) return; try { const batch = (await api(`/api/mensajes-view/reminders/${batchId}`)).batch; modal.querySelector("#reminder-progress").textContent = `${batch.sentCount} enviados · ${batch.failedCount} errores · ${batch.cancelledCount} cancelados de ${batch.totalCount} · ${batch.status}`; batch.items.forEach((item) => { const el = modal.querySelector(`[data-item-status="${item.appointment_id}"]`); if (el) el.textContent = item.status === "sent" ? "Enviado" : item.status === "failed" ? "Error" : item.status === "cancelled" ? "Cancelado" : item.status === "queued" || item.status === "sending" ? "En cola / trabajando" : "Pendiente"; }); if (["queued", "processing"].includes(batch.status)) { modal.querySelector("#reminder-send").disabled = true; modal.querySelector("#reminder-cancel").disabled = false; setTimeout(pollReminder, 3000); } else { modal.querySelector("#reminder-send").disabled = false; modal.querySelector("#reminder-cancel").disabled = true; } } catch (error) { modal.querySelector("#reminder-send").disabled = false; modal.querySelector("#reminder-cancel").disabled = true; modal.querySelector("#reminder-progress").textContent = error.message || "No se pudo consultar el lote"; } }
     async function cancelReminder() { const modal = document.getElementById("mensajes-reminder-modal"); if (modal?.dataset.batchId) await api(`/api/mensajes-view/reminders/${modal.dataset.batchId}/cancel`, { method: "POST" }); await pollReminder(); }
-    async function refreshGlobalAiStatus() { const bar = document.getElementById("mensajes-simulator"); if (!bar) return; let indicator = document.getElementById("mensajes-ai-global-status"); if (!indicator) { indicator = document.createElement("span"); indicator.id = "mensajes-ai-global-status"; indicator.className = "mensajes-ai-global-status"; bar.appendChild(indicator); } const data = await api("/api/mensajes-view/automation-settings"); const active = Boolean(data.settings.enabled); indicator.textContent = active ? "IA activa" : "IA pausada"; indicator.classList.toggle("is-active", active); indicator.classList.toggle("is-paused", !active); const pause = document.getElementById("mensajes-pause-ai"); const toAi = document.getElementById("mensajes-global-ai"); if (pause) pause.textContent = active ? "Pausar IA" : "IA pausada"; if (toAi) toAi.textContent = active ? "IA activa" : "Pasar todos a IA"; }
+    async function refreshGlobalAiStatus() { const group = document.getElementById("mensajes-ai-group") || document.getElementById("mensajes-simulator"); if (!group) return; let indicator = document.getElementById("mensajes-ai-global-status"); if (!indicator) { indicator = document.createElement("span"); indicator.id = "mensajes-ai-global-status"; indicator.className = "mensajes-ai-global-status"; group.insertBefore(indicator, document.getElementById("mensajes-pause-ai") || null); } const data = await api("/api/mensajes-view/automation-settings"); const active = Boolean(data.settings.enabled); indicator.textContent = active ? "IA activa" : "IA pausada"; indicator.classList.toggle("is-active", active); indicator.classList.toggle("is-paused", !active); const pause = document.getElementById("mensajes-pause-ai"); const toAi = document.getElementById("mensajes-global-ai"); if (pause) { pause.textContent = active ? "Pausar IA" : "Reanudar IA"; pause.dataset.aiAction = active ? "paused" : "resume"; pause.title = active ? "Apaga la IA y cancela lo que esté respondiendo" : "Vuelve a encender la IA; no responde lo viejo, solo los mensajes que lleguen"; pause.disabled = false; } if (toAi) toAi.textContent = "Pasar todo a IA"; }
     function formatWhatsappStatus(status) { const labels = { disconnected: "Desconectado", initializing: "Iniciando...", connecting: "Conectando...", qr: "QR en ventana de WhatsApp", authenticated: "Autenticado...", syncing: "Sincronizando...", connected: "Conectado", reconnecting: "Reconectando...", auth_failure: "Fallo de autenticación", error: "Error" }; return labels[status] || status || "Desconectado"; }
     function paintWhatsappStatus(status) { const state = document.getElementById("mensajes-whatsapp-status"); const start = document.getElementById("mensajes-whatsapp-start"); const stop = document.getElementById("mensajes-whatsapp-stop"); if (!state) return; const statusName = status?.status || "disconnected"; state.textContent = formatWhatsappStatus(statusName) + (status?.error ? `: ${status.error}` : ""); state.dataset.status = statusName; state.className = `mensajes-wa-state is-${statusName}`; if (start) { start.textContent = ["initializing", "connecting", "authenticated", "syncing", "reconnecting"].includes(statusName) ? "Reintentando..." : "Iniciar / reintentar"; start.disabled = ["initializing", "connecting", "authenticated", "syncing"].includes(statusName); } if (stop) stop.disabled = ["disconnected", "error", "auth_failure"].includes(statusName); }
     async function refreshWhatsappStatus() { try { const data = await api("/api/mensajes-view/whatsapp/status"); paintWhatsappStatus(data.status); } catch (error) { paintWhatsappStatus({ status: "error", error: error.message }); } }
@@ -85,16 +109,117 @@
     async function setGlobalAiMode(mode) { await api("/api/mensajes-view/global-ai-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) }); await refreshGlobalAiStatus(); await loadConversations(); if (selectedId) await loadConversation(selectedId); }
     async function restoreActiveReminder() { const active = await api("/api/mensajes-view/reminders-active"); if (!active.batch) return; const modal = document.getElementById("mensajes-reminder-modal"); if (!modal) return; modal.dataset.batchId = active.batch.id; modal.querySelector("#reminder-send").disabled = true; modal.querySelector("#reminder-cancel").disabled = false; pollReminder(); }
     // --- Conversaciones ---
+    const CONV_STATE = {
+        review_required: { label: "Necesita revisión", cls: "is-review", icon: "⚠" },
+        assistant: { label: "IA", cls: "is-ai", icon: "🤖" },
+        manual: { label: "Manual", cls: "is-manual", icon: "" },
+        paused: { label: "Pausada", cls: "is-paused", icon: "" }
+    };
+    function normSearch(value) {
+        return String(value ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+    }
+    // Avatar = burbuja de chat (contorno, fondo transparente). Varía según el caso:
+    // IA -> tres puntos · revisión -> signo de exclamación · resto -> burbuja simple.
+    function convAvatarSvg(attentionMode, typing) {
+        const bubble = '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>';
+        let inner = "";
+        if (attentionMode === "review_required") {
+            inner = '<line x1="12" y1="7.6" x2="12" y2="12.4"/><circle cx="12" cy="15.5" r="0.6" fill="currentColor" stroke="none"/>';
+        } else if (attentionMode === "assistant") {
+            inner = '<circle cx="8.4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15.6" cy="12" r="1" fill="currentColor" stroke="none"/>';
+        }
+        return `<svg class="conv-bubble${typing ? " is-typing" : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${bubble}${inner}</svg>`;
+    }
+    function convShortTime(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        const now = new Date();
+        if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString("es-SV", { hour: "numeric", minute: "2-digit" });
+        const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+        if (date.toDateString() === yesterday.toDateString()) return "Ayer";
+        return date.toLocaleDateString("es-SV", { day: "2-digit", month: "2-digit" });
+    }
+    // Metadatos que no vienen en /conversations: nombre del paciente vinculado y
+    // qué conversaciones tienen la IA generando respuesta. Ambos de endpoints ya
+    // existentes; las vinculaciones cambian poco, se refrescan cada ~10s.
+    async function refreshConversationMeta({ force = false } = {}) {
+        const tasks = [];
+        if (force || Date.now() - patientNamesFetchedAt > 10000) {
+            tasks.push(api("/api/mensajes-view/patient-identities").then((data) => {
+                patientNameByChat = new Map((data.identities || []).filter((x) => x.waChatId).map((x) => [x.waChatId, { name: x.patientName, treatment: x.treatmentType }]));
+                patientNamesFetchedAt = Date.now();
+            }).catch(() => {}));
+        }
+        tasks.push(api("/api/mensajes-view/response-queue?limit=200").then((data) => {
+            aiWorkingConvIds = new Set((data.queue || []).filter((q) => ["generating", "ready_to_send", "sending"].includes(q.status)).map((q) => q.conversationId));
+        }).catch(() => {}));
+        await Promise.allSettled(tasks);
+        renderConversationList();
+    }
     async function loadConversations() {
         const data = await api("/api/mensajes-view/conversations?limit=100");
+        allConversations = data.conversations || [];
+        renderConversationList();
+    }
+    function renderConversationList() {
         const list = document.getElementById("mensajes-list");
         if (!list) return;
-        // El poll llama esto cada 2s: si nada cambió, no tocar el DOM.
-        const sig = JSON.stringify(data.conversations.map((c) => [c.id, c.attentionMode, c.unreadCount, c.updatedAt, c.id === selectedId]));
+        const term = normSearch(convSearchTerm);
+        const decorated = allConversations.map((c) => {
+            const linked = c.waChatId ? patientNameByChat.get(c.waChatId) : null;
+            const realName = linked?.name || c.waDisplayName || "";
+            return {
+                c,
+                realName,
+                displayName: realName || c.phone || "Sin número",
+                aiWorking: aiWorkingConvIds.has(c.id)
+            };
+        });
+        const reviewCount = decorated.filter((x) => x.c.attentionMode === "review_required").length;
+
+        const filtersEl = document.getElementById("mensajes-filters");
+        if (filtersEl) {
+            const countEl = filtersEl.querySelector('[data-filter="review"] .chip-count');
+            if (countEl) countEl.textContent = reviewCount ? ` ${reviewCount}` : "";
+            filtersEl.querySelectorAll("[data-filter]").forEach((b) => b.classList.toggle("is-active", b.dataset.filter === convListFilter));
+        }
+
+        let rows = decorated;
+        if (convListFilter === "review") rows = rows.filter((x) => x.c.attentionMode === "review_required");
+        else if (convListFilter === "ai") rows = rows.filter((x) => x.c.attentionMode === "assistant");
+        if (term) rows = rows.filter((x) => normSearch(x.displayName).includes(term) || normSearch(x.c.phone).includes(term) || normSearch(x.c.waDisplayName).includes(term));
+
+        const sig = JSON.stringify({
+            f: convListFilter,
+            s: term,
+            rows: rows.map((x) => [x.c.id, x.c.attentionMode, x.c.unreadCount, x.c.lastMessageAt, x.c.updatedAt, x.displayName, x.aiWorking, x.c.id === selectedId, x.c.humanReviewReason || 0])
+        });
         if (sig === lastListSig && list.querySelector("[data-id], .mensajes-empty")) return;
         lastListSig = sig;
-        if (!data.conversations.length) { list.innerHTML = `<div class="mensajes-empty">No hay conversaciones.</div>`; return; }
-        list.innerHTML = data.conversations.map((c) => `<button class="mensajes-conversation ${c.id === selectedId ? "is-selected" : ""}" data-id="${c.id}"><strong>${esc(c.phone)}</strong><span>${esc(c.attentionMode)}${c.unreadCount ? ` · ${c.unreadCount} sin leer` : ""}</span><small>${esc(formatDate(c.updatedAt))}</small></button>`).join("");
+
+        if (!rows.length) {
+            list.innerHTML = `<div class="mensajes-empty">${allConversations.length ? "Sin resultados." : "No hay conversaciones."}</div>`;
+            return;
+        }
+        list.innerHTML = rows.map(({ c, displayName, aiWorking }) => {
+            const state = CONV_STATE[c.attentionMode] || { label: c.attentionMode || "", cls: "", icon: "" };
+            const unread = c.unreadCount || 0;
+            const isReview = c.attentionMode === "review_required";
+            const typing = aiWorking && !isReview;
+            const secondLine = isReview ? (c.humanReviewReason || "Necesita revisión") : (typing ? "IA escribiendo…" : "");
+            return `<button class="mensajes-conversation ${c.id === selectedId ? "is-selected" : ""} ${state.cls} ${unread ? "has-unread" : ""}" data-id="${c.id}">
+                <span class="conv-avatar">${convAvatarSvg(c.attentionMode, typing)}</span>
+                <span class="conv-main">
+                    <span class="conv-top"><span class="conv-name">${esc(displayName)}</span><span class="conv-time">${esc(convShortTime(c.lastMessageAt || c.updatedAt))}</span></span>
+                    <span class="conv-sub">
+                        <span class="conv-chip ${state.cls}">${state.icon ? state.icon + " " : ""}${esc(state.label)}</span>
+                        ${secondLine ? `<span class="conv-preview${typing ? " is-typing" : ""}">${typing ? '<span class="typing-dot"></span>' : ""}${esc(secondLine)}</span>` : ""}
+                        ${unread ? `<span class="conv-badge">${unread > 99 ? "99+" : unread}</span>` : ""}
+                    </span>
+                </span>
+            </button>`;
+        }).join("");
         list.querySelectorAll("[data-id]").forEach((button) => button.addEventListener("click", () => loadConversation(Number(button.dataset.id))));
     }
     function scrollChatToBottom(behavior = "smooth") {
@@ -178,7 +303,12 @@
         const wasSelectingMessages = document.querySelector(".mensajes-chat")?.classList.contains("is-selecting");
         const selectedMessageIds = new Set([...document.querySelectorAll("[data-message-select]:checked")].map((input) => input.dataset.messageSelect));
         const wasNearBottom = !chatBody || chatBody.scrollHeight - chatBody.scrollTop - chatBody.clientHeight < 80;
-        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(data.conversation.phone)}</strong><span>${esc(data.conversation.attentionMode)}</span></div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="read">Leer</button><button data-action="settings" title="Ajustes">⚙</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
+        const headName = data.patientLink?.patientName || data.conversation.waDisplayName || data.conversation.phone || "Sin número";
+        const headState = CONV_STATE[data.conversation.attentionMode] || { label: data.conversation.attentionMode || "", icon: "" };
+        const headSub = data.conversation.attentionMode === "review_required" && data.conversation.humanReviewReason
+            ? `${headState.icon} ${esc(data.conversation.humanReviewReason)}`
+            : `${headState.icon ? headState.icon + " " : ""}${esc(headState.label)}`;
+        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span></div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="read">Leer</button><button data-action="settings" title="Ajustes">⚙</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
         chatBody.innerHTML = data.messages.length ? data.messages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
         if (activeQueue) { const indicator = document.createElement("div"); indicator.className = "mensajes-ai-queue-status"; indicator.textContent = activeQueue.status === "sending" ? "Enviando respuesta…" : activeQueue.status === "ready_to_send" ? "Respuesta lista para enviar…" : "La IA está preparando una respuesta…"; document.getElementById("mensajes-chat-body").prepend(indicator); }
         if (wasNearBottom) scrollChatToBottom("smooth");
@@ -285,7 +415,7 @@
     async function conversationAction(action) {
         if (!selectedId) return;
         if (action === "settings") return;
-        if (action === "delete") { if (!confirm("¿Borrar esta conversación y su historial?")) return; const target = selectedId; conversationLoadSeq++; selectedId = null; try { await api(`/api/mensajes-view/conversations/${target}`, { method: "DELETE" }); } catch (error) { if (!/no encontrada/i.test(error.message || "")) alert(error.message); } const compose = document.getElementById("mensajes-compose"); if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; const input = compose.querySelector("#mensajes-input"); const button = compose.querySelector('button[type="submit"]'); if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; } if (button) button.disabled = true; } document.getElementById("mensajes-chat-head").innerHTML = "<span>Selecciona una conversación</span>"; document.getElementById("mensajes-chat-body").innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>"; return loadConversations().catch(() => {}); }
+        if (action === "delete") { if (!confirm("¿Borrar esta conversación y su historial?")) return; const target = selectedId; conversationLoadSeq++; selectedId = null; const startedAt = Date.now(); showBusyOverlay("Borrando conversación…", "Un momento."); try { await api(`/api/mensajes-view/conversations/${target}`, { method: "DELETE" }); } catch (error) { if (!/no encontrada/i.test(error.message || "")) alert(error.message); } finally { await hideBusyOverlay(startedAt, 500); } const compose = document.getElementById("mensajes-compose"); if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; const input = compose.querySelector("#mensajes-input"); const button = compose.querySelector('button[type="submit"]'); if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; } if (button) button.disabled = true; } document.getElementById("mensajes-chat-head").innerHTML = "<span>Selecciona una conversación</span>"; document.getElementById("mensajes-chat-body").innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>"; return loadConversations().catch(() => {}); }
         const endpoint = action === "take" ? "take" : action === "release" ? "release" : "read";
         await api(`/api/mensajes-view/conversations/${selectedId}/${endpoint}`, { method: "POST" });
         await loadConversation(selectedId);
@@ -322,15 +452,31 @@
         modal.querySelector("#settings-auto-end").innerHTML = t12Html("", automation.settings.allowedEnd);
         modal.hidden = false;
     }
+    // Overlay de "operación en curso". Cubre toda la ventana (position:fixed, z-index alto)
+    // y bloquea toda interacción por sí solo; no hace falta deshabilitar controles uno a uno.
+    function showBusyOverlay(title, subtitle) {
+        let overlay = document.getElementById("mensajes-busy-overlay");
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = "mensajes-busy-overlay";
+            overlay.className = "mensajes-operation-loader";
+            overlay.setAttribute("role", "alert");
+            overlay.setAttribute("aria-busy", "true");
+            document.body.appendChild(overlay);
+        }
+        overlay.innerHTML = `<div><span class="mensajes-spinner"></span><strong>${esc(title)}</strong><small>${esc(subtitle || "")}</small><span class="mensajes-progress"></span></div>`;
+        return overlay;
+    }
+    async function hideBusyOverlay(startedAt, minMs) {
+        const elapsed = Date.now() - (startedAt || 0);
+        if (minMs && elapsed < minMs) await new Promise((resolve) => setTimeout(resolve, minMs - elapsed));
+        document.getElementById("mensajes-busy-overlay")?.remove();
+    }
     async function deleteAllConversations() {
-        if (deletingAll || !confirm("Borrar todas las conversaciones, mensajes y pendientes?")) return;
-        const view = document.querySelector(".mensajes-view");
-        const loader = document.createElement("div");
-        loader.className = "mensajes-operation-loader";
-        loader.innerHTML = "<div><span class=\"mensajes-spinner\"></span><strong>Borrando conversaciones...</strong><small>Espera a que termine la operacion.</small></div>";
+        if (deletingAll || !confirm("Borrar TODAS las conversaciones, mensajes y pendientes de la vista Mensajes?\n\nLas vinculaciones de pacientes se conservan. Esta acción no se puede deshacer.")) return;
         deletingAll = true;
-        view.appendChild(loader);
-        view.querySelectorAll("button,input,textarea").forEach((control) => { control.disabled = true; });
+        const startedAt = Date.now();
+        showBusyOverlay("Borrando conversaciones…", "Puede tardar unos segundos. No cierres ni cambies de vista.");
         try {
             await api("/api/mensajes-view/conversations", { method: "DELETE" });
             selectedId = null;
@@ -339,9 +485,8 @@
         } catch (error) {
             alert(error.message);
         } finally {
+            await hideBusyOverlay(startedAt, 900);
             deletingAll = false;
-            loader.remove();
-            view.querySelectorAll("button,input,textarea").forEach((control) => { control.disabled = false; });
         }
     }
     async function sendMessage(event) {
@@ -384,13 +529,16 @@
     async function enrichHumanReviewSettings() {
         const modal = document.getElementById("mensajes-settings-modal");
         const section = modal?.querySelector('[data-settings-content="ia"]');
-        if (!section || section.querySelector("#settings-human-rules")) return;
-        const data = await api("/api/mensajes-view/human-review-rules");
-        section.insertAdjacentHTML("beforeend", `<h3>Revisión humana</h3><p>Activa las condiciones que deben pausar la IA y avisar a recepción.</p><div id="settings-human-rules"></div><button id="settings-save-human" type="button">Guardar revisión humana</button>`);
-        const list = modal.querySelector("#settings-human-rules");
-        const render = () => { list.innerHTML = data.rules.map((rule, index) => `<label class="human-rule"><input type="checkbox" data-rule-enabled="${index}" ${rule.enabled ? "checked" : ""}><input type="text" data-rule-label="${index}" value="${String(rule.label).replace(/&/g, "&amp;").replace(/\"/g, "&quot;")}"><button type="button" data-rule-remove="${index}">Eliminar</button></label>`).join("") + `<button type="button" id="settings-add-human">Agregar condición</button>`; list.querySelectorAll("[data-rule-remove]").forEach((button) => button.addEventListener("click", () => { data.rules.splice(Number(button.dataset.ruleRemove), 1); render(); })); list.querySelector("#settings-add-human").addEventListener("click", () => { data.rules.push({ id: `custom-${Date.now()}`, label: "Nueva condición", enabled: 1 }); render(); }); };
-        render();
-        modal.querySelector("#settings-save-human").addEventListener("click", async () => { data.rules = [...list.querySelectorAll(".human-rule")].map((row, index) => ({ id: data.rules[index]?.id || `custom-${Date.now()}-${index}`, label: row.querySelector("[data-rule-label]").value, enabled: row.querySelector("[data-rule-enabled]").checked })); await api("/api/mensajes-view/human-review-rules", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rules: data.rules }) }); alert("Reglas de revisión humana guardadas"); });
+        if (!section || section.querySelector("#settings-human-review")) return;
+        const data = await api("/api/mensajes-view/human-review");
+        section.insertAdjacentHTML("beforeend", `<h3>Revisión humana</h3><p>Describí en qué situaciones el asistente debe dejar de responder y pasar la conversación a recepción. El asistente usa este texto tal cual para decidir cuándo transferir.</p><label>Texto<textarea id="settings-human-review" rows="8" placeholder="Ej: Pasá a recepción si el paciente menciona dolor intenso o urgencia, si está molesto o se queja, o si pide hablar con una persona."></textarea></label><p class="settings-help">Los mensajes de audio, fotos y documentos siempre pasan a recepción de forma automática (el asistente no puede procesarlos).</p><button id="settings-save-human" type="button">Guardar revisión humana</button><div id="settings-human-review-result" class="settings-state-card"></div>`);
+        modal.querySelector("#settings-human-review").value = data.instructions || "";
+        modal.querySelector("#settings-save-human").addEventListener("click", async () => {
+            try {
+                const result = await api("/api/mensajes-view/human-review", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instructions: modal.querySelector("#settings-human-review").value }) });
+                modal.querySelector("#settings-human-review-result").textContent = `Guardado (${(result.instructions || "").length} caracteres)`;
+            } catch (error) { modal.querySelector("#settings-human-review-result").textContent = error.message; }
+        });
     }
     async function enrichAutomationBuffer() { const modal = document.getElementById("mensajes-settings-modal"); const section = modal?.querySelector('[data-settings-content="automation"]'); if (!section || section.querySelector("#settings-group-delay")) return; section.insertAdjacentHTML("afterbegin", `<label>Tiempo para agrupar mensajes (segundos)<input id="settings-group-delay" type="number" min="0" max="120" step="0.1"></label><label><input id="settings-show-typing" type="checkbox" checked> Mostrar “escribiendo…”</label>`); const data = await api("/api/mensajes-view/settings"); modal.querySelector("#settings-group-delay").value = data.settings.responseGroupDelaySeconds ?? 4; modal.querySelector("#settings-save-automation").addEventListener("click", async () => { await api("/api/mensajes-view/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responseDelayMin: Number(modal.querySelector("#settings-delay-min").value), responseDelayMax: Number(modal.querySelector("#settings-delay-max").value), responseGroupDelaySeconds: Number(modal.querySelector("#settings-group-delay").value) }) }); }); }
     async function enrichReminderSettings() { const modal = document.getElementById("mensajes-settings-modal"); const section = modal?.querySelector('[data-settings-content="automation"]'); if (!section || section.querySelector("#settings-reminder-template")) return; const data = await api("/api/mensajes-view/reminder-settings"); section.insertAdjacentHTML("beforeend", `<hr><h3>Recordatorios</h3><p>Plantilla y temporizador global para los envíos de recordatorios.</p><label>Plantilla de recordatorio<textarea id="settings-reminder-template" rows="6"></textarea></label><p class="settings-help">Variables permitidas: {{nombre}}, {{fecha}}, {{hora}}, {{tratamiento}}. Se admiten saltos de línea.</p><label>Espera mínima entre mensajes (segundos)<input id="settings-reminder-min" type="number" min="1" max="3600" step="1"></label><label>Espera máxima entre mensajes (segundos)<input id="settings-reminder-max" type="number" min="1" max="3600" step="1"></label><button id="settings-save-reminders" type="button">Guardar recordatorios</button><div id="settings-reminder-result" class="settings-state-card"></div>`); modal.querySelector("#settings-reminder-template").value = data.settings.template; modal.querySelector("#settings-reminder-min").value = data.settings.minDelaySeconds; modal.querySelector("#settings-reminder-max").value = data.settings.maxDelaySeconds; modal.querySelector("#settings-save-reminders").addEventListener("click", async () => { const result = await api("/api/mensajes-view/reminder-settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ template: modal.querySelector("#settings-reminder-template").value, minDelaySeconds: Number(modal.querySelector("#settings-reminder-min").value), maxDelaySeconds: Number(modal.querySelector("#settings-reminder-max").value) }) }); modal.querySelector("#settings-reminder-result").textContent = `Guardado: ${result.settings.minDelaySeconds}-${result.settings.maxDelaySeconds} segundos`; }); }
@@ -599,6 +747,13 @@
     window.__mountMensajes = async function () {
         renderShell();
         document.getElementById("mensajes-refresh").addEventListener("click", loadConversations);
+        const toggleTools = document.getElementById("mensajes-toggle-tools");
+        if (toggleTools) toggleTools.addEventListener("click", () => applyToolsCollapsed(!document.getElementById("mensajes-simulator")?.classList.contains("is-collapsed")));
+        applyToolsCollapsed(toolsCollapsed());
+        const searchInput = document.getElementById("mensajes-search");
+        if (searchInput) searchInput.addEventListener("input", (event) => { convSearchTerm = event.target.value; renderConversationList(); });
+        const filtersBar = document.getElementById("mensajes-filters");
+        if (filtersBar) filtersBar.addEventListener("click", (event) => { const btn = event.target.closest("[data-filter]"); if (!btn) return; convListFilter = btn.dataset.filter; renderConversationList(); });
         document.getElementById("mensajes-compose").addEventListener("submit", sendMessage);
         const simulator = document.getElementById("mensajes-simulator");
         simulator.addEventListener("submit", simulateIncoming);
@@ -626,15 +781,21 @@
                 if (settingsNav && closeButton) settingsNav.appendChild(closeButton);
             } finally { btn.dataset.loading = "0"; }
         });
-        const deleteAllButton = document.createElement("button"); deleteAllButton.id = "mensajes-delete-all"; deleteAllButton.type = "button"; deleteAllButton.textContent = "Borrar todo"; document.getElementById("mensajes-simulator").appendChild(deleteAllButton); deleteAllButton.addEventListener("click", deleteAllConversations); const reminderButton = document.createElement("button"); reminderButton.id = "mensajes-send-reminders"; reminderButton.type = "button"; reminderButton.textContent = "Enviar recordatorios"; document.getElementById("mensajes-simulator").appendChild(reminderButton); reminderButton.addEventListener("click", () => void openReminderModal()); const pauseButton = document.createElement("button"); pauseButton.id = "mensajes-pause-ai"; pauseButton.type = "button"; pauseButton.textContent = "Pausar IA"; document.getElementById("mensajes-simulator").appendChild(pauseButton); pauseButton.addEventListener("click", () => void setGlobalAiMode("paused")); const aiButton = document.createElement("button"); aiButton.id = "mensajes-global-ai"; aiButton.type = "button"; aiButton.textContent = "Pasar todos a IA"; document.getElementById("mensajes-simulator").appendChild(aiButton); aiButton.addEventListener("click", () => void setGlobalAiMode("assistant")); 
+        const actionsGroup = document.getElementById("mensajes-actions-group");
+        const aiGroup = document.getElementById("mensajes-ai-group");
+        const addSimButton = (group, id, label, cls, handler) => { const button = document.createElement("button"); button.id = id; button.type = "button"; button.className = `sim-btn ${cls || ""}`.trim(); button.textContent = label; group.appendChild(button); button.addEventListener("click", handler); return button; };
+        addSimButton(actionsGroup, "mensajes-send-reminders", "🔔 Recordatorios", "", () => void openReminderModal());
+        addSimButton(actionsGroup, "mensajes-delete-all", "🗑 Borrar todo", "sim-btn-danger", deleteAllConversations);
+        addSimButton(aiGroup, "mensajes-pause-ai", "Pausar IA", "sim-btn-ai-pause", (event) => void setGlobalAiMode(event.currentTarget.dataset.aiAction || "paused"));
+        addSimButton(aiGroup, "mensajes-global-ai", "Pasar todo a IA", "sim-btn-ai-resume", () => void setGlobalAiMode("assistant"));
          document.getElementById("mensajes-send-reminders").addEventListener("click", () => setTimeout(() => void restoreActiveReminder(), 200));
          // La vista ya está montada y usable. Estas cargas no deben bloquear
          // la navegación ni la disponibilidad del simulador.
-         void Promise.allSettled([loadConversations(), refreshGlobalAiStatus()]);
+         void Promise.allSettled([loadConversations(), refreshConversationMeta({ force: true }), refreshGlobalAiStatus()]);
          const anyModalOpen = () => { const s = document.getElementById("mensajes-settings-modal"); const r = document.getElementById("mensajes-reminder-modal"); return Boolean((s && !s.hidden) || (r && !r.hidden)); };
-        chatPoll = setInterval(() => { if (deletingAll || pollBusy || anyModalOpen()) return; pollBusy = true; Promise.allSettled([loadConversations(), refreshWhatsappStatus(), refreshGlobalAiStatus(), selectedId ? loadConversation(selectedId, { markRead: false, skipListRefresh: true }) : null]).finally(() => { pollBusy = false; }); }, 2000);
+        chatPoll = setInterval(() => { if (deletingAll || pollBusy || anyModalOpen()) return; pollBusy = true; Promise.allSettled([loadConversations(), refreshConversationMeta(), refreshWhatsappStatus(), refreshGlobalAiStatus(), selectedId ? loadConversation(selectedId, { markRead: false, skipListRefresh: true }) : null]).finally(() => { pollBusy = false; }); }, 2000);
         void refreshWhatsappStatus();
-        cleanup = () => { if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } conversationLoadSeq++; ["mensajes-settings-modal", "mensajes-reminder-modal"].forEach((id) => document.getElementById(id)?.remove()); selectedId = null; lastListSig = ""; lastChatSig = ""; pollBusy = false; cleanup = null; };
+        cleanup = () => { if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } conversationLoadSeq++; ["mensajes-settings-modal", "mensajes-reminder-modal", "mensajes-busy-overlay"].forEach((id) => document.getElementById(id)?.remove()); selectedId = null; lastListSig = ""; lastChatSig = ""; pollBusy = false; deletingAll = false; allConversations = []; convListFilter = "all"; convSearchTerm = ""; patientNameByChat = new Map(); patientNamesFetchedAt = 0; aiWorkingConvIds = new Set(); cleanup = null; };
         window.__setViewCleanup(() => cleanup?.());
         window.__setViewLeaveGuard(() => !deletingAll);
     };

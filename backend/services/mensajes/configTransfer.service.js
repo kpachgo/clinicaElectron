@@ -12,7 +12,7 @@ const VERSION = 1;
 const SINGLETON_COLUMNS = {
   ai_clinic_schedule: ["timezone", "slot_interval_minutes", "schedule_json", "breaks_json", "daily_cap"],
   ai_provider_settings: ["provider_mode", "base_url", "model", "api_key", "timeout_ms"],
-  human_review_rules: ["rules_json"],
+  human_review_rules: ["instructions"],
   message_settings: [
     "response_delay_min", "response_delay_max", "response_group_delay_seconds",
     "automation_phone_mode", "automation_phone_numbers",
@@ -70,6 +70,24 @@ function updateSingleton(db, table, incoming, { skipEmpty = [] } = {}) {
     .run(...applied.map((col) => incoming[col]));
 }
 
+// La revisión humana pasó de una lista de toggles (rules_json) a un texto libre
+// (instructions). Los archivos exportados por la versión anterior traen rules_json:
+// se convierten a texto con las etiquetas de las condiciones que estaban activas.
+function normalizeHumanReview(incoming) {
+  if (!incoming || typeof incoming !== "object") return incoming;
+  if (typeof incoming.instructions === "string") return incoming;
+  if (typeof incoming.rules_json !== "string") return null;
+  try {
+    const labels = JSON.parse(incoming.rules_json)
+      .filter((rule) => rule && (rule.enabled === 1 || rule.enabled === true) && rule.label)
+      .map((rule) => `- ${String(rule.label).trim()}`);
+    if (!labels.length) return null;
+    return { instructions: `Pasá la conversación a recepción cuando se cumpla alguna de estas situaciones:\n${labels.join("\n")}` };
+  } catch {
+    return null;
+  }
+}
+
 function importConfig(payload, db = getDb()) {
   if (!payload || payload.format !== FORMAT) throw new Error("El archivo no es una configuración de mensajes válida");
   if (Number(payload.version) !== VERSION) throw new Error(`Versión de configuración no soportada (${payload.version})`);
@@ -85,7 +103,7 @@ function importConfig(payload, db = getDb()) {
     updateSingleton(db, "ai_clinic_schedule", payload.clinicSchedule);
     // La clave se conserva si el export no traía ninguna (api_key vacío).
     updateSingleton(db, "ai_provider_settings", payload.providerSettings, { skipEmpty: ["api_key"] });
-    updateSingleton(db, "human_review_rules", payload.humanReviewRules);
+    updateSingleton(db, "human_review_rules", normalizeHumanReview(payload.humanReviewRules));
     updateSingleton(db, "message_settings", payload.messageSettings);
     updateSingleton(db, "automation_settings", payload.automationSettings);
     updateSingleton(db, "administrative_settings", payload.administrativeSettings);

@@ -22,7 +22,7 @@ mensajesRuntime  (conector WhatsApp / simulado)
 aiObserver.tick()  (setInterval 500 ms, SERIALIZADO: un tick a la vez)
   └─ claimDueResponseQueue()  → processBatch(batch)
         ├─ guardas: automatización ON, elegibilidad, modo assistant, teléfono permitido
-        ├─ triageMessage(text, human_review_rules)  → si aplica: revisión humana, cancelar lote
+        ├─ triageMessage(messageType)  → audio/imagen/documento: revisión humana, cancelar lote
         └─ runAssistant({ conversation, linkedPatient, cfg, assistantMemory })
               ├─ buildAssistantContext(): system prompt + historial
               │     política + conocimiento de la clínica + catálogo habilitado
@@ -75,7 +75,7 @@ La interpretación puede perdonar typos; **las acciones se gatean por estado, no
 Capas contra la doble reserva / acción indebida:
 1. `confirmado:true` obligatorio en crear/reprogramar/cancelar + regla de prompt (confirmar en el turno previo).
 2. Revalidación de backend: disponibilidad real, propiedad de la cita (`getOwnedAppointment`), estado del paciente.
-3. Llave de idempotencia `ai-create-{conversación}-{fecha}-{hora}-{servicio}` en `mensajes_auditoria`, re-chequeada **dentro del `GET_LOCK`**.
+3. Llave de idempotencia `ai-create-{conversación}-{fecha}-{hora}-{servicio}-{paciente}` en `mensajes_auditoria`, re-chequeada **dentro del `GET_LOCK`**. El paciente (`patientId` o nombre normalizado) es parte de la llave: sin él, una reserva grupal (misma conversación/día/hora/servicio, distinta persona) colisionaba y las citas 2ª en adelante se leían como duplicado de la 1ª — reportaban "ok" sin crearse (bug encontrado 2026-08-31, caso real: 3 personas pidieron limpieza el mismo día/hora, solo se creó la primera).
 4. Memoria `conversation_state.collected._assistant.lastAppointment`: inyectada en el prompt y usada por `crear_cita` para cortar con `ya_registrada` si coincide fecha+hora.
 5. Dedup de tool calls idénticas dentro de un mismo turno del agente.
 
@@ -96,8 +96,20 @@ Probado con DeepSeek (`cloud` / native). El path `json` (modelos locales) aún n
 - **Servicios habilitados**: checkbox "Permitir que la IA ofrezca este servicio" (`ai_service_settings.enabled`). Apagado = la IA no menciona ni agenda ese servicio. Por defecto todos apagados; la clínica habilita los que quiere.
 - **Horario general**: editor visual por día + pausas (`ai_clinic_schedule`). Aplica a todos los servicios de la IA. En Ajustes → Servicios IA, "Horario general de la clínica" y "Pausas generales" son dos `<details>` (clase `.ai-collapse`) contraídos por defecto; el botón "Guardar horario general" queda fuera y guarda ambos (los valores viven en el DOM aunque estén contraídos).
 - **Horario propio por servicio**: checkbox "Este servicio tiene su propio horario" + editor semanal (`ai_service_settings.weekly_hours_json`). Ajustes → Servicios IA. Desplegable "Reutilizar horario de otro servicio" que lista los servicios con ventana ya definida y su resumen (`summarizeWeek`) para copiarlo de un clic. Con ventana activa, la IA solo ofrece/agenda ese servicio en esas franjas (intersectadas con el horario general); **un día sin franjas queda cerrado para ese servicio**. `{}` = sin restricción (usa el horario general). Se aplica **dentro de `searchAvailability`**, así que `consultar_disponibilidad`, `crear_cita` y `reprogramar_cita` quedan gateados de forma determinista, no por criterio del modelo. La IA también recibe la ventana en el catálogo (`describeCatalog`) y en `consultar_servicios` para explicarla. Caso de uso: ortodoncia (Control Mensual / Inicio Ortodoncia / Evaluación Ortodoncia) L–V 13:00–16:30, Sáb 08:00–11:30.
-- **Revisión humana**: toggles activables (`human_review_rules`) — audio, fotos/documentos, urgencia/síntomas, paciente molesto, pide hablar con una persona. `messageTriage` los respeta.
+- **Revisión humana**: un solo textarea (`human_review_rules.instructions`) que describe cuándo el asistente debe transferir a recepción. Se inyecta tal cual en el system prompt (`buildAssistantContext`) y el agente decide llamar `transferir_a_recepcion`. Ajustes → Asistente IA. Aparte, `messageTriage` manda a revisión humana de forma determinista los mensajes que la IA no puede procesar: audio, imagen, documento, video, sticker (regla fija, no configurable por ahora).
 - **Política base**: `config/assistant-policy.md`, agnóstica de clínica.
+
+## Controles globales de la IA (barra de herramientas)
+
+`POST /api/mensajes-view/global-ai-mode` con `{ mode }`. Todos escriben `automation_settings.enabled`.
+
+| Botón | `mode` | Efecto |
+|---|---|---|
+| **Pausar IA** | `paused` | `enabled=false` + cancela los lotes en curso (`response_queue` generating/ready_to_send/sending). No cambia el modo de las conversaciones. |
+| **Reanudar IA** (mismo botón cuando está pausada) | `resume` | `enabled=true` y nada más. No toca conversaciones ni reencola mensajes viejos. La IA retoma solo con los mensajes que lleguen después (que ya se analizan con el chat completo vía `buildAssistantContext`). |
+| **Pasar todo a IA** | `assistant` | `enabled=true` + fuerza cada conversación `manual`/`paused`/`review_required` → `assistant` + `resumeAssistantQueue()` reencola todo lo pendiente. Es el override agresivo. |
+
+`updateAutomationSettings` (checkbox "Activar automatizaciones" en Ajustes) también hace `resumeAssistantQueue()` al encender — comportamiento como "Pasar todo a IA" pero sin cambiar modos de conversación.
 
 ## Responsabilidades por archivo
 
@@ -106,7 +118,7 @@ Probado con DeepSeek (`cloud` / native). El path `json` (modelos locales) aún n
 - `backend/routes/mensajes.routes.js` + `controllers/mensajes.controller.js`: endpoints "duros" de herramienta con auditoría (no los llama la IA por ahora; disponibles para integraciones).
 - `backend/services/mensajes/mensajesRuntime.service.js`: conectores, ciclo de vida, colas de envío, recordatorios.
 - `backend/services/mensajes/aiObserver.service.js`: cola de respuestas (tick serializado), triage y orquestación del turno.
-- `backend/services/mensajes/messageTriage.service.js`: decide revisión humana (nada más).
+- `backend/services/mensajes/messageTriage.service.js`: guardia determinista de revisión humana para mensajes no procesables (audio/imagen/documento).
 - `backend/services/mensajes/assistantAgent.service.js`: el loop del agente.
 - `backend/services/mensajes/assistantContext.service.js`: system prompt + historial.
 - `backend/services/mensajes/assistantTools.service.js`: las 7 herramientas.
@@ -126,7 +138,7 @@ Probado con DeepSeek (`cloud` / native). El path `json` (modelos locales) aún n
 - `clinicalWorkflow.service.js`, `conversation-engine-console.js`, `confirmationIntent.service.js`.
 - `clinical_rules` (UI, rutas, controller, repo). La tabla queda huérfana e inofensiva.
 - Frontend: `enrichIaSettings`, `enrichAiServicesSettings`, `enrichAiServicesSettingsV2`, `enrichClinicalWorkflowsSettings`; pestaña "General" fantasma y controles Identidad/Tono/Transferir sin uso.
-- Flag `MENSAJES_AGENTE_NUEVO`. El único freno es "Pausar IA".
+- Flag `MENSAJES_AGENTE_NUEVO`. Los frenos globales son "Pausar IA" / "Reanudar IA" / "Pasar todo a IA" (ver "Controles globales de la IA").
 
 ## Probado
 

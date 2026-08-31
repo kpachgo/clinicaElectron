@@ -1,60 +1,29 @@
 "use strict";
 
-// Triage minimo: decide unicamente si un mensaje debe ir a revision humana.
-// No clasifica intencion ni extrae hechos. Respeta los toggles de human_review_rules.
+// Guardia determinista de revisión humana.
+// Solo cubre los mensajes que el asistente NO puede procesar: audio, imágenes,
+// documentos, video y stickers. Esos pasan a recepción sin que la IA responda.
+// El resto de condiciones (urgencia, quejas, pedir hablar con una persona, etc.)
+// las decide el agente con el texto libre de "Revisión humana"; ver
+// buildAssistantContext y la herramienta transferir_a_recepcion.
 
-function normalize(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const CHECKS = {
-  audio(value, type) {
-    return ["audio", "ptt", "voice"].includes(type)
-      ? { reason: "El paciente envió un mensaje de audio" }
-      : null;
-  },
-  media(value, type) {
-    return ["image", "photo", "document", "video", "sticker"].includes(type)
-      ? { reason: "El paciente envió una imagen o documento" }
-      : null;
-  },
-  urgency(value) {
-    return /\b(dolor (muy )?fuerte|mucho dolor|me duele mucho|no aguanto el dolor|sangra|sangrado|sangrando|inflamad|hinchad|infeccion|absceso|urgencia|emergencia|se me (rompio|quebro|cayo|partio) (un |una )?(diente|muela|corona)|golpe en (el diente|la boca)|trauma)\b/.test(value)
-      ? { reason: "Posible urgencia o síntoma clínico" }
-      : null;
-  },
-  discontent(value) {
-    return /\b(molest|inconform|queja|reclamo|reclamar|no me responden|nadie me responde|pesimo|malisimo|terrible|indignad|estafa|denuncia)\b/.test(value)
-      ? { reason: "El paciente expresó molestia o insatisfacción" }
-      : null;
-  },
-  "human-request"(value) {
-    return /\b(hablar con (una persona|alguien|un humano|recepcion|un recepcionista|un doctor|una doctora|un asesor|un encargado|un agente)|que me atienda una persona|comuniquenme con|quiero (hablar con )?una persona real|pasame con)\b/.test(value)
-      ? { reason: "El paciente pidió hablar con una persona" }
-      : null;
-  }
-};
+const AUDIO_TYPES = ["audio", "ptt", "voice"];
+const MEDIA_TYPES = ["image", "photo", "document", "video", "sticker"];
 
 /**
- * @param {string} text
- * @param {{ messageType?: string, rules?: Array<{id:string,label:string,enabled:number|boolean}> }} options
+ * @param {string} _text  (sin uso: la detección por contenido la hace el agente)
+ * @param {{ messageType?: string }} options
  * @returns {{ humanReview: boolean, reason?: string, ruleId?: string }}
  */
-function triageMessage(text, options = {}) {
-  const value = normalize(text);
+function triageMessage(_text, options = {}) {
   const type = String(options.messageType || "text").toLowerCase();
-  const enabled = new Set((options.rules || []).filter((rule) => rule && (rule.enabled === 1 || rule.enabled === true)).map((rule) => rule.id));
-  for (const [ruleId, check] of Object.entries(CHECKS)) {
-    if (!enabled.has(ruleId)) continue;
-    const hit = check(value, type);
-    if (hit) return { humanReview: true, reason: hit.reason, ruleId };
+  if (AUDIO_TYPES.includes(type)) {
+    return { humanReview: true, reason: "El paciente envió un mensaje de audio", ruleId: "audio" };
+  }
+  if (MEDIA_TYPES.includes(type)) {
+    return { humanReview: true, reason: "El paciente envió una imagen o documento", ruleId: "media" };
   }
   return { humanReview: false };
 }
 
-module.exports = { triageMessage, normalize };
+module.exports = { triageMessage };

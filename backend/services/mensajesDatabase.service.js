@@ -260,6 +260,16 @@ const migrations = [
       reason TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );`
+  // Revisión humana: de una lista de toggles con detección por regex fija pasa a un
+  // único texto libre que el agente usa tal cual para decidir cuándo transferir a
+  // recepción (herramienta transferir_a_recepcion). Los mensajes de audio/imagen/
+  // documento siguen yendo a revisión humana por un guardia determinista aparte.
+  ,`ALTER TABLE human_review_rules ADD COLUMN instructions TEXT NOT NULL DEFAULT '';
+    UPDATE human_review_rules SET instructions='Pasá la conversación a recepción (no respondas vos) cuando ocurra alguna de estas situaciones:
+- El paciente menciona dolor intenso, sangrado, inflamación, un golpe, una urgencia o cualquier síntoma clínico.
+- El paciente está molesto, se queja, reclama o amenaza con un reclamo formal o una denuncia.
+- El paciente pide hablar con una persona, con recepción o con un doctor.
+- La solicitud es ambigua y no lográs aclararla, o se sale de lo que podés resolver por este medio.' WHERE instructions='';`
 ];
 
 function getDb() {

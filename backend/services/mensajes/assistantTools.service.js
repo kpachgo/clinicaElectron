@@ -281,11 +281,16 @@ async function crearCita(args, ctx) {
     }
   }
   const provisional = !patientId;
+  // Servicio de emergencia de ortodoncia (bracket caído/aflojado): si el paciente ya
+  // está identificado, marcarlo en el comentario para que recepción lo priorice.
+  const isEmergencyService = normalizeText(resolved.service.serviceName) === "bracket";
   const comment = phoneChanged
     ? `${resolved.service.serviceName} — teléfono nuevo, confirmar en recepción`
     : provisional
       ? `${resolved.service.serviceName} — verificar`
-      : resolved.service.serviceName;
+      : isEmergencyService
+        ? `${resolved.service.serviceName} — emergencia`
+        : resolved.service.serviceName;
   try {
     const result = await appointmentActions.createAppointmentForAssistant({
       patientId,
@@ -295,7 +300,10 @@ async function crearCita(args, ctx) {
       time,
       contact,
       comment,
-      idempotencyKey: `ai-create-${ctx?.conversation?.id || "sim"}-${date}-${time}-${resolved.service.serviceId}`
+      // El paciente entra en la llave: sin esto, una reserva grupal (misma conversación,
+      // mismo día/hora/servicio, distinta persona) colisiona y las llamadas 2ª en
+      // adelante se leen como duplicado de la 1ª, reportando "ok" sin crear la cita.
+      idempotencyKey: `ai-create-${ctx?.conversation?.id || "sim"}-${date}-${time}-${resolved.service.serviceId}-${patientId || normalizeText(patientName)}`
     });
     return {
       estado: "ok",

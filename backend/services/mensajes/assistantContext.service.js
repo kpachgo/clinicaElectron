@@ -84,6 +84,7 @@ function describeAssistantMemory(memory) {
 
 async function buildAssistantContext({ conversation, linkedPatient = null, historyLimit = 14, history = null, assistantMemory = null } = {}) {
   const knowledge = repo.getAssistantKnowledge().knowledge?.trim();
+  const humanReview = repo.getHumanReviewInstructions().instructions?.trim();
   const services = await listAiServices("");
   const clinic = getClinicSchedule();
   const { fecha, hora, iso } = nowParts();
@@ -96,6 +97,9 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
     `SERVICIOS QUE PODÉS AGENDAR (no menciones ni agendes ningún otro):\n${describeCatalog(services)}`,
     `HORARIO GENERAL DE LA CLÍNICA:\n${describeSchedule(clinic)}`,
     describePatient(linkedPatient),
+    humanReview
+      ? `CUÁNDO PASAR A RECEPCIÓN: si se cumple alguna de estas situaciones, NO le respondas al paciente y llamá la herramienta transferir_a_recepcion con un motivo breve.\n${humanReview}`
+      : null,
     !linkedPatient?.patientId && conversation.phoneResolved && /^\d{7,15}$/.test(String(conversation.phone || ""))
       ? `El paciente escribe desde el número ${conversation.phone}. Pedile el teléfono de forma normal (junto con el nombre). NO le preguntes si es el mismo número del chat. Solo si el paciente dice por su cuenta que su teléfono es el mismo del chat, llamá crear_cita con usar_telefono_del_chat=true en vez de telefono.`
       : null,
@@ -110,7 +114,7 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
       "- Para registrar a un paciente no identificado pedí el nombre completo y el teléfono JUNTOS, en una sola pregunta. No repitas la misma pregunta en turnos seguidos: si ya la hiciste y el paciente respondió otra cosa, seguí con lo que falta.",
       "- Expresá todas las horas al paciente en formato de 12 horas con AM/PM (por ejemplo 2:30 PM), nunca en formato de 24 horas.",
       "- El texto de INFORMACIÓN DE LA CLÍNICA es la fuente oficial de precios y promociones. Si un servicio aparece ahí con un precio o una promoción, decí ese y nunca el \"precio de lista\" del catálogo. El precio de lista solo se usa para servicios que NO aparecen con precio ni promoción en ese texto.",
-      "- Respuestas breves, tono de recepcionista amable. Usá emojis con moderación, a lo sumo uno por mensaje."
+      "- Respuestas breves, tono de recepcionista amable."
     ].join("\n")
   ];
 
