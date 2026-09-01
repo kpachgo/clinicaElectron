@@ -222,6 +222,40 @@
         }).join("");
         list.querySelectorAll("[data-id]").forEach((button) => button.addEventListener("click", () => loadConversation(Number(button.dataset.id))));
     }
+    // Las reacciones (❤️, 👍…) llegan como mensajes propios con reactionTargetId
+    // apuntando al mensaje reaccionado. En vez de mostrarlas como burbuja aparte,
+    // las pegamos sobre esa burbuja (como hace WhatsApp). Si el mensaje original
+    // no está en la página cargada, se muestran como burbuja normal (fallback).
+    const REACTION_PREFIX = "Reacción: ";
+    // El id de WhatsApp a veces llega como clave compuesta ("false_<chat>_<id>")
+    // y otras como el id simple; comparamos también por el último segmento para
+    // no perder el enlace cuando el formato no coincide exactamente.
+    function lastIdSegment(value) {
+        const str = String(value || "");
+        const idx = str.lastIndexOf("_");
+        return idx === -1 ? str : str.slice(idx + 1);
+    }
+    function groupReactionsOntoTargets(messages) {
+        const byTarget = new Map();
+        const visible = [];
+        for (const m of messages) {
+            if (typeof m.content === "string" && m.content.startsWith(REACTION_PREFIX) && m.reactionTargetId) {
+                const list = byTarget.get(m.reactionTargetId) || [];
+                list.push(m);
+                byTarget.set(m.reactionTargetId, list);
+            } else {
+                visible.push(m);
+            }
+        }
+        const byExternalId = new Map(visible.filter((m) => m.externalId).map((m) => [m.externalId, m]));
+        const bySegment = new Map(visible.filter((m) => m.externalId).map((m) => [lastIdSegment(m.externalId), m]));
+        for (const [targetId, reactions] of byTarget) {
+            const target = byExternalId.get(targetId) || bySegment.get(lastIdSegment(targetId));
+            if (target) target.attachedReactions = reactions;
+            else visible.push(...reactions);
+        }
+        return visible;
+    }
     function scrollChatToBottom(behavior = "smooth") {
         const body = document.getElementById("mensajes-chat-body");
         if (!body) return;
@@ -234,7 +268,7 @@
         if (link) {
             panel.innerHTML = `<div class="patient-identity-main"><span class="patient-identity-status is-linked">Paciente identificado</span><strong>${esc(link.patientName)}</strong><span>${esc(link.phone || "Teléfono no disponible")} · ${esc(link.treatmentType || "Tratamiento no especificado")}</span></div><div class="patient-identity-actions"><button type="button" data-patient-change>Cambiar</button><button type="button" data-patient-unlink>Desvincular</button></div>`;
             panel.querySelector("[data-patient-change]").addEventListener("click", () => openPatientSearchModal(conversation));
-            panel.querySelector("[data-patient-unlink]").addEventListener("click", async () => { if (!confirm("¿Desvincular este paciente de la conversación?")) return; await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "DELETE" }); await loadConversation(conversation.id, { markRead: false }); });
+            panel.querySelector("[data-patient-unlink]").addEventListener("click", async () => { if (!confirm("¿Desvincular este paciente de la conversación?")) return; await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "DELETE" }); await refreshConversationMeta({ force: true }); await loadConversation(conversation.id, { markRead: false, force: true }); });
         } else {
             panel.innerHTML = `<div class="patient-identity-main"><span class="patient-identity-status">Paciente no identificado</span><span>${esc(conversation.waDisplayName || (conversation.phoneResolved ? conversation.phone : "Chat sin teléfono real"))}</span></div><button type="button" data-patient-identify>Identificar paciente</button>`;
             panel.querySelector("[data-patient-identify]").addEventListener("click", () => openPatientSearchModal(conversation));
@@ -256,7 +290,7 @@
             try {
                 const data = await api(`/api/mensajes-view/patients/search?q=${encodeURIComponent(query)}`);
                 results.innerHTML = data.patients.length ? data.patients.map((patient) => `<div class="patient-search-result"><div><strong>${esc(patient.name)}</strong><span>${esc(patient.phone || "Sin teléfono")} · ${esc(patient.treatment || "Sin tratamiento")}${patient.active ? "" : " · INACTIVO"}</span></div><button type="button" data-patient-id="${patient.id}" ${patient.active ? "" : "disabled"}>Vincular</button></div>`).join("") : `<div class="patient-search-empty">No se encontraron pacientes. Regístralo primero desde Pacientes.</div>`;
-                results.querySelectorAll("[data-patient-id]").forEach((button) => button.addEventListener("click", async () => { button.disabled = true; try { await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patientId: Number(button.dataset.patientId) }) }); modal.hidden = true; await loadConversation(conversation.id, { markRead: false }); } catch (error) { button.disabled = false; alert(error.message); } }));
+                results.querySelectorAll("[data-patient-id]").forEach((button) => button.addEventListener("click", async () => { button.disabled = true; try { await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patientId: Number(button.dataset.patientId) }) }); modal.hidden = true; await refreshConversationMeta({ force: true }); await loadConversation(conversation.id, { markRead: false, force: true }); } catch (error) { button.disabled = false; alert(error.message); } }));
             } catch (error) { results.innerHTML = `<div class="patient-search-empty">${esc(error.message)}</div>`; }
         };
         modal.querySelector("#patient-search-submit").onclick = search; queryInput.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); void search(); } }; queryInput.value = ""; results.innerHTML = `<div class="patient-search-empty">Escribe un nombre o teléfono.</div>`; modal.hidden = false; queryInput.focus();
@@ -273,7 +307,8 @@
             if (!selected) return;
             if (!selected.active) return alert("No se puede vincular un paciente inactivo.");
             await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patientId: selected.id }) });
-            await loadConversation(conversation.id, { markRead: false });
+            await refreshConversationMeta({ force: true });
+            await loadConversation(conversation.id, { markRead: false, force: true });
         } catch (error) { alert(error.message); }
     }
     async function loadConversation(id, options = {}) {
@@ -308,8 +343,9 @@
         const headSub = data.conversation.attentionMode === "review_required" && data.conversation.humanReviewReason
             ? `${headState.icon} ${esc(data.conversation.humanReviewReason)}`
             : `${headState.icon ? headState.icon + " " : ""}${esc(headState.label)}`;
-        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span></div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="read">Leer</button><button data-action="settings" title="Ajustes">⚙</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
-        chatBody.innerHTML = data.messages.length ? data.messages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
+        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span></div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
+        const renderedMessages = groupReactionsOntoTargets(data.messages);
+        chatBody.innerHTML = renderedMessages.length ? renderedMessages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); const reactions = m.attachedReactions || []; return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}${reactions.length ? `<span class="mensaje-reactions">${reactions.map((r) => esc(r.content.slice(REACTION_PREFIX.length))).join(" ")}</span>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
         if (activeQueue) { const indicator = document.createElement("div"); indicator.className = "mensajes-ai-queue-status"; indicator.textContent = activeQueue.status === "sending" ? "Enviando respuesta…" : activeQueue.status === "ready_to_send" ? "Respuesta lista para enviar…" : "La IA está preparando una respuesta…"; document.getElementById("mensajes-chat-body").prepend(indicator); }
         if (wasNearBottom) scrollChatToBottom("smooth");
         const compose = document.getElementById("mensajes-compose");
@@ -323,7 +359,7 @@
             actions.insertBefore(deleteSelected, actions.firstChild);
         }
         chatBody.querySelectorAll(".mensaje-bubble").forEach((bubble, index) => {
-            const message = data.messages[index];
+            const message = renderedMessages[index];
             if (!message) return;
             const label = document.createElement("label");
             label.className = "mensaje-select";
@@ -414,13 +450,34 @@
     async function deleteSelectedMessages() { const ids = [...document.querySelectorAll("[data-message-select]:checked")].map((input) => input.dataset.messageSelect); if (!ids.length || !confirm(`¿Eliminar ${ids.length} mensaje(s) del chat?`)) return; try { await Promise.all(ids.map((messageId) => api(`/api/mensajes-view/conversations/${selectedId}/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }))); await loadConversation(selectedId, { markRead: false }); } catch (error) { alert(error.message); } }
     async function conversationAction(action) {
         if (!selectedId) return;
-        if (action === "settings") return;
         if (action === "delete") { if (!confirm("¿Borrar esta conversación y su historial?")) return; const target = selectedId; conversationLoadSeq++; selectedId = null; const startedAt = Date.now(); showBusyOverlay("Borrando conversación…", "Un momento."); try { await api(`/api/mensajes-view/conversations/${target}`, { method: "DELETE" }); } catch (error) { if (!/no encontrada/i.test(error.message || "")) alert(error.message); } finally { await hideBusyOverlay(startedAt, 500); } const compose = document.getElementById("mensajes-compose"); if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; const input = compose.querySelector("#mensajes-input"); const button = compose.querySelector('button[type="submit"]'); if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; } if (button) button.disabled = true; } document.getElementById("mensajes-chat-head").innerHTML = "<span>Selecciona una conversación</span>"; document.getElementById("mensajes-chat-body").innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>"; return loadConversations().catch(() => {}); }
-        const endpoint = action === "take" ? "take" : action === "release" ? "release" : "read";
+        if (action === "ignore") return ignoreConversationPhone(selectedId);
+        const endpoint = action === "take" ? "take" : "release";
         await api(`/api/mensajes-view/conversations/${selectedId}/${endpoint}`, { method: "POST" });
         await loadConversation(selectedId);
     }
-    async function openSettings() { const data = await api(`/api/mensajes-view/conversations/${selectedId}/messages?limit=1&offset=0`); const min = prompt("Tiempo mínimo de respuesta en segundos (puede usar decimales):", data.conversation.responseDelayMin ?? 0); if (min === null) return; const max = prompt("Tiempo máximo de respuesta en segundos:", data.conversation.responseDelayMax ?? 0); if (max === null) return; await api(`/api/mensajes-view/conversations/${selectedId}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responseDelayMin: Number(min), responseDelayMax: Number(max) }) }); }
+    // Agrega el teléfono de la conversación a la lista de números que la IA no
+    // debe responder (misma lista que usa "Ajustes globales > Reglas de teléfonos").
+    async function ignoreConversationPhone(conversationId) {
+        let conversation;
+        try {
+            const data = await api(`/api/mensajes-view/conversations/${conversationId}/messages?limit=1&offset=0`);
+            conversation = data.conversation;
+        } catch (error) { return alert(error.message); }
+        const phoneDigits = String(conversation.phone || "").replace(/\D/g, "");
+        if (!phoneDigits) return alert("Esta conversación no tiene un teléfono válido para ignorar.");
+        if (!confirm(`¿Dejar de responder automáticamente al ${conversation.phone}?\n\nLa IA no volverá a contestarle hasta que lo quites de la lista de ignorados en Ajustes.`)) return;
+        try {
+            const { settings } = await api("/api/mensajes-view/settings");
+            let numbers = settings.automationPhoneNumbers || [];
+            const mode = settings.automationPhoneMode;
+            if (mode === "all") return alert('El modo de automatización está en "Todos los teléfonos". Cambia el modo en Ajustes globales para poder ignorar números individuales.');
+            if (mode === "exclude") { if (!numbers.includes(phoneDigits)) numbers = [...numbers, phoneDigits]; }
+            else { numbers = numbers.filter((n) => n !== phoneDigits); }
+            await api("/api/mensajes-view/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responseDelayMin: settings.responseDelayMin, responseDelayMax: settings.responseDelayMax, responseGroupDelaySeconds: settings.responseGroupDelaySeconds, automationPhoneMode: mode, automationPhoneNumbers: numbers }) });
+            alert("Listo. La IA ya no responderá automáticamente a este número.");
+        } catch (error) { alert(error.message); }
+    }
     // --- Simulador y envío ---
     async function simulateIncoming(event) { event?.preventDefault(); if (simulatingIncoming) return; const phoneInput = document.getElementById("mensajes-sim-phone"); const messageInput = document.getElementById("mensajes-sim-text"); const submit = document.getElementById("mensajes-sim-submit"); const phone = phoneInput?.value.trim(); const message = messageInput?.value.trim(); if (!phone || !message) return; simulatingIncoming = true; if (submit) { submit.disabled = true; submit.textContent = "Enviando..."; } try { const data = await api("/api/mensajes-view/simulator/incoming", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, message }) }); messageInput.value = ""; await loadConversation(data.conversation.id, { force: true }); } catch (error) { alert(error.message); } finally { simulatingIncoming = false; if (submit) { submit.disabled = false; submit.textContent = "Simular mensaje"; } messageInput?.focus(); } }
     // --- Ajustes e IA ---
@@ -691,7 +748,7 @@
         nav.insertAdjacentHTML("beforeend", '<button data-settings-section="config-transfer">Copia de configuración</button>');
         content.insertAdjacentHTML("beforeend", `<section data-settings-content="config-transfer" hidden>
             <h3>Copia de configuración</h3>
-            <p>Exportá la configuración de la IA de este equipo a un archivo y cargala en otro. Incluye: texto de conocimiento, servicios IA y alias, horario general, pausas, días bloqueados, tope diario, configuración del proveedor IA (con su clave), revisión humana, automatizaciones, recordatorios y reglas de teléfonos. <strong>No</strong> incluye conversaciones ni vinculaciones de pacientes.</p>
+            <p>Exportá la configuración de la IA de este equipo a un archivo y cargala en otro. Incluye: texto de conocimiento, servicios IA y alias, horario general, pausas, días bloqueados, tope diario, configuración del proveedor IA (con su clave), revisión humana, automatizaciones, recordatorios, reglas de teléfonos y las vinculaciones paciente-chat activas (para reusarlas hace falta el mismo número de WhatsApp). <strong>No</strong> incluye conversaciones ni mensajes.</p>
             <p class="ai-help" style="color:#b45309">El archivo contiene la clave del proveedor IA. Guardalo en un lugar seguro y no lo subas a repositorios ni lo compartas.</p>
             <button id="config-export-btn" type="button">Exportar configuración</button>
             <hr>
@@ -712,7 +769,7 @@
                 link.download = `clinica-config-${String(cfg.exportedAt || "").slice(0, 10) || "export"}.json`;
                 document.body.appendChild(link); link.click(); link.remove();
                 URL.revokeObjectURL(url);
-                result.textContent = `Configuración exportada (${cfg.serviceSettings?.length || 0} servicios, ${cfg.blockedDates?.length || 0} días bloqueados).`;
+                result.textContent = `Configuración exportada (${cfg.serviceSettings?.length || 0} servicios, ${cfg.blockedDates?.length || 0} días bloqueados, ${cfg.patientIdentities?.length || 0} vinculaciones).`;
             } catch (error) { result.textContent = error.message || "No se pudo exportar."; }
         });
         const fileInput = modal.querySelector("#config-import-file");
@@ -725,11 +782,11 @@
             let payload;
             try { payload = JSON.parse(await file.text()); }
             catch { result.textContent = "El archivo no es un JSON válido."; return; }
-            if (!confirm("Importar esta configuración reemplaza el texto de conocimiento, los servicios IA, el horario, las pausas, los días bloqueados, el tope diario y la configuración del proveedor IA de este equipo. ¿Continuar?")) return;
+            if (!confirm("Importar esta configuración reemplaza el texto de conocimiento, los servicios IA, el horario, las pausas, los días bloqueados, el tope diario y la configuración del proveedor IA de este equipo. También agrega o actualiza las vinculaciones paciente-chat exportadas (solo funciona si es el mismo número de WhatsApp). ¿Continuar?")) return;
             result.textContent = "Importando…";
             try {
                 const data = await api("/api/mensajes-view/config-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-                result.textContent = `Configuración importada: ${data.summary.services} servicios, ${data.summary.aliases} alias, ${data.summary.blockedDates} días bloqueados. Recargando la vista…`;
+                result.textContent = `Configuración importada: ${data.summary.services} servicios, ${data.summary.aliases} alias, ${data.summary.blockedDates} días bloqueados, ${data.summary.patientIdentities} vinculaciones. Recargando la vista…`;
                 setTimeout(() => window.location.reload(), 1600);
             } catch (error) { result.textContent = error.message || "No se pudo importar."; }
         });
@@ -742,6 +799,25 @@
         const data = await api("/api/mensajes-view/settings");
         section.insertAdjacentHTML("beforeend", `<hr><h3 id="settings-phone-rules">Control de teléfonos para la IA</h3><p>Define a quién puede responder automáticamente la IA. Esta regla no bloquea mensajes manuales ni recordatorios.</p><label>Modo<select id="settings-phone-mode"><option value="all">Responder a todos</option><option value="allow_only">Solo responder a permitidos</option><option value="exclude">Responder a todos excepto ignorados</option></select></label><label>Números, uno por línea<textarea id="settings-phone-numbers" rows="5" placeholder="Ejemplo: 60613992"></textarea></label><small class="settings-help" id="settings-phone-help"></small><button id="settings-save-phone-rules" type="button">Guardar control de teléfonos</button><div id="settings-phone-result" class="settings-state-card"></div>`);
         const mode = modal.querySelector("#settings-phone-mode"); const numbers = modal.querySelector("#settings-phone-numbers"); const help = modal.querySelector("#settings-phone-help"); mode.value = data.settings.automationPhoneMode || "exclude"; numbers.value = (data.settings.automationPhoneNumbers || []).join("\n"); const updateHelp = () => { help.textContent = mode.value === "all" ? "La IA responderá automáticamente a todos los teléfonos." : mode.value === "allow_only" ? "La IA solo responderá automáticamente a estos números. Los demás quedarán ignorados." : "La IA responderá automáticamente a todos, excepto a estos números."; numbers.disabled = mode.value === "all"; }; updateHelp(); mode.addEventListener("change", updateHelp); modal.querySelector("#settings-save-phone-rules").addEventListener("click", async () => { const list = numbers.value.split("\n").map((x) => x.replace(/\D/g, "")).filter(Boolean); const result = await api("/api/mensajes-view/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responseDelayMin: Number(modal.querySelector("#settings-delay-min").value), responseDelayMax: Number(modal.querySelector("#settings-delay-max").value), automationPhoneMode: mode.value, automationPhoneNumbers: list }) }); modal.querySelector("#settings-phone-result").textContent = mode.value === "all" ? "Guardado: responder a todos" : mode.value === "allow_only" ? `Guardados ${result.settings.automationPhoneNumbers.length} permitidos` : `Guardados ${result.settings.automationPhoneNumbers.length} ignorados`; });
+    }
+    // Saludos/avisos automáticos ajenos a esta app (p. ej. el mensaje de bienvenida
+    // propio de WhatsApp Business, que no se puede apagar desde acá y varía por
+    // clínica). Si coinciden exacto, la IA no los confunde con que ya respondió
+    // una persona y sigue contestando el mensaje real del paciente.
+    async function ensureIgnoredMessages() {
+        const modal = document.getElementById("mensajes-settings-modal"); const section = modal?.querySelector('[data-settings-content="automation"]');
+        if (!section || section.querySelector("#settings-ignored-texts")) return;
+        const data = await api("/api/mensajes-view/settings");
+        section.insertAdjacentHTML("beforeend", `<hr><h3 id="settings-ignored-texts">Mensajes automáticos a ignorar</h3><p>Si WhatsApp Business (u otro canal) manda un saludo automático propio que no podés desactivar, pegalo acá tal cual (uno por línea) para que la IA no lo confunda con que ya respondió una persona.</p><label>Mensaje exacto, uno por línea<textarea id="settings-ignored-texts-input" rows="4" placeholder="Ejemplo: Gracias por comunicarte con Mi Clínica. ¿Cómo podemos ayudarte?"></textarea></label><button id="settings-save-ignored-texts" type="button">Guardar mensajes ignorados</button><div id="settings-ignored-texts-result" class="settings-state-card"></div>`);
+        const textarea = modal.querySelector("#settings-ignored-texts-input");
+        textarea.value = (data.settings.ignoredOutgoingTexts || []).join("\n");
+        modal.querySelector("#settings-save-ignored-texts").addEventListener("click", async () => {
+            const list = textarea.value.split("\n").map((x) => x.trim()).filter(Boolean);
+            try {
+                const result = await api("/api/mensajes-view/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responseDelayMin: Number(modal.querySelector("#settings-delay-min").value), responseDelayMax: Number(modal.querySelector("#settings-delay-max").value), ignoredOutgoingTexts: list }) });
+                modal.querySelector("#settings-ignored-texts-result").textContent = `Guardados ${result.settings.ignoredOutgoingTexts.length} mensaje(s) ignorado(s).`;
+            } catch (error) { modal.querySelector("#settings-ignored-texts-result").textContent = error.message || "No se pudo guardar."; }
+        });
     }
     // --- Montaje y limpieza ---
     window.__mountMensajes = async function () {
@@ -772,7 +848,7 @@
                 await Promise.allSettled([
                     enrichPatientIdentitySettings(), enrichAssistantKnowledge(), enrichHumanReviewSettings(),
                     enrichAiProviderSettings(), enrichAiServicesSettingsSimple(), enrichAiAgendaSettings(), enrichAutomationBuffer(),
-                    enrichReminderSettings(), ensurePhoneRules(), enrichConfigTransfer()
+                    enrichReminderSettings(), ensurePhoneRules(), ensureIgnoredMessages(), enrichConfigTransfer()
                 ]);
                 // Las pestañas se agregan con insertAdjacentHTML("beforeend"): reubicar
                 // "Cerrar" al final para que quede siempre como última opción del nav.

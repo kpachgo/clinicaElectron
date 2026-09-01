@@ -6,7 +6,7 @@ function toConversation(row) {
 }
 
 function toMessage(row) {
-  return row ? { ...row, conversationId: row.conversation_id, externalId: row.external_id, deliveryStatus: row.delivery_status, messageAt: row.message_at, createdAt: row.created_at } : null;
+  return row ? { ...row, conversationId: row.conversation_id, externalId: row.external_id, deliveryStatus: row.delivery_status, messageAt: row.message_at, createdAt: row.created_at, reactionTargetId: row.reaction_target_id } : null;
 }
 function phoneRuleVariants(value) { const digits = String(value || "").replace(/\D/g, ""); return [...new Set([digits, digits.length === 11 && digits.startsWith("503") ? digits.slice(3) : ""].filter(Boolean))]; }
 
@@ -89,7 +89,7 @@ class MensajesRepository {
     return this.db.prepare("SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.author='patient' AND m.read_at IS NULL) AS unread_count FROM conversations c WHERE NOT (c.wa_chat_id LIKE '%@lid' AND NOT EXISTS (SELECT 1 FROM messages incoming WHERE incoming.conversation_id=c.id AND incoming.direction='incoming')) ORDER BY c.updated_at DESC LIMIT ?").all(limit).map((row) => ({ ...toConversation(row), unreadCount: row.unread_count }));
   }
 
-  saveMessage({ conversationId, externalId, direction, author, text, messageAt, rawType = "text", source = "live" }) {
+  saveMessage({ conversationId, externalId, direction, author, text, messageAt, rawType = "text", reactionTargetId = null, source = "live" }) {
     if (!conversationId || !externalId || !direction || !author || typeof text !== "string" || !text.trim()) {
       throw new TypeError("Datos de mensaje incompletos");
     }
@@ -101,10 +101,17 @@ class MensajesRepository {
       }
       return { message: toMessage(existing), duplicate: true };
     }
-    const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    // Mensajes salientes que son saludos automáticos ajenos a esta app (ver
+    // ignored_outgoing_texts_json, configurables en Ajustes): ni se guardan ni
+    // afectan la conversación. Si se guardaran, la IA vería el último evento
+    // como saliente y nunca contestaría el mensaje real del paciente.
+    if (direction === "outgoing" && this.isIgnoredOutgoingText(text)) {
+      return { message: null, duplicate: false, ignored: true };
+    }
+    const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at, reaction_target_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     const update = this.db.prepare(`UPDATE conversations SET updated_at=datetime('now'), lifecycle_state=CASE WHEN ?='incoming' THEN 'active' ELSE lifecycle_state END, last_message_direction=?, last_message_at=?, last_message_type=?, last_message_source=?, last_inbound_at=CASE WHEN ?='incoming' THEN ? ELSE last_inbound_at END, last_outbound_at=CASE WHEN ?='outgoing' THEN ? ELSE last_outbound_at END WHERE id=?`);
     const transaction = this.db.transaction(() => {
-      const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", messageAt || new Date().toISOString());
+      const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", messageAt || new Date().toISOString(), reactionTargetId || null);
       const effectiveMessageAt = messageAt || new Date().toISOString();
       update.run(direction, direction, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
       return this.db.prepare("SELECT * FROM messages WHERE id=?").get(result.lastInsertRowid);
@@ -116,13 +123,13 @@ class MensajesRepository {
     const conversation = this.findOrCreateConversation(event.waContactNumber || event.phone || event.waChatId, event);
     const identity = this.getPatientLink(conversation.id);
     if (identity && conversation.patientId !== identity.patientId) this.updateConversation(conversation.id, { patientId: identity.patientId });
-    const saved = this.saveMessage({ conversationId: conversation.id, externalId: event.externalId, direction: "incoming", author: "patient", text: event.text, messageAt: event.messageAt, rawType: event.rawType, source: event.source });
+    const saved = this.saveMessage({ conversationId: conversation.id, externalId: event.externalId, direction: "incoming", author: "patient", text: event.text, messageAt: event.messageAt, rawType: event.rawType, reactionTargetId: event.reactionTargetId, source: event.source });
     return { conversation, ...saved };
   }
 
-  saveOutgoingMessage({ phone, externalId, text, author = "human", messageAt, waChatId = null, waContactNumber = null, waDisplayName = null, rawType = "text", source = "live" }) {
+  saveOutgoingMessage({ phone, externalId, text, author = "human", messageAt, waChatId = null, waContactNumber = null, waDisplayName = null, rawType = "text", reactionTargetId = null, source = "live" }) {
     const conversation = this.findOrCreateConversation(waContactNumber || phone, { waChatId, waContactNumber, waDisplayName });
-    const saved = this.saveMessage({ conversationId: conversation.id, externalId, direction: "outgoing", author, text, messageAt, rawType, source });
+    const saved = this.saveMessage({ conversationId: conversation.id, externalId, direction: "outgoing", author, text, messageAt, rawType, reactionTargetId, source });
     return { conversation, ...saved };
   }
   saveAutomationMessage({ phone, externalId, text, messageAt }) { const conversation = this.findOrCreateConversation(phone); const saved = this.saveMessage({ conversationId: conversation.id, externalId, direction: "outgoing", author: "system", text, messageAt }); return { conversation, ...saved }; }
@@ -156,8 +163,12 @@ class MensajesRepository {
   refreshReminderBatch(id) { this.db.prepare("UPDATE reminder_batches SET sent_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='sent'), failed_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='failed'), cancelled_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='cancelled'), updated_at=datetime('now') WHERE id=?").run(id,id,id,id); return this.getReminderBatch(id); }
   cancelReminderBatch(id) { this.db.prepare("UPDATE reminder_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending')").run(id); this.db.prepare("UPDATE reminder_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.getReminderBatch(id); }
   retryOutgoing(id, phone) { return this.db.prepare("UPDATE outgoing_queue SET status='pending', attempts=0, last_error=NULL, updated_at=datetime('now') WHERE id=? AND phone=? AND status='failed'").run(id, phone).changes > 0; }
-  getGlobalSettings() { const row = this.db.prepare("SELECT response_delay_min AS responseDelayMin, response_delay_max AS responseDelayMax, response_group_delay_seconds AS responseGroupDelaySeconds, automation_phone_mode AS automationPhoneMode, automation_phone_numbers AS automationPhoneNumbers, updated_at AS updatedAt FROM message_settings WHERE id=1").get(); return { ...row, automationPhoneNumbers: JSON.parse(row?.automationPhoneNumbers || "[]") }; }
-  updateGlobalSettings(min, max, mode = null, numbers = null, groupDelay = null) { const current = this.getGlobalSettings(); this.db.prepare("UPDATE message_settings SET response_delay_min=?, response_delay_max=?, response_group_delay_seconds=?, automation_phone_mode=?, automation_phone_numbers=?, updated_at=datetime('now') WHERE id=1").run(min, max, groupDelay === null ? current.responseGroupDelaySeconds : groupDelay, mode || current.automationPhoneMode, JSON.stringify(numbers || current.automationPhoneNumbers)); return this.getGlobalSettings(); }
+  getGlobalSettings() { const row = this.db.prepare("SELECT response_delay_min AS responseDelayMin, response_delay_max AS responseDelayMax, response_group_delay_seconds AS responseGroupDelaySeconds, automation_phone_mode AS automationPhoneMode, automation_phone_numbers AS automationPhoneNumbers, ignored_outgoing_texts_json AS ignoredOutgoingTexts, updated_at AS updatedAt FROM message_settings WHERE id=1").get(); return { ...row, automationPhoneNumbers: JSON.parse(row?.automationPhoneNumbers || "[]"), ignoredOutgoingTexts: JSON.parse(row?.ignoredOutgoingTexts || "[]") }; }
+  updateGlobalSettings(min, max, mode = null, numbers = null, groupDelay = null, ignoredOutgoingTexts = null) { const current = this.getGlobalSettings(); this.db.prepare("UPDATE message_settings SET response_delay_min=?, response_delay_max=?, response_group_delay_seconds=?, automation_phone_mode=?, automation_phone_numbers=?, ignored_outgoing_texts_json=?, updated_at=datetime('now') WHERE id=1").run(min, max, groupDelay === null ? current.responseGroupDelaySeconds : groupDelay, mode || current.automationPhoneMode, JSON.stringify(numbers || current.automationPhoneNumbers), JSON.stringify(ignoredOutgoingTexts || current.ignoredOutgoingTexts)); return this.getGlobalSettings(); }
+  // Un mensaje saliente que coincide con la lista de "mensajes ignorados" (saludos
+  // automáticos de WhatsApp Business u otro canal, ajenos a esta app) no cuenta como
+  // que ya respondió un humano.
+  isIgnoredOutgoingText(text) { const needle = String(text || "").trim().toLowerCase(); if (!needle) return false; return this.getGlobalSettings().ignoredOutgoingTexts.some((entry) => String(entry || "").trim().toLowerCase() === needle); }
   shouldAllowAutomatedResponse(phone) { const settings = this.getGlobalSettings(); if (settings.automationPhoneMode === "all") return true; const variants = phoneRuleVariants(phone); const rules = settings.automationPhoneNumbers.flatMap(phoneRuleVariants); const included = variants.some((value) => rules.includes(value)); return settings.automationPhoneMode === "allow_only" ? included : !included; }
   shouldAllowAutomatedResponseForConversation(conversationId, fallbackPhone = "") {
     const link = conversationId ? this.getPatientLink(conversationId) : null;
@@ -303,7 +314,7 @@ class MensajesRepository {
       this.db.prepare("INSERT INTO patient_chat_identities (wa_chat_id,patient_id,phone,patient_name,treatment_type,verified_by,active) VALUES (?,?,?,?,?,?,1) ON CONFLICT(wa_chat_id) DO UPDATE SET patient_id=excluded.patient_id,phone=excluded.phone,patient_name=excluded.patient_name,treatment_type=excluded.treatment_type,verified_at=datetime('now'),verified_by=excluded.verified_by,active=1").run(waChatId, patient.id, patient.phone || null, patient.name, patient.treatment || null, verifiedBy);
       this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE conversation_id=?").run(conversationId);
       this.db.prepare("INSERT INTO conversation_patient_links (conversation_id,patient_id,wa_chat_id,phone,patient_name,treatment_type,verified_by,active) VALUES (?,?,?,?,?,?,?,1) ON CONFLICT(conversation_id,patient_id) DO UPDATE SET wa_chat_id=excluded.wa_chat_id,phone=excluded.phone,patient_name=excluded.patient_name,treatment_type=excluded.treatment_type,verified_at=datetime('now'),verified_by=excluded.verified_by,active=1").run(conversationId, patient.id, waChatId, patient.phone || null, patient.name, patient.treatment || null, verifiedBy);
-      this.db.prepare("UPDATE conversations SET patient_id=?, phone=COALESCE(?,phone), wa_contact_number=COALESCE(?,wa_contact_number), updated_at=datetime('now') WHERE id=?").run(patient.id, patient.phone || null, patient.phone || null, conversationId);
+      this.db.prepare("UPDATE conversations SET patient_id=?, phone=COALESCE(?,phone), wa_contact_number=COALESCE(?,wa_contact_number) WHERE id=?").run(patient.id, patient.phone || null, patient.phone || null, conversationId);
       return this.getPatientLink(conversationId);
     })();
   }
@@ -312,7 +323,7 @@ class MensajesRepository {
     const conversation = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=? LIMIT 1").get(conversationId);
     if (conversation?.wa_chat_id) this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE wa_chat_id=?").run(conversation.wa_chat_id);
     this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE conversation_id=?").run(conversationId);
-    this.db.prepare("UPDATE conversations SET patient_id=NULL, updated_at=datetime('now') WHERE id=?").run(conversationId);
+    this.db.prepare("UPDATE conversations SET patient_id=NULL WHERE id=?").run(conversationId);
     return true;
   }
 
@@ -326,7 +337,7 @@ class MensajesRepository {
       const identity = this.db.prepare("SELECT wa_chat_id FROM patient_chat_identities WHERE id=? AND active=1").get(identityId);
       if (!identity) return false;
       this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE id=?").run(identityId);
-      this.db.prepare("UPDATE conversations SET patient_id=NULL, updated_at=datetime('now') WHERE wa_chat_id=?").run(identity.wa_chat_id);
+      this.db.prepare("UPDATE conversations SET patient_id=NULL WHERE wa_chat_id=?").run(identity.wa_chat_id);
       this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE wa_chat_id=?").run(identity.wa_chat_id);
       return true;
     })();
@@ -335,7 +346,7 @@ class MensajesRepository {
   clearAllPatientIdentities() {
     return this.db.transaction(() => {
       const result = this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE active=1").run();
-      this.db.prepare("UPDATE conversations SET patient_id=NULL, updated_at=datetime('now') WHERE patient_id IS NOT NULL").run();
+      this.db.prepare("UPDATE conversations SET patient_id=NULL WHERE patient_id IS NOT NULL").run();
       this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE active=1").run();
       return result.changes;
     })();

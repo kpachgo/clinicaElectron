@@ -270,6 +270,15 @@ const migrations = [
 - El paciente está molesto, se queja, reclama o amenaza con un reclamo formal o una denuncia.
 - El paciente pide hablar con una persona, con recepción o con un doctor.
 - La solicitud es ambigua y no lográs aclararla, o se sale de lo que podés resolver por este medio.' WHERE instructions='';`
+  // Guarda a qué mensaje responde una reacción (❤️, 👍, etc.) para poder mostrarla
+  // pegada a ese mensaje en el chat, en vez de como una burbuja aparte.
+  ,`ALTER TABLE messages ADD COLUMN reaction_target_id TEXT NULL;`
+  // Lista configurable de textos de mensajes automáticos ajenos a esta app (p. ej.
+  // el saludo de bienvenida del propio WhatsApp Business, que no se puede
+  // desactivar desde acá y varía por clínica). Si un mensaje saliente coincide con
+  // alguno, no cuenta como "ya respondió un humano": si no, la IA nunca contesta el
+  // mensaje real del paciente porque ve el último evento como saliente.
+  ,`ALTER TABLE message_settings ADD COLUMN ignored_outgoing_texts_json TEXT NOT NULL DEFAULT '[]';`
 ];
 
 function getDb() {

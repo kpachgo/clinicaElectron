@@ -273,9 +273,10 @@ async function crearCita(args, ctx) {
       patientName = existing.name;
       phoneChanged = existing.matchedBy === "name" && expedienteDigits.length >= 7 && Boolean(givenDigits) && givenDigits !== expedienteDigits;
       if (!contact) contact = existing.expedientePhone;
-      // Match por teléfono verificado + nombre consistente: alcanza para vincular
-      // también la conversación (equivale a la identificación manual de recepción).
-      if (existing.matchedBy === "phone") {
+      // Match por teléfono verificado + nombre consistente, o por nombre completo
+      // exacto y único: alcanza para vincular también la conversación (equivale a
+      // la identificación manual de recepción).
+      if (existing.matchedBy === "phone" || existing.matchedBy === "name") {
         autoLink = { patientId: existing.id, patientName: existing.name, phone: contact || existing.expedientePhone, treatmentType: existing.treatmentType || null };
       }
     }

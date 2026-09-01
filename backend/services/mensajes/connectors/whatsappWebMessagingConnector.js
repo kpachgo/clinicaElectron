@@ -26,6 +26,18 @@ function persistedPhone(phone) {
   return digits.startsWith("503") && digits.length === 11 ? digits.slice(3) : digits;
 }
 
+// WhatsApp multi-dispositivo agrega un sufijo ":<n>" al JID del remitente
+// cuando el contacto tiene un dispositivo vinculado (frecuente en @lid).
+// El chat en si nunca lleva ese sufijo; si se cuela, cada mensaje crea una
+// conversacion nueva y las vinculaciones de paciente dejan de coincidir.
+function stripDeviceSuffix(chatId) {
+  const raw = String(chatId || "");
+  const at = raw.indexOf("@");
+  if (at === -1) return raw;
+  const colon = raw.indexOf(":");
+  return colon !== -1 && colon < at ? raw.slice(0, colon) + raw.slice(at) : raw;
+}
+
 class WhatsAppWebMessagingConnector extends MessagingConnector {
   constructor(options = {}) {
     super();
@@ -251,7 +263,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
   getExternalId(message, direction = "incoming") {
     const direct = this.getDirectExternalId(message);
     if (direct) return String(direct);
-    const chatId = String(direction === "outgoing" ? (message?.to || message?.from) : (message?.from || message?.to) || "unknown");
+    const chatId = stripDeviceSuffix(direction === "outgoing" ? (message?.to || message?.from) : (message?.from || message?.to) || "unknown");
     const seed = `${chatId}|${message?.timestamp || message?._data?.t || ""}|${message?.body || ""}|${direction}`;
     return `wa-fallback-${crypto.createHash("sha1").update(seed).digest("hex")}`;
   }
@@ -269,7 +281,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
   }
 
   async getIndividualMeta(message, direction = "incoming") {
-    const chatId = String(direction === "outgoing" ? (message?.to || message?.from) : (message?.from || message?.to) || "");
+    const chatId = stripDeviceSuffix(direction === "outgoing" ? (message?.to || message?.from) : (message?.from || message?.to) || "");
     if (!chatId || IGNORED_CHAT_IDS.has(chatId)) return { discarded: "chat_id_invalido" };
     if (chatId.endsWith("@g.us")) return { discarded: "grupo" };
     let chat = null;
@@ -330,6 +342,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
         text,
         messageAt: message.timestamp ? new Date(message.timestamp * 1000).toISOString() : new Date().toISOString(),
         rawType: isReaction ? "reaction" : (message.type || "text"),
+        reactionTargetId: isReaction ? (message.reactionTargetId || null) : null,
         source: eventName === "recovery" ? "recovery" : "live"
       }));
       console.log("[Mensajes][WhatsApp] Mensaje normalizado para SQLite", { externalId, chatId: meta.waChatId, phone: meta.phone });
@@ -358,13 +371,18 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       const fromMe = Boolean(reaction?.fromMe) || (ownId && senderId && (senderId === ownId || senderId.replace(/@c\.us$/, "") === ownId.replace(/@c\.us$/, "")));
       let targetChat = target?.getChat ? () => target.getChat() : undefined;
       if (!targetChat && typeof this.client?.getChatById === "function") targetChat = () => this.client.getChatById(chatId);
+      // El external_id del mensaje objetivo se calculo con getDirectExternalId al
+      // guardarlo; reusamos la misma funcion sobre "target" para que coincidan
+      // byte a byte (targetId es una clave compuesta que no siempre es igual).
+      const targetExternalId = (target && this.getDirectExternalId(target)) || targetId || null;
       const message = {
         id: reaction?.id || reaction?._data?.id || `reaction-${Date.now()}`,
         fromMe,
-        from: fromMe ? ownId : senderId,
+        from: fromMe ? ownId : chatId,
         to: chatId,
         body: reactionText,
         type: "reaction",
+        reactionTargetId: targetExternalId,
         getChat: targetChat,
         getContact: target?.getContact ? () => target.getContact() : undefined,
         timestamp: reaction?.timestamp || Math.floor(Date.now() / 1000)
@@ -412,6 +430,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
         author: "human",
         messageAt: message.timestamp ? new Date(message.timestamp * 1000).toISOString() : new Date().toISOString(),
         rawType: isReaction ? "reaction" : (message.type || "text"),
+        reactionTargetId: isReaction ? (message.reactionTargetId || null) : null,
         source: "live"
       }));
     } catch (error) {

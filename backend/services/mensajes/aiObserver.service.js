@@ -61,13 +61,14 @@ async function processBatch(batch) {
       try { repo.setAssistantMemory(conversation.id, result.memoryUpdate.lastAppointment === null ? { lastAppointment: null } : result.memoryUpdate); }
       catch (memoryError) { console.warn("[Mensajes][IA] No se pudo guardar memoria del agente", { error: memoryError?.message }); }
     }
-    // Vinculación automática de la conversación cuando crear_cita hizo match por teléfono verificado.
+    // Vinculación automática de la conversación cuando crear_cita hizo match por
+    // teléfono verificado o por nombre completo exacto y único (ver assistantTools.service.js).
     if (!linkedPatient?.patientId) {
       const autoLink = result.trace.find((t) => t.type === "tool" && t.name === "crear_cita" && t.result?.estado === "ok" && t.result?._autoLink)?.result?._autoLink;
       if (autoLink?.patientId) {
         try {
           repo.setPatientLink(conversation.id, { id: autoLink.patientId, name: autoLink.patientName, phone: autoLink.phone, treatment: autoLink.treatmentType, waChatId: conversation.waChatId }, null);
-          console.log("[Mensajes][IA] Conversación vinculada automáticamente por teléfono", { conversationId: conversation.id, patientId: autoLink.patientId });
+          console.log("[Mensajes][IA] Conversación vinculada automáticamente al registrar la cita", { conversationId: conversation.id, patientId: autoLink.patientId });
         } catch (linkError) { console.warn("[Mensajes][IA] No se pudo vincular automáticamente", { error: linkError?.message }); }
       }
     }
