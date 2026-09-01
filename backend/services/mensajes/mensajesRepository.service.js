@@ -194,6 +194,17 @@ class MensajesRepository {
       fallbackPhone
     ]);
   }
+  // true si algún identificador del chat está en la lista de "No responder"
+  // (modo exclude). Para mostrar la etiqueta de "excluido" en la vista.
+  isConversationAiExcluded(conversationId, settings = this.getGlobalSettings()) {
+    if (settings.automationPhoneMode !== "exclude") return false;
+    const rules = settings.automationPhoneNumbers.flatMap(phoneRuleVariants);
+    if (!rules.length) return false;
+    const conversation = this.getConversation(conversationId);
+    const link = this.getPatientLink(conversationId);
+    const variants = [link?.phone, conversation?.phone, conversation?.waContactNumber, conversation?.waChatId].flatMap(phoneRuleVariants);
+    return variants.some((value) => rules.includes(value));
+  }
   getAutomationSettings() { const row = this.db.prepare("SELECT enabled, appointment_confirmation AS appointmentConfirmation, appointment_reminder AS appointmentReminder, appointment_change_notice AS appointmentChangeNotice, after_hours_reply AS afterHoursReply, human_intervention_pause AS humanInterventionPause, allowed_start AS allowedStart, allowed_end AS allowedEnd, updated_at AS updatedAt FROM automation_settings WHERE id=1").get(); return { ...row, enabled: Boolean(row.enabled), appointmentConfirmation: Boolean(row.appointmentConfirmation), appointmentReminder: Boolean(row.appointmentReminder), appointmentChangeNotice: Boolean(row.appointmentChangeNotice), afterHoursReply: Boolean(row.afterHoursReply), humanInterventionPause: Boolean(row.humanInterventionPause) }; }
   updateAutomationSettings(settings) { this.db.prepare("UPDATE automation_settings SET enabled=?, appointment_confirmation=?, appointment_reminder=?, appointment_change_notice=?, after_hours_reply=?, human_intervention_pause=?, allowed_start=?, allowed_end=?, updated_at=datetime('now') WHERE id=1").run(settings.enabled ? 1 : 0, settings.appointmentConfirmation ? 1 : 0, settings.appointmentReminder ? 1 : 0, settings.appointmentChangeNotice ? 1 : 0, settings.afterHoursReply ? 1 : 0, settings.humanInterventionPause ? 1 : 0, settings.allowedStart, settings.allowedEnd); return this.getAutomationSettings(); }
   enqueueAutomation(job) { const result = this.db.prepare("INSERT OR IGNORE INTO automation_jobs(job_type, conversation_id, appointment_id, scheduled_at, idempotency_key) VALUES (?, ?, ?, ?, ?)").run(job.jobType, job.conversationId || null, job.appointmentId || null, job.scheduledAt, job.idempotencyKey); return this.db.prepare("SELECT * FROM automation_jobs WHERE idempotency_key=?").get(job.idempotencyKey) || { id: result.lastInsertRowid }; }

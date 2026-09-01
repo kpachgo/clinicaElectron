@@ -193,7 +193,7 @@
         const sig = JSON.stringify({
             f: convListFilter,
             s: term,
-            rows: rows.map((x) => [x.c.id, x.c.attentionMode, x.c.unreadCount, x.c.lastMessageAt, x.c.updatedAt, x.displayName, x.aiWorking, x.c.id === selectedId, x.c.humanReviewReason || 0])
+            rows: rows.map((x) => [x.c.id, x.c.attentionMode, x.c.unreadCount, x.c.lastMessageAt, x.c.updatedAt, x.displayName, x.aiWorking, x.c.id === selectedId, x.c.humanReviewReason || 0, x.c.aiExcluded ? 1 : 0])
         });
         if (sig === lastListSig && list.querySelector("[data-id], .mensajes-empty")) return;
         lastListSig = sig;
@@ -214,6 +214,7 @@
                     <span class="conv-top"><span class="conv-name">${esc(displayName)}</span><span class="conv-time">${esc(convShortTime(c.lastMessageAt || c.updatedAt))}</span></span>
                     <span class="conv-sub">
                         <span class="conv-chip ${state.cls}">${state.icon ? state.icon + " " : ""}${esc(state.label)}</span>
+                        ${c.aiExcluded ? '<span class="conv-chip is-excluded" title="La IA no responde a este chat (lista de no responder)">🚫 Excluido</span>' : ""}
                         ${secondLine ? `<span class="conv-preview${typing ? " is-typing" : ""}">${typing ? '<span class="typing-dot"></span>' : ""}${esc(secondLine)}</span>` : ""}
                         ${unread ? `<span class="conv-badge">${unread > 99 ? "99+" : unread}</span>` : ""}
                     </span>
@@ -323,7 +324,7 @@
         // El poll llama esto cada 2s: si el chat no cambió, no reconstruir el DOM
         // (evita re-parsear 100 burbujas, re-scroll y re-bind de listeners cada tick).
         const sig = JSON.stringify({
-            p: data.conversation.phone, m: data.conversation.attentionMode,
+            p: data.conversation.phone, m: data.conversation.attentionMode, x: data.conversation.aiExcluded ? 1 : 0,
             link: data.patientLink ? [data.patientLink.patientId, data.patientLink.active] : null,
             q: activeQueue ? activeQueue.status : null,
             msgs: (data.messages || []).map((x) => [x.id, x.deliveryStatus, x.queued ? 1 : 0, x.error || 0])
@@ -343,7 +344,7 @@
         const headSub = data.conversation.attentionMode === "review_required" && data.conversation.humanReviewReason
             ? `${headState.icon} ${esc(data.conversation.humanReviewReason)}`
             : `${headState.icon ? headState.icon + " " : ""}${esc(headState.label)}`;
-        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span></div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
+        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span>${data.conversation.aiExcluded ? '<span class="chat-head-state is-excluded" title="La IA no responde a este chat. Quitalo de la lista en Ajustes, Control de telefonos, para reactivarla.">🚫 Excluido de la IA</span>' : ""}</div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
         const renderedMessages = groupReactionsOntoTargets(data.messages);
         chatBody.innerHTML = renderedMessages.length ? renderedMessages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); const reactions = m.attachedReactions || []; return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}${reactions.length ? `<span class="mensaje-reactions">${reactions.map((r) => esc(r.content.slice(REACTION_PREFIX.length))).join(" ")}</span>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
         if (activeQueue) { const indicator = document.createElement("div"); indicator.className = "mensajes-ai-queue-status"; indicator.textContent = activeQueue.status === "sending" ? "Enviando respuesta…" : activeQueue.status === "ready_to_send" ? "Respuesta lista para enviar…" : "La IA está preparando una respuesta…"; document.getElementById("mensajes-chat-body").prepend(indicator); }

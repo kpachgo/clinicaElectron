@@ -138,6 +138,7 @@ label>.time12{margin-top:5px}
 .mensajes-conversation .conv-chip.is-review{background:#fef3c7;color:#92400e}
 .mensajes-conversation .conv-chip.is-manual{background:#dcfce7;color:#166534}
 .mensajes-conversation .conv-chip.is-paused{background:#e2e8f0;color:#64748b}
+.mensajes-conversation .conv-chip.is-excluded{background:#fee2e2;color:#b91c1c}
 .mensajes-conversation .conv-preview{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#64748b;font-size:12px}
 .mensajes-conversation .conv-preview.is-typing{color:#075985;font-style:italic}
 .mensajes-conversation .conv-badge{flex:0 0 auto;margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#22c55e;color:#fff;font-size:11px;font-weight:800;display:inline-grid;place-items:center}
@@ -148,3 +149,4 @@ label>.time12{margin-top:5px}
 .chat-head-state{margin-top:2px;color:#64748b;font-size:11px}
 .chat-head-state.is-review{color:#92400e;font-weight:700}
 .chat-head-state.is-ai{color:#075985;font-weight:700}
+.chat-head-state.is-excluded{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#fee2e2;color:#b91c1c;font-weight:700}
