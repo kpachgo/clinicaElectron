@@ -1,4 +1,362 @@
 /* ==========================================================================
+   DICTADO ODONTOLOGICO — interprete de texto (Gboard/SwiftKey), sin LLM.
+   Puerto directo de interprete-dictado.js. Funcion pura, sin dependencias del
+   DOM: se define una sola vez y la usa la UI de "Dictado por voz" mas abajo.
+========================================================================== */
+window.OdontoDictadoParser = (function () {
+    "use strict";
+
+    const CATALOGO = [
+        { codigo: "empty", etiqueta: "Sana / sin hallazgo",
+          sinonimos: ["no tiene nada", "no tiene nada de nada", "sin nada",
+                      "no tiene", "nada", "sana", "sano", "ninguno", "ok"] },
+        { codigo: "relleno_pequeno", etiqueta: "Caries pequena",
+          sinonimos: ["caries pequena", "caries pequenas", "carie pequena",
+                      "caries pequeno", "relleno pequeno", "rellenos pequenos",
+                      "obturacion pequena", "resina pequena"] },
+        { codigo: "relleno_grande", etiqueta: "Caries grande",
+          sinonimos: ["caries grande", "caries grandes", "carie grande",
+                      "relleno grande", "rellenos grandes", "obturacion grande",
+                      "resina grande"] },
+        { codigo: "cambio_relleno", etiqueta: "Cambio de relleno",
+          sinonimos: ["cambio de relleno", "cambio relleno", "cambio de obturacion",
+                      "recambio de relleno", "recambio"] },
+        { codigo: "extraccion_simple", etiqueta: "Extraccion simple",
+          sinonimos: ["extraccion simple", "exodoncia simple"] },
+        { codigo: "extraccion_quirurgica", etiqueta: "Extraccion quirurgica",
+          sinonimos: ["extraccion quirurgica", "extraccion cirugia",
+                      "extraccion con cirugia", "exodoncia quirurgica",
+                      "cirugia"] },
+        { codigo: "impactada", etiqueta: "Pieza impactada",
+          sinonimos: ["impactada", "impactado", "incluida", "retenida"] },
+        { codigo: "corona", etiqueta: "Corona",
+          sinonimos: ["corona", "funda"] },
+        { codigo: "endodoncia", etiqueta: "Endodoncia",
+          sinonimos: ["endodoncia", "tratamiento de conducto", "conducto"] },
+        { codigo: "ausente", etiqueta: "Pieza ausente",
+          sinonimos: ["ausente", "no esta", "falta", "perdida", "extraida"] },
+        { codigo: "obturacion", etiqueta: "Obturacion",
+          sinonimos: ["obturacion", "obturaciones"] },
+        { codigo: "sellante", etiqueta: "Sellante",
+          sinonimos: ["sellante", "sellantes", "sellado"] },
+        { codigo: "reconstruccion", etiqueta: "Reconstruccion",
+          sinonimos: ["reconstruccion", "reconstruido", "reconstruye"] },
+        { codigo: "fractura", etiqueta: "Fractura",
+          sinonimos: ["fractura", "fracturada", "fracturado", "quebrada", "rota"] },
+        { codigo: "implante", etiqueta: "Implante",
+          sinonimos: ["implante", "implantes"] }
+    ];
+
+    const AMBIGUOS = [
+        // Si no se dice "simple"/"quirurgica"/"cirugia" (esas ya matchean
+        // arriba por sinonimo exacto), por defecto se asume extraccion simple.
+        { patron: /\b(extraccion|exodoncia)\b/,
+          sugerencia: "extraccion_simple",
+          predeterminado: true,
+          motivo: "No se especifico el tipo, se asume extraccion simple" },
+        { patron: /\b(relleno|rellenos|obturacion|resina|caries|carie)\b/,
+          sugerencia: null,
+          motivo: "Falta especificar tamano: pequeno o grande" }
+    ];
+
+    const UNIDADES = {
+        cero: 0, uno: 1, un: 1, una: 1, dos: 2, tres: 3, cuatro: 4,
+        cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9
+    };
+    const ESPECIALES = {
+        diez: 10, once: 11, doce: 12, trece: 13, catorce: 14, quince: 15,
+        dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19,
+        veinte: 20, veintiuno: 21, veintiuna: 21, veintidos: 22,
+        veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26,
+        veintisiete: 27, veintiocho: 28
+    };
+    const DECENAS = {
+        treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60,
+        setenta: 70, ochenta: 80
+    };
+    const PREFIJOS_CORRUPTOS = {
+        unos: 1, unas: 1, puro: 1, puros: 1, pura: 1, hunos: 1,
+        uno: 1, una: 1, un: 1,
+        dos: 2, tres: 3, cuatro: 4, cuatros: 4
+    };
+    const VACIAS = new Set(["de", "del", "la", "el", "los", "las", "y", "en",
+        "con", "a", "que", "se", "le", "un", "una"]);
+    // Caras/superficies dentales: el parser no las usa hoy, se ignoran al
+    // clasificar el tratamiento para que no distorsionen la coincidencia
+    // (ej. "en palatino reconstrucion" no debe competir con "reconstruccion").
+    const CARAS = new Set(["oclusal", "palatino", "palatina", "lingual",
+        "bucal", "vestibular", "mesial", "distal", "incisal",
+        "interproximal", "cervical"]);
+
+    function quitarAcentos(s) {
+        return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    }
+    function normalizarTexto(texto) {
+        return quitarAcentos(String(texto).toLowerCase())
+            .replace(/[.,;:!?()\[\]{}"']/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+    function tokenizar(textoNormalizado) {
+        const crudos = textoNormalizado.split(" ").filter(Boolean);
+        const salida = [];
+        for (let i = 0; i < crudos.length; i++) {
+            const p = crudos[i];
+            if (DECENAS[p] !== undefined) {
+                if (crudos[i + 1] === "y" && UNIDADES[crudos[i + 2]] !== undefined) {
+                    salida.push({ t: "num", v: DECENAS[p] + UNIDADES[crudos[i + 2]], txt: `${p} y ${crudos[i + 2]}` });
+                    i += 2;
+                    continue;
+                }
+                salida.push({ t: "num", v: DECENAS[p], txt: p });
+                continue;
+            }
+            if (ESPECIALES[p] !== undefined) { salida.push({ t: "num", v: ESPECIALES[p], txt: p }); continue; }
+            if (/^\d+$/.test(p)) { salida.push({ t: "num", v: parseInt(p, 10), txt: p }); continue; }
+            if (UNIDADES[p] !== undefined) { salida.push({ t: "num", v: UNIDADES[p], txt: p }); continue; }
+            salida.push({ t: "pal", v: p, txt: p });
+        }
+        return salida;
+    }
+    function esFDIValido(n, { incluirTemporales = true } = {}) {
+        if (!Number.isInteger(n)) return false;
+        const q = Math.floor(n / 10);
+        const p = n % 10;
+        if (q >= 1 && q <= 4) return p >= 1 && p <= 8;
+        if (incluirTemporales && q >= 5 && q <= 8) return p >= 1 && p <= 5;
+        return false;
+    }
+    function levenshtein(a, b) {
+        if (a === b) return 0;
+        if (!a.length) return b.length;
+        if (!b.length) return a.length;
+        let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+        for (let i = 1; i <= a.length; i++) {
+            const fila = [i];
+            for (let j = 1; j <= b.length; j++) {
+                fila[j] = Math.min(
+                    prev[j] + 1,
+                    fila[j - 1] + 1,
+                    prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+                );
+            }
+            prev = fila;
+        }
+        return prev[b.length];
+    }
+    function similitud(a, b) {
+        const max = Math.max(a.length, b.length);
+        return max === 0 ? 1 : 1 - levenshtein(a, b) / max;
+    }
+
+    const UMBRAL_ALTO = 0.85;
+    const UMBRAL_BAJO = 0.72;
+
+    function clasificarTratamiento(frase) {
+        const limpia = frase.trim();
+        if (!limpia) {
+            return { codigo: null, estado: "duda", confianza: 0,
+                     motivos: ["Se menciono la pieza pero no el tratamiento"] };
+        }
+        const porLongitud = [];
+        for (const t of CATALOGO) {
+            for (const s of t.sinonimos) porLongitud.push({ codigo: t.codigo, s });
+        }
+        porLongitud.sort((x, y) => y.s.length - x.s.length);
+
+        for (const { codigo, s } of porLongitud) {
+            if (limpia.includes(s)) {
+                return { codigo, estado: "ok", confianza: 0.97, motivos: [] };
+            }
+        }
+        let mejor = { codigo: null, score: 0, s: "" };
+        for (const { codigo, s } of porLongitud) {
+            const sc = similitud(limpia, s);
+            if (sc > mejor.score) mejor = { codigo, score: sc, s };
+        }
+        if (mejor.score >= UMBRAL_ALTO) {
+            return { codigo: mejor.codigo, estado: "ok",
+                     confianza: Number(mejor.score.toFixed(2)), motivos: [] };
+        }
+        for (const a of AMBIGUOS) {
+            if (a.patron.test(limpia)) {
+                if (a.predeterminado) {
+                    return { codigo: a.sugerencia, estado: "ok", confianza: 0.75,
+                             motivos: [a.motivo] };
+                }
+                return { codigo: a.sugerencia, estado: "duda", confianza: 0.5,
+                         motivos: [a.motivo] };
+            }
+        }
+        if (mejor.score >= UMBRAL_BAJO) {
+            return { codigo: mejor.codigo, estado: "revisar",
+                     confianza: Number(mejor.score.toFixed(2)),
+                     motivos: [`Interpretado por similitud con "${mejor.s}"`] };
+        }
+        return { codigo: null, estado: "duda", confianza: 0.2,
+                 motivos: ["Tratamiento fuera del catalogo"] };
+    }
+
+    function detectarPieza(tokens, i, opciones) {
+        const a = tokens[i];
+        const b = tokens[i + 1];
+        if (!a) return null;
+        if (a.t === "num" && a.v >= 10 && esFDIValido(a.v, opciones)) {
+            return { piezas: [a.v], fin: i + 1, confianza: 0.98,
+                     estado: "ok", motivos: [], origen: a.txt };
+        }
+        if (a.t === "num" && a.v >= 1 && a.v <= 8 &&
+            b && b.t === "num" && b.v >= 1 && b.v <= 8) {
+            const unido = a.v * 10 + b.v;
+            if (esFDIValido(unido, opciones)) {
+                return { piezas: [unido], fin: i + 2, confianza: 0.9,
+                         estado: "revisar",
+                         motivos: ["Digitos dictados por separado"],
+                         origen: `${a.txt} ${b.txt}` };
+            }
+        }
+        if (a.t === "pal" && PREFIJOS_CORRUPTOS[a.v] !== undefined &&
+            b && b.t === "num" && b.v >= 1 && b.v <= 8) {
+            const unido = PREFIJOS_CORRUPTOS[a.v] * 10 + b.v;
+            if (esFDIValido(unido, opciones)) {
+                return { piezas: [unido], fin: i + 2, confianza: 0.75,
+                         estado: "revisar",
+                         motivos: [`Pieza deducida de "${a.txt} ${b.txt}"`],
+                         origen: `${a.txt} ${b.txt}` };
+            }
+        }
+        return null;
+    }
+    function detectarRango(tokens, i, opciones) {
+        if (!(tokens[i] && tokens[i].t === "pal" && tokens[i].v === "de")) return null;
+        let j = i + 1;
+        if (tokens[j] && tokens[j].t === "pal" && tokens[j].v === "la") j++;
+        const desde = detectarPieza(tokens, j, opciones);
+        if (!desde) return null;
+        j = desde.fin;
+        if (!(tokens[j] && tokens[j].t === "pal" && tokens[j].v === "a")) return null;
+        j++;
+        if (tokens[j] && tokens[j].t === "pal" && tokens[j].v === "la") j++;
+        const hasta = detectarPieza(tokens, j, opciones);
+        if (!hasta) return null;
+        const ini = desde.piezas[0], fin = hasta.piezas[0];
+        if (Math.floor(ini / 10) !== Math.floor(fin / 10) || fin < ini) return null;
+        const piezas = [];
+        for (let n = ini; n <= fin; n++) piezas.push(n);
+        return { piezas, fin: hasta.fin, confianza: 0.9, estado: "revisar", esRango: true,
+                 motivos: [`Expandido del rango ${ini}-${fin}`],
+                 origen: `de la ${ini} a la ${fin}` };
+    }
+
+    function interpretar(texto, opciones = {}) {
+        const opts = {
+            incluirTemporales: true,
+            completarCuadrante: true,
+            ...opciones
+        };
+        const normalizado = normalizarTexto(texto);
+        const tokens = tokenizar(normalizado);
+        const segmentos = [];
+        let cuadranteDeclarado = null;
+        let actual = null;
+        const noInterpretado = [];
+        const cerrar = () => { if (actual) { segmentos.push(actual); actual = null; } };
+
+        let i = 0;
+        while (i < tokens.length) {
+            const tk = tokens[i];
+            if (tk.t === "pal" && tk.v === "cuadrante" &&
+                tokens[i + 1] && tokens[i + 1].t === "num" &&
+                tokens[i + 1].v >= 1 && tokens[i + 1].v <= 8) {
+                cerrar();
+                cuadranteDeclarado = tokens[i + 1].v;
+                i += 2;
+                continue;
+            }
+            const rango = detectarRango(tokens, i, opts);
+            if (rango) { cerrar(); actual = { ...rango, palabras: [] }; i = rango.fin; continue; }
+            const pieza = detectarPieza(tokens, i, opts);
+            if (pieza) { cerrar(); actual = { ...pieza, palabras: [] }; i = pieza.fin; continue; }
+            if (actual) actual.palabras.push(tk.txt);
+            else if (tk.t === "pal" && !VACIAS.has(tk.v)) noInterpretado.push(tk.txt);
+            i++;
+        }
+        cerrar();
+
+        const items = [];
+        for (const seg of segmentos) {
+            const frase = seg.palabras.filter(p => !VACIAS.has(p) && !CARAS.has(p)).join(" ")
+                          || seg.palabras.join(" ");
+            const trat = clasificarTratamiento(frase);
+            for (const pieza of seg.piezas) {
+                const cuadrante = Math.floor(pieza / 10);
+                const motivos = [...seg.motivos, ...trat.motivos];
+                let estado = "ok";
+                if (seg.estado === "duda" || trat.estado === "duda") estado = "duda";
+                else if (trat.estado === "revisar") estado = "revisar";
+                // Un rango expandido solo pide revisar si el tratamiento en si
+                // no fue una coincidencia exacta del catalogo.
+                else if (seg.estado === "revisar" && !seg.esRango) estado = "revisar";
+                if (cuadranteDeclarado !== null && cuadranteDeclarado !== cuadrante) {
+                    motivos.push(`El encabezado dice cuadrante ${cuadranteDeclarado} pero la pieza es del ${cuadrante}`);
+                    estado = "duda";
+                }
+                const meta = CATALOGO.find(c => c.codigo === trat.codigo);
+                items.push({
+                    pieza, cuadrante, tratamiento: trat.codigo,
+                    etiqueta: meta ? meta.etiqueta : null, estado,
+                    confianza: Number(Math.min(seg.confianza, trat.confianza).toFixed(2)),
+                    motivos, original: `${seg.origen} ${seg.palabras.join(" ")}`.trim()
+                });
+            }
+        }
+
+        const porPieza = new Map();
+        for (const it of items) {
+            if (porPieza.has(it.pieza)) {
+                it.estado = "duda";
+                it.motivos.push("Pieza dictada mas de una vez");
+                const previo = porPieza.get(it.pieza);
+                previo.estado = "duda";
+                if (!previo.motivos.includes("Pieza dictada mas de una vez")) previo.motivos.push("Pieza dictada mas de una vez");
+            } else porPieza.set(it.pieza, it);
+        }
+
+        if (opts.completarCuadrante) {
+            const cuadrantes = new Set(items.map(it => it.cuadrante));
+            if (cuadranteDeclarado !== null) cuadrantes.add(cuadranteDeclarado);
+            for (const q of cuadrantes) {
+                const max = q <= 4 ? 8 : 5;
+                for (let p = 1; p <= max; p++) {
+                    const num = q * 10 + p;
+                    if (!porPieza.has(num)) {
+                        items.push({
+                            pieza: num, cuadrante: q, tratamiento: null, etiqueta: null,
+                            estado: "sin_datos", confianza: 0,
+                            motivos: ["No se menciono en el dictado"], original: null
+                        });
+                    }
+                }
+            }
+        }
+
+        items.sort((a, b) => a.pieza - b.pieza);
+        const resumen = {
+            total: items.length,
+            ok: items.filter(i => i.estado === "ok").length,
+            revisar: items.filter(i => i.estado === "revisar").length,
+            duda: items.filter(i => i.estado === "duda").length,
+            sin_datos: items.filter(i => i.estado === "sin_datos").length
+        };
+        resumen.listoParaGuardar = resumen.duda === 0;
+
+        return { textoOriginal: texto, normalizado, cuadranteDeclarado, items, noInterpretado, resumen };
+    }
+
+    return { interpretar, clasificarTratamiento, tokenizar, normalizarTexto, esFDIValido, similitud, CATALOGO };
+})();
+
+/* ==========================================================================
    ODONTOGRAMA — INICIALIZACIÓN SPA
 ========================================================================== */
 let odontogramaData = {
@@ -2970,4 +3328,250 @@ window.odontogramaAPI = {
     odontogramaData.meta = {};
   }
 };
+
+/* ==========================================================================
+   DICTADO POR VOZ — solo cuadrantes permanentes (Q1-Q4) por ahora.
+   Reusa applyCariesPequena/applyCorona/etc. (definidas mas arriba en este
+   mismo cierre) simulando currentSurface, igual que un clic manual, para que
+   el resultado sea identico a editar a mano.
+========================================================================== */
+(function initOdontoDictado() {
+    const DICTADO_CORDAL_PIEZAS = new Set([18, 28, 38, 48]);
+    const DICTADO_CUADRANTE_PIEZAS = { 1: Q1, 2: Q2, 3: Q3, 4: Q4 };
+    // Tratamientos cuyo color = estado (rojo=necesita, naranja=en proceso, azul=buen estado).
+    const DICTADO_TRATAMIENTOS_CON_COLOR = new Set(["corona", "endodoncia", "implante", "sellante", "reconstruccion"]);
+    const DICTADO_ESTADO_COLOR = [
+        { color: "azul", patrones: [/\bazul\b/, /buen estado/, /\bbien\b/, /completado/, /terminado/, /realizado/] },
+        { color: "naranja", patrones: [/naranja/, /en proceso/, /\bproceso\b/, /pendiente/] }
+    ];
+    function dictadoDetectarColor(texto) {
+        const norm = window.OdontoDictadoParser.normalizarTexto(texto || "");
+        for (const grupo of DICTADO_ESTADO_COLOR) {
+            if (grupo.patrones.some((p) => p.test(norm))) return grupo.color;
+        }
+        return "rojo"; // por defecto: necesita tratamiento
+    }
+    const DICTADO_TRATAMIENTO_MAP = {
+        empty:                 { apply: () => limpiarPieza(currentSurface) },
+        relleno_pequeno:       { apply: () => applyCariesPequena() },
+        relleno_grande:        { apply: () => applyCariesGrande() },
+        cambio_relleno:        { apply: () => applyCambioRelleno() },
+        extraccion_simple:     { apply: () => applyPiezaAusente("rojo") },
+        extraccion_quirurgica: { apply: () => applyPiezaAusente("rojo"), notaExtra: "CX", requiereCordal: true },
+        impactada:             { apply: () => applyPiezaAusente("rojo"), notaExtra: "CX", requiereCordal: true },
+        corona:                { apply: (color) => applyCorona(color || "rojo") },
+        endodoncia:            { apply: (color) => applyEndodoncia(color || "rojo") },
+        ausente:               { apply: () => applyPiezaAusente("azul") },
+        obturacion:            { apply: () => applyObturacion() },
+        sellante:              { apply: (color) => applyColorState(color || "rojo", "sellante") },
+        reconstruccion:        { apply: (color) => applyColorState(color || "rojo", "reconstruccion") },
+        fractura:              { apply: () => applyFractura() },
+        implante:              { apply: (color) => applyImplante(color || "rojo") }
+    };
+
+    const dictadoBtn = document.getElementById("btn-dictado-voz");
+    const dictadoModal = document.getElementById("odonto-dictado-modal");
+    if (!dictadoBtn || !dictadoModal) return;
+
+    const dictadoClose = document.getElementById("odonto-dictado-close");
+    const dictadoStepCuadrante = document.getElementById("odonto-dictado-step-cuadrante");
+    const dictadoStepTexto = document.getElementById("odonto-dictado-step-texto");
+    const dictadoStepConfirmar = document.getElementById("odonto-dictado-step-confirmar");
+    const dictadoCuadranteLabel = document.getElementById("odonto-dictado-cuadrante-label");
+    const dictadoTextarea = document.getElementById("odonto-dictado-textarea");
+    const dictadoBack1 = document.getElementById("odonto-dictado-back-1");
+    const dictadoBack2 = document.getElementById("odonto-dictado-back-2");
+    const dictadoInterpretarBtn = document.getElementById("odonto-dictado-interpretar");
+    const dictadoResumen = document.getElementById("odonto-dictado-resumen");
+    const dictadoItemsWrap = document.getElementById("odonto-dictado-items");
+    const dictadoAplicarBtn = document.getElementById("odonto-dictado-aplicar");
+
+    let dictadoCuadranteActual = null;
+    let dictadoItemsActuales = [];
+    let dictadoPendientes = new Set();
+
+    function dictadoMostrarPaso(paso) {
+        if (dictadoStepCuadrante) dictadoStepCuadrante.hidden = paso !== "cuadrante";
+        if (dictadoStepTexto) dictadoStepTexto.hidden = paso !== "texto";
+        if (dictadoStepConfirmar) dictadoStepConfirmar.hidden = paso !== "confirmar";
+    }
+
+    function dictadoCerrar() {
+        dictadoModal.classList.remove("is-open");
+        dictadoCuadranteActual = null;
+        dictadoItemsActuales = [];
+        dictadoPendientes = new Set();
+        if (dictadoTextarea) dictadoTextarea.value = "";
+        if (dictadoItemsWrap) dictadoItemsWrap.innerHTML = "";
+        if (dictadoResumen) dictadoResumen.innerHTML = "";
+    }
+
+    function dictadoAbrir() {
+        if (window.odontogramaBloqueado) {
+            alert("⚠️ Odontograma bloqueado");
+            return;
+        }
+        dictadoMostrarPaso("cuadrante");
+        dictadoModal.classList.add("is-open");
+    }
+
+    dictadoBtn.onclick = dictadoAbrir;
+    if (dictadoClose) dictadoClose.onclick = dictadoCerrar;
+    if (dictadoBack1) dictadoBack1.onclick = () => dictadoMostrarPaso("cuadrante");
+    if (dictadoBack2) dictadoBack2.onclick = () => dictadoMostrarPaso("texto");
+
+    if (dictadoStepCuadrante) {
+        dictadoStepCuadrante.querySelectorAll("[data-cuadrante]").forEach((btn) => {
+            btn.onclick = () => {
+                dictadoCuadranteActual = Number(btn.dataset.cuadrante);
+                if (dictadoCuadranteLabel) dictadoCuadranteLabel.textContent = String(dictadoCuadranteActual);
+                if (dictadoTextarea) dictadoTextarea.value = "";
+                dictadoMostrarPaso("texto");
+                if (dictadoTextarea) dictadoTextarea.focus();
+            };
+        });
+    }
+
+    function dictadoActualizarAplicar() {
+        if (dictadoAplicarBtn) dictadoAplicarBtn.disabled = dictadoPendientes.size > 0;
+    }
+
+    function dictadoRenderItems() {
+        if (!dictadoItemsWrap) return;
+        const opciones = window.OdontoDictadoParser.CATALOGO
+            .map((c) => `<option value="${c.codigo}">${c.etiqueta}</option>`)
+            .join("");
+
+        dictadoItemsWrap.innerHTML = dictadoItemsActuales.map((item) => {
+            const estadoClase = dictadoPendientes.has(item.pieza) ? "is-duda" : item.estado === "revisar" ? "is-revisar" : "is-ok";
+            const originalTxt = item.original === null
+                ? "(no mencionado, se marca sana)"
+                : String(item.original || "").replace(/"/g, "&quot;");
+            const mostrarColor = DICTADO_TRATAMIENTOS_CON_COLOR.has(item.tratamiento);
+            return `<div class="odonto-dictado-item ${estadoClase}" data-pieza="${item.pieza}">
+                <span class="odonto-dictado-item-pieza">${item.pieza}</span>
+                <select class="odonto-dictado-item-select" data-pieza="${item.pieza}">
+                    <option value="">-- Selecciona --</option>
+                    ${opciones}
+                </select>
+                <select class="odonto-dictado-item-color" data-pieza="${item.pieza}" ${mostrarColor ? "" : "hidden"}>
+                    <option value="rojo">🔴 Necesita</option>
+                    <option value="naranja">🟠 En proceso</option>
+                    <option value="azul">🔵 Buen estado</option>
+                </select>
+                <span class="odonto-dictado-item-original" title="${originalTxt}">${originalTxt}</span>
+            </div>`;
+        }).join("");
+
+        dictadoItemsWrap.querySelectorAll(".odonto-dictado-item-select").forEach((select) => {
+            const pieza = Number(select.dataset.pieza);
+            const item = dictadoItemsActuales.find((i) => i.pieza === pieza);
+            // En duda dejamos el select vacio a proposito: si ya viene preseleccionado
+            // con la sugerencia y el usuario elige esa misma opcion, el navegador no
+            // dispara "change" y la pieza queda bloqueada para siempre.
+            if (item && item.tratamiento && item.estado !== "duda") select.value = item.tratamiento;
+            select.onchange = () => {
+                if (item) item.tratamiento = select.value || null;
+                dictadoPendientes.delete(pieza);
+                const row = select.closest(".odonto-dictado-item");
+                if (row) { row.classList.remove("is-duda", "is-revisar"); row.classList.add("is-ok"); }
+                const colorSelect = row ? row.querySelector(".odonto-dictado-item-color") : null;
+                if (colorSelect) {
+                    const soportaColor = DICTADO_TRATAMIENTOS_CON_COLOR.has(select.value);
+                    colorSelect.hidden = !soportaColor;
+                    if (soportaColor && item) {
+                        if (!item.color) item.color = "rojo";
+                        colorSelect.value = item.color;
+                    }
+                }
+                dictadoActualizarAplicar();
+            };
+        });
+
+        dictadoItemsWrap.querySelectorAll(".odonto-dictado-item-color").forEach((select) => {
+            const pieza = Number(select.dataset.pieza);
+            const item = dictadoItemsActuales.find((i) => i.pieza === pieza);
+            select.value = (item && item.color) || "rojo";
+            select.onchange = () => { if (item) item.color = select.value; };
+        });
+    }
+
+    if (dictadoInterpretarBtn) {
+        dictadoInterpretarBtn.onclick = () => {
+            if (!dictadoCuadranteActual || !window.OdontoDictadoParser) return;
+            const texto = (dictadoTextarea?.value || "").trim();
+            if (!texto) { alert("Escribe o dicta el texto primero."); return; }
+
+            const resultado = window.OdontoDictadoParser.interpretar(texto, {
+                incluirTemporales: false,
+                completarCuadrante: false
+            });
+
+            const piezasCuadrante = DICTADO_CUADRANTE_PIEZAS[dictadoCuadranteActual] || [];
+            const items = [];
+            const vistos = new Set();
+
+            resultado.items.forEach((item) => {
+                vistos.add(item.pieza);
+                const copia = { ...item, motivos: [...(item.motivos || [])] };
+                if (DICTADO_TRATAMIENTOS_CON_COLOR.has(copia.tratamiento)) {
+                    copia.color = dictadoDetectarColor(copia.original);
+                }
+                if (!piezasCuadrante.includes(item.pieza)) {
+                    copia.estado = "duda";
+                    copia.motivos.push(`La pieza ${item.pieza} no pertenece al cuadrante ${dictadoCuadranteActual} seleccionado`);
+                } else {
+                    const cfg = DICTADO_TRATAMIENTO_MAP[copia.tratamiento];
+                    if (cfg && cfg.requiereCordal && !DICTADO_CORDAL_PIEZAS.has(copia.pieza)) {
+                        copia.estado = "duda";
+                        copia.motivos.push("Cirugia/impactada solo aplica a cordales (18, 28, 38, 48)");
+                    }
+                }
+                items.push(copia);
+            });
+
+            piezasCuadrante.forEach((pieza) => {
+                if (!vistos.has(pieza)) {
+                    items.push({
+                        pieza, cuadrante: dictadoCuadranteActual, tratamiento: "empty",
+                        estado: "ok", motivos: ["No mencionado, se asume sana"], original: null
+                    });
+                }
+            });
+
+            items.sort((a, b) => a.pieza - b.pieza);
+            dictadoItemsActuales = items;
+            dictadoPendientes = new Set(items.filter((i) => i.estado === "duda").map((i) => i.pieza));
+
+            if (dictadoResumen) {
+                const noMencionado = items.filter((i) => i.original === null).length;
+                const ok = items.filter((i) => i.estado === "ok" && i.original !== null).length;
+                const revisar = items.filter((i) => i.estado === "revisar").length;
+                const duda = items.filter((i) => i.estado === "duda").length;
+                dictadoResumen.textContent = `${ok} ok · ${revisar} revisar · ${duda} duda · ${noMencionado} sin mencionar (se marcan sanas)`;
+            }
+
+            dictadoRenderItems();
+            dictadoActualizarAplicar();
+            dictadoMostrarPaso("confirmar");
+        };
+    }
+
+    if (dictadoAplicarBtn) {
+        dictadoAplicarBtn.onclick = () => {
+            if (dictadoPendientes.size > 0) return;
+            dictadoItemsActuales.forEach((item) => {
+                if (item.estado === "sin_datos" || !item.tratamiento) return;
+                const cfg = DICTADO_TRATAMIENTO_MAP[item.tratamiento];
+                if (!cfg) return;
+                const surface = getMainSurfaceByPieceAndSide(item.pieza, "oclusal");
+                if (!surface) return;
+                currentSurface = surface;
+                cfg.apply(item.color || "rojo");
+                if (cfg.notaExtra) addAbbreviationToInput(String(item.pieza), cfg.notaExtra);
+            });
+            dictadoCerrar();
+        };
+    }
+})();
 };

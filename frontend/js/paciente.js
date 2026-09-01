@@ -1573,6 +1573,7 @@ function renderPaciente(container) {
           <button id="btn-clean-one">Limpiar pieza</button>
           <button id="btn-piece-editor">Seleccion por pieza</button>
           <button id="btn-visual-odontograma" type="button" aria-pressed="false">Modo visual</button>
+          <button id="btn-dictado-voz" type="button">🎤 Dictado por voz</button>
           <label class="toggle-ios">
             <input type="checkbox" id="toggle-bloqueo">
             <span class="slider"></span>
@@ -1975,7 +1976,42 @@ function renderPaciente(container) {
           </div>
         </div>
 
-         
+        <div id="odonto-dictado-modal" class="odonto-dictado-modal">
+          <div class="odonto-dictado-modal-card">
+            <div class="odonto-dictado-modal-header">
+              <h6>Dictado por voz</h6>
+              <button id="odonto-dictado-close" type="button" class="odonto-piece-close" aria-label="Cerrar">x</button>
+            </div>
+
+            <div id="odonto-dictado-step-cuadrante" class="odonto-dictado-step">
+              <p>Selecciona el cuadrante (piezas permanentes):</p>
+              <div class="odonto-dictado-cuadrantes">
+                <button type="button" data-cuadrante="1">Cuadrante 1<br><small>18&ndash;11</small></button>
+                <button type="button" data-cuadrante="2">Cuadrante 2<br><small>21&ndash;28</small></button>
+                <button type="button" data-cuadrante="4">Cuadrante 4<br><small>48&ndash;41</small></button>
+                <button type="button" data-cuadrante="3">Cuadrante 3<br><small>31&ndash;38</small></button>
+              </div>
+            </div>
+
+            <div id="odonto-dictado-step-texto" class="odonto-dictado-step" hidden>
+              <p>Cuadrante <strong id="odonto-dictado-cuadrante-label"></strong> &mdash; escribe o dicta el texto:</p>
+              <textarea id="odonto-dictado-textarea" class="odonto-dictado-textarea" rows="5" placeholder="Ej: 11 relleno pequeno, 12 relleno grande, 13 no tiene nada, 18 impactada..."></textarea>
+              <div class="odonto-dictado-actions">
+                <button id="odonto-dictado-back-1" type="button" class="odonto-piece-nav">Atras</button>
+                <button id="odonto-dictado-interpretar" type="button" class="btn-cita-paciente">Interpretar</button>
+              </div>
+            </div>
+
+            <div id="odonto-dictado-step-confirmar" class="odonto-dictado-step" hidden>
+              <div id="odonto-dictado-resumen" class="odonto-dictado-resumen"></div>
+              <div id="odonto-dictado-items" class="odonto-dictado-items"></div>
+              <div class="odonto-dictado-actions">
+                <button id="odonto-dictado-back-2" type="button" class="odonto-piece-nav">Atras</button>
+                <button id="odonto-dictado-aplicar" type="button" class="btn-cita-paciente" disabled>Aplicar al odontograma</button>
+              </div>
+            </div>
+          </div>
+        </div>
 
 
       <!--  Diagnostico Final -->

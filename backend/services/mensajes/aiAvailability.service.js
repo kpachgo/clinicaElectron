@@ -55,9 +55,10 @@ function serviceConfig(row, aliases = []) {
 }
 
 function getClinicSchedule(db = getDb()) {
-  const row = db.prepare("SELECT timezone, slot_interval_minutes AS slotIntervalMinutes, schedule_json AS schedule, breaks_json AS breaks, daily_cap AS dailyCap, updated_at AS updatedAt FROM ai_clinic_schedule WHERE id=1").get();
+  const row = db.prepare("SELECT timezone, slot_interval_minutes AS slotIntervalMinutes, schedule_json AS schedule, breaks_json AS breaks, daily_cap AS dailyCap, hourly_cap AS hourlyCap, updated_at AS updatedAt FROM ai_clinic_schedule WHERE id=1").get();
   const dailyCap = row?.dailyCap === null || row?.dailyCap === undefined || Number(row.dailyCap) <= 0 ? null : Number(row.dailyCap);
-  return { timezone: row?.timezone || "America/El_Salvador", slotIntervalMinutes: Number(row?.slotIntervalMinutes || 30), schedule: parseJson(row?.schedule, DEFAULT_SCHEDULE), breaks: parseJson(row?.breaks, []), dailyCap, updatedAt: row?.updatedAt || null };
+  const hourlyCap = row?.hourlyCap === null || row?.hourlyCap === undefined || Number(row.hourlyCap) <= 0 ? null : Number(row.hourlyCap);
+  return { timezone: row?.timezone || "America/El_Salvador", slotIntervalMinutes: Number(row?.slotIntervalMinutes || 30), schedule: parseJson(row?.schedule, DEFAULT_SCHEDULE), breaks: parseJson(row?.breaks, []), dailyCap, hourlyCap, updatedAt: row?.updatedAt || null };
 }
 // Tope diario total de la clínica (todas las citas de agendapersona ese día, IA + recepción).
 // value: número >=1 para activar, null/0/"" para quitar el tope.
@@ -65,6 +66,15 @@ function updateDailyCap(value, db = getDb()) {
   const raw = value === null || value === undefined || String(value).trim() === "" ? null : Number(value);
   if (raw !== null && (!Number.isInteger(raw) || raw < 1 || raw > 1000)) throw new Error("Tope diario invalido");
   db.prepare("UPDATE ai_clinic_schedule SET daily_cap=?, updated_at=datetime('now') WHERE id=1").run(raw);
+  return getClinicSchedule(db);
+}
+// Tope de citas por hora total de la clínica (todos los servicios, IA + recepción).
+// Al llegar al tope en una hora, la IA no ofrece ni agenda horarios que caigan en ella.
+// value: número >=1 para activar, null/0/"" para quitar el tope.
+function updateHourlyCap(value, db = getDb()) {
+  const raw = value === null || value === undefined || String(value).trim() === "" ? null : Number(value);
+  if (raw !== null && (!Number.isInteger(raw) || raw < 1 || raw > 100)) throw new Error("Tope por hora invalido");
+  db.prepare("UPDATE ai_clinic_schedule SET hourly_cap=?, updated_at=datetime('now') WHERE id=1").run(raw);
   return getClinicSchedule(db);
 }
 function listBlockedDates(db = getDb()) {
@@ -210,6 +220,12 @@ async function searchAvailability({ serviceId, date }, db = getDb(), sqlClient =
   const [rows] = await sqlClient.query("SELECT horaAP AS time, servicioIdAP AS serviceId FROM agendapersona WHERE fechaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) NOT IN ('cancelado','cancelada') AND servicioIdAP=?", [date, config.serviceId]);
   const occupancy = new Map();
   rows.forEach((row) => { const hour = Math.floor(minutes(String(row.time).slice(0, 5)) / 60); occupancy.set(hour, (occupancy.get(hour) || 0) + 1); });
+  // Ocupación total de la hora (todos los servicios, IA + recepción) para el tope por hora de la clínica.
+  const hourlyOccupancy = new Map();
+  if (clinic.hourlyCap) {
+    const [allRows] = await sqlClient.query("SELECT horaAP AS time FROM agendapersona WHERE fechaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) NOT IN ('cancelado','cancelada')", [date]);
+    allRows.forEach((row) => { const hour = Math.floor(minutes(String(row.time).slice(0, 5)) / 60); hourlyOccupancy.set(hour, (hourlyOccupancy.get(hour) || 0) + 1); });
+  }
   const now = new Date();
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: clinic.timezone }).format(now);
   const nowTime = new Intl.DateTimeFormat("en-GB", { timeZone: clinic.timezone, hour: "2-digit", minute: "2-digit", hour12: false }).format(now);
@@ -224,10 +240,11 @@ async function searchAvailability({ serviceId, date }, db = getDb(), sqlClient =
       if (serviceWindow && !serviceWindow.some((r) => start >= minutes(r.start) && end <= minutes(r.end))) continue;
       let valid = true;
       if (config.capacityPerHour !== null) for (let cursor = start; cursor < end; cursor += 60) if ((occupancy.get(Math.floor(cursor / 60)) || 0) >= config.capacityPerHour) valid = false;
+      if (clinic.hourlyCap) for (let cursor = start; cursor < end; cursor += 60) if ((hourlyOccupancy.get(Math.floor(cursor / 60)) || 0) >= clinic.hourlyCap) valid = false;
       if (valid) slots.push({ date, time: timeText(start), endTime: timeText(end) });
     }
   }
   return { ok: true, service: { id: config.serviceId, name: config.serviceName, durationMinutes: config.durationMinutes }, date, slots, serviceClosedThatDay, serviceWindow: config.hasWeeklyHours ? config.weeklyHours : null };
 }
 
-module.exports = { normalizeText, getClinicSchedule, updateClinicSchedule, updateDailyCap, listBlockedDates, addBlockedDate, removeBlockedDate, listAiServices, updateAiService, resolveService, searchAvailability };
+module.exports = { normalizeText, getClinicSchedule, updateClinicSchedule, updateDailyCap, updateHourlyCap, listBlockedDates, addBlockedDate, removeBlockedDate, listAiServices, updateAiService, resolveService, searchAvailability };

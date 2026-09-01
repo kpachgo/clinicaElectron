@@ -279,6 +279,10 @@ const migrations = [
   // alguno, no cuenta como "ya respondió un humano": si no, la IA nunca contesta el
   // mensaje real del paciente porque ve el último evento como saliente.
   ,`ALTER TABLE message_settings ADD COLUMN ignored_outgoing_texts_json TEXT NOT NULL DEFAULT '[]';`
+  // Tope de citas por hora para toda la clínica (NULL = sin tope). Complementa la
+  // capacidad por servicio: limita el total de citas activas (IA + recepción, todos
+  // los servicios) que caen en una misma hora. El gate vive en searchAvailability.
+  ,`ALTER TABLE ai_clinic_schedule ADD COLUMN hourly_cap INTEGER NULL DEFAULT NULL;`
 ];
 
 function getDb() {

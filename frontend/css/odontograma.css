@@ -694,6 +694,173 @@ body[data-theme="vampire"].dark-mode .odonto-piece-input.is-odontograma-locked {
 }
 
 /* ==========================
+   MODAL: DICTADO POR VOZ
+========================== */
+.odonto-dictado-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 13, 23, 0.5);
+    z-index: 100060;
+    padding: 14px;
+}
+
+.odonto-dictado-modal.is-open {
+    display: flex;
+}
+
+.odonto-dictado-modal-card {
+    width: min(640px, 96vw);
+    max-height: 90vh;
+    overflow: auto;
+    background: #f5f6f8;
+    border: 1px solid #d6d9df;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 20px 44px rgba(0, 0, 0, 0.28);
+}
+
+.odonto-dictado-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.odonto-dictado-modal-header h6 {
+    margin: 0;
+    font-size: 18px;
+    color: #0f1a36;
+}
+
+.odonto-dictado-step p {
+    margin: 0 0 10px;
+    color: #334155;
+    font-size: 14px;
+}
+
+.odonto-dictado-cuadrantes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.odonto-dictado-cuadrantes button {
+    padding: 16px 10px;
+    border-radius: 12px;
+    border: 1px solid #c8cdd9;
+    background: #ffffff;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.odonto-dictado-cuadrantes button:hover {
+    background: #eef2ff;
+    border-color: #93a5f7;
+}
+
+.odonto-dictado-cuadrantes button small {
+    font-weight: 400;
+    color: #64748b;
+}
+
+.odonto-dictado-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 10px;
+    border: 1px solid #c8cdd9;
+    padding: 10px;
+    font: inherit;
+    resize: vertical;
+}
+
+.odonto-dictado-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.odonto-dictado-resumen {
+    font-size: 12px;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 8px;
+}
+
+.odonto-dictado-items {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 44vh;
+    overflow: auto;
+}
+
+.odonto-dictado-item {
+    display: grid;
+    grid-template-columns: 44px 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 7px 9px;
+    border-radius: 9px;
+    border: 1px solid #d7dbe4;
+    background: #ffffff;
+}
+
+.odonto-dictado-item.is-ok {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.odonto-dictado-item.is-revisar {
+    border-color: #fdba74;
+    background: #fff7ed;
+}
+
+.odonto-dictado-item.is-duda {
+    border-color: #fca5a5;
+    background: #fef2f2;
+}
+
+.odonto-dictado-item-pieza {
+    font-weight: 800;
+    text-align: center;
+}
+
+.odonto-dictado-item-select {
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid #c8cdd9;
+    padding: 4px 6px;
+}
+
+.odonto-dictado-item-color {
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid #c8cdd9;
+    padding: 4px 4px;
+    width: 92px;
+}
+
+.odonto-dictado-item-info {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.odonto-dictado-item-original {
+    font-size: 11px;
+    color: #94a3b8;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ==========================
    MODAL: SELECCION POR PIEZA
 ========================== */
 .odonto-piece-modal {

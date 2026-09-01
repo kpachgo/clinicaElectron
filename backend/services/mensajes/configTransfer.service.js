@@ -24,7 +24,7 @@ const FORMAT = "clinica-mensajes-config";
 const VERSION = 1;
 
 const SINGLETON_COLUMNS = {
-  ai_clinic_schedule: ["timezone", "slot_interval_minutes", "schedule_json", "breaks_json", "daily_cap"],
+  ai_clinic_schedule: ["timezone", "slot_interval_minutes", "schedule_json", "breaks_json", "daily_cap", "hourly_cap"],
   ai_provider_settings: ["provider_mode", "base_url", "model", "api_key", "timeout_ms"],
   human_review_rules: ["instructions"],
   message_settings: [

@@ -169,12 +169,30 @@ class MensajesRepository {
   // automáticos de WhatsApp Business u otro canal, ajenos a esta app) no cuenta como
   // que ya respondió un humano.
   isIgnoredOutgoingText(text) { const needle = String(text || "").trim().toLowerCase(); if (!needle) return false; return this.getGlobalSettings().ignoredOutgoingTexts.some((entry) => String(entry || "").trim().toLowerCase() === needle); }
-  shouldAllowAutomatedResponse(phone) { const settings = this.getGlobalSettings(); if (settings.automationPhoneMode === "all") return true; const variants = phoneRuleVariants(phone); const rules = settings.automationPhoneNumbers.flatMap(phoneRuleVariants); const included = variants.some((value) => rules.includes(value)); return settings.automationPhoneMode === "allow_only" ? included : !included; }
+  shouldAllowAutomatedResponse(phone) { return this.shouldAllowAutomatedResponseForIdentifiers([phone]); }
+  // Evalúa la regla de teléfonos contra CUALQUIER identificador de la conversación.
+  // Necesario porque un mismo chat puede conocerse por varios: el número real, el
+  // número del expediente (si está vinculado), el wa_contact_number resuelto por
+  // WhatsApp y el LID (chats @lid, donde el "teléfono" que ve recepción es el LID).
+  // Si se ignora por uno, debe quedar ignorado aunque la comparación use otro.
+  shouldAllowAutomatedResponseForIdentifiers(identifiers = []) {
+    const settings = this.getGlobalSettings();
+    if (settings.automationPhoneMode === "all") return true;
+    const variants = [...new Set(identifiers.flatMap(phoneRuleVariants))];
+    const rules = settings.automationPhoneNumbers.flatMap(phoneRuleVariants);
+    const included = variants.some((value) => rules.includes(value));
+    return settings.automationPhoneMode === "allow_only" ? included : !included;
+  }
   shouldAllowAutomatedResponseForConversation(conversationId, fallbackPhone = "") {
+    const conversation = conversationId ? this.getConversation(conversationId) : null;
     const link = conversationId ? this.getPatientLink(conversationId) : null;
-    // En chats @lid el identificador no es el teléfono del paciente. Si el
-    // personal ya vinculó el chat, usamos el teléfono real guardado desde MySQL.
-    return this.shouldAllowAutomatedResponse(link?.phone || fallbackPhone);
+    return this.shouldAllowAutomatedResponseForIdentifiers([
+      link?.phone,
+      conversation?.phone,
+      conversation?.waContactNumber,
+      conversation?.waChatId,
+      fallbackPhone
+    ]);
   }
   getAutomationSettings() { const row = this.db.prepare("SELECT enabled, appointment_confirmation AS appointmentConfirmation, appointment_reminder AS appointmentReminder, appointment_change_notice AS appointmentChangeNotice, after_hours_reply AS afterHoursReply, human_intervention_pause AS humanInterventionPause, allowed_start AS allowedStart, allowed_end AS allowedEnd, updated_at AS updatedAt FROM automation_settings WHERE id=1").get(); return { ...row, enabled: Boolean(row.enabled), appointmentConfirmation: Boolean(row.appointmentConfirmation), appointmentReminder: Boolean(row.appointmentReminder), appointmentChangeNotice: Boolean(row.appointmentChangeNotice), afterHoursReply: Boolean(row.afterHoursReply), humanInterventionPause: Boolean(row.humanInterventionPause) }; }
   updateAutomationSettings(settings) { this.db.prepare("UPDATE automation_settings SET enabled=?, appointment_confirmation=?, appointment_reminder=?, appointment_change_notice=?, after_hours_reply=?, human_intervention_pause=?, allowed_start=?, allowed_end=?, updated_at=datetime('now') WHERE id=1").run(settings.enabled ? 1 : 0, settings.appointmentConfirmation ? 1 : 0, settings.appointmentReminder ? 1 : 0, settings.appointmentChangeNotice ? 1 : 0, settings.afterHoursReply ? 1 : 0, settings.humanInterventionPause ? 1 : 0, settings.allowedStart, settings.allowedEnd); return this.getAutomationSettings(); }

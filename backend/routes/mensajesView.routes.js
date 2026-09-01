@@ -48,6 +48,7 @@ router.patch("/ai-clinic-schedule", controller.updateAiClinicSchedule);
 router.get("/config-export", controller.exportMensajesConfig);
 router.post("/config-import", controller.importMensajesConfig);
 router.patch("/ai-daily-cap", controller.updateAiDailyCap);
+router.patch("/ai-hourly-cap", controller.updateAiHourlyCap);
 router.get("/ai-blocked-dates", controller.listAiBlockedDates);
 router.post("/ai-blocked-dates", controller.addAiBlockedDate);
 router.delete("/ai-blocked-dates/:id", controller.removeAiBlockedDate);

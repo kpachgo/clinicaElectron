@@ -459,21 +459,28 @@
     // Agrega el teléfono de la conversación a la lista de números que la IA no
     // debe responder (misma lista que usa "Ajustes globales > Reglas de teléfonos").
     async function ignoreConversationPhone(conversationId) {
-        let conversation;
+        let conversation, patientLink;
         try {
             const data = await api(`/api/mensajes-view/conversations/${conversationId}/messages?limit=1&offset=0`);
             conversation = data.conversation;
+            patientLink = data.patientLink;
         } catch (error) { return alert(error.message); }
-        const phoneDigits = String(conversation.phone || "").replace(/\D/g, "");
-        if (!phoneDigits) return alert("Esta conversación no tiene un teléfono válido para ignorar.");
-        if (!confirm(`¿Dejar de responder automáticamente al ${conversation.phone}?\n\nLa IA no volverá a contestarle hasta que lo quites de la lista de ignorados en Ajustes.`)) return;
+        // Un mismo chat puede conocerse por varios identificadores: el número real, el
+        // del expediente (si está vinculado), el wa_contact_number resuelto y el LID
+        // (chats @lid). Ignoramos todos para que la IA lo respete sin importar cuál use
+        // al comparar (ver shouldAllowAutomatedResponseForConversation en el backend).
+        const identifiers = [...new Set([patientLink?.phone, conversation.phone, conversation.waContactNumber, conversation.waChatId]
+            .map((value) => String(value || "").replace(/\D/g, ""))
+            .filter((value) => /^\d{7,20}$/.test(value)))];
+        if (!identifiers.length) return alert("Esta conversación no tiene un teléfono válido para ignorar.");
+        if (!confirm(`¿Dejar de responder automáticamente a este chat?\n\nLa IA no volverá a contestarle hasta que lo quites de la lista de ignorados en Ajustes.`)) return;
         try {
             const { settings } = await api("/api/mensajes-view/settings");
             let numbers = settings.automationPhoneNumbers || [];
             const mode = settings.automationPhoneMode;
             if (mode === "all") return alert('El modo de automatización está en "Todos los teléfonos". Cambia el modo en Ajustes globales para poder ignorar números individuales.');
-            if (mode === "exclude") { if (!numbers.includes(phoneDigits)) numbers = [...numbers, phoneDigits]; }
-            else { numbers = numbers.filter((n) => n !== phoneDigits); }
+            if (mode === "exclude") { numbers = [...new Set([...numbers, ...identifiers])]; }
+            else { numbers = numbers.filter((n) => !identifiers.includes(n)); }
             await api("/api/mensajes-view/settings", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ responseDelayMin: settings.responseDelayMin, responseDelayMax: settings.responseDelayMax, responseGroupDelaySeconds: settings.responseGroupDelaySeconds, automationPhoneMode: mode, automationPhoneNumbers: numbers }) });
             alert("Listo. La IA ya no responderá automáticamente a este número.");
         } catch (error) { alert(error.message); }
@@ -693,6 +700,12 @@
             </label>
             <button id="ai-agenda-cap-save" type="button">Guardar tope diario</button>
             <span id="ai-agenda-cap-result" class="settings-state-card"></span>
+            <label>Tope de citas por hora (toda la clínica)
+                <input id="ai-agenda-hourly-cap" type="number" min="1" max="100" placeholder="Sin tope">
+                <small>Cuenta todas las citas activas que caen en una misma hora (IA y recepción, todos los servicios). Al llegar al tope, la IA no ofrece ni agenda horarios de esa hora. Vacío = sin tope.</small>
+            </label>
+            <button id="ai-agenda-hourly-save" type="button">Guardar tope por hora</button>
+            <span id="ai-agenda-hourly-result" class="settings-state-card"></span>
             <hr>
             <h3>Días bloqueados</h3>
             <p>Cerrá una fecha para la IA: asueto, cierre administrativo o día ya lleno. Ese día la IA no agenda, no reprograma y no ofrece horarios.</p>
@@ -711,6 +724,15 @@
             try {
                 const data = await api("/api/mensajes-view/ai-daily-cap", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dailyCap: capInput.value.trim() === "" ? null : Number(capInput.value) }) });
                 result.textContent = data.schedule.dailyCap ? `Tope guardado: ${data.schedule.dailyCap} citas/día` : "Tope quitado";
+            } catch (error) { result.textContent = error.message || "No se pudo guardar"; }
+        });
+        const hourlyInput = modal.querySelector("#ai-agenda-hourly-cap");
+        hourlyInput.value = schedule.hourlyCap ?? "";
+        modal.querySelector("#ai-agenda-hourly-save").addEventListener("click", async () => {
+            const result = modal.querySelector("#ai-agenda-hourly-result");
+            try {
+                const data = await api("/api/mensajes-view/ai-hourly-cap", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hourlyCap: hourlyInput.value.trim() === "" ? null : Number(hourlyInput.value) }) });
+                result.textContent = data.schedule.hourlyCap ? `Tope guardado: ${data.schedule.hourlyCap} citas/hora` : "Tope quitado";
             } catch (error) { result.textContent = error.message || "No se pudo guardar"; }
         });
         const dateInput = modal.querySelector("#ai-agenda-block-date");
@@ -748,7 +770,7 @@
         nav.insertAdjacentHTML("beforeend", '<button data-settings-section="config-transfer">Copia de configuración</button>');
         content.insertAdjacentHTML("beforeend", `<section data-settings-content="config-transfer" hidden>
             <h3>Copia de configuración</h3>
-            <p>Exportá la configuración de la IA de este equipo a un archivo y cargala en otro. Incluye: texto de conocimiento, servicios IA y alias, horario general, pausas, días bloqueados, tope diario, configuración del proveedor IA (con su clave), revisión humana, automatizaciones, recordatorios, reglas de teléfonos y las vinculaciones paciente-chat activas (para reusarlas hace falta el mismo número de WhatsApp). <strong>No</strong> incluye conversaciones ni mensajes.</p>
+            <p>Exportá la configuración de la IA de este equipo a un archivo y cargala en otro. Incluye: texto de conocimiento, servicios IA y alias, horario general, pausas, días bloqueados, topes diario y por hora, configuración del proveedor IA (con su clave), revisión humana, automatizaciones, recordatorios, reglas de teléfonos y las vinculaciones paciente-chat activas (para reusarlas hace falta el mismo número de WhatsApp). <strong>No</strong> incluye conversaciones ni mensajes.</p>
             <p class="ai-help" style="color:#b45309">El archivo contiene la clave del proveedor IA. Guardalo en un lugar seguro y no lo subas a repositorios ni lo compartas.</p>
             <button id="config-export-btn" type="button">Exportar configuración</button>
             <hr>
@@ -782,7 +804,7 @@
             let payload;
             try { payload = JSON.parse(await file.text()); }
             catch { result.textContent = "El archivo no es un JSON válido."; return; }
-            if (!confirm("Importar esta configuración reemplaza el texto de conocimiento, los servicios IA, el horario, las pausas, los días bloqueados, el tope diario y la configuración del proveedor IA de este equipo. También agrega o actualiza las vinculaciones paciente-chat exportadas (solo funciona si es el mismo número de WhatsApp). ¿Continuar?")) return;
+            if (!confirm("Importar esta configuración reemplaza el texto de conocimiento, los servicios IA, el horario, las pausas, los días bloqueados, los topes diario y por hora y la configuración del proveedor IA de este equipo. También agrega o actualiza las vinculaciones paciente-chat exportadas (solo funciona si es el mismo número de WhatsApp). ¿Continuar?")) return;
             result.textContent = "Importando…";
             try {
                 const data = await api("/api/mensajes-view/config-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
