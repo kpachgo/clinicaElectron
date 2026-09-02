@@ -24,6 +24,7 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `18_modo_venta.md`
 - `20_estado_actual_vista_mensajes.md`
 - `21_build_win_local.md`
+- `22_whatsapp_acoplamiento_libreria.md`
 
 ## Nota
 - `01_general.md` incluye un resumen fechado de cambios recientes para reubicarse rapido entre sesiones.
@@ -37,3 +38,4 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `18_modo_venta.md` documenta la variante comercial activada por `CLINICA_MODO_VENTA=1`.
 - `20_estado_actual_vista_mensajes.md` documenta la Vista Mensajes: agente IA con herramientas, agenda, identidad de pacientes y configuración por clínica.
 - `21_build_win_local.md` guia del instalador Windows local: pasos, validacion del paquete y los 3 errores conocidos (self-link `clinica` -> recursion de 7za, ABI de `better-sqlite3` vs Electron, `node_modules` del backend vacio en el paquete).
+- `22_whatsapp_acoplamiento_libreria.md` evalua que tan atada esta la Vista Mensajes a `whatsapp-web.js` de cara a una eventual migracion a la API oficial de Meta u otra libreria; nota de evaluacion, no un plan aprobado.

@@ -93,7 +93,7 @@
         try { localStorage.setItem(TOOLS_KEY, collapsed ? "1" : "0"); } catch (_) {}
     }
     // --- Recordatorios ---
-    async function openReminderModal() { let modal = document.getElementById("mensajes-reminder-modal"); if (!modal) { modal = document.createElement("div"); modal.id = "mensajes-reminder-modal"; modal.className = "mensajes-settings-overlay"; modal.innerHTML = `<form class="mensajes-reminder-card"><button type="button" data-close>×</button><h2>Enviar recordatorios</h2><label>Fecha<input id="reminder-date" type="date" required></label><label>Plantilla<textarea id="reminder-template" rows="4">Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.</textarea></label><label class="ai-enabled"><input id="reminder-force-resend" type="checkbox"> Permitir reenviar recordatorios ya enviados</label><div class="reminder-toolbar"><button type="button" id="reminder-load">Cargar pacientes</button><span id="reminder-progress">Aún no cargados</span></div><div id="reminder-items" class="reminder-items"></div><div class="reminder-actions"><button type="submit" id="reminder-send">Enviar recordatorios</button><button type="button" id="reminder-cancel" disabled>Cancelar lote</button></div></form>`; document.body.appendChild(modal); modal.querySelector("[data-close]").addEventListener("click", () => { modal.hidden = true; }); modal.querySelector("#reminder-load").addEventListener("click", loadReminderCandidates); modal.querySelector("form").addEventListener("submit", startReminder); modal.querySelector("#reminder-cancel").addEventListener("click", cancelReminder); } modal.querySelector("#reminder-date").value = new Date().toISOString().slice(0,10); modal.hidden = false; await loadReminderCandidates(); }
+    async function openReminderModal() { let modal = document.getElementById("mensajes-reminder-modal"); if (!modal) { modal = document.createElement("div"); modal.id = "mensajes-reminder-modal"; modal.className = "mensajes-settings-overlay"; modal.innerHTML = `<form class="mensajes-reminder-card"><button type="button" data-close>×</button><h2>Enviar recordatorios</h2><label>Fecha<input id="reminder-date" type="date" required></label><label>Plantilla<textarea id="reminder-template" rows="4">Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.</textarea></label><label class="ai-enabled"><input id="reminder-force-resend" type="checkbox"> Permitir reenviar recordatorios ya enviados</label><div class="reminder-toolbar"><button type="button" id="reminder-load">Cargar pacientes</button><span id="reminder-progress">Aún no cargados</span></div><div id="reminder-items" class="reminder-items"></div><div class="reminder-actions"><button type="submit" id="reminder-send">Enviar recordatorios</button><button type="button" id="reminder-cancel" disabled>Cancelar lote</button></div></form>`; document.body.appendChild(modal); modal.querySelector("[data-close]").addEventListener("click", () => { modal.hidden = true; }); modal.querySelector("#reminder-load").addEventListener("click", loadReminderCandidates); modal.querySelector("form").addEventListener("submit", startReminder); modal.querySelector("#reminder-cancel").addEventListener("click", cancelReminder); } modal.querySelector("#reminder-date").value = new Date().toISOString().slice(0,10); try { const rs = await api("/api/mensajes-view/reminder-settings"); if (rs?.settings?.template) modal.querySelector("#reminder-template").value = rs.settings.template; } catch { /* si falla, queda la plantilla por defecto del textarea */ } modal.hidden = false; await loadReminderCandidates(); }
     async function loadReminderCandidates() { const modal = document.getElementById("mensajes-reminder-modal"); const data = await api(`/api/mensajes-view/reminders/candidates?date=${encodeURIComponent(modal.querySelector("#reminder-date").value)}`); modal.dataset.items = JSON.stringify(data.candidates); const labels = { pending: "Pendiente", sent: "Enviado", failed: "Error", cancelled: "Cancelado", sending: "Enviando", queued: "En cola" }; modal.querySelector("#reminder-items").innerHTML = data.candidates.length ? data.candidates.map((x) => `<div class="reminder-item"><strong>${esc(x.patientName)}</strong><span>${esc(x.phone)} · ${esc(fmtHora12(x.time))} · ${esc(x.status || "")}</span><small>${esc(x.treatment || "")}</small><em data-item-status="${x.appointmentId}">${labels[x.reminderStatus] || "Pendiente"}</em></div>`).join("") : `<div class="mensajes-empty">No hay pacientes elegibles para esta fecha.</div>`; const summary = data.summary || {}; modal.querySelector("#reminder-progress").textContent = `${data.candidates.length} elegibles · ${summary.sent || 0} enviados · ${summary.failed || 0} errores · ${summary.cancelled || 0} cancelados · ${summary.pending || 0} pendientes`; }
     async function startReminder(event) { event.preventDefault(); const modal = document.getElementById("mensajes-reminder-modal"); const sendButton = modal.querySelector("#reminder-send"); const cancelButton = modal.querySelector("#reminder-cancel"); const items = JSON.parse(modal.dataset.items || "[]"); if (!items.length) return alert("Carga primero los pacientes"); sendButton.disabled = true; try { const reminderSettings = await api("/api/mensajes-view/reminder-settings"); const data = await api("/api/mensajes-view/reminders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: modal.querySelector("#reminder-date").value, template: modal.querySelector("#reminder-template").value, items, minDelaySeconds: reminderSettings.settings.minDelaySeconds, maxDelaySeconds: reminderSettings.settings.maxDelaySeconds, forceResend: modal.querySelector("#reminder-force-resend").checked }) }); modal.dataset.batchId = data.batch.id; const started = await api(`/api/mensajes-view/reminders/${data.batch.id}/start`, { method: "POST" }); modal.querySelector("#reminder-progress").textContent = started.connectionError ? "No enviado: conecta WhatsApp y vuelve a intentarlo" : "Lote iniciado"; cancelButton.disabled = Boolean(started.connectionError); if (!started.connectionError) cancelButton.disabled = false; await pollReminder(); } catch (error) { sendButton.disabled = false; cancelButton.disabled = true; modal.querySelector("#reminder-progress").textContent = error.message || "No se pudo iniciar el lote"; }
     }
@@ -708,13 +708,14 @@
             <button id="ai-agenda-hourly-save" type="button">Guardar tope por hora</button>
             <span id="ai-agenda-hourly-result" class="settings-state-card"></span>
             <hr>
-            <h3>Días bloqueados</h3>
-            <p>Cerrá una fecha para la IA: asueto, cierre administrativo o día ya lleno. Ese día la IA no agenda, no reprograma y no ofrece horarios.</p>
+            <h3>Días y horas bloqueados</h3>
+            <p>Cerrá una fecha para la IA: asueto, cierre administrativo, día lleno o una franja en la que el doctor no llega. La IA no agenda, no reprograma ni ofrece horarios en lo bloqueado.</p>
             <div class="ai-block-form">
                 <input id="ai-agenda-block-date" type="date">
                 <input id="ai-agenda-block-reason" type="text" placeholder="Motivo (opcional, uso interno)" maxlength="200">
-                <button id="ai-agenda-block-add" type="button">Bloquear fecha</button>
+                <button id="ai-agenda-block-add" type="button">Bloquear</button>
             </div>
+            <div id="ai-agenda-block-hours" class="ai-block-hours" hidden></div>
             <div id="ai-agenda-block-result" class="settings-state-card"></div>
             <div id="ai-agenda-block-list" class="ai-block-list"></div>
         </section>`);
@@ -741,9 +742,53 @@
         const list = modal.querySelector("#ai-agenda-block-list");
         const today = new Date(); today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
         dateInput.min = today.toISOString().slice(0, 10);
+        const hoursBox = modal.querySelector("#ai-agenda-block-hours");
+        const toMin = (t) => { const [h, m] = String(t).split(":").map(Number); return h * 60 + m; };
+        const toHHMM = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+        const fmt12 = (t) => { const [h, m] = String(t).split(":").map(Number); const p = h < 12 ? "a.m." : "p.m."; const h12 = h % 12 || 12; return m ? `${h12}:${String(m).padStart(2, "0")} ${p}` : `${h12} ${p}`; };
+        // Horas laborales de ese día de la semana, ya descontadas las pausas generales.
+        const workingHours = (weekday) => {
+            const ranges = Array.isArray(schedule.schedule?.[weekday]) ? schedule.schedule[weekday] : [];
+            const brks = (schedule.breaks || []).filter((b) => b.day === null || b.day === undefined || Number(b.day) === weekday);
+            const chips = [];
+            for (const r of ranges) {
+                const s = toMin(r.start), e = toMin(r.end);
+                for (let m = Math.floor(s / 60) * 60; m < e; m += 60) {
+                    const hi = Math.max(m, s), ho = Math.min(m + 60, e);
+                    if (ho <= hi) continue;
+                    if (brks.some((b) => toMin(b.start) <= hi && toMin(b.end) >= ho)) continue;
+                    chips.push({ start: toHHMM(hi), end: toHHMM(ho) });
+                }
+            }
+            return chips;
+        };
+        const renderHourPicker = () => {
+            hoursBox.innerHTML = "";
+            if (!dateInput.value) { hoursBox.hidden = true; return; }
+            const weekday = new Date(`${dateInput.value}T12:00:00`).getDay();
+            const chips = workingHours(weekday);
+            hoursBox.hidden = false;
+            if (!chips.length) { hoursBox.innerHTML = `<p class="ai-help">Ese día la clínica no atiende: se bloqueará el día completo.</p>`; return; }
+            hoursBox.innerHTML = `<div class="ai-block-mode"><label><input type="radio" name="ai-block-mode" value="all" checked> Todo el día</label><label><input type="radio" name="ai-block-mode" value="hours"> Solo algunas horas</label></div><div class="ai-hour-chips" hidden>${chips.map((c) => `<label class="ai-hour-chip"><input type="checkbox" value="${c.start}|${c.end}"> ${esc(fmt12(c.start))}</label>`).join("")}</div>`;
+            const chipWrap = hoursBox.querySelector(".ai-hour-chips");
+            hoursBox.querySelectorAll("input[name='ai-block-mode']").forEach((r) => r.addEventListener("change", () => { chipWrap.hidden = hoursBox.querySelector("input[name='ai-block-mode']:checked").value !== "hours"; }));
+        };
+        const selectedHourRanges = () => {
+            const picked = [...hoursBox.querySelectorAll(".ai-hour-chips input:checked")]
+                .map((el) => { const [start, end] = el.value.split("|"); return { start, end }; })
+                .sort((a, b) => toMin(a.start) - toMin(b.start));
+            const merged = [];
+            for (const r of picked) {
+                const last = merged[merged.length - 1];
+                if (last && toMin(r.start) <= toMin(last.end)) { if (toMin(r.end) > toMin(last.end)) last.end = r.end; }
+                else merged.push({ ...r });
+            }
+            return merged;
+        };
+        dateInput.addEventListener("change", renderHourPicker);
         const renderDates = (rows) => {
             list.innerHTML = rows.length
-                ? rows.map((row) => `<div class="ai-block-item"><div><strong>${esc(new Date(`${row.date}T12:00:00`).toLocaleDateString("es-SV", { weekday: "long", day: "numeric", month: "long" }))}</strong>${row.reason ? `<span>${esc(row.reason)}</span>` : ""}</div><button type="button" data-unblock="${row.id}">Reabrir</button></div>`).join("")
+                ? rows.map((row) => `<div class="ai-block-item"><div><strong>${esc(new Date(`${row.date}T12:00:00`).toLocaleDateString("es-SV", { weekday: "long", day: "numeric", month: "long" }))}</strong><span>${row.blockedHours && row.blockedHours.length ? esc(row.blockedHours.map((r) => `${fmt12(r.start)} a ${fmt12(r.end)}`).join(", ")) : "Todo el día"}</span>${row.reason ? `<span>${esc(row.reason)}</span>` : ""}</div><button type="button" data-unblock="${row.id}">Reabrir</button></div>`).join("")
                 : `<div class="ai-empty-note">No hay días bloqueados próximos.</div>`;
             list.querySelectorAll("[data-unblock]").forEach((button) => button.addEventListener("click", async () => {
                 const data = await api(`/api/mensajes-view/ai-blocked-dates/${button.dataset.unblock}`, { method: "DELETE" });
@@ -754,9 +799,15 @@
         modal.querySelector("#ai-agenda-block-add").addEventListener("click", async () => {
             const result = modal.querySelector("#ai-agenda-block-result");
             if (!dateInput.value) { result.textContent = "Elegí una fecha"; return; }
+            const mode = hoursBox.querySelector("input[name='ai-block-mode']:checked")?.value || "all";
+            let blockedHours = null;
+            if (mode === "hours") {
+                blockedHours = selectedHourRanges();
+                if (!blockedHours.length) { result.textContent = "Elegí al menos una hora o cambiá a \"Todo el día\""; return; }
+            }
             try {
-                const data = await api("/api/mensajes-view/ai-blocked-dates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: dateInput.value, reason: reasonInput.value }) });
-                dateInput.value = ""; reasonInput.value = ""; result.textContent = "Fecha bloqueada";
+                const data = await api("/api/mensajes-view/ai-blocked-dates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: dateInput.value, reason: reasonInput.value, blockedHours }) });
+                dateInput.value = ""; reasonInput.value = ""; renderHourPicker(); result.textContent = "Bloqueo guardado";
                 renderDates(data.dates);
             } catch (error) { result.textContent = error.message || "No se pudo bloquear"; }
         });

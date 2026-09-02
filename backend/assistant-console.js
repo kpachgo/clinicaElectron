@@ -31,11 +31,12 @@ let linkedPatient = null;
 let history = [];
 let assistantMemory = {};
 
-const MUTATING = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita"]);
+const MUTATING = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia"]);
 
 async function consoleRunTool(name, args, ctx) {
   if (!LIVE && MUTATING.has(name)) {
     if (name === "crear_cita" && args?.confirmado !== true) return realRunTool(name, args, ctx);
+    if (name === "confirmar_asistencia") return { estado: "ok", simulado: true, mensaje: "(simulado) confirmar_asistencia habría marcado la cita como Confirmado" };
     const already = ctx?.memory?.lastAppointment;
     if (name === "crear_cita" && already?.appointmentId && already.date === args?.fecha && already.time === args?.hora) {
       return { estado: "ya_registrada", id_cita: already.appointmentId, mensaje: "(simulado) esta cita ya estaba registrada en esta conversación" };

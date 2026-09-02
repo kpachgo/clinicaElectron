@@ -11,6 +11,12 @@ const appointmentActions = require("./aiAppointmentAction.service");
 const { cancelAppointment, rescheduleAppointment } = appointmentActions;
 const { resolveDatePreference, timeFromText } = require("./dateTimeResolver.service");
 const { to12h } = require("./timeFormat.service");
+const { MensajesRepository } = require("./mensajesRepository.service");
+const { getDb } = require("../mensajesDatabase.service");
+
+// Solo para leer el recordatorio reciente que se está confirmando (correlación
+// teléfono -> cita). Ninguna interpretación vive acá: eso lo hace el modelo.
+const reminderRepo = new MensajesRepository(getDb());
 
 function digitsOf(value) { return String(value || "").replace(/\D/g, ""); }
 function namesConsistent(a, b) {
@@ -122,6 +128,11 @@ const TOOL_SPECS = [
       },
       required: ["id_cita", "confirmado"]
     }
+  },
+  {
+    name: "confirmar_asistencia",
+    description: "Marca que el paciente CONFIRMÓ que asistirá a su cita. Úsala solo cuando en el historial hay un recordatorio de cita y el paciente responde dando a entender que sí va a asistir (con las palabras que sea). NO la uses si pide cambiar la fecha/hora o cancelar (eso es reprogramar/cancelar), ni si no queda claro. No necesita que el paciente esté identificado por recepción.",
+    parameters: { type: "object", properties: {} }
   },
   {
     name: "transferir_a_recepcion",
@@ -349,6 +360,24 @@ async function cancelarCita(args, ctx) {
   }
 }
 
+async function confirmarAsistencia(args, ctx) {
+  const conv = ctx?.conversation || {};
+  const phone = String(conv.waContactNumber || conv.phone || "").replace(/\D/g, "");
+  const sinRecordatorio = { estado: "sin_recordatorio_reciente", mensaje: "No hay un recordatorio de cita reciente para este número. Agradecé la respuesta sin afirmar que la cita quedó confirmada." };
+  if (phone.length < 7) return sinRecordatorio;
+  const reminder = reminderRepo.getRecentSentReminderForPhone(phone, 18);
+  if (!reminder?.appointmentId) return sinRecordatorio;
+  let result;
+  try {
+    result = await appointmentActions.confirmAppointmentAttendance({ appointmentId: reminder.appointmentId });
+  } catch (error) {
+    return { estado: "error", mensaje: error.message || "No se pudo confirmar la asistencia." };
+  }
+  if (result.status === "confirmed") return { estado: "ok", fecha: result.date, hora: to12h(result.time), mensaje: "Asistencia confirmada. Agradecé de forma breve y natural." };
+  if (result.status === "already_confirmed") return { estado: "ya_confirmada", fecha: result.date, hora: to12h(result.time), mensaje: "La cita ya figuraba confirmada. Agradecé igual, sin volver a anunciarlo como novedad." };
+  return { estado: "cita_no_confirmable", mensaje: "Esa cita ya no se puede confirmar (fue cancelada, reprogramada o ya pasó). Si el paciente necesita algo más, derivá a recepción." };
+}
+
 async function transferirARecepcion(args) {
   return { estado: "transferido", motivo: String(args?.motivo || "Solicitud del asistente") };
 }
@@ -360,6 +389,7 @@ const HANDLERS = {
   crear_cita: crearCita,
   reprogramar_cita: reprogramarCita,
   cancelar_cita: cancelarCita,
+  confirmar_asistencia: confirmarAsistencia,
   transferir_a_recepcion: transferirARecepcion
 };
 

@@ -283,6 +283,12 @@ const migrations = [
   // capacidad por servicio: limita el total de citas activas (IA + recepción, todos
   // los servicios) que caen en una misma hora. El gate vive en searchAvailability.
   ,`ALTER TABLE ai_clinic_schedule ADD COLUMN hourly_cap INTEGER NULL DEFAULT NULL;`
+  // Bloqueo parcial de una fecha: además de cerrar el día completo, se pueden
+  // bloquear solo ciertas franjas horarias de esa fecha (p. ej. el doctor no
+  // llega esa mañana). NULL o '[]' = día completo (comportamiento anterior);
+  // '[{"start":"08:00","end":"13:00"}]' = solo esa franja. El gate vive en
+  // searchAvailability, junto al de las pausas generales.
+  ,`ALTER TABLE ai_blocked_dates ADD COLUMN blocked_hours_json TEXT NULL;`
 ];
 
 function getDb() {

@@ -70,7 +70,7 @@ function exportConfig(db = getDb()) {
     administrativeSettings: pickSingleton(db, "administrative_settings"),
     serviceSettings: db.prepare(`SELECT ${SERVICE_COLUMNS.join(", ")} FROM ai_service_settings`).all(),
     serviceAliases: db.prepare("SELECT service_id, alias, normalized_alias FROM ai_service_aliases").all(),
-    blockedDates: db.prepare("SELECT date, reason FROM ai_blocked_dates").all(),
+    blockedDates: db.prepare("SELECT date, reason, blocked_hours_json FROM ai_blocked_dates").all(),
     // Solo la identidad activa por chat; el historial de cambios de número no viaja.
     patientIdentities: db.prepare("SELECT wa_chat_id, patient_id, phone, patient_name, treatment_type FROM patient_chat_identities WHERE active=1").all()
   };
@@ -199,10 +199,10 @@ async function importConfig(payload, db = getDb()) {
 
     if (Array.isArray(payload.blockedDates)) {
       db.prepare("DELETE FROM ai_blocked_dates").run();
-      const ins = db.prepare("INSERT OR IGNORE INTO ai_blocked_dates(date, reason) VALUES (?, ?)");
+      const ins = db.prepare("INSERT OR IGNORE INTO ai_blocked_dates(date, reason, blocked_hours_json) VALUES (?, ?, ?)");
       for (const b of payload.blockedDates) {
         if (b && /^\d{4}-\d{2}-\d{2}$/.test(String(b.date)) && String(b.date) >= today) {
-          ins.run(String(b.date), String(b.reason || "").slice(0, 200));
+          ins.run(String(b.date), String(b.reason || "").slice(0, 200), typeof b.blocked_hours_json === "string" && b.blocked_hours_json.trim() ? b.blocked_hours_json : null);
           summary.blockedDates += 1;
         }
       }

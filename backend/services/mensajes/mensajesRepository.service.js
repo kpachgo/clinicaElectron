@@ -162,6 +162,19 @@ class MensajesRepository {
   updateReminderItem(id, status, changes = {}) { this.db.prepare("UPDATE reminder_batch_items SET status=?, queue_id=COALESCE(?,queue_id), error=?, sent_at=CASE WHEN ?='sent' THEN datetime('now') ELSE sent_at END, updated_at=datetime('now') WHERE id=?").run(status, changes.queueId || null, changes.error || null, status, id); }
   refreshReminderBatch(id) { this.db.prepare("UPDATE reminder_batches SET sent_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='sent'), failed_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='failed'), cancelled_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='cancelled'), updated_at=datetime('now') WHERE id=?").run(id,id,id,id); return this.getReminderBatch(id); }
   cancelReminderBatch(id) { this.db.prepare("UPDATE reminder_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending')").run(id); this.db.prepare("UPDATE reminder_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.getReminderBatch(id); }
+  // Recordatorio 'sent' más reciente para ese teléfono dentro de una ventana horaria.
+  // Sirve para correlacionar la respuesta del paciente ("sí, ahí estaré") con la cita
+  // concreta sin que el recordatorio lleve el id en el texto. sent_at se guarda con
+  // datetime('now') (UTC), por eso la ventana se calcula también en SQL.
+  getRecentSentReminderForPhone(phone, withinHours = 18) {
+    const base = phoneRuleVariants(phone);
+    // reminder_batch_items.phone viene de contactoAP; puede estar con o sin el prefijo 503.
+    const variants = [...new Set(base.concat(base.filter((v) => v.length === 8).map((v) => "503" + v)))];
+    if (!variants.length) return null;
+    const hours = Number.isInteger(withinHours) && withinHours > 0 ? withinHours : 18;
+    const placeholders = variants.map(() => "?").join(",");
+    return this.db.prepare(`SELECT appointment_id AS appointmentId, appointment_date AS appointmentDate, appointment_time AS appointmentTime, phone, sent_at AS sentAt FROM reminder_batch_items WHERE status='sent' AND sent_at >= datetime('now', ?) AND phone IN (${placeholders}) ORDER BY sent_at DESC, id DESC LIMIT 1`).get(`-${hours} hours`, ...variants) || null;
+  }
   retryOutgoing(id, phone) { return this.db.prepare("UPDATE outgoing_queue SET status='pending', attempts=0, last_error=NULL, updated_at=datetime('now') WHERE id=? AND phone=? AND status='failed'").run(id, phone).changes > 0; }
   getGlobalSettings() { const row = this.db.prepare("SELECT response_delay_min AS responseDelayMin, response_delay_max AS responseDelayMax, response_group_delay_seconds AS responseGroupDelaySeconds, automation_phone_mode AS automationPhoneMode, automation_phone_numbers AS automationPhoneNumbers, ignored_outgoing_texts_json AS ignoredOutgoingTexts, updated_at AS updatedAt FROM message_settings WHERE id=1").get(); return { ...row, automationPhoneNumbers: JSON.parse(row?.automationPhoneNumbers || "[]"), ignoredOutgoingTexts: JSON.parse(row?.ignoredOutgoingTexts || "[]") }; }
   updateGlobalSettings(min, max, mode = null, numbers = null, groupDelay = null, ignoredOutgoingTexts = null) { const current = this.getGlobalSettings(); this.db.prepare("UPDATE message_settings SET response_delay_min=?, response_delay_max=?, response_group_delay_seconds=?, automation_phone_mode=?, automation_phone_numbers=?, ignored_outgoing_texts_json=?, updated_at=datetime('now') WHERE id=1").run(min, max, groupDelay === null ? current.responseGroupDelaySeconds : groupDelay, mode || current.automationPhoneMode, JSON.stringify(numbers || current.automationPhoneNumbers), JSON.stringify(ignoredOutgoingTexts || current.ignoredOutgoingTexts)); return this.getGlobalSettings(); }
@@ -245,6 +258,11 @@ class MensajesRepository {
       )
       WHERE c.status <> 'closed'
         AND c.attention_mode='assistant'
+        -- Una reacción (❤️, 👍…) como último mensaje del paciente NO es una solicitud
+        -- sin responder: processBatch la cancela siempre, así que reencolarla acá crea
+        -- un bucle (batch nuevo cada tick -> cancelado -> reencolado).
+        AND LOWER(IFNULL(c.last_message_type,'')) <> 'reaction'
+        AND m.content NOT LIKE 'Reacción:%'
         AND (? IS NULL OR c.id=?)
         AND NOT EXISTS (
           SELECT 1 FROM messages o
@@ -343,7 +361,17 @@ class MensajesRepository {
       this.db.prepare("INSERT INTO patient_chat_identities (wa_chat_id,patient_id,phone,patient_name,treatment_type,verified_by,active) VALUES (?,?,?,?,?,?,1) ON CONFLICT(wa_chat_id) DO UPDATE SET patient_id=excluded.patient_id,phone=excluded.phone,patient_name=excluded.patient_name,treatment_type=excluded.treatment_type,verified_at=datetime('now'),verified_by=excluded.verified_by,active=1").run(waChatId, patient.id, patient.phone || null, patient.name, patient.treatment || null, verifiedBy);
       this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE conversation_id=?").run(conversationId);
       this.db.prepare("INSERT INTO conversation_patient_links (conversation_id,patient_id,wa_chat_id,phone,patient_name,treatment_type,verified_by,active) VALUES (?,?,?,?,?,?,?,1) ON CONFLICT(conversation_id,patient_id) DO UPDATE SET wa_chat_id=excluded.wa_chat_id,phone=excluded.phone,patient_name=excluded.patient_name,treatment_type=excluded.treatment_type,verified_at=datetime('now'),verified_by=excluded.verified_by,active=1").run(conversationId, patient.id, waChatId, patient.phone || null, patient.name, patient.treatment || null, verifiedBy);
-      this.db.prepare("UPDATE conversations SET patient_id=?, phone=COALESCE(?,phone), wa_contact_number=COALESCE(?,wa_contact_number) WHERE id=?").run(patient.id, patient.phone || null, patient.phone || null, conversationId);
+      // El teléfono del expediente puede ya estar en otra conversación (chat viejo del
+      // mismo paciente, o un teléfono huérfano de una vinculación anterior). conversations.phone
+      // es UNIQUE: si lo pisáramos, la transacción entera aborta y la vinculación no se guarda.
+      // La vinculación real vive en conversation_patient_links; si hay choque, no tocamos el teléfono.
+      let phoneForConv = patient.phone || null;
+      if (phoneForConv) {
+        const digits = String(phoneForConv).replace(/\D/g, "");
+        const clash = digits && this.db.prepare("SELECT id FROM conversations WHERE id<>? AND status <> 'closed' AND REPLACE(REPLACE(REPLACE(IFNULL(phone,''),' ',''),'-',''),'+','')=? LIMIT 1").get(conversationId, digits);
+        if (clash) phoneForConv = null;
+      }
+      this.db.prepare("UPDATE conversations SET patient_id=?, phone=COALESCE(?,phone), wa_contact_number=COALESCE(?,wa_contact_number) WHERE id=?").run(patient.id, phoneForConv, phoneForConv, conversationId);
       return this.getPatientLink(conversationId);
     })();
   }

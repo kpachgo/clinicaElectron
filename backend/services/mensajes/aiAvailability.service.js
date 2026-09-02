@@ -77,23 +77,50 @@ function updateHourlyCap(value, db = getDb()) {
   db.prepare("UPDATE ai_clinic_schedule SET hourly_cap=?, updated_at=datetime('now') WHERE id=1").run(raw);
   return getClinicSchedule(db);
 }
+// Normaliza y fusiona las franjas de un bloqueo parcial de fecha.
+// Descarta rangos inválidos; ordena y une los contiguos o solapados.
+function normalizeBlockedHours(raw) {
+  const list = (Array.isArray(raw) ? raw : [])
+    .filter((range) => range && validTime(range.start) && validTime(range.end) && minutes(range.start) < minutes(range.end))
+    .map((range) => ({ start: range.start, end: range.end }))
+    .sort((a, b) => minutes(a.start) - minutes(b.start));
+  const merged = [];
+  for (const range of list) {
+    const last = merged[merged.length - 1];
+    if (last && minutes(range.start) <= minutes(last.end)) {
+      if (minutes(range.end) > minutes(last.end)) last.end = range.end;
+    } else merged.push({ ...range });
+  }
+  return merged;
+}
 function listBlockedDates(db = getDb()) {
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
-  return db.prepare("SELECT id, date, reason FROM ai_blocked_dates WHERE date >= ? ORDER BY date").all(today);
+  return db.prepare("SELECT id, date, reason, blocked_hours_json FROM ai_blocked_dates WHERE date >= ? ORDER BY date").all(today)
+    .map(({ blocked_hours_json, ...row }) => ({ ...row, blockedHours: normalizeBlockedHours(parseJson(blocked_hours_json, [])) }));
 }
-function addBlockedDate({ date, reason } = {}, db = getDb()) {
+function addBlockedDate({ date, reason, blockedHours } = {}, db = getDb()) {
   if (!isRealDate(date)) throw new Error("Fecha invalida");
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
   if (date < today) throw new Error("No se puede bloquear una fecha pasada");
-  db.prepare("INSERT INTO ai_blocked_dates(date, reason) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET reason=excluded.reason").run(date, String(reason || "").trim().slice(0, 200));
+  const hours = normalizeBlockedHours(blockedHours);
+  // Se pidieron franjas pero ninguna quedó válida: no degradar a día completo en silencio.
+  if (Array.isArray(blockedHours) && blockedHours.length && !hours.length) throw new Error("Horario de bloqueo invalido");
+  const hoursJson = hours.length ? JSON.stringify(hours) : null;
+  db.prepare("INSERT INTO ai_blocked_dates(date, reason, blocked_hours_json) VALUES (?, ?, ?) ON CONFLICT(date) DO UPDATE SET reason=excluded.reason, blocked_hours_json=excluded.blocked_hours_json").run(date, String(reason || "").trim().slice(0, 200), hoursJson);
   return listBlockedDates(db);
 }
 function removeBlockedDate(id, db = getDb()) {
   db.prepare("DELETE FROM ai_blocked_dates WHERE id=?").run(Number(id));
   return listBlockedDates(db);
 }
-function isDateBlocked(date, db = getDb()) {
-  return Boolean(db.prepare("SELECT 1 FROM ai_blocked_dates WHERE date=?").get(date));
+// null = la fecha no está bloqueada.
+// { fullDay: true } = día completo cerrado.
+// { fullDay: false, ranges } = solo esas franjas de esa fecha.
+function getDateBlock(date, db = getDb()) {
+  const row = db.prepare("SELECT blocked_hours_json FROM ai_blocked_dates WHERE date=?").get(date);
+  if (!row) return null;
+  const ranges = normalizeBlockedHours(parseJson(row.blocked_hours_json, []));
+  return ranges.length ? { fullDay: false, ranges } : { fullDay: true, ranges: [] };
 }
 function updateClinicSchedule(input, db = getDb()) {
   const timezone = String(input.timezone || "America/El_Salvador");
@@ -202,7 +229,8 @@ async function searchAvailability({ serviceId, date }, db = getDb(), sqlClient =
   const clinic = getClinicSchedule(db);
   const weekday = dateWeekday(date);
   // Cierre manual de fecha (asueto / cierre administrativo / día lleno): sin slots, sin importar servicio.
-  if (isDateBlocked(date, db)) {
+  const dateBlock = getDateBlock(date, db);
+  if (dateBlock?.fullDay) {
     return { ok: true, service: { id: config.serviceId, name: config.serviceName, durationMinutes: config.durationMinutes }, date, slots: [], dayUnavailable: true, serviceClosedThatDay: false, serviceWindow: null };
   }
   // Tope diario total de la clínica: cuenta TODAS las citas activas de ese día (IA + recepción).
@@ -237,6 +265,8 @@ async function searchAvailability({ serviceId, date }, db = getDb(), sqlClient =
       const end = start + config.durationMinutes;
       if (date === today && start < minimum) continue;
       if (breakBlocked(clinic.breaks, start, end, weekday)) continue;
+      // Franjas bloqueadas solo para esta fecha puntual (los rangos no llevan día).
+      if (dateBlock && breakBlocked(dateBlock.ranges, start, end, weekday)) continue;
       if (serviceWindow && !serviceWindow.some((r) => start >= minutes(r.start) && end <= minutes(r.end))) continue;
       let valid = true;
       if (config.capacityPerHour !== null) for (let cursor = start; cursor < end; cursor += 60) if ((occupancy.get(Math.floor(cursor / 60)) || 0) >= config.capacityPerHour) valid = false;

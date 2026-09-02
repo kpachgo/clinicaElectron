@@ -119,4 +119,22 @@ async function rescheduleAppointment({ patientId, appointmentId, newDate, newTim
   } finally { connection.release(); }
 }
 
-module.exports = { findPatientByName, createAppointmentForAssistant: createAppointmentForAssistantWithCapacity, cancelAppointment, rescheduleAppointment };
+// Marca una cita como 'Confirmado' cuando el paciente confirmó asistencia (tras un
+// recordatorio). Solo pisa estado vacío o 'Pendiente': nunca 'Cancelado' ni
+// 'Reprogramado'. Idempotente: si ya está confirmada devuelve already_confirmed.
+async function confirmAppointmentAttendance({ appointmentId }) {
+  const id = Number(appointmentId);
+  if (!Number.isInteger(id) || id < 1) { const error = new Error("Cita invalida"); error.status = 400; throw error; }
+  const [rows] = await pool.query("SELECT idAgendaAP, DATE_FORMAT(fechaAP,'%Y-%m-%d') AS fechaAP, LEFT(TRIM(IFNULL(horaAP,'')),5) AS horaAP, LOWER(TRIM(IFNULL(estadoAP,''))) AS estado FROM agendapersona WHERE idAgendaAP=? LIMIT 1", [id]);
+  const appt = rows[0];
+  if (!appt) return { ok: false, status: "not_confirmable" };
+  if (["confirmado", "confirmada"].includes(appt.estado)) return { ok: true, status: "already_confirmed", date: appt.fechaAP, time: appt.horaAP };
+  if (["cancelado", "cancelada", "reprogramado", "reprogramada"].includes(appt.estado)) return { ok: false, status: "not_confirmable" };
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
+  if (appt.fechaAP < today) return { ok: false, status: "not_confirmable" };
+  const [result] = await pool.query("UPDATE agendapersona SET estadoAP='Confirmado' WHERE idAgendaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) IN ('','pendiente')", [id]);
+  if (!result.affectedRows) return { ok: true, status: "already_confirmed", date: appt.fechaAP, time: appt.horaAP };
+  return { ok: true, status: "confirmed", date: appt.fechaAP, time: appt.horaAP };
+}
+
+module.exports = { findPatientByName, createAppointmentForAssistant: createAppointmentForAssistantWithCapacity, cancelAppointment, rescheduleAppointment, confirmAppointmentAttendance };

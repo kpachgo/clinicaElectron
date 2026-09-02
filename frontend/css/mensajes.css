@@ -96,6 +96,12 @@ label>.time12{margin-top:5px}
 .ai-block-item span{color:#64748b;font-size:12px;overflow:hidden;text-overflow:ellipsis}
 .ai-block-item button{flex:0 0 auto;border:1px solid #fca5a5!important;background:#fef2f2!important;color:#b91c1c!important;padding:6px 11px!important;font-size:12px}
 .ai-block-item button:hover{background:#fee2e2!important}
+.ai-block-hours{margin:-4px 0 8px;padding:10px 12px;border:1px solid #e6ebf2;border-radius:10px;background:#f8fafc}
+.ai-block-mode{display:flex;flex-wrap:wrap;gap:14px}
+.ai-block-mode label{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#0f172a}
+.ai-hour-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ai-hour-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:999px;background:#fff;border:1px solid #cbd5e1;color:#334155;font-size:12px;cursor:pointer}
+.ai-hour-chip:has(input:checked){background:#fef2f2;border-color:#fca5a5;color:#b91c1c;font-weight:600}
 .ai-active-list{display:flex;flex-wrap:wrap;gap:6px}
 .ai-active-chip{display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;font-size:12px;font-weight:600}
 #simple-ai-active-box{margin:8px 0 14px}
