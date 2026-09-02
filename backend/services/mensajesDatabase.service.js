@@ -289,6 +289,13 @@ const migrations = [
   // '[{"start":"08:00","end":"13:00"}]' = solo esa franja. El gate vive en
   // searchAvailability, junto al de las pausas generales.
   ,`ALTER TABLE ai_blocked_dates ADD COLUMN blocked_hours_json TEXT NULL;`
+  // Servicios que solo existen para pacientes ya registrados: el control mensual de
+  // ortodoncia, la emergencia de bracket, etc. Si el chat todavía no está vinculado
+  // a un paciente, la IA no puede resolverlos sola (no sabe si el expediente existe
+  // ni si el tratamiento está activo): no responde nada y la conversación pasa a
+  // revisión humana para que recepción identifique al paciente y la libere.
+  // El gate vive en assistantTools y lo aplica aiObserver.
+  ,`ALTER TABLE ai_service_settings ADD COLUMN requires_identified_patient INTEGER NOT NULL DEFAULT 0;`
 ];
 
 function getDb() {

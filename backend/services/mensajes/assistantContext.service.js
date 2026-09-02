@@ -40,7 +40,8 @@ function describeCatalog(services) {
     const alias = service.aliases?.length ? ` (también: ${service.aliases.join(", ")})` : "";
     const precio = service.sharePrice && service.price != null ? ` · precio de lista $${service.price} (si el texto de la clínica trae un precio o promoción para este servicio, usá ese)` : "";
     const horario = service.hasWeeklyHours ? ` · SOLO se atiende: ${describeServiceWindow(service.weeklyHours)} (no agendes este servicio fuera de ese horario)` : "";
-    return `- ${service.serviceName}${alias} · ${service.durationMinutes} min${precio}${horario}`;
+    const registrado = service.requiresIdentifiedPatient ? " · SOLO para pacientes ya registrados e identificados por recepción" : "";
+    return `- ${service.serviceName}${alias} · ${service.durationMinutes} min${precio}${horario}${registrado}`;
   }).join("\n");
 }
 
@@ -100,7 +101,7 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
     humanReview
       ? `CUÁNDO PASAR A RECEPCIÓN: si se cumple alguna de estas situaciones, NO le respondas al paciente y llamá la herramienta transferir_a_recepcion con un motivo breve.\n${humanReview}`
       : null,
-    !linkedPatient?.patientId && conversation.phoneResolved && /^\d{7,15}$/.test(String(conversation.phone || ""))
+    !linkedPatient?.patientId && conversation.phoneResolved && /^\d{8}$/.test(String(conversation.phone || ""))
       ? `El paciente escribe desde el número ${conversation.phone}. Pedile el teléfono de forma normal (junto con el nombre). NO le preguntes si es el mismo número del chat. Solo si el paciente dice por su cuenta que su teléfono es el mismo del chat, llamá crear_cita con usar_telefono_del_chat=true en vez de telefono.`
       : null,
     `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}. Resolvé "hoy", "mañana", "el lunes" con base en esto.`,

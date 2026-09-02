@@ -158,6 +158,23 @@ function toHhmm(value) {
   return timeFromText(raw);
 }
 
+// Servicios marcados como "solo pacientes ya registrados" (control mensual de
+// ortodoncia, emergencia de bracket…). Si el chat no está vinculado a un paciente,
+// la IA no puede resolverlo: no sabe si el expediente existe ni si el tratamiento
+// está activo. Devuelve _forceHumanReview, que aiObserver traduce en "no responder
+// nada y pasar la conversación a recepción" para que identifique y la libere.
+// El corte está también en consultar_disponibilidad a propósito: así frena ANTES de
+// que el modelo alcance a ofrecerle horarios al paciente.
+function identityGuard(service, ctx) {
+  if (!service?.requiresIdentifiedPatient || ctx?.linkedPatient?.patientId) return null;
+  return {
+    estado: "requiere_identificacion",
+    servicio: service.serviceName,
+    _forceHumanReview: `"${service.serviceName}" solo se agenda a pacientes registrados y este chat no está identificado`,
+    mensaje: "Este servicio es solo para pacientes ya registrados y este chat no está identificado por recepción. No le respondas nada al paciente: recepción va a tomar esta conversación."
+  };
+}
+
 function inFranja(time, franja) {
   if (!franja || franja === "cualquiera") return true;
   const hour = Number(String(time).slice(0, 2));
@@ -191,7 +208,7 @@ async function consultarServicios(args) {
   };
 }
 
-async function consultarDisponibilidad(args) {
+async function consultarDisponibilidad(args, ctx) {
   const resolved = await resolveService(args?.servicio || "");
   if (resolved.status === "ambiguous") {
     return { estado: "servicio_ambiguo", opciones: resolved.candidates.map((c) => c.serviceName), mensaje: "Pedí al paciente que elija uno de estos servicios." };
@@ -199,6 +216,8 @@ async function consultarDisponibilidad(args) {
   if (resolved.status !== "matched" || !resolved.service) {
     return { estado: "servicio_no_encontrado", mensaje: "Ese servicio no está disponible para agendar por este canal." };
   }
+  const restricted = identityGuard(resolved.service, ctx);
+  if (restricted) return restricted;
   const date = toIsoDate(args?.fecha);
   if (!date) return { estado: "fecha_invalida", mensaje: "No se pudo interpretar la fecha. Pedí una fecha concreta." };
   let result;
@@ -246,6 +265,8 @@ async function crearCita(args, ctx) {
   const resolved = await resolveService(args?.servicio || "");
   if (resolved.status === "ambiguous") return { estado: "servicio_ambiguo", opciones: resolved.candidates.map((c) => c.serviceName) };
   if (resolved.status !== "matched" || !resolved.service) return { estado: "servicio_no_encontrado" };
+  const restricted = identityGuard(resolved.service, ctx);
+  if (restricted) return restricted;
   const date = toIsoDate(args?.fecha);
   const time = toHhmm(args?.hora);
   if (!date || !time) return { estado: "datos_invalidos", mensaje: "Fecha u hora no válidas." };

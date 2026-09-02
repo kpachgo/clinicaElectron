@@ -79,6 +79,17 @@ async function processBatch(batch) {
     };
     console.log("[Mensajes][IA] Turno resuelto", { batchId: batch.id, conversationId: conversation.id, steps: result.steps, transfer: Boolean(result.transfer), tools: result.trace.filter((t) => t.type === "tool").map((t) => `${t.name}:${t.result?.estado || "?"}`) });
 
+    // Servicio de paciente registrado pedido desde un chat sin identificar: no se
+    // envía nada aunque el modelo haya redactado una respuesta. Recepción identifica
+    // al paciente y libera la conversación; ahí resumeAssistantQueue reencola el
+    // mensaje pendiente y la IA agenda con normalidad.
+    const restricted = result.trace.find((entry) => entry.type === "tool" && entry.result?._forceHumanReview)?.result?._forceHumanReview;
+    if (restricted) {
+      const state = repo.getConversationState(conversation.id);
+      repo.updateConversationState(conversation.id, { ...state, collected: { ...(state.collected || {}), _humanReviewReason: restricted }, missing: state.missing || [], offeredSlots: state.offeredSlots || [], pendingAction: state.pendingAction || null, humanTransition: true });
+      console.log("[Mensajes][IA] Revisión humana por servicio restringido", { batchId: batch.id, conversationId: conversation.id, reason: restricted });
+      return repo.updateResponseQueue(batch.id, { status: "cancelled", error: restricted });
+    }
     if (result.transfer && !answer) { markHumanReview(); return repo.updateResponseQueue(batch.id, { status: "cancelled", error: `Transferido a recepción: ${result.transfer}` }); }
     if (!answer) return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "El asistente no produjo respuesta" });
 

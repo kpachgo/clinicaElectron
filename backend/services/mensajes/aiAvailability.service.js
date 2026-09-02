@@ -48,6 +48,7 @@ function serviceConfig(row, aliases = []) {
      enabled: row.enabled === undefined ? false : Boolean(row.enabled),
     price: row.precioS === null || row.precioS === undefined || row.precioS === "" ? null : Number(row.precioS),
     sharePrice: Boolean(row.share_price),
+    requiresIdentifiedPatient: Boolean(row.requires_identified_patient),
     weeklyHours,
     hasWeeklyHours: Object.keys(weeklyHours).length > 0,
     aliases
@@ -160,6 +161,7 @@ async function updateAiService(serviceId, input, db = getDb()) {
   const capacityPerHour = unlimitedCapacity ? null : Number(input.capacityPerHour);
   const minimumAdvanceMinutes = Number(input.minimumAdvanceMinutes || 0);
   const sharePrice = input.sharePrice === undefined ? null : (input.sharePrice ? 1 : 0);
+  const requiresIdentifiedPatient = input.requiresIdentifiedPatient === undefined ? null : (input.requiresIdentifiedPatient ? 1 : 0);
   if (!Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 1440) throw new Error("Duracion invalida");
   if (!unlimitedCapacity && (!Number.isInteger(capacityPerHour) || capacityPerHour < 1 || capacityPerHour > 100)) throw new Error("Capacidad invalida");
   if (!Number.isInteger(minimumAdvanceMinutes) || minimumAdvanceMinutes < 0 || minimumAdvanceMinutes > 43200) throw new Error("Anticipacion invalida");
@@ -182,7 +184,7 @@ async function updateAiService(serviceId, input, db = getDb()) {
     weeklyHoursJson = JSON.stringify(weeklyHours);
   }
   db.transaction(() => {
-    db.prepare("INSERT INTO ai_service_settings(service_id,duration_minutes,capacity_per_hour,required_questions_json,blocked_weekdays_json,blocked_hours_json,available_hours_json,weekly_hours_json,minimum_advance_minutes,enabled,share_price,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(service_id) DO UPDATE SET duration_minutes=excluded.duration_minutes,capacity_per_hour=excluded.capacity_per_hour,required_questions_json='[]',blocked_weekdays_json='[]',blocked_hours_json='[]',available_hours_json='[]',weekly_hours_json=COALESCE(?,ai_service_settings.weekly_hours_json),minimum_advance_minutes=excluded.minimum_advance_minutes,enabled=excluded.enabled,share_price=COALESCE(?,ai_service_settings.share_price),updated_at=datetime('now')").run(id, durationMinutes, capacityPerHour, '[]', '[]', '[]', '[]', weeklyHoursJson ?? '{}', minimumAdvanceMinutes, input.enabled === false ? 0 : 1, sharePrice ?? 0, weeklyHoursJson, sharePrice);
+    db.prepare("INSERT INTO ai_service_settings(service_id,duration_minutes,capacity_per_hour,required_questions_json,blocked_weekdays_json,blocked_hours_json,available_hours_json,weekly_hours_json,minimum_advance_minutes,enabled,share_price,requires_identified_patient,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now')) ON CONFLICT(service_id) DO UPDATE SET duration_minutes=excluded.duration_minutes,capacity_per_hour=excluded.capacity_per_hour,required_questions_json='[]',blocked_weekdays_json='[]',blocked_hours_json='[]',available_hours_json='[]',weekly_hours_json=COALESCE(?,ai_service_settings.weekly_hours_json),minimum_advance_minutes=excluded.minimum_advance_minutes,enabled=excluded.enabled,share_price=COALESCE(?,ai_service_settings.share_price),requires_identified_patient=COALESCE(?,ai_service_settings.requires_identified_patient),updated_at=datetime('now')").run(id, durationMinutes, capacityPerHour, '[]', '[]', '[]', '[]', weeklyHoursJson ?? '{}', minimumAdvanceMinutes, input.enabled === false ? 0 : 1, sharePrice ?? 0, requiresIdentifiedPatient ?? 0, weeklyHoursJson, sharePrice, requiresIdentifiedPatient);
     db.prepare("DELETE FROM ai_service_aliases WHERE service_id=?").run(id);
     const insert = db.prepare("INSERT INTO ai_service_aliases(service_id,alias,normalized_alias) VALUES (?,?,?)");
     aliases.forEach((alias) => insert.run(id, alias, normalizeText(alias)));

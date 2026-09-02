@@ -41,7 +41,7 @@ const SINGLETON_COLUMNS = {
 
 const SERVICE_COLUMNS = [
   "service_id", "duration_minutes", "capacity_per_hour", "minimum_advance_minutes",
-  "enabled", "share_price", "weekly_hours_json"
+  "enabled", "share_price", "requires_identified_patient", "weekly_hours_json"
 ];
 
 function todayIso() {
@@ -159,8 +159,8 @@ async function importConfig(payload, db = getDb()) {
     if (Array.isArray(payload.serviceSettings)) {
       const upsert = db.prepare(`
         INSERT INTO ai_service_settings
-          (service_id, duration_minutes, capacity_per_hour, required_questions_json, blocked_weekdays_json, blocked_hours_json, available_hours_json, weekly_hours_json, minimum_advance_minutes, enabled, share_price, updated_at)
-        VALUES (@service_id, @duration_minutes, @capacity_per_hour, '[]', '[]', '[]', '[]', @weekly_hours_json, @minimum_advance_minutes, @enabled, @share_price, datetime('now'))
+          (service_id, duration_minutes, capacity_per_hour, required_questions_json, blocked_weekdays_json, blocked_hours_json, available_hours_json, weekly_hours_json, minimum_advance_minutes, enabled, share_price, requires_identified_patient, updated_at)
+        VALUES (@service_id, @duration_minutes, @capacity_per_hour, '[]', '[]', '[]', '[]', @weekly_hours_json, @minimum_advance_minutes, @enabled, @share_price, @requires_identified_patient, datetime('now'))
         ON CONFLICT(service_id) DO UPDATE SET
           duration_minutes=excluded.duration_minutes,
           capacity_per_hour=excluded.capacity_per_hour,
@@ -168,6 +168,7 @@ async function importConfig(payload, db = getDb()) {
           minimum_advance_minutes=excluded.minimum_advance_minutes,
           enabled=excluded.enabled,
           share_price=excluded.share_price,
+          requires_identified_patient=excluded.requires_identified_patient,
           updated_at=datetime('now')
       `);
       const delAliases = db.prepare("DELETE FROM ai_service_aliases WHERE service_id=?");
@@ -187,7 +188,8 @@ async function importConfig(payload, db = getDb()) {
           weekly_hours_json: typeof svc.weekly_hours_json === "string" ? svc.weekly_hours_json : "{}",
           minimum_advance_minutes: Number(svc.minimum_advance_minutes) || 0,
           enabled: svc.enabled ? 1 : 0,
-          share_price: svc.share_price ? 1 : 0
+          share_price: svc.share_price ? 1 : 0,
+          requires_identified_patient: svc.requires_identified_patient ? 1 : 0
         });
         summary.services += 1;
         delAliases.run(id);
