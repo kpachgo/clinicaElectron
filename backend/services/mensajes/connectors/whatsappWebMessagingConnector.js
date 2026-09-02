@@ -26,6 +26,15 @@ function persistedPhone(phone) {
   return digits.startsWith("503") && digits.length === 11 ? digits.slice(3) : digits;
 }
 
+// Un LID tiene 13-16 digitos y pasa cualquier chequeo generico de "esto parece un
+// telefono". La agenda y el expediente usan el numero local salvadoreno de 8
+// digitos (11 con el prefijo 503), asi que ese es el unico formato que aceptamos
+// como identidad de una conversacion. Todo lo demas queda sin resolver hasta que
+// WhatsApp devuelva el numero real.
+function isRealPhone(value) {
+  return persistedPhone(value).length === 8;
+}
+
 // WhatsApp multi-dispositivo agrega un sufijo ":<n>" al JID del remitente
 // cuando el contacto tiene un dispositivo vinculado (frecuente en @lid).
 // El chat en si nunca lleva ese sufijo; si se cuela, cada mensaje crea una
@@ -293,15 +302,15 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       }
     }
     if (chat?.isGroup) return { discarded: "grupo" };
-    let contact = null;
-    if (typeof message.getContact === "function") {
-      try {
-        contact = await message.getContact();
-      } catch (error) {
-        console.warn("[Mensajes][WhatsApp] No se pudo consultar el contacto; se usara metadata minima", { chatId, error: error?.message });
-      }
-    }
+    const contact = await this.getChatContact(message, chat, chatId, direction);
+    // Aun con el contacto del chat, si lo que resolvimos es nuestra propia cuenta no
+    // lo usamos: sellar la conversacion con el numero y el nombre de la clinica la
+    // vuelve indistinguible de cualquier otro chat sellado igual, y el merge por
+    // telefono del repositorio termina fusionando dos chats distintos.
+    const ownNumber = persistedPhone(this.client?.info?.wid?.user || "");
     let contactNumber = String(contact?.number || "").replace(/\D/g, "");
+    const contactIsSelf = Boolean(ownNumber) && persistedPhone(contactNumber) === ownNumber;
+    if (contactIsSelf) contactNumber = "";
     if (!contactNumber && chatId.endsWith("@lid") && typeof this.client?.getContactLidAndPhone === "function") {
       try {
         const resolved = await this.client.getContactLidAndPhone([chatId]);
@@ -314,14 +323,35 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     const fallback = chatId.includes("@") ? chatId.slice(0, chatId.indexOf("@")) : chatId;
     const phone = contactNumber || (chatId.endsWith("@lid") ? "" : fallback);
     if (!phone && !chatId.endsWith("@lid")) return { discarded: "telefono_no_resoluble", chatId };
+    // Solo un telefono real se propaga como identidad de la conversacion.
+    const identity = isRealPhone(phone) ? normalizePhone(persistedPhone(phone)) : null;
     return {
       // La Agenda y la lista de teléfonos usan el número local de 8 dígitos.
       // El @c.us/@lid completo se conserva aparte para el destino de WhatsApp.
-      phone: phone ? normalizePhone(persistedPhone(phone)) : null,
+      phone: identity,
       waChatId: chatId,
-      waContactNumber: phone ? normalizePhone(persistedPhone(phone)) : null,
-      waDisplayName: contact?.pushname || contact?.name || contact?.shortName || chat?.name || null
+      waContactNumber: identity,
+      waDisplayName: contactIsSelf
+        ? (chat?.name || null)
+        : (contact?.pushname || contact?.name || contact?.shortName || chat?.name || null)
     };
+  }
+
+  // Devuelve el contacto DEL CHAT, nunca el del remitente.
+  // message.getContact() hace getContactById(author || from) y en un chat individual
+  // el "from" de un mensaje fromMe somos nosotros: usarlo en salientes devuelve la
+  // cuenta de la clinica (su pushname y su numero) en lugar del paciente.
+  async getChatContact(message, chat, chatId, direction) {
+    if (direction === "incoming" && typeof message?.getContact === "function") {
+      try { return await message.getContact(); } catch (error) { console.warn("[Mensajes][WhatsApp] No se pudo consultar el contacto del mensaje", { chatId, error: error?.message }); }
+    }
+    if (chat && typeof chat.getContact === "function") {
+      try { return await chat.getContact(); } catch (error) { console.warn("[Mensajes][WhatsApp] No se pudo consultar el contacto del chat", { chatId, error: error?.message }); }
+    }
+    if (chatId && typeof this.client?.getContactById === "function") {
+      try { return await this.client.getContactById(chatId); } catch (error) { console.warn("[Mensajes][WhatsApp] No se pudo consultar el contacto por chatId", { chatId, error: error?.message }); }
+    }
+    return null;
   }
 
   async handleIncoming(message, eventName = "message") {
@@ -462,7 +492,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     if (typeof chatId !== "string" || !chatId.endsWith("@lid") || typeof this.client?.getContactLidAndPhone !== "function") return null;
     const resolved = await this.client.getContactLidAndPhone([chatId]);
     const phoneId = resolved?.[0]?.pn;
-    return phoneId && phoneId.endsWith("@c.us") ? normalizePhone(phoneId) : null;
+    return phoneId && phoneId.endsWith("@c.us") && isRealPhone(phoneId) ? normalizePhone(persistedPhone(phoneId)) : null;
   }
 
   async sendMessageOnce(phone, text, options = {}) {
@@ -477,7 +507,10 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       const phoneId = resolved?.[0]?.pn;
       if (phoneId) {
         sendChatId = phoneId;
-        normalizedPhone = normalizePhone(phoneId);
+        // persistedPhone: la conversacion guarda el numero local de 8 digitos. Sin
+        // esto el mismo chat queda a veces como 503XXXXXXXX y a veces como XXXXXXXX,
+        // y cada forma crea o fusiona una conversacion distinta.
+        normalizedPhone = normalizePhone(persistedPhone(phoneId));
         console.log("[Mensajes][WhatsApp] LID convertido a telefono", { lid: chatId, phoneId });
       }
     }
@@ -501,13 +534,16 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     const externalId = this.getDirectExternalId(message)
       || `${this.instanceId}-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (externalId) this.knownOutgoingIds.add(externalId);
+    // normalizedPhone puede ser el LID (cuando la conversacion todavia no tiene
+    // telefono) o el placeholder "0000000". Ninguno de los dos es una identidad.
+    const identity = isRealPhone(normalizedPhone) ? persistedPhone(normalizedPhone) : null;
     const normalized = normalizeIncomingMessage({
       externalId,
-      phone: normalizedPhone,
+      phone: identity,
       // Conservamos el identificador original de la conversacion. El @c.us
       // resuelto es solo el destino de envio, no una conversacion nueva.
       waChatId: chatId,
-      waContactNumber: normalizedPhone,
+      waContactNumber: identity,
       text: text.trim(),
       direction: "outgoing",
       author: options.author || "human",

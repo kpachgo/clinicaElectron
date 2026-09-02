@@ -1,8 +1,19 @@
 const { getDb } = require("../../services/mensajesDatabase.service");
 const { normalizePhone } = require("./connectors/messagingConnector");
 
+// Mismo criterio que el conector: un LID (13-16 digitos) parece un telefono pero no
+// lo es. Solo el numero local salvadoreno de 8 digitos (11 con el 503) cuenta como
+// identidad de la conversacion; cualquier otra cosa se trata como "sin resolver".
+function persistedPhone(value) { const digits = String(value || "").replace(/\D/g, ""); return digits.startsWith("503") && digits.length === 11 ? digits.slice(3) : digits; }
+function isRealPhone(value, waChatId = "") {
+  const digits = persistedPhone(value);
+  if (digits.length !== 8) return false;
+  const raw = String(waChatId || "");
+  return !raw.endsWith("@lid") || digits !== raw.slice(0, raw.indexOf("@"));
+}
+
 function toConversation(row) {
-  return row ? { ...row, patientId: row.patient_id, attentionMode: row.attention_mode, humanOwnerId: row.human_owner_id, responseDelayMin: row.response_delay_min, responseDelayMax: row.response_delay_max, waChatId: row.wa_chat_id, waContactNumber: row.wa_contact_number, waDisplayName: row.wa_display_name, lifecycleState: row.lifecycle_state, lastMessageDirection: row.last_message_direction, lastMessageAt: row.last_message_at, lastMessageType: row.last_message_type, lastMessageSource: row.last_message_source, lastInboundAt: row.last_inbound_at, lastOutboundAt: row.last_outbound_at, followUpSent: Boolean(row.follow_up_sent), humanReviewReason: row.human_review_reason, phoneResolved: Boolean(row.wa_contact_number || /^\d{7,15}$/.test(String(row.phone || ""))), createdAt: row.created_at, updatedAt: row.updated_at } : null;
+  return row ? { ...row, patientId: row.patient_id, attentionMode: row.attention_mode, humanOwnerId: row.human_owner_id, responseDelayMin: row.response_delay_min, responseDelayMax: row.response_delay_max, waChatId: row.wa_chat_id, waContactNumber: row.wa_contact_number, waDisplayName: row.wa_display_name, lifecycleState: row.lifecycle_state, lastMessageDirection: row.last_message_direction, lastMessageAt: row.last_message_at, lastMessageType: row.last_message_type, lastMessageSource: row.last_message_source, lastInboundAt: row.last_inbound_at, lastOutboundAt: row.last_outbound_at, followUpSent: Boolean(row.follow_up_sent), humanReviewReason: row.human_review_reason, phoneResolved: isRealPhone(row.wa_contact_number, row.wa_chat_id) || isRealPhone(row.phone, row.wa_chat_id), createdAt: row.created_at, updatedAt: row.updated_at } : null;
 }
 
 function toMessage(row) {
@@ -19,7 +30,10 @@ class MensajesRepository {
     const waChatId = typeof options.waChatId === "string" && options.waChatId.trim() ? options.waChatId.trim() : null;
     const rawPhone = String(phone || "");
     const normalizedPhone = waChatId?.endsWith("@lid") && rawPhone === waChatId ? null : (phone ? normalizePhone(phone) : null);
-    const waContactNumber = options.waContactNumber ? normalizePhone(options.waContactNumber) : null;
+    // Un LID, la forma con prefijo 503 o el numero de la propia clinica no pueden
+    // pisar el telefono de la conversacion: conversations.phone es UNIQUE y el merge
+    // de mas abajo fusiona cualquier otra conversacion que comparta ese valor.
+    const waContactNumber = isRealPhone(options.waContactNumber, waChatId) ? normalizePhone(persistedPhone(options.waContactNumber)) : null;
     const waDisplayName = typeof options.waDisplayName === "string" && options.waDisplayName.trim() ? options.waDisplayName.trim() : null;
     const existing = waChatId
       ? this.db.prepare("SELECT * FROM conversations WHERE wa_chat_id=? AND status <> 'closed' LIMIT 1").get(waChatId)
@@ -31,7 +45,11 @@ class MensajesRepository {
       if (waContactNumber) this.mergeDuplicateWhatsAppConversation(waChatId, waContactNumber);
       const replaceSimulationChat = waChatId && !waChatId.startsWith("simulated:") && String(existing.wa_chat_id || "").startsWith("simulated:");
       const chatId = replaceSimulationChat ? waChatId : (existing.wa_chat_id || waChatId);
-      this.db.prepare("UPDATE conversations SET wa_chat_id=?, wa_contact_number=COALESCE(?,wa_contact_number), wa_display_name=COALESCE(?,wa_display_name), phone=CASE WHEN ? IS NOT NULL THEN ? ELSE phone END WHERE id=?").run(chatId, waContactNumber, waDisplayName, waContactNumber, waContactNumber, existing.id);
+      // Si el teléfono quedó en otra conversación que no se pudo fusionar (otro chat
+      // de WhatsApp real), no lo pisamos: conversations.phone es UNIQUE y la escritura
+      // abortaría la transacción entera, perdiendo el mensaje.
+      const phoneToStamp = waContactNumber && !this.phoneTakenByOther(waContactNumber, existing.id) ? waContactNumber : null;
+      this.db.prepare("UPDATE conversations SET wa_chat_id=?, wa_contact_number=COALESCE(?,wa_contact_number), wa_display_name=COALESCE(?,wa_display_name), phone=CASE WHEN ? IS NOT NULL THEN ? ELSE phone END WHERE id=?").run(chatId, waContactNumber, waDisplayName, phoneToStamp, phoneToStamp, existing.id);
       return this.getConversation(existing.id);
     }
     const byPhone = waChatId && normalizedPhone ? this.db.prepare("SELECT * FROM conversations WHERE phone=? AND status <> 'closed' LIMIT 1").get(normalizedPhone) : null;
@@ -50,11 +68,33 @@ class MensajesRepository {
   }
 
   updateWhatsAppContact(conversationId, phone, displayName = null) {
-    const normalized = normalizePhone(phone);
+    if (!isRealPhone(phone)) return this.getConversation(conversationId);
+    const normalized = normalizePhone(persistedPhone(phone));
+    const own = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=?").get(conversationId);
     const duplicate = this.db.prepare("SELECT * FROM conversations WHERE phone=? AND id<>? AND status <> 'closed' LIMIT 1").get(normalized, conversationId);
+    if (duplicate && !this.isAbsorbable(duplicate, own?.wa_chat_id || "")) {
+      // El teléfono ya identifica a otro chat de WhatsApp: solo actualizamos el nombre.
+      this.db.prepare("UPDATE conversations SET wa_display_name=COALESCE(?,wa_display_name), updated_at=datetime('now') WHERE id=?").run(displayName || null, conversationId);
+      return this.getConversation(conversationId);
+    }
     if (duplicate) this.mergeConversation(duplicate.id, conversationId);
     this.db.prepare("UPDATE conversations SET phone=?, wa_contact_number=?, wa_display_name=COALESCE(?,wa_display_name), updated_at=datetime('now') WHERE id=?").run(normalized, normalized, displayName || null, conversationId);
     return this.getConversation(conversationId);
+  }
+
+  // Una conversación solo se puede absorber si NO representa otro chat de WhatsApp:
+  // sin wa_chat_id (registro creado solo por teléfono), simulada, o el mismo chat.
+  // Dos chats reales distintos nunca son la misma conversación por más que compartan
+  // el teléfono, y fusionarlos mueve los mensajes de un paciente al chat de otro y
+  // borra el original.
+  isAbsorbable(candidate, waChatId) {
+    const chatId = String(candidate?.wa_chat_id || "");
+    return !chatId || chatId === waChatId || chatId.startsWith("simulated:");
+  }
+
+  phoneTakenByOther(phone, conversationId) {
+    const normalized = normalizePhone(persistedPhone(phone));
+    return Boolean(this.db.prepare("SELECT 1 FROM conversations WHERE phone=? AND id<>? AND status <> 'closed' LIMIT 1").get(normalized, conversationId));
   }
 
   mergeConversation(sourceId, targetId) {
@@ -74,11 +114,17 @@ class MensajesRepository {
   }
 
   mergeDuplicateWhatsAppConversation(waChatId, phone) {
-    if (!waChatId || !phone) return null;
-    const normalized = normalizePhone(phone);
+    if (!waChatId || !isRealPhone(phone, waChatId)) return null;
+    const normalized = normalizePhone(persistedPhone(phone));
     const target = this.db.prepare("SELECT * FROM conversations WHERE wa_chat_id=? AND status <> 'closed' LIMIT 1").get(waChatId);
     if (!target) return null;
     const duplicate = this.db.prepare("SELECT * FROM conversations WHERE phone=? AND id<>? AND status <> 'closed' ORDER BY id LIMIT 1").get(normalized, target.id);
+    if (duplicate && !this.isAbsorbable(duplicate, waChatId)) {
+      // El teléfono pertenece a otro chat real. No se fusiona ni se pisa el teléfono:
+      // el wa_contact_number del target queda como está y este chat sigue con su
+      // identidad propia hasta que WhatsApp devuelva un número que sea solo suyo.
+      return this.getConversation(target.id);
+    }
     if (duplicate) this.mergeConversation(duplicate.id, target.id);
     this.db.prepare("UPDATE conversations SET phone=?, wa_contact_number=? WHERE id=?").run(normalized, normalized, target.id);
     return this.getConversation(target.id);
