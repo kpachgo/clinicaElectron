@@ -1986,10 +1986,8 @@ function renderPaciente(container) {
             <div id="odonto-dictado-step-cuadrante" class="odonto-dictado-step">
               <p>Selecciona el cuadrante (piezas permanentes):</p>
               <div class="odonto-dictado-cuadrantes">
-                <button type="button" data-cuadrante="1">Cuadrante 1<br><small>18&ndash;11</small></button>
-                <button type="button" data-cuadrante="2">Cuadrante 2<br><small>21&ndash;28</small></button>
-                <button type="button" data-cuadrante="4">Cuadrante 4<br><small>48&ndash;41</small></button>
-                <button type="button" data-cuadrante="3">Cuadrante 3<br><small>31&ndash;38</small></button>
+                <button type="button" data-cuadrante="superior">Cuadrante superior<br><small>18&ndash;11 y 21&ndash;28</small></button>
+                <button type="button" data-cuadrante="inferior">Cuadrante inferior<br><small>48&ndash;41 y 31&ndash;38</small></button>
               </div>
             </div>
 

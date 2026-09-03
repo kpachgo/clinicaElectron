@@ -3330,14 +3330,15 @@ window.odontogramaAPI = {
 };
 
 /* ==========================================================================
-   DICTADO POR VOZ — solo cuadrantes permanentes (Q1-Q4) por ahora.
+   DICTADO POR VOZ — cuadrante superior (Q1+Q2) e inferior (Q4+Q3), solo permanentes.
    Reusa applyCariesPequena/applyCorona/etc. (definidas mas arriba en este
    mismo cierre) simulando currentSurface, igual que un clic manual, para que
    el resultado sea identico a editar a mano.
 ========================================================================== */
 (function initOdontoDictado() {
     const DICTADO_CORDAL_PIEZAS = new Set([18, 28, 38, 48]);
-    const DICTADO_CUADRANTE_PIEZAS = { 1: Q1, 2: Q2, 3: Q3, 4: Q4 };
+    const DICTADO_CUADRANTE_PIEZAS = { superior: [...ROW_TOP], inferior: [...ROW_BOTTOM] };
+    const DICTADO_CUADRANTE_LABEL = { superior: "superior", inferior: "inferior" };
     // Tratamientos cuyo color = estado (rojo=necesita, naranja=en proceso, azul=buen estado).
     const DICTADO_TRATAMIENTOS_CON_COLOR = new Set(["corona", "endodoncia", "implante", "sellante", "reconstruccion"]);
     const DICTADO_ESTADO_COLOR = [
@@ -3423,8 +3424,8 @@ window.odontogramaAPI = {
     if (dictadoStepCuadrante) {
         dictadoStepCuadrante.querySelectorAll("[data-cuadrante]").forEach((btn) => {
             btn.onclick = () => {
-                dictadoCuadranteActual = Number(btn.dataset.cuadrante);
-                if (dictadoCuadranteLabel) dictadoCuadranteLabel.textContent = String(dictadoCuadranteActual);
+                dictadoCuadranteActual = btn.dataset.cuadrante;
+                if (dictadoCuadranteLabel) dictadoCuadranteLabel.textContent = DICTADO_CUADRANTE_LABEL[dictadoCuadranteActual] || dictadoCuadranteActual;
                 if (dictadoTextarea) dictadoTextarea.value = "";
                 dictadoMostrarPaso("texto");
                 if (dictadoTextarea) dictadoTextarea.focus();
@@ -3519,7 +3520,7 @@ window.odontogramaAPI = {
                 }
                 if (!piezasCuadrante.includes(item.pieza)) {
                     copia.estado = "duda";
-                    copia.motivos.push(`La pieza ${item.pieza} no pertenece al cuadrante ${dictadoCuadranteActual} seleccionado`);
+                    copia.motivos.push(`La pieza ${item.pieza} no pertenece al cuadrante ${DICTADO_CUADRANTE_LABEL[dictadoCuadranteActual] || dictadoCuadranteActual} seleccionado`);
                 } else {
                     const cfg = DICTADO_TRATAMIENTO_MAP[copia.tratamiento];
                     if (cfg && cfg.requiereCordal && !DICTADO_CORDAL_PIEZAS.has(copia.pieza)) {
@@ -3533,7 +3534,7 @@ window.odontogramaAPI = {
             piezasCuadrante.forEach((pieza) => {
                 if (!vistos.has(pieza)) {
                     items.push({
-                        pieza, cuadrante: dictadoCuadranteActual, tratamiento: "empty",
+                        pieza, cuadrante: Math.floor(pieza / 10), tratamiento: "empty",
                         estado: "ok", motivos: ["No mencionado, se asume sana"], original: null
                     });
                 }

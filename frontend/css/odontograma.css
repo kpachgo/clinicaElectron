@@ -743,7 +743,7 @@ body[data-theme="vampire"].dark-mode .odonto-piece-input.is-odontograma-locked {
 
 .odonto-dictado-cuadrantes {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 10px;
 }
 
