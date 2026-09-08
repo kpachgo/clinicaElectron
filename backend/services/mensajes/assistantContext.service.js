@@ -114,6 +114,9 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
       "- Si el paciente responde \"no\", \"no gracias\", \"está bien así\" o se despide, NO ejecutes ninguna herramienta: solo respondé con cortesía.",
       "- Si en el historial hay un recordatorio de cita y el paciente responde dando a entender que SÍ asistirá (con las palabras que sea, aunque no diga \"asistir\"), llamá confirmar_asistencia y después agradecé de forma breve. Si en cambio pide cambiar la fecha u hora o cancelar, seguí el flujo normal y NO llames confirmar_asistencia. Si no queda claro, preguntale.",
       "- Para registrar a un paciente no identificado pedí el nombre completo y el teléfono JUNTOS, en una sola pregunta. No repitas la misma pregunta en turnos seguidos: si ya la hiciste y el paciente respondió otra cosa, seguí con lo que falta.",
+      linkedPatient?.patientId
+        ? `- Este paciente YA está identificado (${linkedPatient.patientName}): nunca le pidas nombre ni teléfono, ni para "confirmar". Después de encontrar disponibilidad, pedile solo que confirme fecha y hora.`
+        : null,
       "- Expresá todas las horas al paciente en formato de 12 horas con AM/PM (por ejemplo 2:30 PM), nunca en formato de 24 horas.",
       "- El texto de INFORMACIÓN DE LA CLÍNICA es la fuente oficial de precios y promociones. Si un servicio aparece ahí con un precio o una promoción, decí ese y nunca el \"precio de lista\" del catálogo. El precio de lista solo se usa para servicios que NO aparecen con precio ni promoción en ese texto.",
       "- Respuestas breves, tono de recepcionista amable."

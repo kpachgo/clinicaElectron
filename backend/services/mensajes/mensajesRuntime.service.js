@@ -11,6 +11,7 @@ const simulationConnector = new SimulatedMessagingConnector();
 const repository = new MensajesRepository();
 let started = false;
 let queueTimer = null;
+let lidRefreshTimer = null;
 let flushingOutgoing = false;
 let flushingOutgoingPromise = null;
 let connectedAtMs = 0;
@@ -29,6 +30,10 @@ async function start() {
   if (typeof connector.setTyping === "function") setTypingHandler((phone, enabled, options = {}) => connector.setTyping(phone, enabled, options));
   if (typeof connector.sendMessage === "function") setSendHandler(sendAiMessage);
   queueTimer = null;
+  if (typeof connector.resolvePhoneForChatId === "function" && !lidRefreshTimer) {
+    lidRefreshTimer = setInterval(() => void refreshLidConversations(), 3 * 60 * 1000);
+    lidRefreshTimer.unref?.();
+  }
   started = true;
   if (simulationConnector.getStatus().status !== "connected") await simulationConnector.connect();
   if (simulatedConnector && connector.getStatus().status !== "connected") {
@@ -40,7 +45,7 @@ async function start() {
 async function refreshLidConversations() {
   if (typeof connector.resolvePhoneForChatId !== "function") return;
   for (const conversation of repository.listConversations({ limit: 200 })) {
-    if (!conversation.waChatId?.endsWith("@lid")) continue;
+    if (!conversation.waChatId?.endsWith("@lid") || conversation.phoneResolved) continue;
     try {
       const phone = await connector.resolvePhoneForChatId(conversation.waChatId);
       if (phone && phone !== conversation.phone) repository.updateWhatsAppContact(conversation.id, phone);
@@ -52,6 +57,7 @@ async function refreshLidConversations() {
 async function connectConnector() { if (!started) await start(); return connector.connect(); }
 async function stop() {
   if (queueTimer) { clearInterval(queueTimer); queueTimer = null; }
+  if (lidRefreshTimer) { clearInterval(lidRefreshTimer); lidRefreshTimer = null; }
   if (started) {
     if (typeof connector.shutdown === "function") await connector.shutdown();
     else await connector.disconnect();

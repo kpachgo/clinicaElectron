@@ -83,13 +83,21 @@ class MensajesRepository {
   }
 
   // Una conversación solo se puede absorber si NO representa otro chat de WhatsApp:
-  // sin wa_chat_id (registro creado solo por teléfono), simulada, o el mismo chat.
-  // Dos chats reales distintos nunca son la misma conversación por más que compartan
-  // el teléfono, y fusionarlos mueve los mensajes de un paciente al chat de otro y
-  // borra el original.
+  // sin wa_chat_id (registro creado solo por teléfono), simulada, el mismo chat, o
+  // un chat @c.us que nunca recibió respuesta (el cascarón que deja un recordatorio
+  // enviado a un número con el que la cuenta nunca había hablado: WhatsApp identifica
+  // la respuesta con un @lid propio y esa se vuelve la conversación real).
+  // Dos chats reales distintos (con historial en ambos sentidos) nunca son la misma
+  // conversación por más que compartan el teléfono, y fusionarlos movería los
+  // mensajes de un paciente al chat de otro y borraría el original.
   isAbsorbable(candidate, waChatId) {
     const chatId = String(candidate?.wa_chat_id || "");
-    return !chatId || chatId === waChatId || chatId.startsWith("simulated:");
+    if (!chatId || chatId === waChatId || chatId.startsWith("simulated:")) return true;
+    return chatId.endsWith("@c.us") && !this.hasIncomingMessages(candidate.id);
+  }
+
+  hasIncomingMessages(conversationId) {
+    return Boolean(this.db.prepare("SELECT 1 FROM messages WHERE conversation_id=? AND direction='incoming' LIMIT 1").get(conversationId));
   }
 
   phoneTakenByOther(phone, conversationId) {
@@ -100,6 +108,7 @@ class MensajesRepository {
   mergeConversation(sourceId, targetId) {
     if (sourceId === targetId) return this.getConversation(targetId);
     const tables = ["messages", "message_actions", "ai_runs", "automation_jobs", "outgoing_queue"];
+    const source = this.db.prepare("SELECT patient_id FROM conversations WHERE id=?").get(sourceId);
     const transaction = this.db.transaction(() => {
       for (const table of tables) {
         if (table === "outgoing_queue") continue;
@@ -108,6 +117,9 @@ class MensajesRepository {
       this.db.prepare("DELETE FROM response_queue WHERE conversation_id=?").run(sourceId);
       this.db.prepare("DELETE FROM conversation_state WHERE conversation_id=?").run(sourceId);
       this.db.prepare("DELETE FROM conversations WHERE id=?").run(sourceId);
+      // El chat absorbido puede traer un paciente vinculado que el destino todavia
+      // no tiene (p. ej. el cascaron de un recordatorio ya vinculado por telefono).
+      if (source?.patient_id) this.db.prepare("UPDATE conversations SET patient_id=COALESCE(patient_id,?) WHERE id=?").run(source.patient_id, targetId);
     });
     transaction();
     return this.getConversation(targetId);
