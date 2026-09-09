@@ -296,6 +296,29 @@ const migrations = [
   // revisión humana para que recepción identifique al paciente y la libere.
   // El gate vive en assistantTools y lo aplica aiObserver.
   ,`ALTER TABLE ai_service_settings ADD COLUMN requires_identified_patient INTEGER NOT NULL DEFAULT 0;`
+  // WhatsApp migra contactos de teléfono (@c.us) a LID (@lid) a mitad de
+  // conversación y la librería entrega dos "chats" para la misma persona. Esta
+  // tabla mapea chat ids extra (los que quedaron tras una fusión) a la
+  // conversación sobreviviente, para que los mensajes que sigan llegando por el
+  // id viejo no vuelvan a crear una conversación separada. Ver
+  // findOrCreateConversation / mergeConversation en mensajesRepository.
+  ,`CREATE TABLE IF NOT EXISTS wa_chat_aliases (
+      wa_chat_id TEXT PRIMARY KEY,
+      conversation_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_wa_chat_aliases_conv ON wa_chat_aliases(conversation_id);`
+  // Mapa persistente LID -> teléfono real. WhatsApp tarda (a veces minutos) en
+  // resolver un @lid recién migrado, y mientras tanto la conversación queda
+  // partida. Una vez resuelto se guarda acá para siempre (sobrevive "Borrar
+  // todo", igual que patient_chat_identities): en el próximo mensaje por ese
+  // @lid, findOrCreateConversation ya sabe el teléfono y no vuelve a partir.
+  ,`CREATE TABLE IF NOT EXISTS lid_phone_map (
+      lid TEXT PRIMARY KEY,
+      phone TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_lid_phone_map_phone ON lid_phone_map(phone);`
 ];
 
 function getDb() {

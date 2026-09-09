@@ -26,15 +26,21 @@ async function start() {
   connector.onIncomingMessage((message) => { const saved = repository.saveIncomingMessage(message); const eventDecision = evaluateConversationEvent({ conversationStatus: saved.conversation.status, eventDirection: "incoming", eventType: message.rawType || "text", humanReviewRequired: saved.conversation.attentionMode === "review_required", hasNewPatientMessage: message.source !== "recovery" && message.rawType !== "reaction", isReconnect: message.source === "recovery" }); const allowedByPhone = repository.shouldAllowAutomatedResponseForConversation(saved.conversation.id, message.waContactNumber || message.phone || ""); if (message.rawType === "audio" || message.rawType === "ptt") { const state = repository.getConversationState(saved.conversation.id); repository.updateConversationState(saved.conversation.id, { ...state, collected: { ...(state.collected || {}), _engineFacts: { ...(state.collected?._engineFacts || {}), unreviewedAudio: true } }, humanTransition: true }); } console.log("[Mensajes][SQLite] Mensaje entrante", { externalId: message.externalId, conversationId: saved.conversation.id, duplicate: Boolean(saved.duplicate), rawType: message.rawType || "text", source: message.source || "live", eventAction: eventDecision.action, automatedResponseAllowed: allowedByPhone }); if (saved.message?.id && !saved.duplicate && eventDecision.action === "analyze_incoming" && allowedByPhone) enqueueIncomingResponse(saved.conversation.id, saved.message.id, message.text); });
   if (typeof connector.onOutgoingMessage === "function") connector.onOutgoingMessage((message) => { repository.saveOutgoingMessage({ phone: message.phone, externalId: message.externalId, text: message.text, author: message.author || "human", messageAt: message.messageAt, waChatId: message.waChatId, waContactNumber: message.waContactNumber, waDisplayName: message.waDisplayName, rawType: message.rawType || "text", reactionTargetId: message.reactionTargetId || null, source: message.source || "live" }); });
   connector.onMessageStatus((status) => repository.updateMessageStatus(status.externalId, status.status, status.error));
-  if (typeof connector.onStatus === "function") connector.onStatus((status) => { if (status.status === "connected") { connectedAtMs = Date.now(); console.log("[Mensajes] Conexion restaurada; no se reanudan respuestas ni recordatorios automaticamente"); void refreshLidConversations(); } });
+  if (typeof connector.onStatus === "function") connector.onStatus((status) => { if (status.status === "connected") { connectedAtMs = Date.now(); console.log("[Mensajes] Conexion restaurada; no se reanudan respuestas ni recordatorios automaticamente"); for (const ms of [3000, 15000, 40000, 90000]) setTimeout(() => void refreshLidConversations(), ms).unref?.(); } });
   if (typeof connector.setTyping === "function") setTypingHandler((phone, enabled, options = {}) => connector.setTyping(phone, enabled, options));
   if (typeof connector.sendMessage === "function") setSendHandler(sendAiMessage);
   queueTimer = null;
   if (typeof connector.resolvePhoneForChatId === "function" && !lidRefreshTimer) {
-    lidRefreshTimer = setInterval(() => void refreshLidConversations(), 3 * 60 * 1000);
+    lidRefreshTimer = setInterval(() => void refreshLidConversations(), 60 * 1000);
     lidRefreshTimer.unref?.();
   }
   started = true;
+  try {
+    const merged = repository.reconcilePatientDuplicates();
+    if (merged > 0) console.log("[Mensajes] Conversaciones duplicadas del mismo paciente fusionadas al arrancar", { merged });
+  } catch (error) {
+    console.warn("[Mensajes] No se pudieron reconciliar conversaciones duplicadas", { error: error?.message || String(error) });
+  }
   if (simulationConnector.getStatus().status !== "connected") await simulationConnector.connect();
   if (simulatedConnector && connector.getStatus().status !== "connected") {
     console.log("[Mensajes][Simulado] Conectando automaticamente el conector de pruebas");

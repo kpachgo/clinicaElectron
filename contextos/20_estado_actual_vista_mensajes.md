@@ -165,6 +165,50 @@ Probado con DeepSeek (`cloud` / native). El path `json` (modelos locales) aún n
 - No se tocó nada del conector en vivo (envío/recepción de `whatsappWebMessagingConnector.js`), solo lógica de fusión en SQLite — bajo riesgo, consistente con [[feedback-whatsapp-connector-changes]].
 - **Hallazgo importante para "borrar conversaciones":** ese botón (`deleteAllConversations`) borra físicamente `conversations`/`messages`/etc, pero **no borra `patient_chat_identities`** (a propósito, para no perder la vinculación paciente↔chat de un día a otro). Consecuencia real observada el 2026-09-04: si recepción vincula al mismo paciente dos veces el mismo día en los dos chats divididos (primero el `@lid` real, después por error el `@c.us` cascarón), la regla "solo una vinculación activa por paciente" deja activa la **última**, que puede ser el chat muerto — el paciente queda con vinculación activa apuntando a un chat que nunca va a recibir otro mensaje suyo. Se detectó y corrigió un caso puntual (paciente #748) revisando `patient_chat_identities` a mano; no hay todavía una herramienta que lo detecte solo. Con el fix de arriba ya en producción, este escenario debería dejar de generarse desde el 2026-09-05 en adelante.
 
+## Recuperación de mensajes no leídos al conectar — 2026-09-08
+
+Al conectar (`ready` / state-probe `CONNECTED`), `whatsappWebMessagingConnector.startInboundRecovery()` hace **una sola pasada** (agendada a 0/5/15/30 s por si WhatsApp Web aún sincroniza historial) que trae **solo los chats con `unreadCount > 0`** (tope 50 msgs/chat, sin grupos/newsletter/`status@broadcast`). Cada mensaje entra con `source: "recovery"` → `saveIncomingMessage` deduplica por `externalId` y `evaluateConversationEvent` lo marca `isReconnect` (entra a la vista, **no dispara la IA**).
+
+Antes esta función existía pero **nunca se llamaba** (solo `stopInboundRecovery` estaba cableado); por eso al conectar no aparecía nada de lo pendiente. La versión previa era un poll `setInterval` cada 3 s de por vida; se cambió a pasadas acotadas. `stopInboundRecovery` (en `disconnected`/`disconnect()`) resetea `inboundRecoveryStarted` para que un reconecte vuelva a correr.
+
+Trae las **últimas 40 líneas** (`HISTORY_LIMIT`) de cada chat no leído — entrantes **y salientes** (las salientes se emiten como `outgoingMessage` con `author: "human"`, `source: "recovery"`; no disparan IA) — para que recepción / la IA tengan el hilo con contexto, no solo el mensaje pendiente suelto.
+
+**Por qué no usa `client.getChats()`, `client.getChatById()` ni `client.getMessageById()`:** los dos primeros pasan por `WWebJS.getChatModel()` / `findOrCreateLatestChat`, que en la versión actual de WhatsApp Web + whatsapp-web.js 1.34.7 **revienta con error minificado `'r'` para los chats `@lid`** (casi todos los no leídos). `getMessageById` tampoco: el `_serialized` del `MsgKey` de esos mensajes viene `null`. La pasada, dentro del Store: por cada chat no leído (incluye `unreadCount === -1` / `markedAsUnread`, que es como WhatsApp marca "no leído a mano") llama `WAWebChatLoadMessages.loadEarlierMsgs({ chat })` sobre el **chat crudo** (no el serializado que revienta) hasta juntar 40 líneas, serializa cada mensaje con `WWebJS.getMessageModel(m)` y devuelve los modelos planos; acá se envuelven en `new Message(client, model)`. El log `detalle: [{ enCacheInicial, enCache }]` muestra cuánto había en memoria vs cuánto se cargó. Respaldo para lo que no alcance: el path en vivo (`message`/`message_create`, que ya usa metadata mínima cuando `message.getChat()` falla para `@lid`).
+
+## Duplicados por migración LID de WhatsApp — 2026-09-08
+
+WhatsApp migra contactos de teléfono (`@c.us`) a LID (`@lid`) **a mitad de conversación**; whatsapp-web.js entonces entrega dos "chats" para la misma persona y, como las conversaciones se llavean por `wa_chat_id`, quedaban **dos conversaciones** (una con historial viejo `@c.us`, otra con lo nuevo `@lid`). `isAbsorbable` se negaba a fusionarlas porque ambas tienen mensajes entrantes (guarda anti-familiares que comparten número). La recuperación de no leídos lo destapó de golpe (importa muchos `@lid` juntos).
+
+Fix (solo lógica de fusión en SQLite, `mensajesRepository.service.js`):
+
+- **A — fusión por paciente / teléfono compartido.** `mergeConversationsForSamePatient()` corre en cada `saveIncomingMessage`/`saveOutgoingMessage`. `resolvePatientForConversation()` decide el paciente: el vínculo directo, o —si la conversación no tiene— el de una conversación vinculada que comparta un teléfono real de 8 dígitos (propio o el de su `patient_chat_identities`), **solo si hay un único candidato** (no mezcla familiares homónimos). Esto cubre el caso en que WhatsApp migra a un chat id nuevo `@c.us`/`@lid` que todavía no tiene identidad — la vieja sí. Sobrevive la que tiene teléfono real / es `@c.us`; a igualdad, la más antigua. `mergeConversation` mueve la identidad de paciente al chat id superviviente si este no tenía una. `reconcilePatientDuplicates()` corre al arrancar (`mensajesRuntime.start`): junta por paciente compartido y repasa cada conversación sin paciente por si comparte teléfono con una vinculada.
+- **B — `isAbsorbable` relajado para `@lid`.** Cuando WhatsApp resuelve un `@lid` a un teléfono que ya tiene chat `@c.us`, se permite la fusión **salvo** que cada lado esté vinculado a un paciente **distinto** (familiares). Firma nueva: `isAbsorbable(candidate, waChatId, resolvingPatientId)`.
+- **Tabla `wa_chat_aliases` (`wa_chat_id` → `conversation_id`).** Al fusionar, el chat id del absorbido pasa a resolver a la conversación sobreviviente. `findOrCreateConversation` la consulta antes de crear: sin esto, cada mensaje nuevo por el id viejo volvía a partir la conversación. `mergeConversation` también desactiva `conversation_patient_links` del absorbido.
+- `getPatientLink` es **tolerante a fusiones** (3 caídas): (1) identidad activa por el `wa_chat_id` de la conversación; (2) identidad activa en un chat id que sea **alias** de esta conversación; (3) la identidad activa más reciente del `conversations.patient_id`. Sin esto, tras una fusión el panel mostraba "Paciente no identificado" aunque la columna `patient_id` estuviera puesta. `mergeConversation` además consolida la identidad activa al `wa_chat_id` del superviviente.
+- **Resolución `@lid` → teléfono, más rápida y persistente:**
+  - `resolveLidPhoneLocal()` (nuevo): lookup **sincrónico en la página** con `WAWebApiContact.getPhoneNumber` — instantáneo cuando WhatsApp ya tiene el mapeo (casi siempre para alguien que ya escribió). Se prueba **antes** de `getContactLidAndPhone`, que hace una consulta de red y puede tardar minutos. `getIndividualMeta` y `resolvePhoneForChatId` lo usan primero.
+  - La recuperación de no leídos resuelve el teléfono de cada chat `@lid` **en la misma pasada** (`WAWebApiContact.getPhoneNumber` sobre el chat crudo) y lo adjunta al mensaje (`__lidPhone`), así la fusión ocurre al importar, sin ventana de duplicado.
+  - Tabla **`lid_phone_map`** (`lid` → `phone`, persistente, sobrevive "Borrar todo"): cada resolución exitosa se guarda. `findOrCreateConversation`, si el conector no trajo el teléfono de un `@lid` pero el mapa lo conoce, lo usa → el `@lid` rutea a la conversación `@c.us` existente (el `@lid` pasa a ser el chat id vigente, el `@c.us` queda de alias). Una vez resuelto un contacto, **no se vuelve a partir nunca**.
+  - `refreshLidConversations` corre cada **60 s** (antes 3 min) + ráfagas a los 3/15/40/90 s de conectar.
+  - Logs: `LID -> telefono (local)` / `(red)` / `refresh LID -> telefono (red)`.
+- No implementado (era la opción C): fusión por nombre de WhatsApp idéntico + líneas de tiempo sin solape, para duplicados **sin paciente vinculado ni teléfono resoluble** (p. ej. "Karen" / `9109927637216@lid` + `50360361332@c.us`). Esos solo se juntan si el `@lid` logra resolver su teléfono.
+
+Verificado con `node` contra copia de la DB real: A fusiona y preserva los 35 mensajes en el superviviente, crea el alias, y un mensaje nuevo por el id absorbido rutea al superviviente (no re-split). B fusiona sin paciente y **no** fusiona con pacientes distintos.
+
+## Reloj del paciente adelantado — bucle de la cola de respuestas (2026-09-08)
+
+El `message_at` de los mensajes **entrantes** lo pone el teléfono del paciente y puede venir minutos adelantado o atrasado. Varias comprobaciones de "¿ya respondimos?" comparaban ese timestamp con el de las respuestas de la IA (reloj del servidor): con un reloj adelantado, ninguna respuesta quedaba "después" del mensaje → `listUnansweredAssistantMessages` lo devolvía como pendiente → `tick()` reencolaba → `processBatch` lo cancelaba (por `last_message_direction='outgoing'`) → **bucle: un `response_queue` nuevo cada ~5 s**. Síntomas: "La IA está preparando una respuesta…" perpetuo en el panel, y salientes duplicados (ver abajo).
+
+Fix (todo por **id de mensaje**, que es orden de inserción / reloj del servidor, nunca `message_at`):
+- `listUnansweredAssistantMessages`: "último mensaje del paciente" y "¿hay saliente después?" por `o.id > m.id`.
+- `getLatestMessage` (lo usa `responseQueueStillEligible`): `ORDER BY id DESC`.
+
+## Salientes duplicados por external_id inestable
+
+El mismo mensaje saliente llega por varias vías con `external_id` distinto: el envío directo de la IA (`sendAiMessage`), el evento `message_create`, y la recuperación de no leídos. Para `@lid` el `_serialized` real viene `null` y cada camino sintetiza un id distinto (no determinista) → `saveMessage` no los reconocía como el mismo → fila duplicada (visible en el panel; WhatsApp recibía uno solo).
+
+Fix: `saveMessage`, para `direction='outgoing'`, además del match por `external_id` deduplica por **mismo `conversation_id` + mismo `content` + `message_at` a ≤ 180 s**. Los entrantes NO se deduplican por contenido (el paciente sí manda "?" dos veces). Un mismo template saliente en días distintos se guarda (fuera de la ventana).
+
 ## Pendiente
 
 - Probar el path `json` con un modelo local real (hoy solo se probó `cloud`/native con DeepSeek).

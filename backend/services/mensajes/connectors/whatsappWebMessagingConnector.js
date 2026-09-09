@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { EventEmitter } = require("events");
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { Client, LocalAuth, Message } = require("whatsapp-web.js");
 const {
   MessagingConnector,
   assertConnectorStatus,
@@ -65,8 +65,9 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     this.pendingOutgoingBodies = new Map();
     this.inFlightOutgoing = new Map();
     this.stateProbeTimer = null;
-    this.inboundRecoveryTimer = null;
+    this.inboundRecoveryTimers = new Set();
     this.inboundRecoveryRunning = false;
+    this.inboundRecoveryStarted = false;
     this.cleanupTimers = new Set();
     this.instanceId = `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
@@ -139,6 +140,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       this.error = null;
       this.qrAvailable = false;
       this.emitStatus("connected", { account: client.info?.pushname || null, phone: client.info?.wid?.user || null });
+      this.startInboundRecovery(client);
     });
     client.on("auth_failure", (message) => {
       this.authenticated = false;
@@ -171,6 +173,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
           this.stopStateProbe();
           this.error = null;
           this.emitStatus("connected", { whatsappState: state, account: client.info?.pushname || null, phone: client.info?.wid?.user || null });
+          this.startInboundRecovery(client);
         }
       } catch (error) {
         this.handleError(error);
@@ -185,44 +188,124 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     this.stateProbeTimer = null;
   }
 
+  // Recuperacion de una sola pasada al conectar: trae SOLO los chats con
+  // mensajes sin leer (unreadCount). No es un poll continuo; se agenda un
+  // pequeno set de pasadas por si WhatsApp Web todavia esta sincronizando el
+  // historial cuando emitimos "connected".
   startInboundRecovery(client) {
+    if (this.inboundRecoveryStarted && this.client === client) return;
     this.stopInboundRecovery();
-    const poll = async () => {
+    this.inboundRecoveryStarted = true;
+    const runPass = async () => {
       if (this.client !== client || this.status !== "connected" || this.inboundRecoveryRunning) return;
       this.inboundRecoveryRunning = true;
       try {
-        const chats = await client.getChats();
-        for (const chat of chats) {
+        // Ni client.getChats() ni client.getChatById() sirven aca: ambos pasan
+        // por getChatModel()/findOrCreateLatestChat, que revienta ('r') para los
+        // chats @lid (que son casi todos los no leidos). Tampoco getMessageById:
+        // el _serialized del MsgKey de esos mensajes viene null. Serializamos los
+        // mensajes DENTRO del Store con getMessageModel() y devolvemos los modelos
+        // ya planos, sin tocar el Chat. Traemos las ultimas HISTORY_LIMIT lineas
+        // de cada chat no leido (no solo unreadCount) para que recepcion / la IA
+        // tengan el hilo con contexto, incluidas las respuestas salientes.
+        const HISTORY_LIMIT = 40;
+        const { models, debug } = await client.pupPage.evaluate(async (max) => {
+          const out = [];
+          const debug = [];
+          const arr = window.require("WAWebCollections").Chat.getModelsArray();
+          const loader = (() => { try { return window.require("WAWebChatLoadMessages"); } catch (e) { return null; } })();
+          const apiContact = (() => { try { return window.require("WAWebApiContact"); } catch (e) { return null; } })();
+          for (const c of arr) {
+            if (!c || c.isGroup || !c.id) continue;
+            const id = c.id._serialized;
+            if (id === "status@broadcast" || /@(g\.us|newsletter|broadcast)$/.test(id)) continue;
+            // WhatsApp usa unreadCount === -1 (o markedAsUnread) cuando el chat se
+            // marca "no leido" a mano sin mensajes nuevos: tambien cuenta.
+            const uc = Number(c.unreadCount || 0);
+            const marcadoNoLeido = uc === -1 || c.markedAsUnread === true || c.markedUnread === true;
+            if (uc <= 0 && !marcadoNoLeido) continue;
+            const getMsgs = () => (c.msgs && typeof c.msgs.getModelsArray === "function" ? c.msgs.getModelsArray() : []);
+            const enCacheInicial = getMsgs().length;
+            // Traer historial anterior sin resolver el Chat serializado (que
+            // revienta para @lid): loadEarlierMsgs opera sobre el chat crudo.
+            if (loader && typeof loader.loadEarlierMsgs === "function") {
+              for (let i = 0; i < 6 && getMsgs().length < max; i++) {
+                try {
+                  const loaded = await loader.loadEarlierMsgs({ chat: c });
+                  if (!loaded || !loaded.length) break;
+                } catch (e) { break; }
+              }
+            }
+            const msgs = getMsgs();
+            // Teléfono real del @lid, resuelto acá mismo (sincrónico, sin red):
+            // así el mensaje importado ya trae el número y la fusión ocurre al
+            // guardarlo, sin ventana de conversación duplicada.
+            let lidPhone = null;
+            if (id.endsWith("@lid") && apiContact) {
+              try { const p = apiContact.getPhoneNumber(c.id); lidPhone = p && (p._serialized || (p.user ? p.user + "@c.us" : null)); } catch (e) { /* no disponible */ }
+            }
+            debug.push({ id, unreadCount: c.unreadCount, markedAsUnread: c.markedAsUnread, enCacheInicial, enCache: msgs.length, lidPhone: lidPhone || null });
+            const pick = msgs.filter((m) => m && !m.isNotification && m.id).slice(-max);
+            for (const m of pick) {
+              try { const mm = window.WWebJS.getMessageModel(m); if (lidPhone) mm.__lidPhone = lidPhone; out.push(mm); } catch (e) { /* mensaje suelto que no serializa: lo agarra el path en vivo */ }
+            }
+          }
+          return { models: out, debug };
+        }, HISTORY_LIMIT);
+        const entrantes = models.filter((m) => !m?.id?.fromMe).length;
+        console.log("[Mensajes][WhatsApp] Recuperacion no leidos: pasada", { chats: debug.length, mensajes: models.length, entrantes, salientes: models.length - entrantes });
+        for (const model of models) {
           if (this.client !== client || this.status !== "connected") break;
-          if (chat?.isGroup || chat?.id?._serialized === "status@broadcast" || !Number(chat?.unreadCount || 0)) continue;
-          const messages = await chat.fetchMessages({ limit: Math.min(Math.max(Number(chat.unreadCount) || 1, 1), 50) });
-          for (const message of messages) {
-            if (!message?.fromMe && String(message?.body || "").trim()) await this.handleIncoming(message, "recovery");
+          try {
+            const message = new Message(client, model);
+            if (model.__lidPhone) message.__recoveryLidPhone = model.__lidPhone;
+            const text = String(message.body || "").trim();
+            if (!text) continue;
+            if (message.fromMe) {
+              const meta = await this.getIndividualMeta(message, "outgoing");
+              if (!meta || meta.discarded) continue;
+              this.events.emit("outgoingMessage", normalizeIncomingMessage({
+                externalId: this.getDirectExternalId(message) || `${this.instanceId}-recovery-out-${crypto.createHash("sha1").update(`${meta.waChatId}|${text}|${message.timestamp || ""}`).digest("hex")}`,
+                ...meta,
+                text,
+                direction: "outgoing",
+                author: "human",
+                messageAt: message.timestamp ? new Date(message.timestamp * 1000).toISOString() : new Date().toISOString(),
+                rawType: message.type || "text",
+                reactionTargetId: null,
+                source: "recovery"
+              }));
+            } else {
+              await this.handleIncoming(message, "recovery");
+            }
+          } catch (msgError) {
+            console.warn("[Mensajes][WhatsApp] Recuperacion no leidos: mensaje fallido", { error: msgError?.message || String(msgError) });
           }
         }
       } catch (error) {
-        this.stopInboundRecovery();
         console.error("[Mensajes][WhatsApp] Recuperacion de mensajes no disponible", {
           message: error?.message || String(error),
           stack: error?.stack || null
         });
-        if (this.client === client && this.status === "connected") {
-          this.error = error?.message || String(error);
-          this.emitStatus("error", { error: this.error, recoveryFailed: true });
-        }
       } finally {
         this.inboundRecoveryRunning = false;
       }
     };
-    void poll();
-    this.inboundRecoveryTimer = setInterval(() => void poll(), 3000);
-    this.inboundRecoveryTimer.unref?.();
+    for (const delay of [0, 5000, 15000, 30000]) {
+      const timer = setTimeout(() => {
+        this.inboundRecoveryTimers.delete(timer);
+        void runPass();
+      }, delay);
+      timer.unref?.();
+      this.inboundRecoveryTimers.add(timer);
+    }
   }
 
   stopInboundRecovery() {
-    if (this.inboundRecoveryTimer) clearInterval(this.inboundRecoveryTimer);
-    this.inboundRecoveryTimer = null;
+    for (const timer of this.inboundRecoveryTimers) clearTimeout(timer);
+    this.inboundRecoveryTimers.clear();
     this.inboundRecoveryRunning = false;
+    this.inboundRecoveryStarted = false;
   }
 
   schedulePageCleanup(client) {
@@ -311,12 +394,21 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     let contactNumber = String(contact?.number || "").replace(/\D/g, "");
     const contactIsSelf = Boolean(ownNumber) && persistedPhone(contactNumber) === ownNumber;
     if (contactIsSelf) contactNumber = "";
-    if (!contactNumber && chatId.endsWith("@lid") && typeof this.client?.getContactLidAndPhone === "function") {
-      try {
-        const resolved = await this.client.getContactLidAndPhone([chatId]);
-        contactNumber = String(resolved?.[0]?.pn || "").replace(/\D/g, "");
-      } catch (error) {
-        console.warn("[Mensajes][WhatsApp] No se pudo resolver LID a telefono", { chatId, error: error?.message || String(error) });
+    if (!contactNumber && chatId.endsWith("@lid") && String(message?.__recoveryLidPhone || "").endsWith("@c.us")) {
+      contactNumber = String(message.__recoveryLidPhone).replace(/\D/g, "");
+    }
+    if (!contactNumber && chatId.endsWith("@lid")) {
+      // Primero el lookup local sincrónico (instantáneo si WhatsApp ya tiene el
+      // mapeo); solo si falla, la consulta de red, que puede tardar minutos.
+      contactNumber = String((await this.resolveLidPhoneLocal(chatId)) || "").replace(/\D/g, "");
+      if (!contactNumber && typeof this.client?.getContactLidAndPhone === "function") {
+        try {
+          const resolved = await this.client.getContactLidAndPhone([chatId]);
+          contactNumber = String(resolved?.[0]?.pn || "").replace(/\D/g, "");
+          console.log("[Mensajes][WhatsApp] LID -> telefono (red)", { chatId, pn: resolved?.[0]?.pn || null, resuelto: Boolean(contactNumber) });
+        } catch (error) {
+          console.warn("[Mensajes][WhatsApp] No se pudo resolver LID a telefono", { chatId, error: error?.message || String(error) });
+        }
       }
     }
     // Nunca usamos los digitos de un @lid como telefono.
@@ -488,11 +580,35 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     }
   }
 
+  // Lookup local sincrónico LID -> teléfono: WAWebApiContact.getPhoneNumber es
+  // instantáneo cuando WhatsApp ya tiene el mapeo en memoria (siempre lo tiene
+  // para alguien que ya mandó un mensaje). No hace consulta de red.
+  async resolveLidPhoneLocal(chatId) {
+    if (!this.client?.pupPage || typeof chatId !== "string" || !chatId.endsWith("@lid")) return null;
+    try {
+      const pn = await this.client.pupPage.evaluate((lid) => {
+        try {
+          const wid = window.require("WAWebWidFactory").createWid(lid);
+          const p = window.require("WAWebApiContact").getPhoneNumber(wid);
+          return (p && (p._serialized || p.user)) ? (p._serialized || (p.user + "@c.us")) : null;
+        } catch (e) { return null; }
+      }, chatId);
+      const ok = pn && pn.endsWith("@c.us") && isRealPhone(pn);
+      if (ok) console.log("[Mensajes][WhatsApp] LID -> telefono (local)", { chatId, pn });
+      return ok ? normalizePhone(persistedPhone(pn)) : null;
+    } catch { return null; }
+  }
+
   async resolvePhoneForChatId(chatId) {
-    if (typeof chatId !== "string" || !chatId.endsWith("@lid") || typeof this.client?.getContactLidAndPhone !== "function") return null;
+    if (typeof chatId !== "string" || !chatId.endsWith("@lid")) return null;
+    const local = await this.resolveLidPhoneLocal(chatId);
+    if (local) return local;
+    if (typeof this.client?.getContactLidAndPhone !== "function") return null;
     const resolved = await this.client.getContactLidAndPhone([chatId]);
     const phoneId = resolved?.[0]?.pn;
-    return phoneId && phoneId.endsWith("@c.us") && isRealPhone(phoneId) ? normalizePhone(persistedPhone(phoneId)) : null;
+    const ok = phoneId && phoneId.endsWith("@c.us") && isRealPhone(phoneId);
+    console.log("[Mensajes][WhatsApp] refresh LID -> telefono (red)", { chatId, pn: phoneId || null, aceptado: Boolean(ok) });
+    return ok ? normalizePhone(persistedPhone(phoneId)) : null;
   }
 
   async sendMessageOnce(phone, text, options = {}) {

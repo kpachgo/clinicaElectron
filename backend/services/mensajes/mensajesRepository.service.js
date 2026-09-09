@@ -33,7 +33,15 @@ class MensajesRepository {
     // Un LID, la forma con prefijo 503 o el numero de la propia clinica no pueden
     // pisar el telefono de la conversacion: conversations.phone es UNIQUE y el merge
     // de mas abajo fusiona cualquier otra conversacion que comparta ese valor.
-    const waContactNumber = isRealPhone(options.waContactNumber, waChatId) ? normalizePhone(persistedPhone(options.waContactNumber)) : null;
+    let waContactNumber = isRealPhone(options.waContactNumber, waChatId) ? normalizePhone(persistedPhone(options.waContactNumber)) : null;
+    // Si el conector no resolvió el teléfono de este @lid pero ya lo resolvimos
+    // alguna vez, lo tomamos del mapa persistente: así el merge ocurre en el
+    // primer mensaje, sin ventana de duplicado esperando a WhatsApp.
+    if (!waContactNumber && waChatId && waChatId.endsWith("@lid")) {
+      const known = this.knownLidPhone(waChatId);
+      if (known) waContactNumber = known;
+    }
+    if (waContactNumber && waChatId && waChatId.endsWith("@lid")) this.rememberLidPhone(waChatId, waContactNumber);
     const waDisplayName = typeof options.waDisplayName === "string" && options.waDisplayName.trim() ? options.waDisplayName.trim() : null;
     const existing = waChatId
       ? this.db.prepare("SELECT * FROM conversations WHERE wa_chat_id=? AND status <> 'closed' LIMIT 1").get(waChatId)
@@ -51,6 +59,33 @@ class MensajesRepository {
       const phoneToStamp = waContactNumber && !this.phoneTakenByOther(waContactNumber, existing.id) ? waContactNumber : null;
       this.db.prepare("UPDATE conversations SET wa_chat_id=?, wa_contact_number=COALESCE(?,wa_contact_number), wa_display_name=COALESCE(?,wa_display_name), phone=CASE WHEN ? IS NOT NULL THEN ? ELSE phone END WHERE id=?").run(chatId, waContactNumber, waDisplayName, phoneToStamp, phoneToStamp, existing.id);
       return this.getConversation(existing.id);
+    }
+    // Chat id que quedó apuntando a una conversación tras una fusión (p. ej. el
+    // @c.us viejo de una persona que WhatsApp migró a @lid). Sin esto, cada
+    // mensaje nuevo por el id viejo vuelve a partir la conversación.
+    if (waChatId) {
+      const aliased = this.db.prepare("SELECT c.* FROM wa_chat_aliases a JOIN conversations c ON c.id=a.conversation_id WHERE a.wa_chat_id=? AND c.status <> 'closed' LIMIT 1").get(waChatId);
+      if (aliased) {
+        if (waContactNumber && !this.phoneTakenByOther(waContactNumber, aliased.id)) {
+          this.db.prepare("UPDATE conversations SET wa_contact_number=COALESCE(?,wa_contact_number), wa_display_name=COALESCE(?,wa_display_name) WHERE id=?").run(waContactNumber, waDisplayName, aliased.id);
+        }
+        return this.getConversation(aliased.id);
+      }
+    }
+    // Sabemos el teléfono real de este @lid (lo trajo el conector o el mapa
+    // persistente) y ya hay una conversación con ese teléfono: es la misma
+    // persona. El @lid pasa a ser el chat id vigente y el viejo queda de alias.
+    if (waChatId && waContactNumber && waChatId !== `${waContactNumber}@c.us`) {
+      const byContact = this.db.prepare("SELECT * FROM conversations WHERE phone=? AND status <> 'closed' AND wa_chat_id <> ? ORDER BY id LIMIT 1").get(waContactNumber, waChatId);
+      if (byContact) {
+        if (byContact.wa_chat_id && byContact.wa_chat_id !== waChatId) {
+          this.db.prepare("DELETE FROM wa_chat_aliases WHERE wa_chat_id=?").run(waChatId);
+          this.db.prepare("UPDATE conversations SET wa_chat_id=? WHERE id=?").run(waChatId, byContact.id);
+          this.db.prepare("INSERT INTO wa_chat_aliases (wa_chat_id, conversation_id) VALUES (?, ?) ON CONFLICT(wa_chat_id) DO UPDATE SET conversation_id=excluded.conversation_id").run(byContact.wa_chat_id, byContact.id);
+        }
+        this.db.prepare("UPDATE conversations SET wa_contact_number=COALESCE(?,wa_contact_number), wa_display_name=COALESCE(?,wa_display_name) WHERE id=?").run(waContactNumber, waDisplayName, byContact.id);
+        return this.getConversation(byContact.id);
+      }
     }
     const byPhone = waChatId && normalizedPhone ? this.db.prepare("SELECT * FROM conversations WHERE phone=? AND status <> 'closed' LIMIT 1").get(normalizedPhone) : null;
     if (byPhone) {
@@ -70,9 +105,10 @@ class MensajesRepository {
   updateWhatsAppContact(conversationId, phone, displayName = null) {
     if (!isRealPhone(phone)) return this.getConversation(conversationId);
     const normalized = normalizePhone(persistedPhone(phone));
-    const own = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=?").get(conversationId);
+    const own = this.db.prepare("SELECT wa_chat_id, patient_id FROM conversations WHERE id=?").get(conversationId);
+    if (own?.wa_chat_id?.endsWith("@lid")) this.rememberLidPhone(own.wa_chat_id, normalized);
     const duplicate = this.db.prepare("SELECT * FROM conversations WHERE phone=? AND id<>? AND status <> 'closed' LIMIT 1").get(normalized, conversationId);
-    if (duplicate && !this.isAbsorbable(duplicate, own?.wa_chat_id || "")) {
+    if (duplicate && !this.isAbsorbable(duplicate, own?.wa_chat_id || "", own?.patient_id || null)) {
       // El teléfono ya identifica a otro chat de WhatsApp: solo actualizamos el nombre.
       this.db.prepare("UPDATE conversations SET wa_display_name=COALESCE(?,wa_display_name), updated_at=datetime('now') WHERE id=?").run(displayName || null, conversationId);
       return this.getConversation(conversationId);
@@ -90,14 +126,37 @@ class MensajesRepository {
   // Dos chats reales distintos (con historial en ambos sentidos) nunca son la misma
   // conversación por más que compartan el teléfono, y fusionarlos movería los
   // mensajes de un paciente al chat de otro y borraría el original.
-  isAbsorbable(candidate, waChatId) {
+  isAbsorbable(candidate, waChatId, resolvingPatientId = undefined) {
     const chatId = String(candidate?.wa_chat_id || "");
     if (!chatId || chatId === waChatId || chatId.startsWith("simulated:")) return true;
-    return chatId.endsWith("@c.us") && !this.hasIncomingMessages(candidate.id);
+    if (chatId.endsWith("@c.us") && !this.hasIncomingMessages(candidate.id)) return true;
+    // WhatsApp resolvió este @lid a un teléfono que ya tiene un chat @c.us: es la
+    // misma persona (migración LID), no dos chats distintos — salvo que cada uno
+    // esté vinculado a un paciente DISTINTO (familiares que comparten número).
+    if (String(waChatId || "").endsWith("@lid") && resolvingPatientId !== undefined) {
+      const candidatePatientId = candidate?.patient_id || null;
+      if (!candidatePatientId || !resolvingPatientId || candidatePatientId === resolvingPatientId) return true;
+    }
+    return false;
   }
 
   hasIncomingMessages(conversationId) {
     return Boolean(this.db.prepare("SELECT 1 FROM messages WHERE conversation_id=? AND direction='incoming' LIMIT 1").get(conversationId));
+  }
+
+  // Mapa persistente LID -> teléfono real.
+  knownLidPhone(lid) {
+    if (typeof lid !== "string" || !lid.endsWith("@lid")) return null;
+    const row = this.db.prepare("SELECT phone FROM lid_phone_map WHERE lid=? LIMIT 1").get(lid);
+    const p = row && persistedPhone(row.phone);
+    return isRealPhone(p) ? normalizePhone(p) : null;
+  }
+
+  rememberLidPhone(lid, phone) {
+    if (typeof lid !== "string" || !lid.endsWith("@lid")) return;
+    const p = persistedPhone(phone);
+    if (!isRealPhone(p)) return;
+    this.db.prepare("INSERT INTO lid_phone_map (lid, phone, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(lid) DO UPDATE SET phone=excluded.phone, updated_at=datetime('now')").run(lid, normalizePhone(p));
   }
 
   phoneTakenByOther(phone, conversationId) {
@@ -108,7 +167,8 @@ class MensajesRepository {
   mergeConversation(sourceId, targetId) {
     if (sourceId === targetId) return this.getConversation(targetId);
     const tables = ["messages", "message_actions", "ai_runs", "automation_jobs", "outgoing_queue"];
-    const source = this.db.prepare("SELECT patient_id FROM conversations WHERE id=?").get(sourceId);
+    const source = this.db.prepare("SELECT patient_id, wa_chat_id FROM conversations WHERE id=?").get(sourceId);
+    const target = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=?").get(targetId);
     const transaction = this.db.transaction(() => {
       for (const table of tables) {
         if (table === "outgoing_queue") continue;
@@ -116,6 +176,27 @@ class MensajesRepository {
       }
       this.db.prepare("DELETE FROM response_queue WHERE conversation_id=?").run(sourceId);
       this.db.prepare("DELETE FROM conversation_state WHERE conversation_id=?").run(sourceId);
+      // El chat absorbido puede haber sido identificado por recepción: no dejamos
+      // vinculaciones colgando de una conversación que ya no existe.
+      this.db.prepare("UPDATE conversation_patient_links SET active=0 WHERE conversation_id=?").run(sourceId);
+      // La identidad de paciente activa (esté en el chat id del absorbido o del
+      // superviviente) queda apuntando al chat id del superviviente, para que
+      // getPatientLink resuelva sin depender de qué mitad ganó la fusión.
+      if (target?.wa_chat_id) {
+        const active = this.db.prepare("SELECT * FROM patient_chat_identities WHERE wa_chat_id IN (?, ?) AND active=1 ORDER BY verified_at DESC, id DESC LIMIT 1").get(source?.wa_chat_id || "", target.wa_chat_id);
+        if (active && active.wa_chat_id !== target.wa_chat_id) {
+          this.db.prepare("UPDATE patient_chat_identities SET active=0 WHERE wa_chat_id=?").run(active.wa_chat_id);
+          this.db.prepare(`INSERT INTO patient_chat_identities (wa_chat_id,patient_id,phone,patient_name,treatment_type,verified_by,active,verified_at) VALUES (?,?,?,?,?,?,1,datetime('now')) ON CONFLICT(wa_chat_id) DO UPDATE SET patient_id=excluded.patient_id,phone=excluded.phone,patient_name=excluded.patient_name,treatment_type=excluded.treatment_type,verified_by=excluded.verified_by,active=1,verified_at=datetime('now')`).run(target.wa_chat_id, active.patient_id, active.phone, active.patient_name, active.treatment_type, active.verified_by);
+        }
+      }
+      // Los chat ids del absorbido (el suyo propio y los que ya apuntaban a él)
+      // pasan a resolver a la conversación destino. Así los mensajes que sigan
+      // llegando por el id viejo caen en la conversación correcta.
+      this.db.prepare("UPDATE wa_chat_aliases SET conversation_id=? WHERE conversation_id=?").run(targetId, sourceId);
+      if (source?.wa_chat_id && source.wa_chat_id !== target?.wa_chat_id) {
+        this.db.prepare("INSERT INTO wa_chat_aliases (wa_chat_id, conversation_id) VALUES (?, ?) ON CONFLICT(wa_chat_id) DO UPDATE SET conversation_id=excluded.conversation_id").run(source.wa_chat_id, targetId);
+      }
+      this.db.prepare("DELETE FROM wa_chat_aliases WHERE wa_chat_id=(SELECT wa_chat_id FROM conversations WHERE id=?)").run(targetId);
       this.db.prepare("DELETE FROM conversations WHERE id=?").run(sourceId);
       // El chat absorbido puede traer un paciente vinculado que el destino todavia
       // no tiene (p. ej. el cascaron de un recordatorio ya vinculado por telefono).
@@ -125,13 +206,85 @@ class MensajesRepository {
     return this.getConversation(targetId);
   }
 
+  // Todos los teléfonos reales (8 dígitos) por los que se conoce a una
+  // conversación: su propio contacto y el de su identidad de paciente activa.
+  conversationRealPhones(conv) {
+    const out = new Set();
+    const add = (v) => { const p = persistedPhone(v); if (isRealPhone(p)) out.add(p); };
+    add(conv.wa_contact_number ?? conv.waContactNumber);
+    add(conv.phone);
+    if (conv.wa_chat_id ?? conv.waChatId) {
+      const idn = this.db.prepare("SELECT phone FROM patient_chat_identities WHERE wa_chat_id=? AND active=1 LIMIT 1").get(conv.wa_chat_id ?? conv.waChatId);
+      if (idn) add(idn.phone);
+    }
+    return out;
+  }
+
+  // Paciente al que pertenece la conversación: el vínculo directo, o —si no lo
+  // tiene— el de una conversación vinculada que comparta un teléfono real (la
+  // migración @c.us -> @lid de WhatsApp deja el id nuevo sin identidad). Solo
+  // resuelve si hay UN único candidato (evita mezclar familiares homónimos).
+  resolvePatientForConversation(conversation) {
+    const direct = conversation?.patientId ?? conversation?.patient_id ?? null;
+    if (direct) return direct;
+    const mine = this.conversationRealPhones(conversation);
+    if (!mine.size) return null;
+    const linked = this.db.prepare("SELECT * FROM conversations WHERE patient_id IS NOT NULL AND status <> 'closed' AND id <> ?").all(conversation.id ?? -1);
+    const hits = new Set();
+    for (const l of linked) {
+      for (const p of this.conversationRealPhones(l)) if (mine.has(p)) { hits.add(l.patient_id); break; }
+    }
+    return hits.size === 1 ? [...hits][0] : null;
+  }
+
+  // Dos conversaciones abiertas de la misma persona son un duplicado (split de la
+  // migración @c.us -> @lid de WhatsApp): se fusionan. Sobrevive la que tiene
+  // teléfono real / es @c.us; a igualdad, la más antigua.
+  mergeConversationsForSamePatient(conversation) {
+    const patientId = this.resolvePatientForConversation(conversation);
+    if (!patientId) return conversation;
+    const currentId = conversation?.id ?? null;
+    const all = this.db.prepare("SELECT * FROM conversations WHERE patient_id=? AND status <> 'closed'").all(patientId).map(toConversation);
+    if (currentId && !all.some((c) => c.id === currentId)) {
+      const row = this.db.prepare("SELECT * FROM conversations WHERE id=? AND status <> 'closed'").get(currentId);
+      if (row) all.push(toConversation(row));
+    }
+    if (all.length < 2) return conversation;
+    const score = (c) => (c.phoneResolved ? 2 : 0) + (String(c.waChatId || "").endsWith("@c.us") ? 1 : 0);
+    const survivor = all.reduce((best, c) => {
+      const sb = score(best);
+      const sc = score(c);
+      if (sc !== sb) return sc > sb ? c : best;
+      return c.id < best.id ? c : best;
+    });
+    for (const c of all) if (c.id !== survivor.id) this.mergeConversation(c.id, survivor.id);
+    this.db.prepare("UPDATE conversations SET patient_id=COALESCE(patient_id,?) WHERE id=?").run(patientId, survivor.id);
+    return this.getConversation(survivor.id);
+  }
+
+  // Pasada de reconciliación (arranque): junta duplicados ya existentes de la
+  // misma persona — por paciente compartido y por teléfono compartido con una
+  // conversación vinculada.
+  reconcilePatientDuplicates() {
+    const count = () => this.db.prepare("SELECT COUNT(*) n FROM conversations WHERE status <> 'closed'").get().n;
+    const before = count();
+    for (const { patient_id } of this.db.prepare("SELECT patient_id FROM conversations WHERE patient_id IS NOT NULL AND status <> 'closed' GROUP BY patient_id HAVING COUNT(*) > 1").all()) {
+      this.mergeConversationsForSamePatient({ patientId: patient_id });
+    }
+    for (const { id } of this.db.prepare("SELECT id FROM conversations WHERE patient_id IS NULL AND status <> 'closed'").all()) {
+      const row = this.db.prepare("SELECT * FROM conversations WHERE id=? AND status <> 'closed'").get(id);
+      if (row) this.mergeConversationsForSamePatient(toConversation(row));
+    }
+    return Math.max(0, before - count());
+  }
+
   mergeDuplicateWhatsAppConversation(waChatId, phone) {
     if (!waChatId || !isRealPhone(phone, waChatId)) return null;
     const normalized = normalizePhone(persistedPhone(phone));
     const target = this.db.prepare("SELECT * FROM conversations WHERE wa_chat_id=? AND status <> 'closed' LIMIT 1").get(waChatId);
     if (!target) return null;
     const duplicate = this.db.prepare("SELECT * FROM conversations WHERE phone=? AND id<>? AND status <> 'closed' ORDER BY id LIMIT 1").get(normalized, target.id);
-    if (duplicate && !this.isAbsorbable(duplicate, waChatId)) {
+    if (duplicate && !this.isAbsorbable(duplicate, waChatId, target.patient_id || null)) {
       // El teléfono pertenece a otro chat real. No se fusiona ni se pisa el teléfono:
       // el wa_contact_number del target queda como está y este chat sigue con su
       // identidad propia hasta que WhatsApp devuelva un número que sea solo suyo.
@@ -166,6 +319,19 @@ class MensajesRepository {
     if (direction === "outgoing" && this.isIgnoredOutgoingText(text)) {
       return { message: null, duplicate: false, ignored: true };
     }
+    // Dedup de salientes por contenido: el mismo mensaje llega por varias vías con
+    // external_id distinto (el envío directo de la IA, el evento message_create, y
+    // la recuperación de no leídos — para @lid el _serialized real viene null y se
+    // sintetiza uno distinto en cada camino). Mismo chat + mismo texto + a menos
+    // de 3 min = es el mismo mensaje, no lo duplicamos.
+    if (direction === "outgoing") {
+      const at = messageAt || new Date().toISOString();
+      const dup = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? AND direction='outgoing' AND content=? AND ABS(strftime('%s', message_at) - strftime('%s', ?)) <= 180 LIMIT 1").get(conversationId, text.trim(), at);
+      if (dup) {
+        if (author && dup.author !== author && author === "ai") this.db.prepare("UPDATE messages SET author=? WHERE id=?").run(author, dup.id);
+        return { message: toMessage(this.db.prepare("SELECT * FROM messages WHERE id=?").get(dup.id)), duplicate: true };
+      }
+    }
     const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at, reaction_target_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     const update = this.db.prepare(`UPDATE conversations SET updated_at=datetime('now'), lifecycle_state=CASE WHEN ?='incoming' THEN 'active' ELSE lifecycle_state END, last_message_direction=?, last_message_at=?, last_message_type=?, last_message_source=?, last_inbound_at=CASE WHEN ?='incoming' THEN ? ELSE last_inbound_at END, last_outbound_at=CASE WHEN ?='outgoing' THEN ? ELSE last_outbound_at END WHERE id=?`);
     const transaction = this.db.transaction(() => {
@@ -178,15 +344,20 @@ class MensajesRepository {
   }
 
   saveIncomingMessage(event) {
-    const conversation = this.findOrCreateConversation(event.waContactNumber || event.phone || event.waChatId, event);
+    let conversation = this.findOrCreateConversation(event.waContactNumber || event.phone || event.waChatId, event);
     const identity = this.getPatientLink(conversation.id);
-    if (identity && conversation.patientId !== identity.patientId) this.updateConversation(conversation.id, { patientId: identity.patientId });
+    if (identity && conversation.patientId !== identity.patientId) {
+      this.updateConversation(conversation.id, { patientId: identity.patientId });
+      conversation = this.getConversation(conversation.id);
+    }
+    conversation = this.mergeConversationsForSamePatient(conversation);
     const saved = this.saveMessage({ conversationId: conversation.id, externalId: event.externalId, direction: "incoming", author: "patient", text: event.text, messageAt: event.messageAt, rawType: event.rawType, reactionTargetId: event.reactionTargetId, source: event.source });
     return { conversation, ...saved };
   }
 
   saveOutgoingMessage({ phone, externalId, text, author = "human", messageAt, waChatId = null, waContactNumber = null, waDisplayName = null, rawType = "text", reactionTargetId = null, source = "live" }) {
-    const conversation = this.findOrCreateConversation(waContactNumber || phone, { waChatId, waContactNumber, waDisplayName });
+    let conversation = this.findOrCreateConversation(waContactNumber || phone, { waChatId, waContactNumber, waDisplayName });
+    conversation = this.mergeConversationsForSamePatient(conversation);
     const saved = this.saveMessage({ conversationId: conversation.id, externalId, direction: "outgoing", author, text, messageAt, rawType, reactionTargetId, source });
     return { conversation, ...saved };
   }
@@ -307,12 +478,17 @@ class MensajesRepository {
   updateHumanReviewInstructions(instructions) { this.db.prepare("UPDATE human_review_rules SET instructions=?, updated_at=datetime('now') WHERE id=1").run(String(instructions || "")); return this.getHumanReviewInstructions(); }
   enqueueResponseMessage(conversationId, messageId, text, groupDelaySeconds = 4) { const now = Date.now(); const due = new Date(now + Math.max(0, Number(groupDelaySeconds) || 0) * 1000).toISOString(); const active = this.db.prepare("SELECT * FROM response_queue WHERE conversation_id=? AND status IN ('generating','ready_to_send','sending') ORDER BY id DESC LIMIT 1").get(conversationId); if (active && active.status === "generating" && !active.response_text) { const ids = JSON.parse(active.message_ids_json || "[]"); ids.push(messageId); this.db.prepare("UPDATE response_queue SET due_at=?, message_ids_json=?, updated_at=datetime('now') WHERE id=?").run(due, JSON.stringify(ids), active.id); return this.getResponseQueueItem(active.id); } if (active) this.db.prepare("UPDATE response_queue SET status='cancelled', error='Nuevo mensaje recibido', updated_at=datetime('now') WHERE id=?").run(active.id); const result = this.db.prepare("INSERT INTO response_queue (conversation_id, status, due_at, batch_version, message_ids_json, consolidated_text) VALUES (?, 'generating', ?, ?, ?, ?)").run(conversationId, due, (active?.batch_version || 0) + 1, JSON.stringify([messageId]), text); return this.getResponseQueueItem(result.lastInsertRowid); }
   listUnansweredAssistantMessages(limit = 100, conversationId = null) {
+    // "Último mensaje" y "¿ya respondimos?" se deciden por id (orden de inserción,
+    // reloj del servidor), NUNCA por message_at: el timestamp de los mensajes
+    // entrantes viene del teléfono del paciente y puede estar minutos adelantado
+    // o atrasado. Con message_at, un reloj adelantado hace que ninguna respuesta
+    // de la IA quede "después" del mensaje -> se reencola sin fin (bucle cada tick).
     return this.db.prepare(`SELECT c.id AS conversation_id, c.phone, m.id AS message_id, m.content
       FROM conversations c
       JOIN messages m ON m.id = (
         SELECT id FROM messages
         WHERE conversation_id=c.id AND direction='incoming' AND author='patient'
-        ORDER BY datetime(message_at) DESC, id DESC LIMIT 1
+        ORDER BY id DESC LIMIT 1
       )
       WHERE c.status <> 'closed'
         AND c.attention_mode='assistant'
@@ -324,14 +500,13 @@ class MensajesRepository {
         AND (? IS NULL OR c.id=?)
         AND NOT EXISTS (
           SELECT 1 FROM messages o
-          WHERE o.conversation_id=c.id AND o.direction='outgoing'
-            AND (datetime(o.message_at) > datetime(m.message_at) OR (datetime(o.message_at)=datetime(m.message_at) AND o.id > m.id))
+          WHERE o.conversation_id=c.id AND o.direction='outgoing' AND o.id > m.id
         )
         AND NOT EXISTS (
           SELECT 1 FROM response_queue rq
           WHERE rq.conversation_id=c.id AND rq.status IN ('generating','ready_to_send','sending')
       )
-      ORDER BY datetime(m.message_at) ASC, m.id ASC
+      ORDER BY m.id ASC
       LIMIT ?`).all(conversationId || null, conversationId || null, Math.min(Math.max(Number(limit) || 100, 1), 500));
   }
   enqueueUnansweredAssistantMessages(groupDelaySeconds = 4, limit = 100, conversationId = null) {
@@ -368,7 +543,10 @@ class MensajesRepository {
   }
 
   getLatestMessage(conversationId) {
-    const row = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY datetime(message_at) DESC, id DESC LIMIT 1").get(conversationId);
+    // Por id (orden de inserción), no por message_at: el timestamp de los
+    // entrantes lo pone el teléfono del paciente y puede venir adelantado, lo que
+    // haría que un mensaje viejo tape a la respuesta recién enviada por la IA.
+    const row = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 1").get(conversationId);
     return toMessage(row);
   }
 
@@ -402,9 +580,27 @@ class MensajesRepository {
 
   getPatientLink(conversationId) {
     const conversation = this.db.prepare("SELECT wa_chat_id FROM conversations WHERE id=? LIMIT 1").get(conversationId);
-    const row = conversation?.wa_chat_id
-      ? this.db.prepare("SELECT id,wa_chat_id,patient_id,phone,patient_name,treatment_type,verified_at,verified_by,active FROM patient_chat_identities WHERE wa_chat_id=? AND active=1 LIMIT 1").get(conversation.wa_chat_id)
-      : this.db.prepare("SELECT * FROM conversation_patient_links WHERE conversation_id=? AND active=1 ORDER BY id DESC LIMIT 1").get(conversationId);
+    const cols = "id,wa_chat_id,patient_id,phone,patient_name,treatment_type,verified_at,verified_by,active";
+    let row = conversation?.wa_chat_id
+      ? this.db.prepare(`SELECT ${cols} FROM patient_chat_identities WHERE wa_chat_id=? AND active=1 LIMIT 1`).get(conversation.wa_chat_id)
+      : null;
+    // Tras una fusión, la identidad activa puede estar en un chat id que ahora es
+    // alias de esta conversación (el @c.us viejo migrado a @lid, o al revés).
+    if (!row) {
+      row = this.db.prepare(`SELECT pci.id,pci.wa_chat_id,pci.patient_id,pci.phone,pci.patient_name,pci.treatment_type,pci.verified_at,pci.verified_by,pci.active FROM patient_chat_identities pci JOIN wa_chat_aliases a ON a.wa_chat_id=pci.wa_chat_id WHERE a.conversation_id=? AND pci.active=1 LIMIT 1`).get(conversationId);
+    }
+    if (!row) {
+      row = this.db.prepare("SELECT * FROM conversation_patient_links WHERE conversation_id=? AND active=1 ORDER BY id DESC LIMIT 1").get(conversationId);
+    }
+    // Última red: la conversación tiene paciente en la columna (recepción lo puso,
+    // o lo heredó de una fusión) pero ninguna identidad quedó apuntando a su chat
+    // id actual — usamos la identidad activa más reciente de ese paciente.
+    if (!row) {
+      const conv = this.db.prepare("SELECT patient_id FROM conversations WHERE id=? LIMIT 1").get(conversationId);
+      if (conv?.patient_id) {
+        row = this.db.prepare(`SELECT ${cols} FROM patient_chat_identities WHERE patient_id=? AND active=1 ORDER BY verified_at DESC, id DESC LIMIT 1`).get(conv.patient_id);
+      }
+    }
     return row ? { id: row.id, conversationId: row.conversation_id, patientId: row.patient_id, waChatId: row.wa_chat_id, phone: row.phone, patientName: row.patient_name, treatmentType: row.treatment_type, verifiedAt: row.verified_at, verifiedBy: row.verified_by, active: Boolean(row.active) } : null;
   }
 
