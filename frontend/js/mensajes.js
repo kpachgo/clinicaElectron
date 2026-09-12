@@ -577,16 +577,68 @@
         modal.querySelector("#patient-identities-refresh").addEventListener("click", load); modal.querySelector("#patient-identities-search-btn").addEventListener("click", load); searchInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); void load(); } }); const clearAllButton = modal.querySelector("#patient-identities-clear-all"); clearAllButton.addEventListener("click", async () => { if (clearAllButton.dataset.confirming !== "1") { clearAllButton.dataset.confirming = "1"; clearAllButton.textContent = "Confirmar desvinculación total"; clearAllButton.classList.add("is-confirming"); setTimeout(() => { clearAllButton.dataset.confirming = "0"; clearAllButton.textContent = "Desvincular todas"; clearAllButton.classList.remove("is-confirming"); }, 5000); return; } clearAllButton.disabled = true; try { const result = await api("/api/mensajes-view/patient-identities", { method: "DELETE" }); clearAllButton.textContent = `${result.cleared} desvinculadas`; await load(); } catch (error) { clearAllButton.disabled = false; clearAllButton.textContent = error.message; } });
         await load(); const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); }; nav.querySelector('[data-settings-section="patient-identities"]').addEventListener("click", (event) => activate(event.currentTarget));
     }
+    const KNOWLEDGE_SECTION_ORDER = ["Identidad", "Información de la clínica", "Citas", "Forma de responder", "Odontología", "Ortodoncia", "Promociones"];
+    function parseKnowledgeSections(text) {
+        const lines = String(text || "").split(/\r\n|\n/);
+        const order = []; const map = new Map(); const preamble = []; let current = null;
+        lines.forEach((line) => {
+            const heading = /^##\s+(.+?)\s*$/.exec(line);
+            if (heading) {
+                current = heading[1].trim();
+                if (!map.has(current)) { map.set(current, []); order.push(current); }
+                map.get(current).push([]);
+            } else if (current) {
+                map.get(current)[map.get(current).length - 1].push(line);
+            } else {
+                preamble.push(line);
+            }
+        });
+        return { preamble: preamble.join("\n").trim(), map, discoveredOrder: order };
+    }
+    function joinKnowledgeBlocks(blocks) { return (blocks || []).map((block) => block.join("\n").trim()).filter(Boolean).join("\n\n"); }
+    function buildKnowledgeText(preamble, map, tabOrder) {
+        const parts = [];
+        if (preamble) parts.push(preamble);
+        tabOrder.forEach((title) => {
+            const body = joinKnowledgeBlocks(map.get(title));
+            if (body) parts.push(`## ${title}\n\n${body}`);
+        });
+        return `${parts.join("\n\n")}\n`;
+    }
     async function enrichAssistantKnowledge() {
         const modal = document.getElementById("mensajes-settings-modal");
         const section = modal?.querySelector('[data-settings-content="ia"]');
         if (!section || section.querySelector("#settings-assistant-knowledge")) return;
         const data = await api("/api/mensajes-view/assistant-knowledge");
-        section.insertAdjacentHTML("afterbegin", `<h3>Conocimiento de la clínica</h3><p>La IA usa este texto tal cual para responder: identidad de la clínica, promociones vigentes, información que puede dar, ubicación, formas de pago y política de cancelación.</p><label>Texto<textarea id="settings-assistant-knowledge" rows="12" placeholder="Ej: Somos la Clínica X, en ... Atendemos de lunes a viernes de 8 a 18 h. Aceptamos efectivo y tarjeta. Promoción de agosto: limpieza dental a $20. Para cancelar una cita avisar con 24 h de anticipación."></textarea></label><button id="settings-save-knowledge" type="button">Guardar conocimiento</button><div id="settings-knowledge-result" class="settings-state-card"></div><hr>`);
-        modal.querySelector("#settings-assistant-knowledge").value = data.knowledge || "";
+
+        const parsed = parseKnowledgeSections(data.knowledge || "");
+        const extraTitles = parsed.discoveredOrder.filter((title) => !KNOWLEDGE_SECTION_ORDER.includes(title));
+        const tabOrder = [...KNOWLEDGE_SECTION_ORDER, ...extraTitles];
+        tabOrder.forEach((title) => { if (!parsed.map.has(title)) parsed.map.set(title, []); });
+
+        const navHtml = tabOrder.map((title, i) => `<button type="button" data-knowledge-tab="${esc(title)}" class="${i === 0 ? "is-active" : ""}">${esc(title)}</button>`).join("");
+        section.insertAdjacentHTML("afterbegin", `<h3>Conocimiento de la clínica</h3><p>La IA usa este texto tal cual para responder: identidad de la clínica, promociones vigentes, información que puede dar, ubicación, formas de pago y política de cancelación. Está dividido en pestañas solo para editarlo más fácil; se guarda como un único texto para la IA.</p><div class="knowledge-editor-nav">${navHtml}</div><label>Texto de la sección<textarea id="settings-assistant-knowledge" rows="14"></textarea></label><button id="settings-save-knowledge" type="button">Guardar conocimiento</button><div id="settings-knowledge-result" class="settings-state-card"></div><hr>`);
+
+        const textarea = section.querySelector("#settings-assistant-knowledge");
+        let activeTitle = tabOrder[0];
+        const loadTab = (title) => { textarea.value = joinKnowledgeBlocks(parsed.map.get(title)); };
+        const captureActiveTab = () => { parsed.map.set(activeTitle, [textarea.value.split(/\r\n|\n/)]); };
+        loadTab(activeTitle);
+
+        section.querySelectorAll("[data-knowledge-tab]").forEach((button) => {
+            button.addEventListener("click", () => {
+                captureActiveTab();
+                activeTitle = button.dataset.knowledgeTab;
+                section.querySelectorAll("[data-knowledge-tab]").forEach((b) => b.classList.toggle("is-active", b === button));
+                loadTab(activeTitle);
+            });
+        });
+
         modal.querySelector("#settings-save-knowledge").addEventListener("click", async () => {
+            captureActiveTab();
+            const fullText = buildKnowledgeText(parsed.preamble, parsed.map, tabOrder);
             try {
-                const result = await api("/api/mensajes-view/assistant-knowledge", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ knowledge: modal.querySelector("#settings-assistant-knowledge").value }) });
+                const result = await api("/api/mensajes-view/assistant-knowledge", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ knowledge: fullText }) });
                 modal.querySelector("#settings-knowledge-result").textContent = `Conocimiento guardado (${(result.knowledge || "").length} caracteres)`;
             } catch (error) { modal.querySelector("#settings-knowledge-result").textContent = error.message; }
         });
