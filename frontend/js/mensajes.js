@@ -814,16 +814,28 @@
             }
             return chips;
         };
+        let lastBlockMode = "all";
         const renderHourPicker = () => {
             hoursBox.innerHTML = "";
             if (!dateInput.value) { hoursBox.hidden = true; return; }
             const weekday = new Date(`${dateInput.value}T12:00:00`).getDay();
             const chips = workingHours(weekday);
             hoursBox.hidden = false;
-            if (!chips.length) { hoursBox.innerHTML = `<p class="ai-help">Ese día la clínica no atiende: se bloqueará el día completo.</p>`; return; }
-            hoursBox.innerHTML = `<div class="ai-block-mode"><label><input type="radio" name="ai-block-mode" value="all" checked> Todo el día</label><label><input type="radio" name="ai-block-mode" value="hours"> Solo algunas horas</label></div><div class="ai-hour-chips" hidden>${chips.map((c) => `<label class="ai-hour-chip"><input type="checkbox" value="${c.start}|${c.end}"> ${esc(fmt12(c.start))}</label>`).join("")}</div>`;
+            if (!chips.length) { hoursBox.innerHTML = `<p class="ai-help">Ese día la clínica no atiende: se bloqueará el día completo.</p>`; lastBlockMode = "all"; return; }
+            // Preserva el modo elegido si solo se corrigió la fecha (no perder "solo algunas horas" por error).
+            const mode = lastBlockMode === "hours" ? "hours" : "all";
+            hoursBox.innerHTML = `<div class="ai-block-mode"><label><input type="radio" name="ai-block-mode" value="all"${mode === "all" ? " checked" : ""}> Todo el día</label><label><input type="radio" name="ai-block-mode" value="hours"${mode === "hours" ? " checked" : ""}> Solo algunas horas</label></div><div class="ai-hour-chips"${mode === "hours" ? "" : " hidden"}>${chips.map((c) => `<label class="ai-hour-chip"><input type="checkbox" value="${c.start}|${c.end}"> ${esc(fmt12(c.start))}</label>`).join("")}</div>`;
             const chipWrap = hoursBox.querySelector(".ai-hour-chips");
-            hoursBox.querySelectorAll("input[name='ai-block-mode']").forEach((r) => r.addEventListener("change", () => { chipWrap.hidden = hoursBox.querySelector("input[name='ai-block-mode']:checked").value !== "hours"; }));
+            const allRadio = hoursBox.querySelector("input[name='ai-block-mode'][value='all']");
+            // Si hay horas marcadas, no se puede pasar a "Todo el día" sin desmarcarlas antes (evita bloqueos de día completo por error).
+            const updateAllLock = () => {
+                const anyChecked = chipWrap.querySelectorAll("input:checked").length > 0;
+                allRadio.disabled = anyChecked;
+                allRadio.title = anyChecked ? "Desmarcá las horas seleccionadas para poder bloquear el día completo" : "";
+            };
+            hoursBox.querySelectorAll("input[name='ai-block-mode']").forEach((r) => r.addEventListener("change", () => { lastBlockMode = r.value; chipWrap.hidden = hoursBox.querySelector("input[name='ai-block-mode']:checked").value !== "hours"; }));
+            chipWrap.querySelectorAll("input[type=checkbox]").forEach((cb) => cb.addEventListener("change", updateAllLock));
+            updateAllLock();
         };
         const selectedHourRanges = () => {
             const picked = [...hoursBox.querySelectorAll(".ai-hour-chips input:checked")]
@@ -859,7 +871,7 @@
             }
             try {
                 const data = await api("/api/mensajes-view/ai-blocked-dates", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: dateInput.value, reason: reasonInput.value, blockedHours }) });
-                dateInput.value = ""; reasonInput.value = ""; renderHourPicker(); result.textContent = "Bloqueo guardado";
+                dateInput.value = ""; reasonInput.value = ""; lastBlockMode = "all"; renderHourPicker(); result.textContent = "Bloqueo guardado";
                 renderDates(data.dates);
             } catch (error) { result.textContent = error.message || "No se pudo bloquear"; }
         });

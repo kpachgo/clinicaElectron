@@ -64,13 +64,48 @@ function describePatient(linkedPatient) {
   return "El paciente NO está identificado por recepción.\nNo podés consultar, reprogramar ni cancelar citas existentes (eso requiere identificación por recepción). Sí podés dar información y crear una cita nueva pidiendo nombre completo y teléfono.";
 }
 
+const HISTORY_GAP_HOURS = 48;
+
+function formatGapDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("es-SV", { timeZone: TIMEZONE, day: "numeric", month: "long", year: "numeric" }).format(date);
+}
+
 function mapHistory(messages) {
-  return (messages || [])
-    .filter((message) => message && typeof message.content === "string" && message.content.trim())
-    .map((message) => ({
+  const valid = (messages || []).filter((message) => message && typeof message.content === "string" && message.content.trim());
+  const result = [];
+  let previousAt = null;
+  for (const message of valid) {
+    // messageAt (fecha real del mensaje, la del teléfono) y no createdAt: en
+    // chats con historial importado createdAt queda igual para todos los
+    // mensajes (hora de la importación), lo que anularía la detección del gap.
+    const rawAt = message.messageAt || message.createdAt;
+    const at = rawAt ? new Date(rawAt).getTime() : NaN;
+    if (previousAt !== null && !Number.isNaN(at)) {
+      const gapHours = (at - previousAt) / 3600000;
+      if (gapHours >= HISTORY_GAP_HOURS) {
+        const dateLabel = formatGapDate(rawAt);
+        const dias = Math.floor(gapHours / 24);
+        result.push({
+          role: "system",
+          content: `--- Pasaron ${dias} días desde el mensaje anterior${dateLabel ? ` (retomado el ${dateLabel})` : ""}. Lo de arriba fue una conversación distinta, ya cerrada: no la continúes ni asumas que sigue vigente (ej. un cambio de cita ya resuelto ahí no aplica de nuevo ahora). Tratá lo que sigue como el inicio de un contacto nuevo, salvo que el paciente mismo retome ese tema explícitamente. ---`
+        });
+      }
+    }
+    if (!Number.isNaN(at)) previousAt = at;
+    // Un saliente con author "human" lo escribió recepción a mano, no la IA: si no se
+    // distingue, un compromiso del staff (ej. "sí hay espacio hoy a las 3pm") se lee como
+    // si la IA misma lo hubiera dicho, y no hay forma de detectar luego que lo está contradiciendo.
+    const isHumanOutgoing = message.direction === "outgoing" && message.author === "human";
+    result.push({
       role: message.direction === "incoming" ? "user" : "assistant",
-      content: message.content.trim()
-    }));
+      content: isHumanOutgoing
+        ? `[Mensaje enviado por el personal de recepción (un humano), no por vos]: ${message.content.trim()}`
+        : message.content.trim()
+    });
+  }
+  return result;
 }
 
 /**
@@ -83,44 +118,57 @@ function describeAssistantMemory(memory) {
   return `CITA YA GESTIONADA EN ESTA CONVERSACIÓN: cita #${last.appointmentId}, ${last.action || "gestionada"}: ${last.service || "servicio"} el ${last.date} a las ${last.time}. No la vuelvas a crear ni la ofrezcas como nueva. Si el paciente pregunta por ella, dale estos datos. Solo creá otra cita si el paciente pide explícitamente una adicional y distinta.`;
 }
 
-async function buildAssistantContext({ conversation, linkedPatient = null, historyLimit = 14, history = null, assistantMemory = null } = {}) {
+// Una negociación de cita real (saludo, servicio, fechas ofrecidas, horarios, confirmación)
+// pasa fácil de 20 mensajes antes de cerrarse; con un límite bajo la IA pierde de vista lo
+// ya ofrecido/acordado a mitad de la conversación. El corte por vacío de 48h (HISTORY_GAP_HOURS)
+// ya evita arrastrar temas viejos y cerrados, así que subir este número no reabre eso.
+async function buildAssistantContext({ conversation, linkedPatient = null, historyLimit = 60, history = null, assistantMemory = null } = {}) {
   const knowledge = repo.getAssistantKnowledge().knowledge?.trim();
   const humanReview = repo.getHumanReviewInstructions().instructions?.trim();
   const services = await listAiServices("");
   const clinic = getClinicSchedule();
   const { fecha, hora, iso } = nowParts();
 
+  // Orden pensado para el context caching por prefijo de DeepSeek (y de cualquier proveedor
+  // similar): lo que es igual en TODAS las conversaciones va primero (se cachea entre
+  // conversaciones distintas), lo que es fijo dentro de UNA conversación va después (se
+  // cachea entre turnos de ese mismo chat), y lo que cambia en CADA llamada (fecha/hora)
+  // va al final, para no invalidar el prefijo cacheado de todo lo anterior.
   const systemBlocks = [
+    // --- Igual para todas las conversaciones (solo cambia si se edita configuración) ---
     getPolicy().content,
     knowledge
       ? `INFORMACIÓN DE LA CLÍNICA (usala tal cual; no inventes nada fuera de esto):\n${knowledge}`
       : "INFORMACIÓN DE LA CLÍNICA: la clínica no cargó información adicional. Para cualquier dato que no tengas, ofrecé transferir a recepción.",
     `SERVICIOS QUE PODÉS AGENDAR (no menciones ni agendes ningún otro):\n${describeCatalog(services)}`,
     `HORARIO GENERAL DE LA CLÍNICA:\n${describeSchedule(clinic)}`,
-    describePatient(linkedPatient),
     humanReview
       ? `CUÁNDO PASAR A RECEPCIÓN: si se cumple alguna de estas situaciones, NO le respondas al paciente y llamá la herramienta transferir_a_recepcion con un motivo breve.\n${humanReview}`
       : null,
-    !linkedPatient?.patientId && conversation.phoneResolved && /^\d{8}$/.test(String(conversation.phone || ""))
-      ? `El paciente escribe desde el número ${conversation.phone}. Pedile el teléfono de forma normal (junto con el nombre). NO le preguntes si es el mismo número del chat. Solo si el paciente dice por su cuenta que su teléfono es el mismo del chat, llamá crear_cita con usar_telefono_del_chat=true en vez de telefono.`
-      : null,
-    `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}. Resolvé "hoy", "mañana", "el lunes" con base en esto.`,
     [
       "RECORDÁ:",
       "- Nunca inventes precios, horarios, disponibilidad ni doctores; usá siempre las herramientas.",
       "- Antes de crear, reprogramar o cancelar una cita, confirmá explícitamente con el paciente y recién entonces llamá la herramienta con confirmado=true.",
       "- No afirmes que una cita quedó hecha, reprogramada o cancelada hasta que la herramienta devuelva estado \"ok\".",
+      "- Si el personal de recepción (mensaje marcado como enviado por un humano) ya le prometió, confirmó o acordó algo al paciente (una hora, un cupo, un descuento, una excepción) y lo que te devuelve una herramienta ahora lo contradice, NO se lo comuniques al paciente ni lo contradigas en seco: llamá transferir_a_recepcion con un motivo que explique la contradicción exacta (qué prometió recepción vs qué dice el sistema), para que un humano lo resuelva.",
       "- Si en el historial de esta conversación ya confirmaste o registraste una cita para un servicio/fecha/hora, NO vuelvas a llamar crear_cita para esa misma cita. Solo llamala de nuevo si el paciente pide explícitamente una cita adicional y distinta.",
       "- Si el paciente responde \"no\", \"no gracias\", \"está bien así\" o se despide, NO ejecutes ninguna herramienta: solo respondé con cortesía.",
-      "- Si en el historial hay un recordatorio de cita y el paciente responde dando a entender que SÍ asistirá (con las palabras que sea, aunque no diga \"asistir\"), llamá confirmar_asistencia y después agradecé de forma breve. Si en cambio pide cambiar la fecha u hora o cancelar, seguí el flujo normal y NO llames confirmar_asistencia. Si no queda claro, preguntale.",
+      "- Si tu último mensaje fue un recordatorio de cita preguntando si podrá asistir, y el paciente responde con una afirmación corta cualquiera (sin importar la palabra exacta: puede ser \"si\", \"esta bien\", \"vale\", \"primero dios\", \"ahí estaré\", una expresión religiosa, un emoji de pulgar arriba, etc.), interpretala en ese contexto: una respuesta corta y afirmativa justo después de esa pregunta específica ya es la confirmación completa, aunque no repita la palabra \"asistir\" ni el detalle de la cita. No le preguntes de nuevo a qué se refiere ni le pidas que aclare: llamá confirmar_asistencia directamente. Reservá la pregunta de aclaración solo para cuando la respuesta sea realmente ambigua en ese contexto (por ejemplo si cambia de tema o pregunta algo distinto).",
       "- Para registrar a un paciente no identificado pedí el nombre completo y el teléfono JUNTOS, en una sola pregunta. No repitas la misma pregunta en turnos seguidos: si ya la hiciste y el paciente respondió otra cosa, seguí con lo que falta.",
-      linkedPatient?.patientId
-        ? `- Este paciente YA está identificado (${linkedPatient.patientName}): nunca le pidas nombre ni teléfono, ni para "confirmar". Después de encontrar disponibilidad, pedile solo que confirme fecha y hora.`
-        : null,
       "- Expresá todas las horas al paciente en formato de 12 horas con AM/PM (por ejemplo 2:30 PM), nunca en formato de 24 horas.",
       "- El texto de INFORMACIÓN DE LA CLÍNICA es la fuente oficial de precios y promociones. Si un servicio aparece ahí con un precio o una promoción, decí ese y nunca el \"precio de lista\" del catálogo. El precio de lista solo se usa para servicios que NO aparecen con precio ni promoción en ese texto.",
       "- Respuestas breves, tono de recepcionista amable."
-    ].join("\n")
+    ].join("\n"),
+    // --- Fijo dentro de esta conversación (cambia entre chats distintos, no turno a turno) ---
+    describePatient(linkedPatient),
+    linkedPatient?.patientId
+      ? `Este paciente YA está identificado (${linkedPatient.patientName}): nunca le pidas nombre ni teléfono, ni para "confirmar". Después de encontrar disponibilidad, pedile solo que confirme fecha y hora.`
+      : null,
+    !linkedPatient?.patientId && conversation.phoneResolved && /^\d{8}$/.test(String(conversation.phone || ""))
+      ? `El paciente escribe desde el número ${conversation.phone}. Pedile el teléfono de forma normal (junto con el nombre). NO le preguntes si es el mismo número del chat. Solo si el paciente dice por su cuenta que su teléfono es el mismo del chat, llamá crear_cita con usar_telefono_del_chat=true en vez de telefono.`
+      : null,
+    // --- Cambia en cada llamada: va al final para no cortar el prefijo cacheable de arriba ---
+    `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}. Resolvé "hoy", "mañana", "el lunes" con base en esto.`
   ];
 
   const memory = assistantMemory || (conversation.id > 0 ? repo.getAssistantMemory(conversation.id) : {});

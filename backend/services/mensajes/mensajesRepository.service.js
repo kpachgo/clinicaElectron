@@ -476,7 +476,26 @@ class MensajesRepository {
   setConversationLifecycle(conversationId, lifecycleState, humanReviewReason = null) { this.db.prepare("UPDATE conversations SET lifecycle_state=?, human_review_reason=COALESCE(?,human_review_reason), updated_at=datetime('now') WHERE id=?").run(lifecycleState, humanReviewReason, conversationId); return this.getConversation(conversationId); }
   getHumanReviewInstructions() { const row = this.db.prepare("SELECT instructions, updated_at AS updatedAt FROM human_review_rules WHERE id=1").get(); return { instructions: row?.instructions || "", updatedAt: row?.updatedAt || null }; }
   updateHumanReviewInstructions(instructions) { this.db.prepare("UPDATE human_review_rules SET instructions=?, updated_at=datetime('now') WHERE id=1").run(String(instructions || "")); return this.getHumanReviewInstructions(); }
-  enqueueResponseMessage(conversationId, messageId, text, groupDelaySeconds = 4) { const now = Date.now(); const due = new Date(now + Math.max(0, Number(groupDelaySeconds) || 0) * 1000).toISOString(); const active = this.db.prepare("SELECT * FROM response_queue WHERE conversation_id=? AND status IN ('generating','ready_to_send','sending') ORDER BY id DESC LIMIT 1").get(conversationId); if (active && active.status === "generating" && !active.response_text) { const ids = JSON.parse(active.message_ids_json || "[]"); ids.push(messageId); this.db.prepare("UPDATE response_queue SET due_at=?, message_ids_json=?, updated_at=datetime('now') WHERE id=?").run(due, JSON.stringify(ids), active.id); return this.getResponseQueueItem(active.id); } if (active) this.db.prepare("UPDATE response_queue SET status='cancelled', error='Nuevo mensaje recibido', updated_at=datetime('now') WHERE id=?").run(active.id); const result = this.db.prepare("INSERT INTO response_queue (conversation_id, status, due_at, batch_version, message_ids_json, consolidated_text) VALUES (?, 'generating', ?, ?, ?, ?)").run(conversationId, due, (active?.batch_version || 0) + 1, JSON.stringify([messageId]), text); return this.getResponseQueueItem(result.lastInsertRowid); }
+  enqueueResponseMessage(conversationId, messageId, text, groupDelaySeconds = 4) {
+    const now = Date.now();
+    const due = new Date(now + Math.max(0, Number(groupDelaySeconds) || 0) * 1000).toISOString();
+    const active = this.db.prepare("SELECT * FROM response_queue WHERE conversation_id=? AND status IN ('generating','ready_to_send','sending') ORDER BY id DESC LIMIT 1").get(conversationId);
+    // Solo se puede sumar al lote mientras todavia esta acumulando (sin reclamar: attempts=0,
+    // esperando su due_at). Una vez reclamado (attempts>=1) el LLM ya empezo a generar con el
+    // contexto leido en ese momento: sumarle el id aca no lo mete en ese contexto, y sin embargo
+    // marcaba el mensaje como "ya cubierto" (ver responseQueueStillEligible/listUnansweredAssistantMessages),
+    // asi que el paciente quedaba sin respuesta real. En ese caso se cancela el lote en curso (no se
+    // envia una respuesta que no lo contempla) y se abre uno nuevo, que el tick reencola con contexto fresco.
+    if (active && active.status === "generating" && active.attempts === 0 && !active.response_text) {
+      const ids = JSON.parse(active.message_ids_json || "[]");
+      ids.push(messageId);
+      this.db.prepare("UPDATE response_queue SET due_at=?, message_ids_json=?, updated_at=datetime('now') WHERE id=?").run(due, JSON.stringify(ids), active.id);
+      return this.getResponseQueueItem(active.id);
+    }
+    if (active) this.db.prepare("UPDATE response_queue SET status='cancelled', error='Nuevo mensaje recibido', updated_at=datetime('now') WHERE id=?").run(active.id);
+    const result = this.db.prepare("INSERT INTO response_queue (conversation_id, status, due_at, batch_version, message_ids_json, consolidated_text) VALUES (?, 'generating', ?, ?, ?, ?)").run(conversationId, due, (active?.batch_version || 0) + 1, JSON.stringify([messageId]), text);
+    return this.getResponseQueueItem(result.lastInsertRowid);
+  }
   listUnansweredAssistantMessages(limit = 100, conversationId = null) {
     // "Último mensaje" y "¿ya respondimos?" se deciden por id (orden de inserción,
     // reloj del servidor), NUNCA por message_at: el timestamp de los mensajes
