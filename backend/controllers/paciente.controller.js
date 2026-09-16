@@ -1019,8 +1019,16 @@ const guardarPaciente = async (req, res) => {
       return badRequest(res, "ultimaVisitaP invalida");
     }
 
+    const correoP = String(p?.correoP || "").trim();
+    if (correoP && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoP)) {
+      return badRequest(res, "correoP invalido");
+    }
+    if (correoP.length > 40) {
+      return badRequest(res, "correoP permite maximo 40 caracteres");
+    }
+
     const [rows] = await pool.query(
-      "CALL sp_paciente_guardar(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      "CALL sp_paciente_guardar_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       [
         idPacienteNum,
         nombre,
@@ -1035,6 +1043,7 @@ const guardarPaciente = async (req, res) => {
         p.ultimaVisitaP,
         p.duiP,
         p.firmaP || null,
+        correoP || null,
         p.tipoMordidaP,
         p.tipoTratamientoP,
         p.endodonciaP,

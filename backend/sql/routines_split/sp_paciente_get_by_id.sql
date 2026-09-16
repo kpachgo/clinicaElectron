@@ -25,6 +25,7 @@ BEGIN
     ultimaVisitaP,
     duiP,
     firmaP,
+    correoP,
     tipomordidaP,
     tipoTratamientoP,
     endodonciaP,

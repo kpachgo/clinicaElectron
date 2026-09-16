@@ -8,7 +8,7 @@
   window.pacienteFotoPrincipalId = null;
   const PACIENTE_EDITABLE_IDS = [
     "NombreP", "direccionP", "telefonoP", "fechaRegistroP", "estadoP", "fechaNacimientoP",
-    "recomendadoP", "encargadoP", "motivoConsultaP", "ultimaVisitaP", "duiP",
+    "recomendadoP", "encargadoP", "motivoConsultaP", "ultimaVisitaP", "duiP", "correoP",
     "tipoMordidaP", "tipoTratamientoP", "historiaMedicaP", "historiaOdontologicaP",
     "examenClinicoP", "examenRadiologicoP", "examenComplementarioP", "endodonciaP",
     "dienteP", "vitalidadP", "percusionP", "medProvisional", "medTrabajoP",
@@ -1451,17 +1451,21 @@ function renderPaciente(container) {
 
         <!-- Fila 3 -->
         <div class="p-row">
-          <div class="p-col p-40">
+          <div class="p-col p-30">
             <label class="form-label">Nombre encargado</label>
             <input type="text" class="form-control" id="encargadoP">
           </div>
-          <div class="p-col p-30">
+          <div class="p-col p-25">
             <label class="form-label">Motivo de consulta</label>
             <input type="text" class="form-control" id="motivoConsultaP">
           </div>
           <div class="p-col p-20">
             <label class="form-label">Ultima visita dentista</label>
             <input type="date" class="form-control" id="ultimaVisitaP">
+          </div>
+          <div class="p-col p-20">
+            <label class="form-label">Correo</label>
+            <input type="email" class="form-control" id="correoP" maxlength="40">
           </div>
         </div>
 
@@ -3073,6 +3077,7 @@ async function cargarPaciente(idPaciente) {
       firmaP.value           = rutaFirma;
       actualizarEstadoFirmaPaciente(rutaFirma);
       duiP.value             = p.duiP   || "";
+      correoP.value          = p.correoP || "";
 
       tipoTratamientoP.value = p.tipoTratamientoP || "Sin registrar";
       actualizarColorTipoTratamiento();
@@ -7472,6 +7477,7 @@ async function guardarPaciente() {
     ultimaVisitaP: ultimaVisitaP.value || null,
     firmaP: firmaP.value || null,
     duiP: duiP.value,
+    correoP: correoP.value.trim(),
     tipoMordidaP: document.getElementById("tipoMordidaP").value, // AQUI
     tipoTratamientoP: document.getElementById("tipoTratamientoP").value, // AQUI
 
