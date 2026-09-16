@@ -58,7 +58,21 @@
         return `${String(h24).padStart(2, "0")}:${mm}`;
     }
     async function api(url, options) {
-        const response = await fetch(url, { ...(options || {}), __skipConnectionErrorAlert: true });
+        // Sin timeout, un fetch que nunca resuelve (glitch de red/IPC) deja colgado para
+        // siempre cualquier await api(...) — y con eso el overlay de "operación en curso"
+        // (que bloquea toda la ventana, no solo Mensajes) nunca se retira. Este límite
+        // garantiza que la promesa siempre se resuelva o rechace en un tiempo acotado.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20000);
+        let response;
+        try {
+            response = await fetch(url, { ...(options || {}), __skipConnectionErrorAlert: true, signal: controller.signal });
+        } catch (error) {
+            if (error?.name === "AbortError") throw new Error("La solicitud tardó demasiado y se canceló. Intenta de nuevo.");
+            throw error;
+        } finally {
+            clearTimeout(timer);
+        }
         const data = await response.json().catch(() => ({}));
         if (!response.ok || data.ok === false) throw new Error(data.message || "No se pudo completar la solicitud");
         return data;
