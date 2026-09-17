@@ -17,7 +17,7 @@ function toConversation(row) {
 }
 
 function toMessage(row) {
-  return row ? { ...row, conversationId: row.conversation_id, externalId: row.external_id, deliveryStatus: row.delivery_status, messageAt: row.message_at, createdAt: row.created_at, reactionTargetId: row.reaction_target_id, mediaPath: row.media_path, mediaMimeType: row.media_mime_type } : null;
+  return row ? { ...row, conversationId: row.conversation_id, externalId: row.external_id, deliveryStatus: row.delivery_status, messageAt: row.message_at, createdAt: row.created_at, reactionTargetId: row.reaction_target_id } : null;
 }
 function phoneRuleVariants(value) { const digits = String(value || "").replace(/\D/g, ""); return [...new Set([digits, digits.length === 11 && digits.startsWith("503") ? digits.slice(3) : ""].filter(Boolean))]; }
 
@@ -300,7 +300,7 @@ class MensajesRepository {
     return this.db.prepare("SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.author='patient' AND m.read_at IS NULL) AS unread_count FROM conversations c WHERE NOT (c.wa_chat_id LIKE '%@lid' AND NOT EXISTS (SELECT 1 FROM messages incoming WHERE incoming.conversation_id=c.id AND incoming.direction='incoming')) ORDER BY c.updated_at DESC LIMIT ?").all(limit).map((row) => ({ ...toConversation(row), unreadCount: row.unread_count }));
   }
 
-  saveMessage({ conversationId, externalId, direction, author, text, messageAt, rawType = "text", reactionTargetId = null, source = "live", mediaPath = null, mediaMimeType = null }) {
+  saveMessage({ conversationId, externalId, direction, author, text, messageAt, rawType = "text", reactionTargetId = null, source = "live" }) {
     if (!conversationId || !externalId || !direction || !author || typeof text !== "string" || !text.trim()) {
       throw new TypeError("Datos de mensaje incompletos");
     }
@@ -332,10 +332,10 @@ class MensajesRepository {
         return { message: toMessage(this.db.prepare("SELECT * FROM messages WHERE id=?").get(dup.id)), duplicate: true };
       }
     }
-    const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at, reaction_target_id, media_path, media_mime_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at, reaction_target_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     const update = this.db.prepare(`UPDATE conversations SET updated_at=datetime('now'), lifecycle_state=CASE WHEN ?='incoming' THEN 'active' ELSE lifecycle_state END, last_message_direction=?, last_message_at=?, last_message_type=?, last_message_source=?, last_inbound_at=CASE WHEN ?='incoming' THEN ? ELSE last_inbound_at END, last_outbound_at=CASE WHEN ?='outgoing' THEN ? ELSE last_outbound_at END WHERE id=?`);
     const transaction = this.db.transaction(() => {
-      const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", messageAt || new Date().toISOString(), reactionTargetId || null, mediaPath || null, mediaMimeType || null);
+      const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", messageAt || new Date().toISOString(), reactionTargetId || null);
       const effectiveMessageAt = messageAt || new Date().toISOString();
       update.run(direction, direction, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
       return this.db.prepare("SELECT * FROM messages WHERE id=?").get(result.lastInsertRowid);
@@ -351,7 +351,7 @@ class MensajesRepository {
       conversation = this.getConversation(conversation.id);
     }
     conversation = this.mergeConversationsForSamePatient(conversation);
-    const saved = this.saveMessage({ conversationId: conversation.id, externalId: event.externalId, direction: "incoming", author: "patient", text: event.text, messageAt: event.messageAt, rawType: event.rawType, reactionTargetId: event.reactionTargetId, source: event.source, mediaPath: event.mediaPath, mediaMimeType: event.mediaMimeType });
+    const saved = this.saveMessage({ conversationId: conversation.id, externalId: event.externalId, direction: "incoming", author: "patient", text: event.text, messageAt: event.messageAt, rawType: event.rawType, reactionTargetId: event.reactionTargetId, source: event.source });
     return { conversation, ...saved };
   }
 

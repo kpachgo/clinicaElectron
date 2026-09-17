@@ -54,8 +54,6 @@ function normalizeIncomingMessage(event) {
     messageAt: source.messageAt ? new Date(source.messageAt).toISOString() : new Date().toISOString(),
     rawType: source.rawType ? String(source.rawType) : "text",
     reactionTargetId: source.reactionTargetId ? String(source.reactionTargetId) : null,
-    mediaPath: source.mediaPath ? String(source.mediaPath) : null,
-    mediaMimeType: source.mediaMimeType ? String(source.mediaMimeType) : null,
     source: source.source ? String(source.source) : "live"
   });
 }

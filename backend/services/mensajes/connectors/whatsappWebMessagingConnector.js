@@ -3,7 +3,6 @@ const path = require("path");
 const crypto = require("crypto");
 const { EventEmitter } = require("events");
 const { Client, LocalAuth, Message } = require("whatsapp-web.js");
-const { mensajesDir } = require("../../../config/storagePaths");
 const {
   MessagingConnector,
   assertConnectorStatus,
@@ -14,17 +13,12 @@ const {
 
 const USER_CHAT_SUFFIX = "@c.us";
 const IGNORED_CHAT_IDS = new Set(["status@broadcast"]);
-const MEDIA_DIR = path.join(mensajesDir, "media");
-// Ante un paciente que manda solo una imagen (sin texto), el mensaje necesita
+// Ante un paciente que manda solo una imagen/audio (sin texto), el mensaje necesita
 // algun texto para guardarse (columna content NOT NULL) y para que el guardia
-// de messageTriage lo vea. La descripcion real (si es promocion, radiografia,
-// etc.) la da despues la clasificacion con vision, no este placeholder.
+// de messageTriage lo vea y lo mande a revisión humana. No descargamos el
+// archivo en sí (se probó y se descartó): solo este texto de reemplazo.
 const MEDIA_PLACEHOLDERS = { image: "📷 Imagen", video: "🎥 Video", document: "📄 Documento", sticker: "🖼️ Sticker", audio: "🎙️ Audio", ptt: "🎙️ Audio" };
 function mediaPlaceholder(type) { return MEDIA_PLACEHOLDERS[String(type || "").toLowerCase()] || "📎 Adjunto"; }
-function mimeExtension(mimetype) {
-  const raw = String(mimetype || "").split(";")[0].split("/")[1] || "bin";
-  return raw.replace(/[^a-z0-9]/gi, "").toLowerCase() || "bin";
-}
 // Agenda guarda normalmente los teléfonos salvadoreños como 8 dígitos.
 // Solo el destino de WhatsApp necesita el código de país; no modificamos
 // el teléfono persistido ni el usado para buscar pacientes.
@@ -462,34 +456,6 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     return null;
   }
 
-  // Descarga el adjunto de un mensaje entrante y lo guarda en disco (no en la
-  // base). Si falla (adjunto vencido, error de red, etc.) devuelve null: el
-  // mensaje igual se guarda con el placeholder de texto y sigue yendo a
-  // revisión humana como hoy, solo que sin el archivo.
-  async downloadIncomingMedia(message, externalId) {
-    let media = null;
-    try {
-      media = await message.downloadMedia();
-    } catch (error) {
-      console.warn("[Mensajes][WhatsApp] downloadMedia() lanzo error", { externalId, error: error?.message || String(error) });
-      return null;
-    }
-    if (!media?.data) { console.warn("[Mensajes][WhatsApp] downloadMedia() no devolvio datos", { externalId, media: media ? Object.keys(media) : null }); return null; }
-    // Igual que downloadMedia(): si el disco falla (lleno, permisos, archivo
-    // bloqueado por el antivirus/OneDrive) no puede tumbar el proceso entero
-    // por una promesa sin capturar; se degrada como cualquier otra falla de adjunto.
-    try {
-      fs.mkdirSync(MEDIA_DIR, { recursive: true });
-      const safeId = String(externalId || `media-${Date.now()}`).replace(/[^a-zA-Z0-9_.-]/g, "_");
-      const fileName = `${safeId}.${mimeExtension(media.mimetype)}`;
-      fs.writeFileSync(path.join(MEDIA_DIR, fileName), Buffer.from(media.data, "base64"));
-      return { mediaPath: path.join("media", fileName), mediaMimeType: media.mimetype || null };
-    } catch (error) {
-      console.warn("[Mensajes][WhatsApp] No se pudo guardar el adjunto en disco", { externalId, error: error?.message || String(error) });
-      return null;
-    }
-  }
-
   async handleIncoming(message, eventName = "message") {
     const externalId = this.getExternalId(message, "incoming");
     const isReaction = String(message?.type || message?._data?.type || "").toLowerCase() === "reaction";
@@ -501,11 +467,6 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     console.log("[Mensajes][WhatsApp] Evento entrante", { event: eventName, externalId, chatId: sourceChat, hasText: Boolean(bodyText), hasMedia });
     if (message?.fromMe) return;
     if (!text) { console.log("[Mensajes][WhatsApp] Mensaje descartado: sin texto", { externalId, chatId: sourceChat, type: message?.type }); return; }
-    let media = null;
-    if (hasMedia) {
-      media = await this.downloadIncomingMedia(message, externalId);
-      if (!media) console.warn("[Mensajes][WhatsApp] No se pudo descargar el adjunto; se guarda el mensaje sin archivo", { externalId, chatId: sourceChat, type: message?.type });
-    }
     try {
       const meta = await this.getIndividualMeta(message);
       if (meta?.discarded) { console.log("[Mensajes][WhatsApp] Mensaje descartado", { externalId, reason: meta.discarded, chatId: meta.chatId || sourceChat }); return; }
@@ -516,8 +477,6 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
         messageAt: message.timestamp ? new Date(message.timestamp * 1000).toISOString() : new Date().toISOString(),
         rawType: isReaction ? "reaction" : (message.type || "text"),
         reactionTargetId: isReaction ? (message.reactionTargetId || null) : null,
-        mediaPath: media?.mediaPath || null,
-        mediaMimeType: media?.mediaMimeType || null,
         source: eventName === "recovery" ? "recovery" : "live"
       }));
       console.log("[Mensajes][WhatsApp] Mensaje normalizado para SQLite", { externalId, chatId: meta.waChatId, phone: meta.phone });
