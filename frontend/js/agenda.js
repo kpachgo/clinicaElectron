@@ -3273,13 +3273,16 @@
             throw new Error(json?.message || "Error al actualizar fecha");
           }
         } catch (err) {
-          // rollback si falla
-          item.fecha = fechaOriginal;
-          item._fechaISO = fechaISOOriginal;
-          agendaMonthCacheKey = "";
+          // Rollback solo si nadie volvio a editar esta fila mientras este guardado
+          // estaba en curso: si no, pisaria una edicion mas nueva que ya se guardo bien.
+          if (item._fechaISO === iso) {
+            item.fecha = fechaOriginal;
+            item._fechaISO = fechaISOOriginal;
+            agendaMonthCacheKey = "";
+            aplicarFiltros();
+          }
           alert("No se pudo guardar el cambio de fecha");
           console.error(err);
-          aplicarFiltros();
         } finally {
           isSaving = false;
         }

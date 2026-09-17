@@ -271,8 +271,12 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
           try {
             const message = new Message(client, model);
             if (model.__lidPhone) message.__recoveryLidPhone = model.__lidPhone;
-            const text = String(message.body || "").trim();
-            if (!text && !message.hasMedia) continue;
+            const bodyText = String(message.body || "").trim();
+            if (!bodyText && !message.hasMedia) continue;
+            // Adjunto sin texto propio (foto/documento sin pie de foto): igual que en
+            // handleIncoming, sin este placeholder normalizeIncomingMessage revienta por
+            // texto vacio y el mensaje saliente recuperado se pierde en silencio.
+            const text = bodyText || (message.hasMedia ? mediaPlaceholder(message.type) : "");
             if (message.fromMe) {
               const meta = await this.getIndividualMeta(message, "outgoing");
               if (!meta || meta.discarded) continue;
@@ -471,11 +475,19 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       return null;
     }
     if (!media?.data) { console.warn("[Mensajes][WhatsApp] downloadMedia() no devolvio datos", { externalId, media: media ? Object.keys(media) : null }); return null; }
-    fs.mkdirSync(MEDIA_DIR, { recursive: true });
-    const safeId = String(externalId || `media-${Date.now()}`).replace(/[^a-zA-Z0-9_.-]/g, "_");
-    const fileName = `${safeId}.${mimeExtension(media.mimetype)}`;
-    fs.writeFileSync(path.join(MEDIA_DIR, fileName), Buffer.from(media.data, "base64"));
-    return { mediaPath: path.join("media", fileName), mediaMimeType: media.mimetype || null };
+    // Igual que downloadMedia(): si el disco falla (lleno, permisos, archivo
+    // bloqueado por el antivirus/OneDrive) no puede tumbar el proceso entero
+    // por una promesa sin capturar; se degrada como cualquier otra falla de adjunto.
+    try {
+      fs.mkdirSync(MEDIA_DIR, { recursive: true });
+      const safeId = String(externalId || `media-${Date.now()}`).replace(/[^a-zA-Z0-9_.-]/g, "_");
+      const fileName = `${safeId}.${mimeExtension(media.mimetype)}`;
+      fs.writeFileSync(path.join(MEDIA_DIR, fileName), Buffer.from(media.data, "base64"));
+      return { mediaPath: path.join("media", fileName), mediaMimeType: media.mimetype || null };
+    } catch (error) {
+      console.warn("[Mensajes][WhatsApp] No se pudo guardar el adjunto en disco", { externalId, error: error?.message || String(error) });
+      return null;
+    }
   }
 
   async handleIncoming(message, eventName = "message") {
