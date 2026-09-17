@@ -87,7 +87,14 @@ async function flushOutgoingQueue() {
       if (!["connected", "syncing"].includes(messageConnector.getStatus().status)) { repository.db.prepare("UPDATE outgoing_queue SET status='pending', updated_at=datetime('now') WHERE id=? AND status='sending'").run(item.id); continue; }
       try {
         const sent = await messageConnector.sendMessage(item.phone, item.content, { waChatId: item.wa_chat_id });
-        repository.saveOutgoingMessage({ phone: sent.phone || item.phone, externalId: sent.externalId, text: sent.text, author: "human", messageAt: sent.messageAt, waChatId: item.wa_chat_id || sent.waChatId, waContactNumber: sent.waContactNumber });
+        // Los recordatorios de cita pasan por esta misma cola (processReminder) pero son
+        // texto automatico, no algo que un humano escribio: si quedan marcados author="human",
+        // assistantContext los etiqueta como "promesa de recepcion" y la regla de
+        // confirmar_asistencia (que exige que el ULTIMO mensaje sea un recordatorio propio)
+        // nunca dispara cuando el paciente responde "si voy". idempotency_key los distingue
+        // (reminder-<batchId>-<itemId> vs manual-<conversationId>-...).
+        const isReminder = String(item.idempotency_key || "").startsWith("reminder-");
+        repository.saveOutgoingMessage({ phone: sent.phone || item.phone, externalId: sent.externalId, text: sent.text, author: isReminder ? "system" : "human", messageAt: sent.messageAt, waChatId: item.wa_chat_id || sent.waChatId, waContactNumber: sent.waContactNumber });
         repository.markOutgoingSent(item.id);
         console.log("[Mensajes][WhatsApp] Mensaje enviado", { queueId: item.id, phone: item.phone, waChatId: item.wa_chat_id, externalId: sent.externalId });
       } catch (error) {

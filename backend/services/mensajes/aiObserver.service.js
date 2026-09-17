@@ -45,7 +45,11 @@ async function processBatch(batch) {
   const linkedPatient = repo.getPatientLink(conversation.id);
   const assistantMemory = repo.getAssistantMemory(conversation.id);
 
-  const triage = triageMessage(text, { messageType: conversation.lastMessageType || "text" });
+  const triage = triageMessage(text, {
+    messageType: conversation.lastMessageType || "text",
+    phoneResolved: conversation.phoneResolved,
+    hasOutboundContext: Boolean(conversation.lastOutboundAt)
+  });
   if (triage.humanReview) {
     repo.updateConversationState(conversation.id, { ...savedState, collected: { ...(savedState.collected || {}), _humanReviewReason: triage.reason }, missing: savedState.missing || [], offeredSlots: savedState.offeredSlots || [], pendingAction: savedState.pendingAction || null, humanTransition: true });
     console.log("[Mensajes][IA] Revisión humana", { batchId: batch.id, conversationId: conversation.id, ruleId: triage.ruleId });

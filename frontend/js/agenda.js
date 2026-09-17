@@ -3225,17 +3225,64 @@
       td.appendChild(input);
       input.focus();
 
-      function save() {
+      const fechaOriginal = String(item.fecha || "");
+      const fechaISOOriginal = String(item._fechaISO || "");
+      let isSaving = false;
+      let isClosed = false;
+
+      function closeEditor(fechaTexto) {
+        if (isClosed) return;
+        isClosed = true;
+        td.innerHTML = renderFechaVisual(fechaTexto);
+      }
+
+      async function save() {
+        if (isSaving || isClosed) return;
+
         const iso = input.value;
-        if (!iso) return;
+        if (!iso) {
+          closeEditor(fechaOriginal);
+          return;
+        }
+        if (iso === fechaISOOriginal) {
+          closeEditor(fechaOriginal);
+          return;
+        }
+
+        isSaving = true;
 
         const [yy, mm, dd] = iso.split("-");
-        item.fecha = `${dd}/${mm}/${yy}`;
+        const fechaNueva = `${dd}/${mm}/${yy}`;
+
+        // Optimistic UI (actualiza primero)
+        item.fecha = fechaNueva;
         item._fechaISO = iso;
         agendaMonthCacheKey = "";
-
-        td.innerHTML = renderFechaVisual(item.fecha);
+        closeEditor(fechaNueva);
         aplicarFiltros();
+
+        try {
+          const res = await fetch(`/api/agenda/${item.idAgendaAP}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fecha: iso })
+          });
+
+          const json = await res.json();
+          if (!res.ok || !json?.ok) {
+            throw new Error(json?.message || "Error al actualizar fecha");
+          }
+        } catch (err) {
+          // rollback si falla
+          item.fecha = fechaOriginal;
+          item._fechaISO = fechaISOOriginal;
+          agendaMonthCacheKey = "";
+          alert("No se pudo guardar el cambio de fecha");
+          console.error(err);
+          aplicarFiltros();
+        } finally {
+          isSaving = false;
+        }
       }
 
       input.addEventListener("change", save);

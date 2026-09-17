@@ -319,6 +319,17 @@ const migrations = [
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_lid_phone_map_phone ON lid_phone_map(phone);`
+  // Guarda la imagen descargada de un mensaje entrante (foto/documento) como
+  // archivo en disco (mensajesDir/media), no en la columna content: evita
+  // inflar mensajes.sqlite y que cada carga del historial de texto arrastre
+  // binarios. media_path es relativo a mensajesDir.
+  ,`ALTER TABLE messages ADD COLUMN media_path TEXT NULL; ALTER TABLE messages ADD COLUMN media_mime_type TEXT NULL;`
+  // Interruptor global para que la IA clasifique imágenes entrantes (clínica
+  // vs. captura de promoción) en vez de mandarlas siempre a revisión humana.
+  // Apagado por defecto: hay que activarlo a propósito después de probarlo.
+  // Si la clasificación falla o no es clara, el guardia determinista de
+  // messageTriage sigue mandando a revisión humana (ver aiObserver).
+  ,`ALTER TABLE automation_settings ADD COLUMN image_triage_enabled INTEGER NOT NULL DEFAULT 0;`
 ];
 
 function getDb() {
