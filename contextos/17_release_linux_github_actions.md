@@ -50,6 +50,14 @@
 - Se elimino una validacion con `grep` que fallaba con tags como `v4.0.0`.
 - La build Linux en CI ya no usa compresion `store`, para evitar binarios innecesariamente pesados.
 
+## Fallo "runtime/backend/server.js not found inside linux-unpacked bundle" (2026-09-21)
+- **Sintoma:** el build genera `.deb` y `.AppImage` (paso "Validate Linux outputs exist" en verde) pero falla "Validate runtime backend included in linux-unpacked" y no se publica nada al release.
+- **Causa raiz:** `build/afterAllArtifactBuild.js` (desde 2026-08-28) borra `linux-unpacked` al terminar el build; las validaciones del workflow lo buscan ahi. El ultimo Linux que salio bien (`v5.0.3`) es anterior a ese script. No es un problema del contenido del paquete.
+- **Fix:** `release-linux.yml` define `CLINICA_KEEP_UNPACKED: "1"` a nivel de job (interruptor que ya soporta el script). Solo se conserva en CI; no se sube nada de esa carpeta (los `files:` del release son `.deb`, `.AppImage`, `.blockmap` y `latest-linux.yml`).
+- **Pendiente para Windows/macOS:** `release-win.yml` (busca `win-unpacked`) y `release-mac.yml` (busca `mac/ClinicaElectron.app`) tienen la misma validacion y fallarian igual. Antes de reactivarlos en Actions, agregarles el mismo `CLINICA_KEEP_UNPACKED: "1"`.
+- **Ojo con el tag:** las validaciones exigen que el tag apunte al `HEAD` de `origin/main`. Si se corrige el workflow con un commit nuevo en `main`, el tag ya creado queda atras y hay que moverlo al nuevo `HEAD` (o crear uno nuevo) antes de lanzar el run.
+- **Caso real:** `v5.0.7` quedo como tag sin release (el run fallo antes de publicar) y se relanzo como `v5.0.8` para no reescribir un tag ya publicado. Con Windows y macOS desactivados en Actions, un tag `v*` dispara solo Linux.
+
 ## Limitacion local conocida
 - Desde Windows no fue confiable generar el paquete Linux final completo de forma local.
 - Problemas observados:
