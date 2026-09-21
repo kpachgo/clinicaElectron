@@ -2,7 +2,7 @@ const { SimulatedMessagingConnector } = require("./connectors/simulatedMessaging
 const { WhatsAppWebMessagingConnector } = require("./connectors/whatsappWebMessagingConnector");
 const storagePaths = require("../../config/storagePaths");
 const { MensajesRepository } = require("./mensajesRepository.service");
-const { enqueueIncomingResponse, setTypingHandler, setSendHandler } = require("./aiObserver.service");
+const { enqueueIncomingResponse, setTypingHandler, setSendHandler, setLidResolver } = require("./aiObserver.service");
 const { evaluateConversationEvent } = require("./conversationEngine.service");
 const connector = process.env.MENSAJES_CONNECTOR === "simulated"
   ? new SimulatedMessagingConnector()
@@ -29,6 +29,7 @@ async function start() {
   if (typeof connector.onStatus === "function") connector.onStatus((status) => { if (status.status === "connected") { connectedAtMs = Date.now(); console.log("[Mensajes] Conexion restaurada; no se reanudan respuestas ni recordatorios automaticamente"); for (const ms of [3000, 15000, 40000, 90000]) setTimeout(() => void refreshLidConversations(), ms).unref?.(); } });
   if (typeof connector.setTyping === "function") setTypingHandler((phone, enabled, options = {}) => connector.setTyping(phone, enabled, options));
   if (typeof connector.sendMessage === "function") setSendHandler(sendAiMessage);
+  if (typeof connector.resolvePhoneForChatId === "function") setLidResolver((chatId) => connector.resolvePhoneForChatId(chatId));
   queueTimer = null;
   if (typeof connector.resolvePhoneForChatId === "function" && !lidRefreshTimer) {
     lidRefreshTimer = setInterval(() => void refreshLidConversations(), 60 * 1000);

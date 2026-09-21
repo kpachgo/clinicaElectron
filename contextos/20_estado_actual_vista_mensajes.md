@@ -209,6 +209,20 @@ El mismo mensaje saliente llega por varias vías con `external_id` distinto: el 
 
 Fix: `saveMessage`, para `direction='outgoing'`, además del match por `external_id` deduplica por **mismo `conversation_id` + mismo `content` + `message_at` a ≤ 180 s**. Los entrantes NO se deduplican por contenido (el paciente sí manda "?" dos veces). Un mismo template saliente en días distintos se guarda (fuera de la ventana).
 
+## Respuesta a un recordatorio desde un `@lid` sin resolver — 2026-09-18
+
+- **Caso real (conv 648, Eris David Mira Orellana):** recordatorio enviado 20:54:22 UTC al chat `@c.us`; la paciente contestó "Si primero Dios" a las 20:55:32 desde un `@lid` que WhatsApp todavía no resolvía → conversación nueva **sin el recordatorio** → la IA respondió un saludo genérico ("¿En qué puedo asistirle hoy?") a las 20:55:45 y la cita no se confirmó. El log muestra que a las 20:55:45 el conector ya podía resolver el `@lid`, pero la fusión con el chat del recordatorio recién ocurrió a las 20:56:06 (ciclo de 60 s de `refreshLidConversations`).
+- **Por qué no la frenó la guarda anterior:** `messageTriage` solo retenía respuestas breves de una lista de frases exactas ("si", "primero dios"…) y "Si primero Dios" no estaba. Cualquier guarda por frases deja variantes afuera ("No podré ir mañana, tengo un compromiso"). La IA no falló: la regla del prompt para confirmar asistencia ya cubre "primero dios"; le faltaba el recordatorio en el hilo.
+- **Acuerdo (criterio por estado, no por frases):** chat `@lid` sin resolver (`!phoneResolved`) **y** sin ningún saliente nuestro (`!lastOutboundAt`) → la IA no responde hasta tener el contexto, para no contradecirse ni decir cosas sin sentido.
+- **Implementación** (`aiObserver.processBatch`, antes del triage):
+  1. `resolveUnlinkedLid`: intenta resolver el teléfono con `connector.resolvePhoneForChatId` (inyectado con `setLidResolver` desde el runtime; tope de 3 s porque el tick es serial y la consulta de red puede tardar minutos) y `updateWhatsAppContact` fusiona con el chat del recordatorio → el agente ve el hilo completo.
+  2. Si sigue sin contexto, se **difiere** el lote (`generating`, `attempts=0`, `due_at` +5 s; los mensajes nuevos se siguen agrupando en él y no se gastan los 8 reintentos) hasta `LID_HOLD_MAX_MS` (60 s desde que se creó el lote).
+  3. Vencido el plazo → `review_required` con motivo; nunca responde a ciegas. Un chat con saliente propio (recepción o IA ya hablaron ahí) o con teléfono resuelto responde normal.
+  - Mientras espera, el panel muestra "La IA está preparando una respuesta…" (máx. 60 s).
+- `messageTriage` dejó de tener la regla por frases (`bare_reply_unlinked_chat`): queda solo audio/media.
+- **Verificado offline:** replay del caso sobre una copia de la BD con el `aiObserver` real (LLM y envío stubbeados): resuelve al 2º intento → la IA ve [recordatorio, "Si primero Dios"] con el teléfono real y responde una sola vez; nunca resuelve → `review_required` sin respuesta; espera acotada dentro del plazo; un resolver colgado no traba la cola; chat resuelto o con saliente propio → sin cambios. **Pendiente: confirmar en vivo** con la próxima tanda de recordatorios (logs `Respuesta en espera: chat @lid…`, `LID resuelto antes de responder`, `Revisión humana: LID sin resolver tras la espera`).
+- Riesgo asumido: un paciente nuevo cuyo `@lid` nunca resuelve (contacto sin teléfono visible) ahora pasa a recepción a los 60 s en vez de recibir respuesta de la IA.
+
 ## Pendiente
 
 - Probar el path `json` con un modelo local real (hoy solo se probó `cloud`/native con DeepSeek).

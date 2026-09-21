@@ -4,11 +4,50 @@ const { triageMessage } = require("./messageTriage.service");
 const { runAssistant } = require("./assistantAgent.service");
 
 const repo = new MensajesRepository(getDb());
-let timer; let typingHandler; let sendHandler; let ticking = false;
+let timer; let typingHandler; let sendHandler; let lidResolver; let ticking = false;
+const LID_RESOLVE_TIMEOUT_MS = 3000;
+const LID_HOLD_RETRY_MS = 5000;
+const LID_HOLD_MAX_MS = 60000;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function safeTyping(phone, enabled, options = {}) { if (!typingHandler) return; Promise.resolve().then(() => typingHandler(phone, enabled, options)).catch(() => {}); }
 function withSendTimeout(task, timeoutMs = 30000) { let timerId; return Promise.race([Promise.resolve().then(task), new Promise((_, reject) => { timerId = setTimeout(() => { const error = new Error(`Tiempo agotado al entregar la respuesta (${timeoutMs} ms)`); error.code = "AI_SEND_TIMEOUT"; reject(error); }, timeoutMs); })]).finally(() => clearTimeout(timerId)); }
+
+// Un chat @lid sin resolver a teléfono y sin ningún saliente nuestro puede ser la
+// respuesta a un recordatorio enviado al chat @c.us del mismo paciente: mientras los
+// dos chats no se fusionen, el agente no ve el recordatorio y contesta a ciegas (un
+// "Si primero Dios" recibió un saludo genérico). Se decide por el ESTADO del chat,
+// nunca por el texto del mensaje: cualquier frase puede ser la respuesta a algo que
+// este chat no muestra.
+const isContextUnclear = (conversation) => String(conversation.waChatId || "").endsWith("@lid") && !conversation.phoneResolved && !conversation.lastOutboundAt;
+
+// Los SQLite datetime('now') vienen en UTC sin zona.
+const queueAgeMs = (batch) => { const t = Date.parse(`${String(batch.createdAt || "").replace(" ", "T")}Z`); return Number.isFinite(t) ? Math.max(0, Date.now() - t) : 0; };
+
+// El runtime reconcilia los @lid cada 60 s, demasiado tarde para una respuesta que
+// sale a los pocos segundos, así que se intenta resolver acá antes de generar.
+// Con tope de tiempo: el tick es serial y la consulta de red del conector puede
+// tardar minutos.
+async function resolveUnlinkedLid(conversation) {
+  if (!lidResolver || conversation.phoneResolved || !String(conversation.waChatId || "").endsWith("@lid")) return conversation;
+  let timerId;
+  try {
+    const phone = await Promise.race([
+      Promise.resolve().then(() => lidResolver(conversation.waChatId)),
+      new Promise((resolve) => { timerId = setTimeout(() => resolve(null), LID_RESOLVE_TIMEOUT_MS); })
+    ]);
+    if (phone) {
+      const updated = repo.updateWhatsAppContact(conversation.id, phone);
+      console.log("[Mensajes][IA] LID resuelto antes de responder", { conversationId: conversation.id, phoneResolved: Boolean(updated?.phoneResolved) });
+      if (updated) return updated;
+    }
+  } catch (error) {
+    console.warn("[Mensajes][IA] No se pudo resolver el LID antes de responder", { conversationId: conversation.id, error: error?.message || String(error) });
+  } finally {
+    clearTimeout(timerId);
+  }
+  return conversation;
+}
 
 function enqueueIncomingResponse(conversationId, messageId, text) {
   if (!repo.getAutomationSettings().enabled) return null;
@@ -33,9 +72,29 @@ function responseQueueStillEligible(batch, conversation) {
 // eliminaron; la unica pausa disponible es "Pausar IA" (automation_settings).
 async function processBatch(batch) {
   if (!repo.getAutomationSettings().enabled) return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "IA pausada globalmente" });
-  const conversation = repo.getConversation(batch.conversationId);
+  let conversation = repo.getConversation(batch.conversationId);
   const initialEligibility = responseQueueStillEligible(batch, conversation);
   if (!initialEligibility.ok) { console.warn("[Mensajes][IA] Cola no elegible", { batchId: batch.id, conversationId: conversation?.id, reason: initialEligibility.reason }); return repo.updateResponseQueue(batch.id, { status: "cancelled", error: `Respuesta cancelada: ${initialEligibility.reason}` }); }
+  conversation = await resolveUnlinkedLid(conversation);
+  // Sin contexto claro no se responde: se difiere el lote y se reintenta resolver el
+  // teléfono (al resolverse se fusiona con el chat del recordatorio y el agente ve el
+  // hilo completo). Se vuelve a `generating` con attempts=0 para que los mensajes que
+  // sigan llegando se agrupen en este mismo lote y no se gasten los reintentos. Si el
+  // teléfono no aparece en LID_HOLD_MAX_MS, lo atiende recepción en vez de improvisar.
+  if (isContextUnclear(conversation)) {
+    const waitedMs = queueAgeMs(batch);
+    if (waitedMs < LID_HOLD_MAX_MS) {
+      const current = repo.getResponseQueueItem(batch.id);
+      if (!current || current.status !== "generating") return current;
+      console.log("[Mensajes][IA] Respuesta en espera: chat @lid sin resolver y sin contexto propio", { batchId: batch.id, conversationId: conversation.id, esperaSegundos: Math.round(waitedMs / 1000) });
+      return repo.updateResponseQueue(batch.id, { status: "generating", attempts: 0, dueAt: new Date(Date.now() + LID_HOLD_RETRY_MS).toISOString(), error: "Esperando resolver el teléfono del chat (LID)" });
+    }
+    const reason = "Chat de WhatsApp sin identificar (LID sin resolver) y sin mensajes nuestros previos: no hay contexto para saber a qué responde el paciente";
+    const heldState = repo.getConversationState(conversation.id);
+    repo.updateConversationState(conversation.id, { ...heldState, collected: { ...(heldState.collected || {}), _humanReviewReason: reason }, missing: heldState.missing || [], offeredSlots: heldState.offeredSlots || [], pendingAction: heldState.pendingAction || null, humanTransition: true });
+    console.log("[Mensajes][IA] Revisión humana: LID sin resolver tras la espera", { batchId: batch.id, conversationId: conversation.id, esperaSegundos: Math.round(waitedMs / 1000) });
+    return repo.updateResponseQueue(batch.id, { status: "cancelled", error: reason });
+  }
   if (conversation && !repo.shouldAllowAutomatedResponseForConversation(conversation.id, conversation.phone)) return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "Teléfono fuera de la lista permitida para IA" });
   if (!conversation || conversation.attentionMode !== "assistant") return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "Conversación en atención humana" });
   const text = repo.listMessages(batch.conversationId, { limit: 100 }).filter((m) => batch.messageIds.includes(m.id)).map((m) => m.content).join("\n").trim();
@@ -45,11 +104,7 @@ async function processBatch(batch) {
   const linkedPatient = repo.getPatientLink(conversation.id);
   const assistantMemory = repo.getAssistantMemory(conversation.id);
 
-  const triage = triageMessage(text, {
-    messageType: conversation.lastMessageType || "text",
-    phoneResolved: conversation.phoneResolved,
-    hasOutboundContext: Boolean(conversation.lastOutboundAt)
-  });
+  const triage = triageMessage(text, { messageType: conversation.lastMessageType || "text" });
   if (triage.humanReview) {
     repo.updateConversationState(conversation.id, { ...savedState, collected: { ...(savedState.collected || {}), _humanReviewReason: triage.reason }, missing: savedState.missing || [], offeredSlots: savedState.offeredSlots || [], pendingAction: savedState.pendingAction || null, humanTransition: true });
     console.log("[Mensajes][IA] Revisión humana", { batchId: batch.id, conversationId: conversation.id, ruleId: triage.ruleId });
@@ -166,6 +221,7 @@ function start() {
 }
 function setTypingHandler(handler) { typingHandler = handler; }
 function setSendHandler(handler) { sendHandler = handler; }
+function setLidResolver(handler) { lidResolver = handler; }
 start();
 
-module.exports = { enqueueIncomingResponse, processBatch, tick, setTypingHandler, setSendHandler, responseQueueStillEligible };
+module.exports = { enqueueIncomingResponse, processBatch, tick, setTypingHandler, setSendHandler, setLidResolver, responseQueueStillEligible };
