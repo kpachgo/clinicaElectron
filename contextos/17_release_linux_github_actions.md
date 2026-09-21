@@ -56,7 +56,15 @@
 - **Fix:** `release-linux.yml` define `CLINICA_KEEP_UNPACKED: "1"` a nivel de job (interruptor que ya soporta el script). Solo se conserva en CI; no se sube nada de esa carpeta (los `files:` del release son `.deb`, `.AppImage`, `.blockmap` y `latest-linux.yml`).
 - **Pendiente para Windows/macOS:** `release-win.yml` (busca `win-unpacked`) y `release-mac.yml` (busca `mac/ClinicaElectron.app`) tienen la misma validacion y fallarian igual. Antes de reactivarlos en Actions, agregarles el mismo `CLINICA_KEEP_UNPACKED: "1"`.
 - **Ojo con el tag:** las validaciones exigen que el tag apunte al `HEAD` de `origin/main`. Si se corrige el workflow con un commit nuevo en `main`, el tag ya creado queda atras y hay que moverlo al nuevo `HEAD` (o crear uno nuevo) antes de lanzar el run.
-- **Caso real:** `v5.0.7` quedo como tag sin release (el run fallo antes de publicar) y se relanzo como `v5.0.8` para no reescribir un tag ya publicado. Con Windows y macOS desactivados en Actions, un tag `v*` dispara solo Linux.
+- **Caso real:** `v5.0.7` y `v5.0.8` quedaron como tags sin release (los runs fallaron antes de publicar) y se relanzo como `v5.0.9` para no reescribir tags ya publicados. Con Windows y macOS desactivados en Actions, un tag `v*` dispara solo Linux.
+
+## Fallo "Artifact storage quota has been hit" en el paso de backup (2026-09-21)
+- **Sintoma:** las tres validaciones de `linux-unpacked` pasan y falla `Upload Linux artifacts (backup)` con `Failed to CreateArtifact: Artifact storage quota has been hit`. El paso `Publish assets to GitHub Release` se salta y no se crea el release.
+- **Causa raiz:** `actions/upload-artifact` guarda una copia de cada build en el almacenamiento de artefactos de Actions, que tiene cuota por cuenta segun el plan (500 MB en el gratuito). Cada corrida sube `.deb` + `.AppImage` (cientos de MB) y las corridas viejas o fallidas se acumulan (retencion por defecto 90 dias). GitHub recalcula el uso cada 6-12 horas, asi que borrar artefactos viejos no libera cuota al instante.
+- **Fix:** se quito el paso `Upload Linux artifacts (backup)` de `release-linux.yml`. Era redundante: `softprops/action-gh-release` sube los mismos archivos al release del tag, y los assets de un release no cuentan contra la cuota de artefactos.
+- **Pendiente para Windows/macOS:** `release-win.yml` y `release-mac.yml` tienen su propio paso "... artifact (backup)" y fallarian igual con la cuota llena. Quitarlo tambien, junto con el `CLINICA_KEEP_UNPACKED`, antes de reactivarlos.
+- **Limpieza opcional:** en GitHub, Actions -> abrir una corrida -> "Delete artifacts" para liberar espacio de corridas viejas.
+- **No lanzar dos runs del mismo tag:** el `push` del tag ya dispara el workflow solo; darle ademas a `Run workflow` con ese tag crea una segunda corrida que compite por publicar en el mismo release. Usar `Run workflow` solo si el run automatico no arranco.
 
 ## Limitacion local conocida
 - Desde Windows no fue confiable generar el paquete Linux final completo de forma local.

@@ -158,17 +158,6 @@ jobs:
           fi
           find dist-electron -path "*/linux-unpacked/resources/runtime/backend/.env" -print
 
-      - name: Upload Linux artifacts (backup)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ClinicaElectron-linux-release-${{ env.RELEASE_TAG }}
-          path: |
-            dist-electron/*.deb
-            dist-electron/*.AppImage
-            dist-electron/*.blockmap
-            dist-electron/latest-linux.yml
-          if-no-files-found: error
-
       - name: Publish assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
