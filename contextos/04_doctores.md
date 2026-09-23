@@ -69,6 +69,9 @@
 - No pide contrasena adicional; basta la sesion activa del usuario `Doctor`.
 - Reemplazar firma/sello actualiza el archivo/ruta del registro `doctor`.
 - La firma viaja como PNG base64 en JSON; el backend acepta hasta `10mb` y responde JSON claro si la imagen excede el limite.
+- Canvas de firma (registro y actualizar firma):
+  - al cambiar tamano (girar tablet, abrir teclado) se conserva el trazo: se copia y se vuelve a pintar tras redimensionar (`prepararCanvasFirmaHD`).
+  - no se guarda firma en blanco: al registrar sin trazo se envia `firmaBase64` vacio (doctor queda sin firma); en `Actualizar firma` sin trazo se bloquea con aviso.
 - Las citas y expedientes que muestran firma/sello usan el archivo actual del doctor:
   - si se reemplaza firma/sello, los historicos autorizados muestran la version nueva al volver a consultar/imprimir.
   - el estado `Inactivo` no oculta firma/sello.
@@ -184,3 +187,17 @@
 - Frontend (`frontend/js/doctor.js`):
   - `subirSelloDoctor` robustecido para manejar respuestas no JSON sin romper flujo.
   - mensajes de error de sello ahora usan texto devuelto por backend cuando exista.
+
+## Ajustes recientes (2026-09-23) - firma desde tablet
+- Incidente: desde la tablet no se veia la firma/sello del doctor en Registro de Citas; desde la PC si.
+- Diagnostico:
+  - rutas en BD correctas (`/img/docs/firma_ID.png`, `/img/docs/sello_ID.jpg|png`); `/img/docs` es estatico sin auth y funciona igual por `localhost:3000` y por IP LAN.
+  - `sello_15.jpeg` es legitimo: versiones antiguas conservaban la extension original; hoy multer guarda `.jpg`/`.png`.
+  - bug 1: el canvas de firma (`width: 100%`) se re-inicializaba en `resize`/`orientationchange`; en tablet (girar pantalla o abrir teclado) se borraba el trazo y se guardaba un PNG en blanco.
+  - bug 2: se guardaba firma aunque el canvas estuviera vacio, por eso todos los doctores tienen `firma_X.png` aunque alguna pueda ser un rectangulo blanco.
+- Correccion (`frontend/js/doctor.js`):
+  - helper `prepararCanvasFirmaHD(canvas, ctx, conservarTrazo)` compartido por `setupCanvasHD` y `setupFirmaUpdateCanvasHD`: si hay trazo, copia el canvas antes de redimensionar y lo repinta centrado (contain).
+  - flags `firmaTieneTrazo` / `firmaUpdateTieneTrazo`: se activan al dibujar o cargar imagen y se reinician al limpiar.
+  - registro de doctor sin trazo envia `firmaBase64` vacio (doctor queda sin firma).
+  - `Actualizar firma` sin trazo muestra aviso "Debe firmar o cargar una imagen antes de guardar." y no envia.
+- Firmas historicas en blanco no se corrigen solas: verificar abriendo `http://<IP>:3000/img/docs/firma_ID.png` y, si sale vacia, volver a firmar desde `Actualizar firma`.

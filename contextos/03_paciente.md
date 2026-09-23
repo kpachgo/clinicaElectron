@@ -245,7 +245,7 @@
     - si intenta enviar otro `doctorId`, responde `403`,
     - `Administrador`, `Recepcion` y `Asistente` pueden seleccionar cualquier doctor activo.
   - Checkbox `Ver firma/sello` en encabezado de Registro de Citas:
-    - se guarda por sesion/usuario en `sessionStorage`.
+    - inicia activo por defecto; si el usuario lo apaga, esa preferencia se guarda por sesion/usuario en `sessionStorage`.
     - cuando esta activo, la columna `Accion` muestra firma y sello para citas autorizadas sin chip `Autorizado`.
     - citas pendientes siguen mostrando solo `Pendiente` + `Autorizar`.
     - si el Protocolo de Seguridad global esta activo, queda marcado y bloqueado como visible mientras dure el protocolo, sin sobrescribir la preferencia guardada de sesion.
@@ -390,3 +390,11 @@
   - al volver OFF, reaparecen sin perder datos.
 - Referencia completa:
   - `contextos/15_protocolo_seguridad.md`.
+
+## Ajustes recientes (2026-09-23) - Registro de Citas
+- Checkbox `Ver firma/sello` ahora inicia activo por defecto:
+  - `restoreCitasFirmaSelloToggle()` usa `citasFirmaSelloVisible !== false` (antes `=== true`) y el input se renderiza con `checked`.
+  - si el usuario lo apaga, se respeta por sesion/usuario en `sessionStorage`; el Protocolo de Seguridad sigue forzandolo activo.
+  - con el checkbox activo el boton `Ver` se oculta (comportamiento existente), por lo que por defecto la firma/sello se ven directo en la columna `Accion`.
+- Motivo: desde la tablet no se veia la firma/sello; la sesion de la tablet arrancaba con el checkbox apagado mientras en la PC estaba activo.
+- Relacionado: bug de canvas de firma en tablet corregido en `contextos/04_doctores.md` (Ajustes recientes 2026-09-23).

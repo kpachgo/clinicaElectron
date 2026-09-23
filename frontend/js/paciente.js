@@ -263,7 +263,7 @@ function restoreCitasFirmaSelloToggle() {
   const toggle = document.getElementById("toggle-citas-firma-sello");
   if (!toggle) return;
   const protocolEnabled = isSecurityProtocolEnabledForPaciente();
-  toggle.checked = protocolEnabled ? true : loadPacienteUiState().citasFirmaSelloVisible === true;
+  toggle.checked = protocolEnabled ? true : loadPacienteUiState().citasFirmaSelloVisible !== false;
   toggle.disabled = protocolEnabled;
   toggle.closest(".citas-firma-toggle")?.classList.toggle("is-security-forced", protocolEnabled);
   toggle.title = protocolEnabled ? "Activo por protocolo de seguridad" : "";
@@ -2098,7 +2098,7 @@ function renderPaciente(container) {
               <span>Borrar</span>
             </label>
             <label class="citas-firma-toggle" for="toggle-citas-firma-sello">
-              <input type="checkbox" id="toggle-citas-firma-sello">
+              <input type="checkbox" id="toggle-citas-firma-sello" checked>
               <span>Ver firma/sello</span>
             </label>
             <button id="citas-add" class="btn-cita-paciente btn-with-icon"><span class="btn-icon">+</span><span>Registrar Cita Paciente</span></button>

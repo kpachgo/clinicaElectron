@@ -301,6 +301,9 @@
     let firmaUpdateCtx = null;
     let drawing = false;
     let drawingFirmaUpdate = false;
+    // true cuando el lienzo tiene trazo o imagen cargada; evita guardar firmas en blanco.
+    let firmaTieneTrazo = false;
+    let firmaUpdateTieneTrazo = false;
     let isCreatingDoctor = false;
     let isUpdatingEstado = false;
     let isUpdatingFirma = false;
@@ -374,31 +377,58 @@
       cerrarModalCambiarPassword();
     }
 
-    function setupCanvasHD() {
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
+    // Redimensiona el lienzo al tamano visible (HD). Cambiar width/height borra el
+    // contenido, asi que si ya hay firma se copia antes y se vuelve a pintar
+    // (en tablet: girar pantalla o abrir teclado dispara resize).
+    function prepararCanvasFirmaHD(targetCanvas, currentCtx, conservarTrazo) {
+      const rect = targetCanvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return currentCtx;
 
       const dpr = window.devicePixelRatio || 1;
       const nextWidth = Math.round(rect.width * dpr);
       const nextHeight = Math.round(rect.height * dpr);
 
-      if (canvas.width === nextWidth && canvas.height === nextHeight && ctx) return;
+      if (targetCanvas.width === nextWidth && targetCanvas.height === nextHeight && currentCtx) {
+        return currentCtx;
+      }
 
-      canvas.width = nextWidth;
-      canvas.height = nextHeight;
-      ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      let snapshot = null;
+      if (conservarTrazo && currentCtx && targetCanvas.width && targetCanvas.height) {
+        snapshot = document.createElement("canvas");
+        snapshot.width = targetCanvas.width;
+        snapshot.height = targetCanvas.height;
+        snapshot.getContext("2d")?.drawImage(targetCanvas, 0, 0);
+      }
 
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, rect.width, rect.height);
-      ctx.strokeStyle = "#000000";
-      ctx.lineWidth = 2;
-      ctx.lineCap = "round";
+      targetCanvas.width = nextWidth;
+      targetCanvas.height = nextHeight;
+      const nextCtx = targetCanvas.getContext("2d");
+      if (!nextCtx) return null;
+
+      nextCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      nextCtx.fillStyle = "#ffffff";
+      nextCtx.fillRect(0, 0, rect.width, rect.height);
+
+      if (snapshot) {
+        const escala = Math.min(rect.width / snapshot.width, rect.height / snapshot.height);
+        const drawW = snapshot.width * escala;
+        const drawH = snapshot.height * escala;
+        nextCtx.drawImage(snapshot, (rect.width - drawW) / 2, (rect.height - drawH) / 2, drawW, drawH);
+      }
+
+      nextCtx.strokeStyle = "#000000";
+      nextCtx.lineWidth = 2;
+      nextCtx.lineCap = "round";
+      return nextCtx;
+    }
+
+    function setupCanvasHD() {
+      if (!canvas) return;
+      ctx = prepararCanvasFirmaHD(canvas, ctx, firmaTieneTrazo);
     }
 
     function clearCanvas() {
+      firmaTieneTrazo = false;
       if (!canvas || !ctx) return;
       const rect = canvas.getBoundingClientRect();
       ctx.fillStyle = "#ffffff";
@@ -408,35 +438,11 @@
 
     function setupFirmaUpdateCanvasHD() {
       if (!modalFirmaUpdateCanvas) return;
-      const rect = modalFirmaUpdateCanvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
-
-      const dpr = window.devicePixelRatio || 1;
-      const nextWidth = Math.round(rect.width * dpr);
-      const nextHeight = Math.round(rect.height * dpr);
-
-      if (
-        modalFirmaUpdateCanvas.width === nextWidth &&
-        modalFirmaUpdateCanvas.height === nextHeight &&
-        firmaUpdateCtx
-      ) {
-        return;
-      }
-
-      modalFirmaUpdateCanvas.width = nextWidth;
-      modalFirmaUpdateCanvas.height = nextHeight;
-      firmaUpdateCtx = modalFirmaUpdateCanvas.getContext("2d");
-      if (!firmaUpdateCtx) return;
-
-      firmaUpdateCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      firmaUpdateCtx.fillStyle = "#ffffff";
-      firmaUpdateCtx.fillRect(0, 0, rect.width, rect.height);
-      firmaUpdateCtx.strokeStyle = "#000000";
-      firmaUpdateCtx.lineWidth = 2;
-      firmaUpdateCtx.lineCap = "round";
+      firmaUpdateCtx = prepararCanvasFirmaHD(modalFirmaUpdateCanvas, firmaUpdateCtx, firmaUpdateTieneTrazo);
     }
 
     function clearFirmaUpdateCanvas() {
+      firmaUpdateTieneTrazo = false;
       if (!modalFirmaUpdateCanvas || !firmaUpdateCtx) return;
       const rect = modalFirmaUpdateCanvas.getBoundingClientRect();
       firmaUpdateCtx.fillStyle = "#ffffff";
@@ -467,6 +473,7 @@
       const y = (rect.height - drawH) / 2;
 
       ctx.drawImage(img, x, y, drawW, drawH);
+      firmaTieneTrazo = true;
     }
 
     function dibujarImagenEnFirmaUpdateCanvas(img) {
@@ -492,6 +499,7 @@
       const y = (rect.height - drawH) / 2;
 
       firmaUpdateCtx.drawImage(img, x, y, drawW, drawH);
+      firmaUpdateTieneTrazo = true;
     }
 
     function cargarFirmaDesdeArchivo(file) {
@@ -547,6 +555,10 @@
     async function actualizarFirmaDoctor() {
       const id = Number(firmaUpdateTargetId || 0);
       if (!id || !modalFirmaUpdateCanvas || isUpdatingFirma) return;
+      if (!firmaUpdateTieneTrazo) {
+        alert("Debe firmar o cargar una imagen antes de guardar.");
+        return;
+      }
 
       isUpdatingFirma = true;
       if (modalFirmaUpdateSave) modalFirmaUpdateSave.disabled = true;
@@ -1439,6 +1451,7 @@
         const { x, y } = getPointerPos(e);
         ctx.lineTo(x, y);
         ctx.stroke();
+        firmaTieneTrazo = true;
         e.preventDefault();
       };
     }
@@ -1483,6 +1496,7 @@
         const { x, y } = getFirmaUpdatePointerPos(e);
         firmaUpdateCtx.lineTo(x, y);
         firmaUpdateCtx.stroke();
+        firmaUpdateTieneTrazo = true;
         e.preventDefault();
       };
     }
@@ -1514,7 +1528,8 @@
           return;
         }
 
-        const firmaBase64 = canvas ? canvas.toDataURL("image/png") : "";
+        // Sin trazo no se envia firma: el doctor queda sin firma en lugar de un PNG en blanco.
+        const firmaBase64 = canvas && firmaTieneTrazo ? canvas.toDataURL("image/png") : "";
         isCreatingDoctor = true;
         modalSave.disabled = true;
 
