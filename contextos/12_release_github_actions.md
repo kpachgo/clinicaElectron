@@ -96,6 +96,9 @@
    - No subir solo el `.exe`: sin `latest.yml`, los clientes instalados no detectan la actualizacion.
 
 ## Auto-update Windows
+- DESHABILITADO en Windows desde v5.0.11 (2026-09-23): `setupAutoUpdater()` en `electron-app/main.js` sale temprano con `process.platform === "win32"`. Cada clinica se actualiza manualmente ejecutando el instalador `.exe` (conserva `ProgramData`). Linux/macOS mantienen el updater.
+- Las instalaciones Windows anteriores a v5.0.11 aun tienen el updater activo: tomaran automaticamente el primer release Windows publicado con `latest.yml` y despues ya no buscaran mas.
+- Lo que sigue describe el comportamiento historico (y el de Linux/macOS):
 - La app empaquetada usa `electron-updater` desde `electron-app/main.js`.
 - En desarrollo (`app.isPackaged = false`) el updater se deshabilita automaticamente.
 - En instalador Windows (`app.isPackaged = true`) busca actualizaciones en GitHub Releases usando la configuracion `build.publish`.

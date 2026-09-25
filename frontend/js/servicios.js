@@ -143,6 +143,7 @@
         ? new AbortController()
         : null;
       serviciosFetchController = controller;
+      const stopLd = window.toothSpinner?.tableLoading(tbody, { label: "Cargando servicios..." }) || (() => {});
 
       try {
         const fetchOptions = controller ? { signal: controller.signal } : undefined;
@@ -178,6 +179,7 @@
           alert("Opps ocurrio un error de conexion");
         }
       } finally {
+        stopLd();
         if (serviciosFetchController === controller) {
           serviciosFetchController = null;
         }
@@ -224,6 +226,7 @@
 
         isCreatingServicio = true;
         btnSave.disabled = true;
+        window.saveFx?.start(btnSave);
 
         try {
           const res = await fetch("/api/servicio", {
@@ -242,11 +245,14 @@
             precio
           });
           aplicarFiltro();
+          await window.saveFx?.success(btnSave);
           resetServicioModalState();
         } catch (err) {
           console.error(err);
+          window.saveFx?.error(btnSave);
           alert(err?.message || "No se pudo crear el servicio");
         } finally {
+          window.saveFx?.stop(btnSave);
           isCreatingServicio = false;
           if (btnSave && btnSave.isConnected) {
             btnSave.disabled = false;
@@ -257,15 +263,22 @@
 
     addBtn?.addEventListener("click", openModalForCreate);
 
+    // Llenado animado (tableFx.js): caen al cargar; al buscar se reacomodan.
     function drawRows(list) {
+      const fx = window.tableFx?.begin(tbody);
       tbody.innerHTML = "";
       if (!list || list.length === 0) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="3" style="text-align:center; color:var(--text-muted)">No hay servicios</td></tr>`;
+        fx?.end();
         return;
       }
 
       list.forEach((s) => {
         const tr = document.createElement("tr");
+        if (s.id != null) {
+          tr.dataset.fxKey = String(s.id);
+          tr.dataset.fxSig = `${s.nombre ?? ""}|${s.precio ?? ""}`;
+        }
 
         const tdNombre = document.createElement("td");
         tdNombre.textContent = s.nombre;
@@ -322,6 +335,7 @@
 
         tbody.appendChild(tr);
       });
+      fx?.end();
     }
 
     async function editarTextoInline(td, objeto, campo) {

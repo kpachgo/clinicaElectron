@@ -147,6 +147,12 @@ function setOdontoLoadingOverlayVisible(visible, text = "Cargando odontograma...
   const container = document.querySelector(".odontograma-scale-container");
   if (!overlay) return;
   if (textEl) textEl.textContent = text;
+  // Diente al azar cada vez que aparece (sin tiempo minimo: se oculta apenas termina la carga).
+  const spinnerEl = document.getElementById("odontograma-loading-spinner");
+  if (visible && !overlay.classList.contains("is-visible") && spinnerEl && typeof window.toothSpinner?.html === "function") {
+    spinnerEl.innerHTML = window.toothSpinner.html({ size: 48 });
+    spinnerEl.classList.add("is-tooth");
+  }
   overlay.classList.toggle("is-visible", Boolean(visible));
   if (container) {
     container.setAttribute("aria-busy", visible ? "true" : "false");
@@ -673,32 +679,32 @@ function getPacienteDetailShell() {
 function getPacienteLoadProgress() {
   return document.getElementById("paciente-load-progress");
 }
-function setPacienteLoadProgress(value = 0) {
-  const loader = getPacienteLoadProgress();
-  const circle = loader?.querySelector(".paciente-load-ring-value");
-  if (!circle) return;
-
-  const radius = Number(circle.getAttribute("r") || 0);
-  const diameter = Math.round(Math.PI * radius * 2);
-  const progress = Math.max(0, Math.min(100, Number(value) || 0));
-  const offset = Math.round((100 - progress) / 100 * diameter);
-  circle.style.strokeDasharray = String(diameter);
-  circle.style.strokeDashoffset = String(offset);
-}
-function mostrarPacienteLoadProgress(initialValue = 8) {
+// El loader ahora es un spinner (diente al azar, toothSpinner.js) sin porcentaje:
+// se mantiene la funcion para no tocar las llamadas del flujo de carga.
+function setPacienteLoadProgress(_value = 0) {}
+// Tiempo minimo visible del diente (a pedido del usuario: en cargas rapidas casi no se veia).
+const PACIENTE_LOADER_MIN_MS = 1200;
+let pacienteLoaderShownAt = 0;
+function mostrarPacienteLoadProgress(_initialValue = 8) {
+  pacienteLoaderShownAt = Date.now();
   const loader = getPacienteLoadProgress();
   if (!loader) return;
 
+  loader.innerHTML = typeof window.toothSpinner?.html === "function"
+    ? window.toothSpinner.html({ label: "Cargando paciente...", size: 64 })
+    : '<span class="paciente-load-fallback">Cargando paciente...</span>';
   loader.hidden = false;
   loader.setAttribute("aria-hidden", "false");
   loader.classList.remove("is-hiding");
   loader.classList.add("is-visible");
-  setPacienteLoadProgress(0);
-  window.requestAnimationFrame(() => setPacienteLoadProgress(initialValue));
 }
-function ocultarPacienteLoadProgress() {
+async function ocultarPacienteLoadProgress() {
   const loader = getPacienteLoadProgress();
-  if (!loader || loader.hidden) return Promise.resolve();
+  if (!loader || loader.hidden) return;
+
+  const restante = PACIENTE_LOADER_MIN_MS - (Date.now() - pacienteLoaderShownAt);
+  if (restante > 0) await new Promise(resolve => window.setTimeout(resolve, restante));
+  if (!loader.isConnected || loader.hidden) return;
 
   setPacienteLoadProgress(100);
   loader.classList.add("is-hiding");
@@ -1118,6 +1124,124 @@ function syncOdontoVisualAusenteImagesVisibility() {
     );
   });
 }
+// ===== Modo visual: caries (CP / CG) dibujadas sobre la imagen del diente (PRUEBA) =====
+// Solo lectura: se leen las superficies del circulo (data-treatment="cp"|"cg") y se pintan
+// manchas con CSS sobre la corona de la imagen. Son <span> (no <svg>): el odontograma busca
+// el circulo con tooth.querySelector("svg") y otro svg dentro del diente lo confundiria.
+const ODONTO_VISUAL_CARIES_IDS = new Set(["cp", "cg"]);
+const ODONTO_VISUAL_IMG_H = 110; // mismo alto que .tooth-visual-image
+const ODONTO_VISUAL_IMG_MAX_W = 65; // mismo max-width que .tooth-visual-image
+let odontoVisualCariesObserver = null;
+let odontoVisualCariesObservedWrapper = null;
+let odontoVisualCariesRaf = 0;
+
+// Posicion (% del area de la imagen) de cada superficie sobre la corona.
+// Superior: corona abajo (~56%-100%); inferior: corona arriba (~0%-44%).
+function getOdontoVisualCariesPoint(pieza, surface, isInferior) {
+  const cuadrante = Math.floor(Number(pieza) / 10);
+  // Mesial = hacia la linea media: cuadrantes 1 y 4 quedan a la izquierda de la pantalla.
+  const mesialX = cuadrante === 1 || cuadrante === 4 ? 78 : 22;
+  const distalX = 100 - mesialX;
+  const p = isInferior
+    ? { oclusal: [50, 7], vestibular: [50, 24], palatina: [50, 31], mesial: [mesialX, 20], distal: [distalX, 20] }
+    : { oclusal: [50, 93], vestibular: [50, 76], palatina: [50, 69], mesial: [mesialX, 80], distal: [distalX, 80] };
+  return p[surface] || null;
+}
+function renderOdontoVisualCariesForTooth(tooth) {
+  const img = tooth.querySelector(".tooth-visual-image");
+  if (!img) return;
+  let marks = tooth.querySelector(":scope > .tooth-visual-marks");
+
+  const caries = Array.from(tooth.querySelectorAll("svg .surface[data-treatment]"))
+    .filter((s) => ODONTO_VISUAL_CARIES_IDS.has(String(s.dataset.treatment || "")));
+  if (!caries.length) {
+    marks?.remove();
+    return;
+  }
+  if (!img.naturalWidth || !img.naturalHeight) {
+    // Imagen aun cargando (loading="lazy"): se reintenta al terminar.
+    img.addEventListener("load", () => scheduleOdontoVisualCariesSync(), { once: true });
+    return;
+  }
+
+  // Tamano real del dibujo dentro de la imagen (object-fit: contain), sin medir el layout.
+  const ratio = img.naturalWidth / img.naturalHeight;
+  let w = ODONTO_VISUAL_IMG_H * ratio;
+  let h = ODONTO_VISUAL_IMG_H;
+  if (w > ODONTO_VISUAL_IMG_MAX_W) {
+    w = ODONTO_VISUAL_IMG_MAX_W;
+    h = ODONTO_VISUAL_IMG_MAX_W / ratio;
+  }
+  const offset = (ODONTO_VISUAL_IMG_H - h) / 2;
+  const isInferior = tooth.classList.contains("tooth-visual-placement-bottom");
+  const pieza = Number(tooth.dataset.pieza || 0);
+
+  // Contenedor de alto 0 justo ANTES de la imagen y con su mismo ancho: se alinea igual que ella
+  // (tambien cuando la imagen es mas ancha que el diente). El area interna cubre el dibujo.
+  if (!marks) {
+    marks = document.createElement("div");
+    marks.className = "tooth-visual-marks";
+    marks.setAttribute("aria-hidden", "true");
+    marks.innerHTML = '<div class="tooth-visual-marks-area"></div>';
+    img.before(marks);
+  }
+  const area = marks.firstElementChild;
+  marks.style.width = `${img.width || w}px`;
+  area.style.left = `${((img.width || w) - w) / 2}px`;
+  area.style.width = `${w}px`;
+  area.style.height = `${h}px`;
+  // La imagen inferior tiene 6px de margen superior (.tooth-visual-placement-bottom).
+  area.style.top = `${offset + (isInferior ? 6 : 0)}px`;
+
+  area.innerHTML = caries.map((s) => {
+    const surface = String(s.dataset.surface || "");
+    const point = getOdontoVisualCariesPoint(pieza, surface, isInferior);
+    if (!point) return "";
+    const tipo = s.dataset.treatment === "cg" ? "cg" : "cp";
+    const size = tipo === "cg" ? Math.max(11, w * 0.3) : Math.max(6, w * 0.16);
+    // Giro distinto por pieza/superficie para que las manchas no se vean identicas.
+    const giro = (pieza * 37 + surface.length * 53) % 360;
+    const interna = surface === "palatina" ? " is-interna" : "";
+    return `<span class="tooth-caries tooth-caries--${tipo}${interna}" data-surface="${surface}"`
+      + ` style="left:${point[0]}%;top:${point[1]}%;--caries-size:${size.toFixed(1)}px;--caries-rot:${giro}deg"></span>`;
+  }).join("");
+}
+function syncOdontoVisualCariesMarks() {
+  const wrapper = document.getElementById("odontograma-wrapper");
+  if (!wrapper) return;
+  const teeth = wrapper.querySelectorAll(".tooth.tooth-has-visual-image");
+  if (!odontoVisualModeActive) {
+    teeth.forEach((tooth) => tooth.querySelector(":scope > .tooth-visual-marks")?.remove());
+    return;
+  }
+  teeth.forEach(renderOdontoVisualCariesForTooth);
+}
+function scheduleOdontoVisualCariesSync() {
+  if (odontoVisualCariesRaf) return;
+  odontoVisualCariesRaf = window.requestAnimationFrame(() => {
+    odontoVisualCariesRaf = 0;
+    syncOdontoVisualCariesMarks();
+  });
+}
+// Mientras el modo visual esta activo, si cambian los tratamientos (otra fecha de
+// odontograma, limpiar, etc.) se vuelven a pintar las caries.
+function syncOdontoVisualCariesObserver() {
+  const wrapper = document.getElementById("odontograma-wrapper");
+  const debeObservar = odontoVisualModeActive && !!wrapper && typeof MutationObserver === "function";
+  if (!debeObservar || odontoVisualCariesObservedWrapper !== wrapper) {
+    odontoVisualCariesObserver?.disconnect();
+    odontoVisualCariesObserver = null;
+    odontoVisualCariesObservedWrapper = null;
+  }
+  if (!debeObservar || odontoVisualCariesObserver) return;
+  odontoVisualCariesObserver = new MutationObserver(scheduleOdontoVisualCariesSync);
+  odontoVisualCariesObserver.observe(wrapper, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["data-treatment"]
+  });
+  odontoVisualCariesObservedWrapper = wrapper;
+}
 function hasAnyTreatmentInPieceSet(pieceSet) {
   const wrapper = document.getElementById("odontograma-wrapper");
   if (!wrapper) return false;
@@ -1169,6 +1293,8 @@ function syncOdontoVisualModeContainerClass() {
   wrapper.classList.toggle("odonto-visual-mode", odontoVisualModeActive);
   syncOdontoVisualTemporalRowsVisibility();
   syncOdontoVisualAusenteImagesVisibility();
+  syncOdontoVisualCariesMarks();
+  syncOdontoVisualCariesObserver();
   notifyOdontogramaLayoutChanged();
 }
 function syncOdontoVisualModeButtonText() {
@@ -1379,12 +1505,7 @@ function renderPaciente(container) {
     </div>
     </div>
 
-    <div id="paciente-load-progress" class="paciente-load-progress" hidden aria-hidden="true">
-      <svg class="paciente-load-ring" width="104" height="104" viewBox="0 0 104 104" focusable="false">
-        <circle class="paciente-load-ring-empty" cx="52" cy="52" r="42" fill="none" stroke-width="10"></circle>
-        <circle class="paciente-load-ring-value" cx="52" cy="52" r="42" fill="none" stroke-width="10"></circle>
-      </svg>
-    </div>
+    <div id="paciente-load-progress" class="paciente-load-progress" hidden aria-hidden="true"></div>
 
     <div id="paciente-detail-shell" class="paciente-detail-shell" hidden>
 
@@ -1614,7 +1735,7 @@ function renderPaciente(container) {
           </div>
           <div id="odontograma-loading-overlay" class="odontograma-loading-overlay" aria-live="polite" aria-atomic="true">
             <div class="odontograma-loading-card">
-              <span class="odontograma-loading-spinner" aria-hidden="true"></span>
+              <span id="odontograma-loading-spinner" class="odontograma-loading-spinner" aria-hidden="true"></span>
               <span id="odontograma-loading-text">Cargando odontograma...</span>
             </div>
           </div>
@@ -2139,8 +2260,10 @@ async function cargarDoctoresEnSelect() {
     : null;
   const esDoctorLogueado = currentUser?.rol === "Doctor";
 
-  select.disabled = false;
-  select.innerHTML = `<option value="">Seleccione doctor</option>`;
+  // Mientras llega la lista (el modal ya esta abierto) el select queda bloqueado.
+  select.disabled = true;
+  select.dataset.loading = "1";
+  select.innerHTML = `<option value="">Cargando doctores...</option>`;
 
   const req = beginRequest("doctoresSelect");
   const localSeq = req.seq;
@@ -2155,6 +2278,8 @@ async function cargarDoctoresEnSelect() {
     const json = await res.json();
 
     if (isStaleRequest("doctoresSelect", localSeq)) return;
+    select.innerHTML = `<option value="">Seleccione doctor</option>`;
+    select.disabled = false;
     if (!json.ok || !Array.isArray(json.data)) return;
 
     if (json.data.length === 0) {
@@ -2187,7 +2312,11 @@ async function cargarDoctoresEnSelect() {
   } catch (err) {
     if (isAbortError(err)) return;
     console.error("Error cargando doctores", err);
+    // Sin lista: se puede guardar la cita sin doctor, como antes.
+    select.innerHTML = `<option value="">Seleccione doctor</option>`;
+    select.disabled = false;
   } finally {
+    if (!isStaleRequest("doctoresSelect", localSeq)) delete select.dataset.loading;
     endRequest("doctoresSelect", req.controller);
   }
 }
@@ -2672,17 +2801,25 @@ async function abrirModalCita() {
     document.getElementById("cita-valor").value = "";
     document.getElementById("cita-abono").value = "";
     document.getElementById("cita-doctor").value = "";
-    await cargarDoctoresEnSelect();
 
+    // El modal se abre al instante; antes esperaba la lista de doctores del servidor y
+    // parecia que el primer clic no funcionaba (y un segundo clic reiniciaba la espera).
     document
       .getElementById("modal-cita-paciente")
       .classList.add("show");
+    document.getElementById("cita-procedimiento")?.focus();
+
+    await cargarDoctoresEnSelect();
 }
 function cerrarModalCita() {
     document.getElementById("modal-cita-paciente").classList.remove("show");
 }
 async function guardarCitaPaciente() {
   if (isSavingCitaPaciente) return;
+  if (document.getElementById("cita-doctor")?.dataset.loading === "1") {
+    alert("Espere a que carguen los doctores.");
+    return;
+  }
   const fecha = document.getElementById("cita-fecha").value;
   const procedimiento = String(document.getElementById("cita-procedimiento").value || "").trim();
   const valorRaw = document.getElementById("cita-valor").value;
@@ -2719,6 +2856,8 @@ async function guardarCitaPaciente() {
   }
 
   isSavingCitaPaciente = true;
+  const btnGuardarCita = document.getElementById("modal-cita-save");
+  window.saveFx?.start(btnGuardarCita);
   try {
     const res = await fetch("/api/paciente/cita", {
       method: "POST",
@@ -2736,13 +2875,16 @@ async function guardarCitaPaciente() {
     const json = await res.json();
     if (!json.ok) throw new Error(json.message);
 
+    await window.saveFx?.success(btnGuardarCita);
     cerrarModalCita();
     await cargarCitasPaciente(window.pacienteActual.idPaciente);
 
   } catch (err) {
     console.error(err);
+    window.saveFx?.error(btnGuardarCita);
     alert(err?.message || "Error al guardar cita");
   } finally {
+    window.saveFx?.stop(btnGuardarCita);
     isSavingCitaPaciente = false;
   }
 }
@@ -3119,14 +3261,24 @@ async function cargarPaciente(idPaciente) {
     if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteCargado) return false;
     const notaObservacionPaciente = String(p.notasObservacionP || "").trim();
     if (notaObservacionPaciente) {
+      const nombreNotaPaciente = String(p.NombreP || "Paciente").trim() || "Paciente";
       if (typeof window.__setTopPatientObservationNotice === "function") {
         window.__setTopPatientObservationNotice({
           patientId: idPacienteCargado,
-          patientName: String(p.NombreP || "Paciente").trim() || "Paciente",
+          patientName: nombreNotaPaciente,
           note: notaObservacionPaciente
         });
       }
-      if (typeof window.playUiSound === "function") {
+      // Ademas de la campana, toast de advertencia con la nota. El toast ya suena
+      // (warning), asi que la campana solo suena si no hay toast.
+      if (typeof window.showToast === "function") {
+        window.showToast(notaObservacionPaciente, {
+          type: "warning",
+          title: `Nota del paciente: ${nombreNotaPaciente}`,
+          // Mas tiempo para notas largas (se pausa con el mouse encima).
+          duration: Math.min(12000, Math.max(6000, notaObservacionPaciente.length * 60))
+        });
+      } else if (typeof window.playUiSound === "function") {
         window.playUiSound("bell", { minIntervalMs: 0 });
       }
     } else if (typeof window.__clearTopPatientObservationNotice === "function") {
@@ -3159,6 +3311,7 @@ async function cargarCitasPaciente(idPaciente) {
 
   const req = beginRequest("citasPaciente");
   const localSeq = req.seq;
+  const stopLd = window.toothSpinner?.tableLoading(document.getElementById("citas-tbody"), { label: "Cargando citas..." }) || (() => {});
 
   try {
     const res = await fetch(`/api/paciente/${idPacienteNum}/citas`, {
@@ -3181,6 +3334,7 @@ async function cargarCitasPaciente(idPaciente) {
     if (isAbortError(err)) return;
     console.error("Error cargando citas del paciente", err);
   } finally {
+    stopLd();
     endRequest("citasPaciente", req.controller);
   }
 }
@@ -7499,6 +7653,8 @@ async function guardarPaciente() {
   };
 
   isSavingPaciente = true;
+  const btnGuardarPaciente = document.getElementById("btn-guardar-paciente");
+  window.saveFx?.start(btnGuardarPaciente);
   try {
     const res = await fetch("/api/paciente/guardar", {
       method: "POST",
@@ -7517,15 +7673,24 @@ async function guardarPaciente() {
     actualizarAccionesPaciente();
     setPacienteCambiosPendientes(false);
 
-    alert(" Paciente guardado correctamente");
+    // Sin await: el dialogo sale apenas confirma el servidor (el check queda detras, a pedido del usuario).
+    window.saveFx?.success(btnGuardarPaciente);
+    // Dialogo de exito a pedido del usuario; silent porque el fetch global ya sono al guardar.
+    if (typeof window.showSystemMessage === "function") {
+      window.showSystemMessage("Paciente guardado correctamente", { type: "success", silent: true });
+    } else {
+      alert("Paciente guardado correctamente");
+    }
     if (debeGuardarOdontograma) {
       await guardarOdontogramaEnBD();
     }
 
   } catch (err) {
     console.error(err);
+    window.saveFx?.error(btnGuardarPaciente);
     alert(" Error al guardar paciente");
   } finally {
+    window.saveFx?.stop(btnGuardarPaciente);
     isSavingPaciente = false;
   }
 }
@@ -7534,6 +7699,8 @@ function renderCitasPaciente() {
   const search = document.getElementById("citas-search")?.value.toLowerCase() || "";
 
   if (!tbody) return;
+  // Llenado animado (tableFx.js): caen al cargar; al buscar/guardar se reacomodan.
+  const fx = window.tableFx?.begin(tbody);
   tbody.innerHTML = "";
 
   const vista = window.citasPaciente
@@ -7552,6 +7719,10 @@ function renderCitasPaciente() {
       tr.dataset.rowIndex = String(idx);
       const idCita = getCitaPacienteId(c);
       tr.dataset.idCita = idCita;
+      if (idCita) {
+        tr.dataset.fxKey = String(idCita);
+        tr.dataset.fxSig = JSON.stringify(c);
+      }
       const fechaTxt = fechaLegible(c.fechaCP);
       const fechaKey = String(c.fechaCP || "").trim().slice(0, 10) || fechaTxt;
       const showFecha = fechaKey !== lastVisibleFechaKey;
@@ -7603,6 +7774,7 @@ function renderCitasPaciente() {
       `;
       tbody.appendChild(tr);
     });
+  fx?.end();
 }
 function registrarEventoVerDoctor() {
   if (window.__pacienteVerDoctorHandler) {

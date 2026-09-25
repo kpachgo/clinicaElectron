@@ -43,6 +43,45 @@
     return String(err?.name || "") === "AbortError";
   }
 
+  // Spinner diente a pantalla completa entre "Entrar" y la vista por defecto montada.
+  // Sin tiempo minimo: se quita apenas termina la carga.
+  function showLoginEnteringOverlay() {
+    const overlay = document.createElement("div");
+    overlay.className = "login-entering-overlay";
+    overlay.setAttribute("aria-busy", "true");
+    overlay.innerHTML = typeof window.toothSpinner?.html === "function"
+      ? window.toothSpinner.html({ label: "Entrando...", size: 64 })
+      : '<span class="tooth-ld-label">Entrando...</span>';
+    document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  // Banner inferior "Conectado · Cargando ..." mientras monta la vista por defecto.
+  function showLoginLoadingBanner(text) {
+    const banner = document.createElement("div");
+    banner.className = "login-loading-banner";
+    banner.setAttribute("role", "status");
+    banner.innerHTML = `
+      <span class="login-loading-banner-ok">Conectado</span>
+      <span class="login-loading-banner-spin" aria-hidden="true"></span>
+      <span class="login-loading-banner-text"></span>`;
+    banner.querySelector(".login-loading-banner-text").textContent = text;
+    document.body.appendChild(banner);
+    return banner;
+  }
+
+  function hideLoginLoadingBanner(banner) {
+    if (!banner?.isConnected) return;
+    banner.classList.add("is-leaving");
+    window.setTimeout(() => banner.remove(), 300);
+  }
+
+  function hideLoginEnteringOverlay(overlay) {
+    if (!overlay?.isConnected) return;
+    overlay.classList.add("is-leaving");
+    window.setTimeout(() => overlay.remove(), 200);
+  }
+
   async function readJsonResponse(res) {
     try {
       return await res.json();
@@ -157,9 +196,7 @@
     modal.querySelector("#db-config-gate-close")?.addEventListener("click", close);
     modal.querySelector("#db-config-gate-cancel")?.addEventListener("click", close);
     modal.querySelector("#db-config-gate-submit")?.addEventListener("click", submit);
-    modal.addEventListener("click", (e) => {
-      if (e.target === modal) close();
-    });
+    // Sin cierre al hacer click fuera: solo con X o Cancelar, para no perder lo escrito.
     input?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -363,6 +400,315 @@
         btnSave.disabled = false;
       }
     });
+
+    renderStorageSection(modal, sessionToken);
+  }
+
+  const STORAGE_SAVED_MARKER = "**********";
+
+  const STORAGE_MODE_HINTS = {
+    local: "Lo nuevo se guarda en esta PC (ProgramData), como siempre. Las credenciales quedan guardadas: si una foto no esta en la PC pero si en la nube, se sigue mostrando, y al borrar se borra tambien de la nube.",
+    respaldo: "Se guarda en esta PC y cada cierto numero de dias se sincroniza con la nube: sube lo nuevo y baja lo que falte en la PC.",
+    nube: "Fotos, firmas y sellos nuevos se guardan solo en la nube. Los PDF de documentos y el logo siguen en la PC y se respaldan."
+  };
+
+  function formatStorageDate(value) {
+    if (!value) return "nunca";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "nunca" : date.toLocaleString();
+  }
+
+  function setStorageFeedback(modal, type, message) {
+    const feedback = modal.querySelector("#storage-feedback");
+    if (!feedback) return;
+    feedback.textContent = message || "";
+    feedback.className = `db-config-feedback ${type === "ok" ? "is-ok" : "is-error"}`;
+    feedback.hidden = !message;
+  }
+
+  function renderStorageSummary(modal, data) {
+    const summary = modal.querySelector("#storage-summary");
+    if (!summary) return;
+    const config = data?.config || {};
+    const backup = data?.backup || {};
+    const lastRun = backup.lastRun;
+    const progress = backup.progress;
+    const runningText = backup.running
+      ? `En curso${progress ? `: ${escapeHtml(progress.phase)} ${progress.done}/${progress.total}` : "..."}`
+      : "";
+
+    summary.innerHTML = `
+      <span><strong>Modo activo:</strong> ${escapeHtml(config.effectiveMode || "local")}</span>
+      <span><strong>Bucket:</strong> ${config.bucket ? escapeHtml(config.bucket) : "no configurado"}</span>
+      <span><strong>Account ID:</strong> ${config.accountId ? escapeHtml(config.accountId) : "no configurado"}</span>
+      <span><strong>Access Key:</strong> ${config.accessKeyId ? escapeHtml(config.accessKeyId) : "no configurada"}</span>
+      <span><strong>Ultimo respaldo OK:</strong> ${escapeHtml(formatStorageDate(backup.lastSuccessAt))}</span>
+      <span><strong>Archivos en la nube:</strong> ${Number(backup.uploadedCount || 0)}</span>
+      ${lastRun ? `<span class="db-config-field-full"><strong>Ultima ejecucion:</strong> ${escapeHtml(formatStorageDate(lastRun.finishedAt))} - ${escapeHtml(lastRun.message || "")}</span>` : ""}
+      ${lastRun?.missingNames?.length ? `<span class="db-config-field-full"><strong>No encontrados:</strong> ${escapeHtml(lastRun.missingNames.join(", "))}</span>` : ""}
+      ${runningText ? `<span class="db-config-field-full"><strong>Respaldo:</strong> ${runningText}</span>` : ""}
+      ${config.error ? `<span class="db-config-field-full"><strong>Aviso:</strong> ${escapeHtml(config.error)}</span>` : ""}
+    `;
+  }
+
+  function renderStorageSection(modal, sessionToken) {
+    const body = modal.querySelector(".db-config-body");
+    if (!body) return;
+
+    const section = document.createElement("div");
+    section.className = "db-config-storage";
+    section.innerHTML = `
+      <h3 class="hidden-register-title">Almacenamiento de archivos</h3>
+      <p class="db-config-hint">Fotos, firmas y sellos. Cloudflare R2, un bucket por clinica.</p>
+      <div id="storage-summary" class="db-config-summary">
+        <span>Cargando...</span>
+      </div>
+
+      <div class="db-config-grid">
+        <div class="login-field">
+          <label for="storage-mode">Modo</label>
+          <select class="ui-control" id="storage-mode">
+            <option value="local">Local</option>
+            <option value="respaldo">Local + respaldo en la nube</option>
+            <option value="nube">Solo nube</option>
+          </select>
+        </div>
+        <div class="login-field">
+          <label for="storage-frequency">Respaldo cada (dias)</label>
+          <input class="ui-control" id="storage-frequency" type="number" min="1" max="30" step="1">
+        </div>
+        <p id="storage-mode-hint" class="db-config-hint db-config-field-full"></p>
+        <div class="login-field db-config-field-full">
+          <label for="storage-account">Account ID</label>
+          <input class="ui-control" id="storage-account" type="password" autocomplete="off">
+        </div>
+        <div class="login-field db-config-field-full">
+          <label for="storage-access-key">Access Key ID</label>
+          <input class="ui-control" id="storage-access-key" type="password" autocomplete="off">
+        </div>
+        <div class="login-field db-config-field-full">
+          <label for="storage-secret">Secret Access Key</label>
+          <input class="ui-control" id="storage-secret" type="password" autocomplete="off">
+        </div>
+        <div class="login-field db-config-field-full">
+          <label for="storage-bucket">Bucket</label>
+          <input class="ui-control" id="storage-bucket" type="text" autocomplete="off" placeholder="clinica-nombre">
+        </div>
+      </div>
+
+      <div class="db-config-actions">
+        <button id="storage-test" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+          ${renderIcon("shield-check", "ui-toolbar-icon")}
+          <span>Probar conexion</span>
+        </button>
+        <button id="storage-save" class="btn-login ui-toolbar-btn is-primary" type="button">
+          ${renderIcon("key", "ui-toolbar-icon")}
+          <span>Guardar almacenamiento</span>
+        </button>
+      </div>
+      <div class="db-config-actions db-config-actions-single">
+        <button id="storage-backup" class="btn-login ui-toolbar-btn hidden-register-btn-muted" type="button">
+          ${renderIcon("arrow-path", "ui-toolbar-icon")}
+          <span>Respaldar ahora</span>
+        </button>
+      </div>
+
+      <div id="storage-progress" class="db-config-progress" hidden>
+        <div class="db-config-progress-label">
+          <span id="storage-progress-text"></span>
+          <strong id="storage-progress-pct"></strong>
+        </div>
+        <div class="db-config-progress-track">
+          <div id="storage-progress-fill" class="db-config-progress-fill"></div>
+        </div>
+      </div>
+      <div id="storage-feedback" class="db-config-feedback" hidden></div>
+    `;
+    body.appendChild(section);
+
+    const modeSelect = section.querySelector("#storage-mode");
+    const frequencyInput = section.querySelector("#storage-frequency");
+    const hint = section.querySelector("#storage-mode-hint");
+    const buttons = ["#storage-test", "#storage-save", "#storage-backup"].map((id) => section.querySelector(id));
+    const [btnTest, btnSave, btnBackup] = buttons;
+    let pollTimer = null;
+
+    const setBusy = (busy) => buttons.forEach((btn) => { btn.disabled = busy; });
+    const syncHint = () => { hint.textContent = STORAGE_MODE_HINTS[modeSelect.value] || ""; };
+    modeSelect.addEventListener("change", syncHint);
+
+    async function storageRequest(pathSuffix, options = {}) {
+      const res = await fetch(`/api/configuracion-db/almacenamiento${pathSuffix}`, {
+        method: options.method || "GET",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "X-DB-Config-Token": sessionToken
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+      const data = await readJsonResponse(res);
+      if (!res.ok || !data?.ok) throw new Error(data?.message || "Error de almacenamiento");
+      return data;
+    }
+
+    const formatMb = (bytes) => `${(Number(bytes || 0) / 1048576).toFixed(1)} MB`;
+
+    function renderProgress(backup) {
+      const box = section.querySelector("#storage-progress");
+      const progress = backup?.progress;
+      box.hidden = !backup?.running;
+      if (box.hidden) return;
+
+      const text = section.querySelector("#storage-progress-text");
+      const pct = section.querySelector("#storage-progress-pct");
+      const fill = section.querySelector("#storage-progress-fill");
+      const phase = progress?.phase || "preparando";
+      const done = Number(progress?.done || 0);
+      const total = Number(progress?.total || 0);
+
+      if (phase === "comparando" || !progress) {
+        text.textContent = "Comparando archivos de la PC con lo ya respaldado...";
+        pct.textContent = "";
+        fill.style.width = "0%";
+        fill.classList.add("is-indeterminate");
+        return;
+      }
+      fill.classList.remove("is-indeterminate");
+
+      // Por MB refleja mejor el tiempo real que por cantidad (las fotos pesan distinto).
+      const useBytes = Number(progress.bytesTotal) > 0;
+      const ratio = useBytes
+        ? Number(progress.bytesDone) / Number(progress.bytesTotal)
+        : total > 0 ? done / total : 1;
+      const percent = Math.min(100, Math.round(ratio * 100));
+      const verb = phase === "descargando" ? "Descargando" : "Subiendo";
+      text.textContent = `${verb} ${done} de ${total} archivos${useBytes ? ` · ${formatMb(progress.bytesDone)} de ${formatMb(progress.bytesTotal)}` : ""}`;
+      pct.textContent = `${percent}%`;
+      fill.style.width = `${percent}%`;
+    }
+
+    function applyStatus(data, { fillForm = false } = {}) {
+      renderStorageSummary(modal, data);
+      renderProgress(data?.backup);
+      const config = data?.config || {};
+      if (fillForm) {
+        modeSelect.value = config.mode || "local";
+        frequencyInput.value = String(config.frequencyDays || 1);
+        // Los valores guardados nunca llegan al navegador: el campo se llena con un marcador
+        // que se ve como contrasena (********) y al guardar significa "conservar".
+        const fillSaved = (id, hasValue, placeholder) => {
+          const input = section.querySelector(id);
+          input.value = hasValue ? STORAGE_SAVED_MARKER : "";
+          input.placeholder = placeholder;
+        };
+        fillSaved("#storage-account", Boolean(config.accountId), "Account ID de Cloudflare");
+        fillSaved("#storage-access-key", Boolean(config.accessKeyId), "Access Key ID del token R2");
+        fillSaved("#storage-secret", Boolean(config.hasSecret), "Secret Access Key del token R2");
+        section.querySelector("#storage-bucket").value = config.bucket || "";
+        syncHint();
+      }
+    }
+
+    // Marcador sin tocar = vacio = el backend conserva el valor guardado.
+    const readSecretField = (id) => {
+      const value = section.querySelector(id).value;
+      return value === STORAGE_SAVED_MARKER ? "" : value;
+    };
+
+    function getPayload() {
+      return {
+        mode: modeSelect.value,
+        frequencyDays: Number(frequencyInput.value || 1),
+        r2: {
+          accountId: readSecretField("#storage-account"),
+          accessKeyId: readSecretField("#storage-access-key"),
+          secretAccessKey: readSecretField("#storage-secret"),
+          bucket: section.querySelector("#storage-bucket").value
+        }
+      };
+    }
+
+    // Vigila el respaldo mientras el modal este abierto (tambien los que arranca solo el programa):
+    // cada 2 s si esta corriendo, cada 10 s si no, para detectar cuando empieza.
+    let wasRunning = false;
+    function watchBackup(delayMs = 2000) {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(async () => {
+        if (!section.isConnected) return;
+        try {
+          const data = await storageRequest("");
+          applyStatus(data.data);
+          const isRunning = Boolean(data.data?.backup?.running);
+          if (isRunning) {
+            setBusy(true);
+          } else if (wasRunning) {
+            const lastRun = data.data?.backup?.lastRun;
+            setStorageFeedback(modal, lastRun?.ok ? "ok" : "error", lastRun?.message || "Respaldo terminado");
+            setBusy(false);
+          }
+          wasRunning = isRunning;
+          watchBackup(isRunning ? 2000 : 10000);
+        } catch (err) {
+          // Sesion de mantenimiento vencida (15 min) u otro error: se deja de vigilar.
+          setStorageFeedback(modal, "error", err.message);
+          setBusy(false);
+        }
+      }, delayMs);
+    }
+
+    btnTest.addEventListener("click", async () => {
+      setBusy(true);
+      setStorageFeedback(modal, "ok", "Probando conexion con la nube...");
+      try {
+        const data = await storageRequest("/probar", { method: "POST", body: getPayload() });
+        setStorageFeedback(modal, "ok", data.message);
+      } catch (err) {
+        setStorageFeedback(modal, "error", err.message);
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    btnSave.addEventListener("click", async () => {
+      setBusy(true);
+      setStorageFeedback(modal, "ok", "Verificando y guardando...");
+      try {
+        const data = await storageRequest("/guardar", { method: "POST", body: getPayload() });
+        ["#storage-account", "#storage-access-key", "#storage-secret"].forEach((id) => {
+          section.querySelector(id).value = "";
+        });
+        applyStatus(data.data, { fillForm: true });
+        setStorageFeedback(modal, "ok", data.message);
+      } catch (err) {
+        setStorageFeedback(modal, "error", err.message);
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    btnBackup.addEventListener("click", async () => {
+      setBusy(true);
+      setStorageFeedback(modal, "ok", "Respaldando...");
+      try {
+        const data = await storageRequest("/respaldar", { method: "POST" });
+        applyStatus(data.data);
+        wasRunning = true;
+        watchBackup();
+      } catch (err) {
+        setStorageFeedback(modal, "error", err.message);
+        setBusy(false);
+      }
+    });
+
+    storageRequest("")
+      .then((data) => {
+        applyStatus(data.data, { fillForm: true });
+        wasRunning = Boolean(data.data?.backup?.running);
+        if (wasRunning) setBusy(true);
+        watchBackup(wasRunning ? 2000 : 10000);
+      })
+      .catch((err) => setStorageFeedback(modal, "error", err.message));
   }
 
   function renderDbConfigAuth(modal, status) {
@@ -506,10 +852,8 @@
     `;
     document.body.appendChild(modal);
 
+    // Sin cierre al hacer click fuera: solo con X, para no perder la configuracion a medio escribir.
     modal.querySelector("#db-config-close")?.addEventListener("click", closeDbConfigModal);
-    modal.addEventListener("click", (e) => {
-      if (e.target === modal) closeDbConfigModal();
-    });
 
     try {
       const status = await fetchDbConfigStatus();
@@ -1247,6 +1591,16 @@
     });
     btnRecoveryClose?.addEventListener("click", closeRecoveryBox);
 
+    // Errores del login como toast; si uiAlerts no cargo, cae al recuadro del formulario.
+    function showLoginError(message) {
+      if (typeof window.showToast === "function") {
+        window.showToast(message, { type: "error" });
+        return;
+      }
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+    }
+
     btnLogin.addEventListener("click", async () => {
       if (loginInFlight) return;
       const user = userInput.value.trim();
@@ -1255,13 +1609,14 @@
       errorBox.hidden = true;
 
       if (!user || !pass) {
-        errorBox.textContent = "Debe ingresar usuario y contrasena";
-        errorBox.hidden = false;
+        showLoginError("Debe ingresar usuario y contrasena");
         return;
       }
 
       loginInFlight = true;
       btnLogin.disabled = true;
+      let enteringOverlay = null;
+      let loadingBanner = null;
       try {
         const res = await fetch("/api/auth/login", {
           method: "POST",
@@ -1273,13 +1628,22 @@
         });
         const data = await res.json();
         if (!data.ok) {
-          errorBox.textContent = data.message || "Correo o contrasena incorrectos";
-          errorBox.hidden = false;
+          showLoginError(data.message || "Correo o contrasena incorrectos");
           return;
         }
 
         localStorage.setItem("token", data.token);
         sessionStorage.setItem("user", JSON.stringify(data.usuario));
+
+        // Tapa toolbar + vista hasta que la vista por defecto termine de montar
+        // (licencia, protocolo de seguridad y loadView son esperas de red).
+        enteringOverlay = showLoginEnteringOverlay();
+        const defaultView = window.getDefaultViewByRole
+          ? window.getDefaultViewByRole()
+          : null;
+        loadingBanner = showLoginLoadingBanner(
+          defaultView ? `Cargando ${String(defaultView).toLowerCase()}...` : "Cargando..."
+        );
 
         if (window.renderTopUser) {
           window.renderTopUser();
@@ -1311,10 +1675,6 @@
 
         if (window.loadView) {
           detachShortcut();
-          const defaultView = window.getDefaultViewByRole
-            ? window.getDefaultViewByRole()
-            : null;
-
           if (defaultView) {
             await window.loadView(defaultView);
           }
@@ -1322,12 +1682,13 @@
       } catch (err) {
         if (isAbortError(err)) return;
         console.error(err);
-        errorBox.textContent = "Opps ocurrio un error de conexion";
-        errorBox.hidden = false;
+        showLoginError("Opps ocurrio un error de conexion");
         if (window.notifyConnectionError) {
           window.notifyConnectionError("Opps ocurrio un error de conexion");
         }
       } finally {
+        hideLoginLoadingBanner(loadingBanner);
+        hideLoginEnteringOverlay(enteringOverlay);
         loginInFlight = false;
         btnLogin.disabled = false;
       }

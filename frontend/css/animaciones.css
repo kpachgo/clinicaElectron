@@ -52,3 +52,552 @@
     transition: none !important;
   }
 }
+
+/* =====================================================
+   BOTONES DE GUARDAR: spinner -> check (js/saveFeedback.js)
+   Colores desde el tema activo: --success / --danger.
+===================================================== */
+.save-fx .save-fx-spin,
+.save-fx .save-fx-check {
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.5em;
+  vertical-align: -0.17em;
+  flex: none;
+}
+
+.save-fx .save-fx-spin {
+  box-sizing: border-box;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.85;
+  animation: saveFxSpin 0.7s linear infinite;
+}
+
+.save-fx .save-fx-check path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: saveFxDraw 0.4s var(--spa-ease-apple) 0.05s forwards;
+}
+
+/* Mientras guarda no se ve "apagado" aunque el codigo lo deshabilite. */
+.save-fx.is-saving,
+.save-fx.is-saving:disabled {
+  opacity: 1 !important;
+  filter: none !important;
+  cursor: progress !important;
+}
+
+.save-fx.is-saving .save-fx-label {
+  opacity: 0.85;
+}
+
+.save-fx.is-saving,
+.save-fx.is-saved,
+.save-fx.is-save-error {
+  pointer-events: none;
+}
+
+.save-fx.is-saved,
+.save-fx.is-saved:disabled {
+  background: var(--success, #16a34a) !important;
+  border-color: var(--success, #16a34a) !important;
+  color: #fff !important;
+  opacity: 1 !important;
+  filter: none !important;
+  animation: saveFxPop 0.35s var(--spa-ease-apple);
+}
+
+.save-fx.is-save-error,
+.save-fx.is-save-error:disabled {
+  background: var(--danger, #ef4444) !important;
+  border-color: var(--danger, #ef4444) !important;
+  color: #fff !important;
+  opacity: 1 !important;
+  filter: none !important;
+  animation: saveFxShake 0.4s var(--spa-ease-apple);
+}
+
+@keyframes saveFxSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes saveFxDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes saveFxPop {
+  40% { transform: scale(1.04); }
+}
+
+@keyframes saveFxShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .save-fx.is-saved,
+  .save-fx.is-save-error {
+    animation: none !important;
+  }
+  .save-fx .save-fx-check path {
+    animation-duration: 0.01ms !important;
+  }
+  .save-fx .save-fx-spin {
+    animation-duration: 1.6s !important;
+  }
+}
+
+/* =====================================================
+   MODALES: apertura / cierre con bounce (rebote completo)
+   - Solo CSS: no cambia como cada vista abre o cierra su modal.
+   - Entrada: la animacion corre al pasar el modal de display:none a visible.
+   - Salida: "transition: display allow-discrete" mantiene el modal visible
+     mientras el panel hace el bounce de salida.
+   - Modales con <canvas> (firmas) solo usan fundido: miden el canvas con
+     getBoundingClientRect al abrir y el scale() lo dejaria pequeno.
+   - Odontograma (pieza, dictado, impresion/consentimientos, config impresion, multi-PDF):
+     revisados, no miden nada dentro de la tarjeta y la impresion usa @media print con
+     display:none !important, asi que usan bounce.
+===================================================== */
+
+/* ---- Overlays: fundido del fondo ---- */
+.modal,
+.agenda-day-summary-modal,
+.agenda-ina-modal,
+.cobro-modal,
+.mensajes-settings-overlay,
+.backup-overlay,
+.odonto-piece-modal,
+.odonto-dictado-modal,
+.odonto-print-modal,
+.odonto-multi-print-modal {
+  transition: opacity 0.24s ease, display 0.42s allow-discrete;
+}
+
+.modal:is([style*="display: none"], :not(.show):not([style*="display: flex"]):not([style*="display: block"])),
+.agenda-day-summary-modal[hidden],
+.agenda-ina-modal[hidden],
+.cobro-modal[hidden],
+.mensajes-settings-overlay[hidden],
+.backup-overlay:not(.is-open),
+.odonto-piece-modal:not(.is-open),
+.odonto-dictado-modal:not(.is-open),
+.odonto-print-modal[hidden],
+.odonto-multi-print-modal[hidden] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.26s ease 0.14s, display 0.42s allow-discrete;
+}
+
+@starting-style {
+  .modal.show,
+  .modal[style*="display: flex"],
+  .modal[style*="display: block"],
+  .agenda-day-summary-modal:not([hidden]),
+  .agenda-ina-modal:not([hidden]),
+  .cobro-modal:not([hidden]),
+  .mensajes-settings-overlay:not([hidden]),
+  .backup-overlay.is-open,
+  .odonto-piece-modal.is-open,
+  .odonto-dictado-modal.is-open,
+  .odonto-print-modal:not([hidden]),
+  .odonto-multi-print-modal:not([hidden]) {
+    opacity: 0;
+  }
+}
+
+/* ---- Paneles con bounce ---- */
+.modal:not(:has(canvas)) .modal-content,
+.agenda-day-summary-dialog,
+.agenda-ina-dialog,
+.cobro-modal-dialog,
+.mensajes-settings-panel,
+.backup-modal,
+.db-config-modal,
+.odonto-piece-modal-card,
+.odonto-dictado-modal-card,
+.odonto-print-modal-dialog,
+.odonto-multi-print-dialog {
+  animation: modalBounceIn 0.6s backwards;
+}
+
+.modal:not(:has(canvas)):is([style*="display: none"], :not(.show):not([style*="display: flex"]):not([style*="display: block"])) .modal-content,
+.agenda-day-summary-modal[hidden] .agenda-day-summary-dialog,
+.agenda-ina-modal[hidden] .agenda-ina-dialog,
+.cobro-modal[hidden] .cobro-modal-dialog,
+.mensajes-settings-overlay[hidden] .mensajes-settings-panel,
+.backup-overlay:not(.is-open) .backup-modal,
+.odonto-piece-modal:not(.is-open) .odonto-piece-modal-card,
+.odonto-dictado-modal:not(.is-open) .odonto-dictado-modal-card,
+.odonto-print-modal[hidden] .odonto-print-modal-dialog,
+.odonto-multi-print-modal[hidden] .odonto-multi-print-dialog {
+  animation: modalBounceOut 0.4s both;
+}
+
+/* ---- Paneles solo con fundido (firmas con canvas) ---- */
+.modal:has(canvas) .modal-content {
+  animation: modalSoftIn 0.24s ease backwards;
+}
+
+.modal:has(canvas):is([style*="display: none"], :not(.show):not([style*="display: flex"]):not([style*="display: block"])) .modal-content {
+  animation: modalSoftOut 0.2s ease both;
+}
+
+@keyframes modalBounceIn {
+  0% { opacity: 0; transform: scale(0.3); animation-timing-function: cubic-bezier(0.215, 0.61, 0.355, 1); }
+  50% { opacity: 1; transform: scale(1.06); }
+  70% { transform: scale(0.95); }
+  85% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+@keyframes modalBounceOut {
+  20% { transform: scale(0.94); }
+  50% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 0; transform: scale(0.3); }
+}
+
+@keyframes modalSoftIn {
+  from { opacity: 0; }
+}
+
+@keyframes modalSoftOut {
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal .modal-content,
+  .agenda-day-summary-dialog,
+  .agenda-ina-dialog,
+  .cobro-modal-dialog,
+  .mensajes-settings-panel,
+  .backup-modal,
+  .db-config-modal,
+  .odonto-piece-modal-card,
+  .odonto-dictado-modal-card,
+  .odonto-print-modal-dialog,
+  .odonto-multi-print-dialog {
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* =====================================================
+   SPINNER DIENTE (js/toothSpinner.js)
+   Variante al azar: brillo, llena, dibuja, balanceo, salta, gira, colorea.
+===================================================== */
+.tooth-ld {
+  --tooth-ld-color: var(--app-primary, #2775f5);
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--tooth-ld-color);
+}
+
+.tooth-ld-svg {
+  width: var(--tooth-ld-size, 56px);
+  height: var(--tooth-ld-size, 56px);
+  overflow: visible;
+}
+
+.tooth-ld-svg * {
+  transform-box: fill-box;
+}
+
+.tooth-ld-svg .tl-fill {
+  fill: currentColor;
+}
+
+.tooth-ld-svg .tl-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.tooth-ld-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--app-text-muted, #66778d);
+}
+
+.tooth-ld-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Brillo que recorre */
+.tooth-ld--brillo .tl-shine {
+  fill: rgba(255, 255, 255, 0.75);
+  animation: toothLdShine 1.6s ease-in-out infinite;
+}
+@keyframes toothLdShine {
+  0% { transform: translateX(-16px) skewX(-20deg); }
+  60%, 100% { transform: translateX(30px) skewX(-20deg); }
+}
+
+/* Se llena de abajo hacia arriba */
+.tooth-ld--llena .tl-level {
+  fill: currentColor;
+  animation: toothLdFill 2s ease-in-out infinite;
+}
+@keyframes toothLdFill {
+  0% { transform: translateY(24px); }
+  70% { transform: translateY(0); }
+  85% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+
+/* Contorno que se dibuja y se rellena */
+.tooth-ld--dibuja .tl-line {
+  stroke-width: 1.8;
+  stroke-dasharray: 100;
+  animation: toothLdDraw 2s ease-in-out infinite;
+}
+.tooth-ld--dibuja .tl-fill {
+  opacity: 0;
+  animation: toothLdDrawFill 2s ease-in-out infinite;
+}
+@keyframes toothLdDraw {
+  0% { stroke-dashoffset: 100; }
+  55%, 100% { stroke-dashoffset: 0; }
+}
+@keyframes toothLdDrawFill {
+  0%, 50% { opacity: 0; }
+  70%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Balanceo */
+.tooth-ld--balanceo .tl-fill {
+  transform-origin: 50% 100%;
+  animation: toothLdSwing 1.2s ease-in-out infinite;
+}
+@keyframes toothLdSwing {
+  0%, 100% { transform: rotate(-14deg); }
+  50% { transform: rotate(14deg); }
+}
+
+/* Salta con sombra */
+.tooth-ld--salta .tl-fill {
+  transform-origin: 50% 100%;
+  animation: toothLdJump 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+.tooth-ld--salta .tl-shadow {
+  fill: currentColor;
+  transform-origin: center;
+  animation: toothLdShadow 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+@keyframes toothLdJump {
+  0%, 100% { transform: translateY(0) scale(1.08, 0.92); }
+  15% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-6px) scale(0.97, 1.03); }
+  85% { transform: translateY(0) scale(1); }
+}
+@keyframes toothLdShadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.3; }
+  50% { transform: scaleX(0.55); opacity: 0.12; }
+}
+
+/* Gira en 3D */
+.tooth-ld--gira {
+  animation: toothLdSpin3d 1.6s ease-in-out infinite;
+}
+@keyframes toothLdSpin3d {
+  from { transform: perspective(120px) rotateY(0); }
+  to { transform: perspective(120px) rotateY(360deg); }
+}
+
+/* Se colorea de lado a lado */
+.tooth-ld--colorea .tl-half {
+  fill: currentColor;
+  animation: toothLdPaint 1.4s ease-in-out infinite alternate;
+}
+@keyframes toothLdPaint {
+  from { transform: translateX(-24px); }
+  to { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tooth-ld-svg,
+  .tooth-ld-svg * {
+    animation-duration: 3s !important;
+  }
+}
+
+/* Diente a pantalla completa al entrar (login.js): tapa el toolbar y la vista mientras montan.
+   z-index sobre el topbar (1200) y bajo los mensajes del sistema (5200). */
+.login-entering-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: var(--bg-gray, #f1f5f9);
+  animation: loginEnteringIn 0.15s ease-out;
+}
+.login-entering-overlay.is-leaving {
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+}
+@keyframes loginEnteringIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Banner inferior de conexion al entrar (login.js): "Conectado · Cargando agenda...".
+   Por encima del overlay del diente (5000) y bajo los mensajes del sistema (5200). */
+.login-loading-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5100;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--success, #16a34a);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  animation: loginBannerIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.login-loading-banner.is-leaving {
+  animation: loginBannerOut 0.3s ease forwards;
+}
+.login-loading-banner-ok::before {
+  content: "\2713";
+  margin-right: 6px;
+}
+.login-loading-banner-ok::after {
+  content: "\00B7";
+  margin-left: 10px;
+  opacity: 0.7;
+}
+.login-loading-banner-spin {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: loginBannerSpin 0.7s linear infinite;
+}
+@keyframes loginBannerIn {
+  from { transform: translateY(100%); }
+}
+@keyframes loginBannerOut {
+  to { transform: translateY(100%); }
+}
+@keyframes loginBannerSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* =====================================================
+   LLENADO DE TABLAS (js/tableFx.js)
+   Carga: filas que caen (T8). Filtros: entran cayendo, salen por la derecha,
+   las que siguen se deslizan (T9). Fila con contenido cambiado: destello.
+===================================================== */
+tr.fx-in-load,
+tr.fx-in-drop {
+  transform-origin: 50% 0;
+  animation: fxRowDrop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: var(--fx-delay, 0ms);
+}
+tr.fx-in-drop {
+  animation-duration: 0.45s;
+}
+/* Entro fuera de pantalla: espera oculta y cae al aparecer con el scroll (tableFx revealLater). */
+tr.fx-pending {
+  opacity: 0;
+}
+@media print {
+  tr.fx-pending {
+    opacity: 1;
+  }
+}
+@keyframes fxRowDrop {
+  from { opacity: 0; transform: perspective(700px) rotateX(-75deg); }
+}
+
+tr.fx-changed > td {
+  animation: fxRowFlash 1.2s ease;
+}
+@keyframes fxRowFlash {
+  0%, 30% { box-shadow: inset 0 0 0 999px color-mix(in srgb, var(--app-primary, #2775f5) 18%, transparent); }
+  100% { box-shadow: inset 0 0 0 999px transparent; }
+}
+
+.fx-ghost-layer {
+  position: fixed;
+  z-index: 30;
+  overflow: hidden;
+  pointer-events: none;
+}
+.fx-ghost-layer > table.fx-ghost {
+  position: absolute;
+  margin: 0;
+  table-layout: fixed;
+  border-collapse: collapse;
+  animation: fxRowOut 0.28s ease forwards;
+}
+@keyframes fxRowOut {
+  to { opacity: 0; transform: translateX(28px); }
+}
+
+/* Columnas / elementos opcionales (tableFx.toggle) */
+.fx-cell-in {
+  transform-origin: 50% 0;
+  animation: fxRowDrop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation-delay: var(--fx-delay, 0ms);
+}
+.fx-cell-out {
+  animation: fxCellOut 0.2s ease forwards;
+}
+@keyframes fxCellOut {
+  to { opacity: 0; transform: translateX(14px) scale(0.9); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fx-cell-in,
+  .fx-cell-out,
+  tr.fx-in-load,
+  tr.fx-in-drop,
+  tr.fx-changed > td {
+    animation: none;
+  }
+}
+
+/* Diente en tablas (toothSpinner.cellHtml / tableRowHtml / tableLoading) */
+.tooth-ld-cell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 26px 12px;
+}
+
+tr.tooth-ld-row,
+tr.tooth-ld-row:hover,
+tr.tooth-ld-row > td,
+tr.tooth-ld-row:hover > td {
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: default;
+}

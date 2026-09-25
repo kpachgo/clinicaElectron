@@ -557,6 +557,11 @@ function createSessionToken() {
 module.exports = {
   buildMysqlOptions,
   createSessionToken,
+  decryptProtectedPayload,
+  encryptProtectedPayload,
+  writeBinaryFileAtomic,
+  writeJsonFileAtomic,
+  readJsonFile,
   getActiveConfig,
   getPublicStatus,
   hasMaintenancePin,

@@ -9,6 +9,8 @@ const storagePaths = require("./config/storagePaths");
 const licenciaService = require("./services/licencia.service");
 const licenciaMiddleware = require("./middlewares/licencia.middleware");
 const mensajesRuntime = require("./services/mensajes/mensajesRuntime.service");
+const fileStorage = require("./services/cloudStorage/fileStorage.service");
+const cloudBackup = require("./services/cloudStorage/cloudBackup.service");
 
 let shuttingDown = false;
 async function shutdown(signal) {
@@ -67,6 +69,11 @@ app.use("/firmas", express.static(storagePaths.firmasDir));
 app.use("/img/docs", express.static(storagePaths.imgDocsDir));
 app.use("/img/docs", express.static(path.join(frontendDir, "img/docs")));
 app.use("/docs", express.static(storagePaths.docsDir));
+// Si no esta en disco (modo nube o PC nueva), se busca en R2 con la misma ruta.
+app.use("/fotos", fileStorage.cloudFallback("fotos"));
+app.use("/firmas", fileStorage.cloudFallback("firmas"));
+app.use("/img/docs", fileStorage.cloudFallback("imgDocs"));
+app.use("/docs", fileStorage.cloudFallback("docs"));
 
 // Servir frontend
 app.use(express.static(frontendDir));
@@ -113,6 +120,7 @@ app.use("/api/mensajes", licenciaMiddleware.requireLicensedAccess, require("./ro
 app.use("/api/mensajes-view", licenciaMiddleware.requireLicensedAccess, require("./routes/mensajesView.routes"));
 
 storagePaths.ensureDataDirsSync();
+cloudBackup.startScheduler();
 require("./services/mensajesDatabase.service").getDb();
 mensajesRuntime.start().catch((error) => console.error("[Mensajes] No se pudo iniciar simulador:", error));
 

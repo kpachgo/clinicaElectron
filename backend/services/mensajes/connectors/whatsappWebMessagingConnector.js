@@ -32,6 +32,33 @@ function persistedPhone(phone) {
   return digits.startsWith("503") && digits.length === 11 ? digits.slice(3) : digits;
 }
 
+// whatsapp-web.js guarda cada versión de WhatsApp Web que carga en ./.wwebjs_cache
+// (relativo al cwd, igual que resuelve su LocalWebCache) y nunca borra las viejas.
+// Tras una conexión exitosa se conservan las WEB_CACHE_KEEP más recientes. Solo toca
+// archivos con nombre de versión ("2.3000.123.html") y nunca lanza: un fallo acá no
+// debe afectar la conexión.
+const WEB_CACHE_DIR = path.resolve("./.wwebjs_cache");
+const WEB_CACHE_KEEP = 10;
+const WEB_CACHE_PRUNE_DELAY_MS = 30000;
+async function pruneWebVersionCache() {
+  try {
+    const names = (await fs.promises.readdir(WEB_CACHE_DIR)).filter((name) => /^\d+(\.\d+)+\.html$/.test(name));
+    if (names.length <= WEB_CACHE_KEEP) return;
+    const files = [];
+    for (const name of names) {
+      try { files.push({ name, mtime: (await fs.promises.stat(path.join(WEB_CACHE_DIR, name))).mtimeMs }); } catch (_) { /* archivo que desapareció entre readdir y stat */ }
+    }
+    files.sort((a, b) => b.mtime - a.mtime);
+    const stale = files.slice(WEB_CACHE_KEEP);
+    for (const file of stale) {
+      try { await fs.promises.unlink(path.join(WEB_CACHE_DIR, file.name)); } catch (_) { /* en uso o ya borrado: se reintenta en la próxima conexión */ }
+    }
+    console.log("[Mensajes][WhatsApp] Caché de versiones depurada", { conservados: Math.min(files.length, WEB_CACHE_KEEP), eliminados: stale.length });
+  } catch (error) {
+    if (error?.code !== "ENOENT") console.warn("[Mensajes][WhatsApp] No se pudo depurar la caché de versiones", { error: error?.message || String(error) });
+  }
+}
+
 // Un LID tiene 13-16 digitos y pasa cualquier chequeo generico de "esto parece un
 // telefono". La agenda y el expediente usan el numero local salvadoreno de 8
 // digitos (11 con el prefijo 503), asi que ese es el unico formato que aceptamos
@@ -147,6 +174,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       this.qrAvailable = false;
       this.emitStatus("connected", { account: client.info?.pushname || null, phone: client.info?.wid?.user || null });
       this.startInboundRecovery(client);
+      setTimeout(() => void pruneWebVersionCache(), WEB_CACHE_PRUNE_DELAY_MS).unref?.();
     });
     client.on("auth_failure", (message) => {
       this.authenticated = false;

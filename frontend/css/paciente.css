@@ -77,37 +77,30 @@ body[data-theme="princess"] {
 .paciente-load-progress[hidden] {
     display: none !important;
 }
+/* Ocupa el espacio donde aparecera la ficha para que el diente quede centrado. */
 .paciente-load-progress {
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 132px;
+    min-height: min(58vh, 460px);
     margin: 4px 0 18px;
     opacity: 0;
     transform: translateY(8px) scale(.98);
     pointer-events: none;
+}
+.paciente-load-progress .tooth-ld {
+    --tooth-ld-color: var(--pac-load-ring-value);
+}
+.paciente-load-fallback {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--app-text-muted, #66778d);
 }
 .paciente-load-progress.is-visible {
     animation: paciente-loader-in .24s ease-out both;
 }
 .paciente-load-progress.is-hiding {
     animation: paciente-loader-out .22s ease-in both;
-}
-.paciente-load-ring {
-    width: 104px;
-    height: 104px;
-    overflow: visible;
-    filter: drop-shadow(0 10px 22px rgba(15, 23, 42, 0.10));
-}
-.paciente-load-ring-empty {
-    stroke: var(--pac-load-ring-empty);
-}
-.paciente-load-ring-value {
-    stroke: var(--pac-load-ring-value);
-    stroke-linecap: round;
-    transform: rotate(-90deg);
-    transform-origin: 52px 52px;
-    transition: stroke-dashoffset .72s cubic-bezier(.16, 1, .3, 1);
 }
 .paciente-detail-shell {
     transform-origin: top center;
@@ -161,9 +154,6 @@ body[data-theme="princess"] {
         animation: none !important;
         opacity: 1;
         transform: none;
-    }
-    .paciente-load-ring-value {
-        transition: none;
     }
 }
 /* =======================================================

@@ -167,6 +167,44 @@
     outline: none;
 }
 
+/* Temas oscuros (dark / vampire): cada tema aporta su paleta via --app-* */
+.dark-mode .modal-content {
+    background: var(--app-surface, #0f172a);
+    border: 1px solid var(--app-border, #26354a);
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.45);
+    color: var(--app-text, #e2e8f0);
+}
+
+.dark-mode .modal-content h2,
+.dark-mode .modal-content h3 {
+    color: var(--app-text, #e2e8f0);
+}
+
+.dark-mode .modal-content label {
+    color: var(--app-text-muted, #9ca3af);
+}
+
+.dark-mode .modal-content input,
+.dark-mode .modal-content select,
+.dark-mode .modal-content textarea {
+    background: var(--app-background, #0b1220);
+    border-color: var(--app-border, #26354a);
+    color: var(--app-text, #e2e8f0);
+}
+
+.dark-mode .modal-content input:focus,
+.dark-mode .modal-content select:focus,
+.dark-mode .modal-content textarea:focus {
+    background: var(--app-background, #0b1220);
+    border-color: var(--app-primary, #3b82f6);
+}
+
+.dark-mode .modal-content input::placeholder,
+.dark-mode .modal-content textarea::placeholder {
+    color: var(--app-text-muted, #9ca3af);
+    opacity: 0.8;
+}
+
 .modal-buttons {
     display: flex;
     justify-content: space-between;

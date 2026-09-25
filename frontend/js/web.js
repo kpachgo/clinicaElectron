@@ -327,6 +327,7 @@ window.fetch = function (url, options = {}) {
     const {
         __networkMode,
         __skipConnectionErrorAlert,
+        __silent,
         ...rawRequestOptions
     } = safeOptions;
 
@@ -346,7 +347,8 @@ window.fetch = function (url, options = {}) {
     return originalFetch(url, requestOptions)
         .then((response) => {
             resetNetworkErrorTracker({ hideOverlay: true });
-            maybePlayMutationSound(response, method, requestUrl);
+            // __silent: POST de solo consulta (ej. precheck) que no debe sonar como guardado.
+            if (__silent !== true) maybePlayMutationSound(response, method, requestUrl);
             if (!response.ok && !suppressConnectionAlert && typeof window.notifyServerHttpError === "function") {
                 window.notifyServerHttpError(response.status, requestUrl);
             }

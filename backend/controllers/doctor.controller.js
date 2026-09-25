@@ -2,8 +2,9 @@ const pool = require("../config/db");
 const bcrypt = require("bcryptjs");
 const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet, firstRow } = require("../utils/dbResult");
-const { parsePngBase64, writeBufferFile } = require("../utils/file");
-const { imgDocsDir } = require("../config/storagePaths");
+const { parsePngBase64 } = require("../utils/file");
+const fileStorage = require("../services/cloudStorage/fileStorage.service");
+const { resolveSelloExtension } = require("../middlewares/uploadSello");
 
 // backend/controllers/doctor.controller.js
 
@@ -142,7 +143,7 @@ const crear = async (req, res) => {
     // 2️⃣ Si viene firmaBase64 → guardarla como PNG
     if (firmaBuffer) {
       const fileName = `firma_${idDoctor}.png`;
-      await writeBufferFile(imgDocsDir, fileName, firmaBuffer);
+      await fileStorage.saveFile("imgDocs", fileName, firmaBuffer, "image/png");
 
       rutaFirma = `/img/docs/${fileName}`;
 
@@ -183,15 +184,26 @@ const subirSello = async (req, res) => {
       return badRequest(res, "Archivo requerido");
     }
 
-    const ruta = `/img/docs/${req.file.filename}`;
+    const ext = resolveSelloExtension(req.file);
+    const fileName = `sello_${idDoctor}${ext}`;
+    const ruta = `/img/docs/${fileName}`;
+
+    await fileStorage.saveFile("imgDocs", fileName, req.file.buffer, req.file.mimetype);
 
     const [result] = await pool.query(
       "UPDATE doctor SET SelloD = ? WHERE idDoctor = ?",
       [ruta, idDoctor]
     );
     if (!result?.affectedRows) {
+      await fileStorage.deleteFile("imgDocs", fileName).catch(() => {});
       return notFound(res, "Doctor no encontrado");
     }
+
+    // Un sello anterior con otra extension (png/jpg) quedaria huerfano.
+    const otraExt = ext === ".png" ? ".jpg" : ".png";
+    await fileStorage.deleteFile("imgDocs", `sello_${idDoctor}${otraExt}`).catch((err) => {
+      console.error("[Sello doctor] No se pudo borrar el sello anterior:", err.message);
+    });
 
     res.json({
       ok: true,
@@ -246,7 +258,7 @@ const actualizarFirma = async (req, res) => {
     }
 
     const fileName = `firma_${idDoctor}.png`;
-    await writeBufferFile(imgDocsDir, fileName, firmaBuffer);
+    await fileStorage.saveFile("imgDocs", fileName, firmaBuffer, "image/png");
     const rutaFirma = `/img/docs/${fileName}`;
 
     const [result] = await pool.query(

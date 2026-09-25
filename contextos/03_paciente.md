@@ -269,6 +269,15 @@
 - Si no, solicita password del doctor para validar.
 
 ## Fotos de paciente
+- Almacenamiento persistente (sobrevive actualizaciones/reinstalaciones):
+  - multer en memoria (`backend/routes/fotoPaciente.routes.js`); el controlador comprime con sharp y guarda via `fileStorage.saveFile("fotos", ...)`: en `fotosDir` (modo local/respaldo) o en R2 (modo nube). Ver `23_almacenamiento_nube.md`.
+  - borrar foto elimina el archivo en disco y en R2; la firma de paciente reemplazada tambien se borra.
+  - Windows: `C:\ProgramData\ClinicaElectron\fotos` (override con `CLINICA_DATA_DIR`); macOS: `/Users/Shared/ClinicaElectron/fotos`; Linux: `~/.ClinicaElectron/fotos`.
+  - nombre de archivo: `paciente_<id>_<fecha>_<timestamp>.<ext>`; en BD se guarda la ruta publica `/fotos/...`, servida por `express.static(fotosDir)` en `backend/server.js`.
+  - lectura/borrado con fallback legacy a `frontend/fotos` (`backend/utils/file.js`), solo para instalaciones viejas.
+  - no guardar fotos dentro de `frontend/`: esa carpeta se reemplaza en cada actualizacion.
+  - los backups de BD (`16_backups.md`) NO incluyen estas imagenes; respaldar la carpeta aparte.
+  - detalle general de persistencia: `10_electron.md`.
 - Subir foto: `POST /api/foto-paciente` (multipart `foto`).
 - Listar fotos: `GET /api/foto-paciente/:pacienteId`.
 - Eliminar foto: `DELETE /api/foto-paciente/:idFotoPaciente`.
@@ -398,3 +407,38 @@
   - con el checkbox activo el boton `Ver` se oculta (comportamiento existente), por lo que por defecto la firma/sello se ven directo en la columna `Accion`.
 - Motivo: desde la tablet no se veia la firma/sello; la sesion de la tablet arrancaba con el checkbox apagado mientras en la PC estaba activo.
 - Relacionado: bug de canvas de firma en tablet corregido en `contextos/04_doctores.md` (Ajustes recientes 2026-09-23).
+
+## Experimento PROVISIONAL (2026-09-24) - Caries CP/CG dibujadas en el modo visual
+> Estado: **en prueba**. El usuario decidira si se sigue desarrollando (otros tratamientos) o se descarta.
+> Si se descarta, quitar solo lo listado aqui; no toca el guardado/carga ni la plantilla de dientes.
+
+- Que hace:
+  - En modo visual (`#odontograma-wrapper.odonto-visual-mode`, solo lectura) lee las superficies del circulo con
+    `data-treatment="cp"` (caries pequena) o `"cg"` (caries grande) y dibuja una mancha con CSS sobre la corona
+    de la imagen PNG de la pieza (`/img/DentaduraAdulto/{Superior|Inferior}/{pieza}.png`).
+  - Posicion segun superficie (en % del area del dibujo de la imagen):
+    - superior (corona abajo, ~56%-100%): oclusal (50,93), vestibular (50,76), palatina (50,69), mesial/distal (22|78, 80).
+    - inferior (corona arriba, ~0%-44%): oclusal (50,7), vestibular (50,24), palatina (50,31), mesial/distal (22|78, 20).
+    - mesial = hacia la linea media: cuadrantes 1 y 4 -> derecha de la imagen (78); cuadrantes 2 y 3 -> izquierda (22).
+    - palatina/lingual no se ve de frente: se marca tenue (`opacity .55`) con contorno punteado (`.is-interna`).
+  - Tamano: CP ~16% del ancho del dibujo (min 6px); CG ~30% (min 11px), mas oscura y con tincion amarillo-marron.
+- Codigo:
+  - `frontend/js/paciente.js`: bloque "Modo visual: caries (CP / CG)" antes de `hasAnyTreatmentInPieceSet`:
+    `getOdontoVisualCariesPoint`, `renderOdontoVisualCariesForTooth`, `syncOdontoVisualCariesMarks`,
+    `scheduleOdontoVisualCariesSync`, `syncOdontoVisualCariesObserver`.
+    Se llaman desde `syncOdontoVisualModeContainerClass()` (entrar/salir de modo visual, reset de paciente).
+  - `frontend/css/odontograma.css`: `.tooth-visual-marks`, `.tooth-visual-marks-area`, `.tooth-caries`,
+    `.tooth-caries--cg`, `.tooth-caries.is-interna` (junto a las reglas `.odonto-visual-mode`).
+- Decisiones tecnicas (importantes si se extiende a otros tratamientos):
+  - Las marcas son `<div>/<span>`, **nunca `<svg>`**: `odontograma.js` localiza el circulo con
+    `tooth.querySelector("svg")` (primer svg del diente); un svg extra antes del circulo (piezas superiores) lo romperia.
+  - `.tooth-visual-marks` es un contenedor de alto 0 insertado **justo antes de la `<img>`** con su mismo ancho
+    (`margin: 0 auto`): se alinea igual que la imagen incluso cuando esta es mas ancha que `.tooth`
+    (en ese caso el navegador la alinea a la izquierda, no al centro).
+  - El tamano del dibujo se calcula con `naturalWidth/naturalHeight` + las constantes de `.tooth-visual-image`
+    (alto 110px, max-width 65px, `object-fit: contain`); si la imagen aun no cargo (`loading="lazy"`) se reintenta en `load`.
+  - Un `MutationObserver` (solo con modo visual activo) sobre `data-treatment` del wrapper repinta al cambiar de
+    fecha de odontograma o limpiar. Al salir del modo visual se eliminan las marcas y se desconecta el observer.
+  - Posiciones aproximadas: si una pieza queda desfasada, ajustar por pieza en `getOdontoVisualCariesPoint`.
+- Pendiente si se continua: extender a obturacion, fractura, corona, etc. con el mismo mecanismo; validar en la app
+  real (solo se verifico en una pagina de prueba con las imagenes y CSS reales).

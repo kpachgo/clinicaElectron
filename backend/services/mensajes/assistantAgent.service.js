@@ -4,10 +4,14 @@
 // y repite hasta obtener un texto para el paciente o agotar los pasos.
 
 const { buildAssistantContext } = require("./assistantContext.service");
-const { TOOL_SPECS, runTool } = require("./assistantTools.service");
+const { TOOL_SPECS, SALE_TOOL_SPECS, runTool } = require("./assistantTools.service");
 const { strategyFor, buildInitialMessages, requestTurn, appendToolResults } = require("./assistantProvider.service");
+const { isModoVentaEnabled } = require("../appMode.service");
 
 const MAX_STEPS = 6;
+// Modo venta: al cancelar por recordatorio el cierre es siempre este texto, no el
+// que redacte el modelo.
+const SALE_CANCEL_REPLY = "Listo, tu cita quedó cancelada. Si deseas reprogramar con gusto lo hacemos.";
 
 /**
  * @param {{
@@ -29,7 +33,7 @@ function memoryUpdateFromTrace(trace) {
     if (entry.name === "reprogramar_cita") {
       return { lastAppointment: { appointmentId: entry.result.id_cita, action: "reprogramada", service: entry.args?.servicio || null, date: entry.result.fecha, time: entry.result.hora } };
     }
-    if (entry.name === "cancelar_cita") {
+    if (entry.name === "cancelar_cita" || entry.name === "cancelar_cita_recordatorio") {
       return { lastAppointment: null };
     }
   }
@@ -40,22 +44,25 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
   const doTurn = transport.requestTurn || requestTurn;
   const doTool = transport.runTool || runTool;
   const strategy = strategyFor(cfg);
+  const saleMode = isModoVentaEnabled();
+  const toolSpecs = saleMode ? SALE_TOOL_SPECS : TOOL_SPECS;
+  const saleCancelled = (trace) => saleMode && trace.some((t) => t.type === "tool" && t.name === "cancelar_cita_recordatorio" && t.result?.estado === "ok");
 
   const context = await buildAssistantContext({ conversation, linkedPatient, history, assistantMemory });
   const { systemBlocks } = context;
   history = context.history;
   const memory = assistantMemory || {};
-  let messages = buildInitialMessages({ systemBlocks, history, toolSpecs: TOOL_SPECS, strategy });
+  let messages = buildInitialMessages({ systemBlocks, history, toolSpecs, strategy });
 
   const trace = [];
   let transfer = null;
 
   for (let step = 1; step <= MAX_STEPS; step += 1) {
-    const turn = await doTurn({ messages, toolSpecs: TOOL_SPECS, cfg, strategy, signal });
+    const turn = await doTurn({ messages, toolSpecs, cfg, strategy, signal });
 
     if (!turn.toolCalls || !turn.toolCalls.length) {
       trace.push({ step, type: "reply", text: turn.replyText || "" });
-      return { text: (turn.replyText || "").trim(), transfer, steps: step, trace, memoryUpdate: memoryUpdateFromTrace(trace) };
+      return { text: saleCancelled(trace) ? SALE_CANCEL_REPLY : (turn.replyText || "").trim(), transfer, steps: step, trace, memoryUpdate: memoryUpdateFromTrace(trace) };
     }
 
     const results = [];
@@ -77,6 +84,10 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
 
     if (transfer) {
       return { text: (turn.replyText || "").trim(), transfer, steps: step, trace, memoryUpdate: memoryUpdateFromTrace(trace) };
+    }
+
+    if (saleCancelled(trace)) {
+      return { text: SALE_CANCEL_REPLY, transfer: null, steps: step, trace, memoryUpdate: memoryUpdateFromTrace(trace) };
     }
 
     messages = appendToolResults(messages, turn.assistantEcho, results, strategy);

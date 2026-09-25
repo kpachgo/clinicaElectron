@@ -1,6 +1,5 @@
 const multer = require("multer");
 const path = require("path");
-const { imgDocsDir } = require("../config/storagePaths");
 
 const MIME_EXTENSION = {
   "image/png": ".png",
@@ -18,24 +17,9 @@ function resolveSelloExtension(file) {
   return ".png";
 }
 
-function resolveSafeDoctorId(rawId) {
-  const id = String(rawId || "").replace(/\D+/g, "");
-  return id || "tmp";
-}
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, imgDocsDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = resolveSelloExtension(file);
-    const doctorId = resolveSafeDoctorId(req.params?.id);
-    cb(null, `sello_${doctorId}${ext}`);
-  }
-});
-
+// En memoria: el controlador valida acceso y guarda en disco o R2 segun el modo de almacenamiento.
 const uploadSello = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 4 * 1024 * 1024
   },
@@ -47,3 +31,4 @@ const uploadSello = multer({
 });
 
 module.exports = uploadSello;
+module.exports.resolveSelloExtension = resolveSelloExtension;

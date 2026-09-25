@@ -1,7 +1,9 @@
 const pool = require("../config/db");
 const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet } = require("../utils/dbResult");
-const { resolveStorageCandidates, deleteIfExists } = require("../utils/file");
+const path = require("path");
+const fileStorage = require("../services/cloudStorage/fileStorage.service");
+const { compressPhoto } = require("../services/cloudStorage/imageCompression");
 
 /* ======================================================
    📸 SUBIR FOTO DE PACIENTE
@@ -9,6 +11,7 @@ const { resolveStorageCandidates, deleteIfExists } = require("../utils/file");
 ====================================================== */
 // 📸 SUBIR
 const subirFotoPaciente = async (req, res) => {
+  let savedName = null;
   try {
     if (!req.file) {
       return badRequest(res, "Archivo no recibido");
@@ -21,16 +24,22 @@ const subirFotoPaciente = async (req, res) => {
       : new Date().toISOString().split("T")[0];
 
     if (!Number.isInteger(pacienteIdNum) || pacienteIdNum <= 0) {
-      await deleteIfExists(req.file.path);
       return badRequest(res, "pacienteId invalido");
     }
 
-    const ruta = `/fotos/${req.file.filename}`;
+    const originalExt = (path.extname(req.file.originalname || "") || ".jpg").toLowerCase();
+    const foto = await compressPhoto(req.file.buffer, { mimetype: req.file.mimetype, originalExt });
+    const fileName = `paciente_${pacienteIdNum}_${fechaNormalizada}_${Date.now()}${foto.ext}`;
+    await fileStorage.saveFile("fotos", fileName, foto.buffer, foto.contentType);
+    savedName = fileName;
+
+    const ruta = `/fotos/${fileName}`;
 
     const [rows] = await pool.query(
       "CALL sp_foto_paciente_crear(?, ?, ?)",
       [pacienteIdNum, fechaNormalizada, ruta]
     );
+    savedName = null;
 
     res.json({
       ok: true,
@@ -39,6 +48,10 @@ const subirFotoPaciente = async (req, res) => {
     });
 
   } catch (err) {
+    // Si fallo el registro en BD, no dejar el archivo huerfano (disco o R2).
+    if (savedName) {
+      await fileStorage.deleteFile("fotos", savedName).catch(() => {});
+    }
     return serverError(res, err, "Error al subir foto");
   }
 };
@@ -129,13 +142,8 @@ const eliminarFotoPaciente = async (req, res) => {
       return notFound(res, "Foto no encontrada");
     }
 
-    const ruta = foto.rutaFP;
-    const fullPaths = resolveStorageCandidates(ruta);
-
-    // 2️⃣ Eliminar archivo físico
-    for (const fullPath of fullPaths) {
-      await deleteIfExists(fullPath);
-    }
+    // 2️⃣ Eliminar archivo en disco y en R2 (sin huerfanos en la nube)
+    await fileStorage.deleteByPublicPath(foto.rutaFP);
 
     // 3️⃣ Si era foto principal, limpiar referencia
     await pool.query(

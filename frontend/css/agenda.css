@@ -17,6 +17,17 @@
   display: none;
 }
 
+/* El progreso lo muestra el boton (saveFx): el overlay solo bloquea clics. */
+.agenda-save-overlay.is-silent {
+  background: transparent;
+  backdrop-filter: none;
+  cursor: progress;
+}
+
+.agenda-save-overlay.is-silent .agenda-save-overlay-card {
+  display: none;
+}
+
 .agenda-save-overlay-card {
   min-width: 280px;
   max-width: min(92vw, 420px);
@@ -867,17 +878,51 @@ body.agenda-day-summary-open {
     border-color 0.18s ease,
     box-shadow 0.18s ease,
     background-color 0.18s ease;
-  animation: agenda-month-cell-pop 0.26s ease both;
+  /* Sin animacion fija: se animaba en CADA pintado (doble "pop" al cargar el mes).
+     Ahora la pone agenda.js segun el caso (fx-cell-in de tableFx / fx-month-changed). */
 }
 
-@keyframes agenda-month-cell-pop {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+/* Mes cargando: skeleton en vez de "0 tratamientos" */
+.agenda-month-day.is-loading {
+  cursor: progress;
+}
+
+.agenda-month-sk {
+  background: linear-gradient(90deg, #edf2f7 0%, #f8fafc 40%, #edf2f7 80%) !important;
+  background-size: 300% 100% !important;
+  color: transparent !important;
+  animation: agenda-month-sk 1.3s ease-in-out infinite;
+}
+
+.agenda-month-sk-line {
+  width: 70px;
+  height: 10px;
+  border-radius: 6px;
+}
+
+@keyframes agenda-month-sk {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+.dark-mode .agenda-month-sk {
+  background: linear-gradient(90deg, #1e293b 0%, #273449 40%, #1e293b 80%) !important;
+  background-size: 300% 100% !important;
+}
+
+/* Busqueda/filtro en vista mes: el conteo que cambia hace "pop" */
+.agenda-month-count.fx-month-changed {
+  animation: agenda-month-count-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes agenda-month-count-pop {
+  40% { transform: scale(1.25); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agenda-month-sk,
+  .agenda-month-count.fx-month-changed {
+    animation: none;
   }
 }
 
@@ -3223,6 +3268,19 @@ body.agenda-day-summary-open {
 .dark-mode .agenda-date-today,
 .dark-mode .agenda-primary-btn {
   color: #fff;
+}
+
+.dark-mode .agenda-view-btn {
+  border-color: var(--agenda-border);
+  background: var(--agenda-surface, #111827);
+  color: var(--agenda-muted);
+}
+
+.dark-mode .agenda-view-btn.is-active {
+  border-color: color-mix(in srgb, var(--agenda-primary) 60%, transparent);
+  background: color-mix(in srgb, var(--agenda-primary) 24%, var(--agenda-surface, #111827));
+  color: var(--agenda-text);
+  box-shadow: none;
 }
 
 .dark-mode .agenda-date-nav,

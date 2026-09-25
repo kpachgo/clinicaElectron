@@ -817,6 +817,11 @@ function setupAutoUpdater() {
     logLine("[AUTOUPDATE]", "Modo desarrollo detectado; auto-update deshabilitado.");
     return;
   }
+  // Windows: cada clinica se actualiza manualmente con el instalador.
+  if (process.platform === "win32") {
+    logLine("[AUTOUPDATE]", "Windows: auto-update deshabilitado; actualizar con el instalador.");
+    return;
+  }
   if (updaterEnabled) return;
 
   updaterEnabled = true;

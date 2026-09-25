@@ -18,15 +18,18 @@
   - Windows: `%ProgramData%/ClinicaElectron`
   - macOS: `/Users/Shared/ClinicaElectron`
   - Linux fallback: `~/.ClinicaElectron`
-- Subcarpetas usadas:
-  - `fotos`
-  - `firmas`
-  - `img-docs`
-- URLs públicas se conservan:
-  - `/fotos/...`
-  - `/firmas/...`
-  - `/img/docs/...`
-- Fallback legacy habilitado para lectura en `frontend/*` para no romper archivos históricos locales.
+- Historial: al inicio las imagenes se guardaban dentro de `frontend/` (se perdian al actualizar, porque el instalador reemplaza esa carpeta). Se migro a la carpeta de datos externa de arriba; `frontend/` ya no se usa para escribir.
+- Desde 2026-09-23 las escrituras de fotos, firmas y sellos pasan por `backend/services/cloudStorage/fileStorage.service.js`, que segun el modo (local / respaldo / nube) escribe en estas carpetas o en Cloudflare R2. Ver `23_almacenamiento_nube.md`.
+- Mapa de que se guarda donde en disco (modo local/respaldo):
+  - `fotos/` -> fotos de paciente (`routes/fotoPaciente.routes.js`, multer). URL `/fotos/...`.
+  - `firmas/` -> firma de paciente (`paciente.controller.js`, `writeBufferFile(firmasDir)`). URL `/firmas/...`.
+  - `img-docs/` -> firma de doctor `firma_<idDoctor>.png` (`doctor.controller.js`), sello de doctor (`middlewares/uploadSello.js`) y logo de impresion `print_logo.*` (`middlewares/uploadPrintLogo.js`). URL `/img/docs/...`.
+  - `docs/` -> PDFs generados de documentos de paciente (`paciente.controller.js`). URL `/docs/...`.
+  - `config/`, `system/`, `tmp/`, `mensajes/`, `logs/` -> configuracion, licencia, temporales de backup, datos de Mensajes/WhatsApp y logs.
+- Los doctores no tienen foto propia; sus imagenes son firma y sello.
+- Fallback legacy solo de lectura/borrado en `frontend/*` (`backend/utils/file.js`, `server.js` y logo legacy en `paciente.controller.js`) para no romper rutas historicas de instalaciones viejas.
+- Regla: cualquier nuevo tipo de archivo subido debe agregarse como subcarpeta en `storagePaths.js` (y en `ensureDataDirsSync`), nunca escribir en `frontend/` ni en `resources/runtime`.
+- Los backups de BD no incluyen esta carpeta (ver `16_backups.md`).
 
 ## Archivos clave
 - Electron main (activo por scripts): `electron-app/main.js`
@@ -44,7 +47,7 @@
 - Configuración en `package.json` (`electron-builder`):
   - `asar: true`
   - `extraResources` para copiar `backend/`, `frontend/` y `package.json` a `resources/runtime`.
-  - `frontend/fotos`, `frontend/firmas` y `frontend/img/docs` excluidos del instalador.
+  - `frontend/img/docs` excluido del instalador (filtro en `extraResources`). `frontend/fotos` y `frontend/firmas` ya no existen en el repo (estan en `.gitignore`), por eso no necesitan filtro.
 - Scripts:
   - `npm run electron`
   - `npm run dist`

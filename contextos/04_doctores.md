@@ -68,6 +68,7 @@
 - Solo el doctor vinculado puede reemplazar su propia firma/sello desde la vista Doctores.
 - No pide contrasena adicional; basta la sesion activa del usuario `Doctor`.
 - Reemplazar firma/sello actualiza el archivo/ruta del registro `doctor`.
+- Almacenamiento persistente (no se pierde al actualizar): firma (`firma_<idDoctor>.png`) y sello (`sello_<idDoctor>.png|jpg`, multer en memoria en `middlewares/uploadSello.js`) se guardan desde `doctor.controller.js` via `fileStorage.saveFile("imgDocs", ...)`: en `imgDocsDir` (Windows `C:\ProgramData\ClinicaElectron\img-docs`) o en R2 segun el modo, servidos como `/img/docs/...`. Detalle en `23_almacenamiento_nube.md`.
 - La firma viaja como PNG base64 en JSON; el backend acepta hasta `10mb` y responde JSON claro si la imagen excede el limite.
 - Canvas de firma (registro y actualizar firma):
   - al cambiar tamano (girar tablet, abrir teclado) se conserva el trazo: se copia y se vuelve a pintar tras redimensionar (`prepararCanvasFirmaHD`).

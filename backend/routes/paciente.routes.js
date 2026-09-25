@@ -88,6 +88,12 @@ router.get(
   role(ROLES_MONITOR_SEGUIMIENTO),
   controller.monitorSeguimientoProximaCita
 );
+router.get(
+  "/monitor-seguimiento/proximas-citas",
+  auth,
+  role(ROLES_MONITOR_SEGUIMIENTO),
+  controller.monitorSeguimientoProximasCitas
+);
 router.put(
   "/monitor-seguimiento/contacto",
   auth,

@@ -4,6 +4,14 @@
   const agendaData = [];
   const estados = ["Pendiente", "Confirmado", "Cancelado", "Reprogramado", "No contesta", "IGS"];
   // ============UTILS===========================
+  // Avisos no bloqueantes (toast). Los criticos (verificacion de guardado, error interno) siguen con alert.
+  function agendaToast(message, type = "info", options = {}) {
+    if (typeof window.showToast === "function") {
+      window.showToast(message, { ...options, type });
+      return;
+    }
+    alert(message);
+  }
   function isClinicaModoVenta() {
     return typeof window.isModoVenta === "function"
       ? window.isModoVenta()
@@ -1186,7 +1194,7 @@
           agendaDayLoading = false;
           agendaDayError = json?.message || "Error al cargar agenda";
           aplicarFiltros({ dispararFallback: false });
-          alert(json?.message || "Error al cargar agenda");
+          agendaToast(json?.message || "Error al cargar agenda", "error");
           return;
         }
 
@@ -1372,6 +1380,10 @@
     let agendaMonthRows = [];
     let agendaMonthCacheKey = "";
     let agendaMonthLoading = false;
+    // Animacion del calendario (mismo patron que tableFx): al entrar/cambiar de mes los dias
+    // caen en cascada; mientras carga muestran skeleton y al llegar los datos se rellenan.
+    let agendaMonthFxEnter = true;
+    let agendaMonthLastRender = { key: "", skeleton: false };
     let agendaMonthFetchSeq = 0;
     let agendaMonthFetchController = null;
     let inasistenciaRows = [];
@@ -1409,6 +1421,8 @@
     function setAgendaCriticalSaveState(active, message = "Guardando cita...") {
       agendaCriticalSaveActive = active === true;
       if (agendaSaveOverlay) {
+        // Con saveFx el progreso se ve en el boton: el overlay solo bloquea clics (transparente).
+        agendaSaveOverlay.classList.toggle("is-silent", !!window.saveFx);
         agendaSaveOverlay.hidden = !agendaCriticalSaveActive;
         agendaSaveOverlay.setAttribute("aria-hidden", agendaCriticalSaveActive ? "false" : "true");
       }
@@ -1705,6 +1719,7 @@
 
       if (!opts.skipPersist) persistAgendaUiState();
       if (nextMode === "mes") {
+        agendaMonthFxEnter = true;
         cargarAgendaMesCalendario(String(dateInput?.value || "").trim() || getLocalTodayISO());
       } else {
         aplicarFiltros();
@@ -1721,7 +1736,10 @@
       const daysInMonth = getDaysInMonth(parts.year, parts.month);
       const firstDay = new Date(Date.UTC(parts.year, parts.month - 1, 1));
       const blanksBefore = (firstDay.getUTCDay() + 6) % 7;
-      const filteredRows = filtrarYOrdenar(agendaMonthRows, false);
+      const monthKey = getAgendaMonthKey(fechaISO);
+      // Sin datos de este mes todavia: skeleton en vez de "0 tratamientos" en todos los dias.
+      const skeleton = agendaMonthLoading && !(agendaMonthCacheKey === monthKey && Array.isArray(agendaMonthRows));
+      const filteredRows = skeleton ? [] : filtrarYOrdenar(agendaMonthRows, false);
       const rowsByDate = new Map();
       updateAgendaDateChrome();
       updateAgendaMetrics(filteredRows);
@@ -1764,11 +1782,23 @@
         const hasItemsClass = count > 0 ? " has-items" : "";
         const label = `${day} de ${formatAgendaMonthLabel(iso)}: ${count} ${count === 1 ? "tratamiento" : "tratamientos"}`;
 
+        if (skeleton) {
+          cells.push(`
+          <button class="agenda-month-day is-loading${selectedClass}${todayClass}" type="button" data-fecha="${iso}" aria-label="${day}: cargando">
+            <span class="agenda-month-day-number">${day}</span>
+            <span class="agenda-month-count agenda-month-sk"></span>
+            <span class="agenda-month-count-label agenda-month-sk agenda-month-sk-line"></span>
+          </button>
+        `);
+          continue;
+        }
+
         cells.push(`
           <button
             class="agenda-month-day${selectedClass}${todayClass}${hasItemsClass}"
             type="button"
             data-fecha="${iso}"
+            data-fx-sig="${escapeHtml(`${count}|${sample.join("|")}`)}"
             aria-label="${escapeHtml(label)}"
           >
             <span class="agenda-month-day-number">${day}</span>
@@ -1787,7 +1817,61 @@
         cells.push(`<div class="agenda-month-day is-empty" aria-hidden="true"></div>`);
       }
 
+      // Como se anima este pintado (mismo patron que tableFx):
+      //   skeleton: los dias caen en cascada mientras carga
+      //   fill:     llegaron los datos tras el skeleton -> el contenido cae en cascada (sin repintar las tarjetas)
+      //   enter:    entrar a la vista / cambiar de mes con datos en cache -> los dias caen en cascada
+      //   update:   filtros/busqueda -> solo hacen "pop" los dias cuyo conteo cambio
+      const last = agendaMonthLastRender;
+      let mode = "update";
+      if (skeleton) mode = last.skeleton && last.key === monthKey ? "none" : "skeleton";
+      else if (last.skeleton && last.key === monthKey) mode = "fill";
+      else if (agendaMonthFxEnter || last.key !== monthKey) mode = "enter";
+      agendaMonthFxEnter = false;
+      agendaMonthLastRender = { key: monthKey, skeleton };
+
+      const prevSigs = new Map(
+        Array.from(agendaMonthGrid.querySelectorAll(".agenda-month-day[data-fecha]"))
+          .map((el) => [el.dataset.fecha, el.dataset.fxSig || ""])
+      );
+      if (mode === "none") return;
       agendaMonthGrid.innerHTML = cells.join("");
+      animarCalendarioMes(mode, prevSigs);
+    }
+
+    function animarCalendarioMes(mode, prevSigs) {
+      if (mode === "update") {
+        agendaMonthGrid.querySelectorAll(".agenda-month-day[data-fecha]").forEach((cell) => {
+          const prev = prevSigs.get(cell.dataset.fecha);
+          if (prev == null || prev === (cell.dataset.fxSig || "")) return;
+          reiniciarClaseAnimacion(cell.querySelector(".agenda-month-count") || cell, "fx-month-changed");
+        });
+        return;
+      }
+      const days = Array.from(agendaMonthGrid.children);
+      const step = days.length > 1 ? Math.max(8, Math.min(35, 450 / (days.length - 1))) : 0;
+      days.forEach((cell, i) => {
+        const delay = `${Math.round(i * step)}ms`;
+        const targets = mode === "fill"
+          ? cell.querySelectorAll(".agenda-month-count, .agenda-month-count-label, .agenda-month-samples")
+          : [cell];
+        targets.forEach((el) => {
+          el.style.setProperty("--fx-delay", delay);
+          reiniciarClaseAnimacion(el, "fx-cell-in");
+        });
+      });
+    }
+
+    // Las celdas son nuevas en cada pintado (innerHTML), asi que basta con agregar la clase.
+    // Se quita al terminar para no dejar la animacion "pegada" (el hover usa transform).
+    function reiniciarClaseAnimacion(el, cls) {
+      el.classList.add(cls);
+      const onEnd = (e) => {
+        if (e.target !== el) return;
+        el.classList.remove(cls);
+        el.removeEventListener("animationend", onEnd);
+      };
+      el.addEventListener("animationend", onEnd);
     }
 
     async function cargarAgendaMesCalendario(fechaISO) {
@@ -2139,12 +2223,17 @@
       }
       if (!inasistenciaTbody) return;
 
+      // Llenado animado (tableFx.js).
+      const fx = window.tableFx?.begin(inasistenciaTbody);
       if (inasistenciaLoading) {
-        inasistenciaTbody.innerHTML = `
+        inasistenciaTbody.innerHTML = typeof window.toothSpinner?.tableRowHtml === "function"
+          ? window.toothSpinner.tableRowHtml(inasistenciaTbody, "Cargando posibles inasistencias...")
+          : `
           <tr>
             <td colspan="5" style="text-align:center; color:#64748b">Cargando posibles inasistencias...</td>
           </tr>
         `;
+        fx?.end();
         return;
       }
 
@@ -2154,6 +2243,7 @@
             <td colspan="5" style="text-align:center; color:#64748b">No hay posibles inasistencias para esta fecha</td>
           </tr>
         `;
+        fx?.end();
         return;
       }
 
@@ -2162,6 +2252,8 @@
         const idAgenda = Number(row?.idAgendaAP || 0);
         if (!idAgenda) return;
         const tr = document.createElement("tr");
+        tr.dataset.fxKey = String(idAgenda);
+        tr.dataset.fxSig = [row?.nombre, row?.hora, row?.contacto, row?.estado].map((v) => String(v ?? "")).join("|");
         const checked = inasistenciaSelectedIds.has(idAgenda) ? "checked" : "";
         tr.innerHTML = `
           <td style="text-align:center">
@@ -2174,6 +2266,7 @@
         `;
         inasistenciaTbody.appendChild(tr);
       });
+      fx?.end();
     }
     function abortInasistenciaFetch() {
       if (!inasistenciaFetchController) return;
@@ -2840,7 +2933,7 @@
     pasteCitaBtn?.addEventListener("click", () => {
       if (isAgendaCriticalSaveInProgress()) return;
       if (!agendaReprogramaBuffer) {
-        alert("Primero copie una cita con el boton ++");
+        agendaToast("Primero copie una cita con el boton ++", "warning");
         return;
       }
       openAgendaModal(agendaReprogramaBuffer);
@@ -2915,7 +3008,8 @@
         const res = await fetch("/api/agenda/precheck-registro", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
+          body: JSON.stringify(body),
+          __silent: true
         });
         const json = await res.json();
 
@@ -2988,26 +3082,26 @@
 
         // VALIDACIONES (si falla => mostrar y NO cerrar modal)
         if (!fechaISO) {
-          alert("Debe seleccionar una FECHA.");
+          agendaToast("Debe seleccionar una FECHA.", "warning");
           return;
         }
         if (!nombre) {
-          alert("El campo NOMBRE no puede estar vacio.");
+          agendaToast("El campo NOMBRE no puede estar vacio.", "warning");
           nombreEl.focus();
           return;
         }
         if (!horaRaw) {
-          alert("El campo HORA no puede estar vacio.");
+          agendaToast("El campo HORA no puede estar vacio.", "warning");
           horaEl.focus();
           return;
         }
         if (!contacto) {
-          alert("El campo CONTACTO no puede estar vacio.");
+          agendaToast("El campo CONTACTO no puede estar vacio.", "warning");
           contactoEl.focus();
           return;
         }
         if (!comentario) {
-          alert("El campo COMENTARIO no puede estar vacio.");
+          agendaToast("El campo COMENTARIO no puede estar vacio.", "warning");
           comentarioEl.focus();
           return;
         }
@@ -3015,7 +3109,7 @@
         // autoformatear la hora y validar
         const horaForzada = autoFormatearBasico(horaRaw.toLowerCase());
         if (!validarHora(horaForzada)) {
-          alert("Hora invalida.\nEjemplos validos:\n 8:00 am\n 1:30 pm");
+          agendaToast("Hora invalida.\nEjemplos validos:\n 8:00 am\n 1:30 pm", "warning");
           horaEl.value = horaForzada; // mostrar autoformateado (si aplica) para que el usuario corrija
           horaEl.focus();
           return;
@@ -3058,6 +3152,7 @@
         }
 
         setAgendaCriticalSaveState(true, "Guardando cita...");
+        window.saveFx?.start(btnGuardar);
         const res = await fetch("/api/agenda", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3081,6 +3176,7 @@
         }
 
         setAgendaCriticalSaveState(true, "Comprobando guardado...");
+        window.saveFx?.start(btnGuardar, "Comprobando...");
         const agendaVerificada = await fetchAgendaByIdForVerification(json.idAgendaAP, fechaISO);
         agendaData.unshift(agendaVerificada);
         agendaMonthCacheKey = "";
@@ -3092,9 +3188,13 @@
         if (agendaModalDesdeReprogramacion) {
           limpiarBufferReprogramacion();
         }
+        // La cita ya esta guardada y verificada: se quita el overlay para que se vea el check en el boton.
+        setAgendaCriticalSaveState(false, "Guardando cita...");
+        await window.saveFx?.success(btnGuardar);
         modal.classList.remove("show");
         resetAgendaModalState();
       } catch (err) {
+        window.saveFx?.error(btnGuardar);
         const rawMessage = String(err?.message || "").trim();
         const verificationLikeError =
           /comprobar|confirmar|verific/i.test(rawMessage) ||
@@ -3106,6 +3206,7 @@
         );
         console.error(err);
       } finally {
+        window.saveFx?.stop(btnGuardar);
         setAgendaCriticalSaveState(false, "Guardando cita...");
         isCreatingAgenda = false;
         if (btnGuardar && btnGuardar.isConnected) {
@@ -3281,7 +3382,7 @@
             agendaMonthCacheKey = "";
             aplicarFiltros();
           }
-          alert("No se pudo guardar el cambio de fecha");
+          agendaToast("No se pudo guardar el cambio de fecha", "error");
           console.error(err);
         } finally {
           isSaving = false;
@@ -3350,7 +3451,7 @@
         if (!json.ok) throw new Error(json.message);
       } catch (err) {
         // rollback si falla
-        alert("Error al guardar el cambio");
+        agendaToast("Error al guardar el cambio", "error");
         console.error(err);
 
         item[campo] = valorOriginal;
@@ -3408,7 +3509,7 @@
 
         const v = autoFormatearBasico(input.value.trim().toLowerCase());
         if (!validarHora(v)) {
-          alert("Hora invalida.\nEjemplos validos:\n 8:00 am\n 1:30 pm");
+          agendaToast("Hora invalida.\nEjemplos validos:\n 8:00 am\n 1:30 pm", "warning");
           closeEditor(valorOriginal);
           isSaving = false;
           return;
@@ -3445,7 +3546,7 @@
             </span>
           `;
           aplicarRefuerzoVisualHora(td, valorOriginal);
-          alert("No se pudo guardar el cambio de hora");
+          agendaToast("No se pudo guardar el cambio de hora", "error");
           console.error(err);
         } finally {
           isSaving = false;
@@ -3471,7 +3572,7 @@
     async function guardarMarcasContacto(item, patch = {}) {
       const idAgenda = Number(item?.idAgendaAP || 0);
       if (!Number.isInteger(idAgenda) || idAgenda <= 0) {
-        alert("No se pudo identificar la cita para guardar contacto");
+        agendaToast("No se pudo identificar la cita para guardar contacto", "error");
         aplicarFiltros({ dispararFallback: false });
         return;
       }
@@ -3512,7 +3613,7 @@
         item.sms = prevSms;
         item.llamada = prevLlamada;
         item.presente = prevPresente;
-        alert(err?.message || "No se pudo guardar el contacto");
+        agendaToast(err?.message || "No se pudo guardar el contacto", "error");
       } finally {
         agendaContactoSaveInFlight.delete(idAgenda);
         aplicarFiltros({ dispararFallback: false });
@@ -3521,7 +3622,17 @@
     // =========================================
     // DIBUJAR TABLA
     // =========================================
+    // Repinta con animacion (tableFx.js): caen al cargar el dia; al filtrar/guardar
+    // las filas se reacomodan, salen por la derecha o destellan si cambiaron.
     function drawRows(list, duplicateSourceList = list) {
+      if (typeof window.tableFx?.render === "function") {
+        window.tableFx.render(tbody, () => drawRowsNow(list, duplicateSourceList));
+        return;
+      }
+      drawRowsNow(list, duplicateSourceList);
+    }
+
+    function drawRowsNow(list, duplicateSourceList = list) {
       tbody.innerHTML = "";
       aplicarVisibilidadNumeracionAgenda();
       aplicarVisibilidadContactadoAgenda();
@@ -3542,9 +3653,14 @@
         const td = document.createElement("td");
         td.className = "agenda-empty-cell";
         td.colSpan = 12;
-        td.textContent = agendaDayLoading
-          ? "Cargando agenda..."
-          : agendaDayError || (hasFilters ? "Sin coincidencias para los filtros actuales." : "No hay citas para esta fecha.");
+        if (agendaDayLoading && typeof window.toothSpinner?.cellHtml === "function") {
+          td.innerHTML = window.toothSpinner.cellHtml("Cargando agenda...");
+          tr.classList.add("tooth-ld-row");
+        } else {
+          td.textContent = agendaDayLoading
+            ? "Cargando agenda..."
+            : agendaDayError || (hasFilters ? "Sin coincidencias para los filtros actuales." : "No hay citas para esta fecha.");
+        }
         tr.appendChild(td);
         tbody.appendChild(tr);
         return;
@@ -3552,6 +3668,13 @@
 
       safeList.forEach((item, index) => {
         const tr = document.createElement("tr");
+        if (item.idAgendaAP != null && item.idAgendaAP !== "") {
+          tr.dataset.fxKey = String(item.idAgendaAP);
+          tr.dataset.fxSig = [
+            item.nombre, item.hora, item.fecha, item.contacto, item.estado,
+            item.comentario, item.sms, item.llamada, item.presente
+          ].map((v) => String(v ?? "")).join("|");
+        }
         aplicarRefuerzoVisualFila(tr, item.estado);
         applyAgendaMetricHighlightToRow(tr, item.estado);
 
@@ -3698,7 +3821,7 @@
         aplicarFiltros();
 
         } catch (err) {
-        alert("No se pudo guardar el cambio de estado");
+        agendaToast("No se pudo guardar el cambio de estado", "error");
         console.error(err);
         }
         });
@@ -3761,7 +3884,7 @@
             } catch (err) {
               item.comentario = valorOriginal;
               pintarComentarioVisual(span, valorOriginal);
-              alert("No se pudo guardar el comentario");
+              agendaToast("No se pudo guardar el comentario", "error");
               console.error(err);
             } finally {
               isSavingComentario = false;
@@ -3803,14 +3926,14 @@
 
           const colaApi = window.__colaPacienteAPI;
           if (!colaApi || typeof colaApi.addFromAgenda !== "function") {
-            alert("Vista En Cola no disponible");
+            agendaToast("Vista En Cola no disponible", "error");
             btnEnCola.disabled = false;
             return;
           }
 
           const nombreAgenda = String(item.nombre || "").trim();
           if (!nombreAgenda) {
-            alert("La cita no tiene nombre de paciente");
+            agendaToast("La cita no tiene nombre de paciente", "warning");
             btnEnCola.disabled = false;
             return;
           }
@@ -3904,18 +4027,18 @@
             });
 
             if (!result?.ok) {
-              alert(result?.message || "No se pudo enviar a cola");
+              agendaToast(result?.message || "No se pudo enviar a cola", "error");
               return;
             }
 
             if (result.duplicated) {
-              alert("Este paciente ya esta en cola");
+              agendaToast("Este paciente ya esta en cola", "info");
               return;
             }
 
-            alert("Paciente agregado a En Cola");
+            agendaToast("Paciente agregado a En Cola", "success");
           } catch (err) {
-            alert(err?.message || "No se pudo enviar a cola");
+            agendaToast(err?.message || "No se pudo enviar a cola", "error");
           } finally {
             if (btnEnCola.isConnected) {
               btnEnCola.disabled = false;
@@ -3932,7 +4055,7 @@
         btnReprogramar.addEventListener("click", () => {
           const nombreAgenda = String(item.nombre || "").trim();
           if (!nombreAgenda) {
-            alert("La cita no tiene nombre para reprogramar");
+            agendaToast("La cita no tiene nombre para reprogramar", "warning");
             return;
           }
 
@@ -3948,7 +4071,7 @@
         btnCobrar.addEventListener("click", async () => {
           const nombreAgenda = String(item.nombre || "").trim();
           if (!nombreAgenda) {
-            alert("La cita no tiene nombre de paciente");
+            agendaToast("La cita no tiene nombre de paciente", "warning");
             return;
           }
 
@@ -3958,7 +4081,7 @@
             const data = Array.isArray(json?.data) ? json.data : [];
 
             if (!json?.ok) {
-              alert(json?.message || "No se pudo validar el paciente para cobrar");
+              agendaToast(json?.message || "No se pudo validar el paciente para cobrar", "error");
               return;
             }
 
@@ -3968,7 +4091,7 @@
             });
 
             if (!exactos.length) {
-              alert(`No existe un paciente registrado con nombre exacto: "${nombreAgenda}"`);
+              agendaToast(`No existe un paciente registrado con nombre exacto: "${nombreAgenda}"`, "warning");
               return;
             }
 
@@ -3991,13 +4114,13 @@
             }
 
             if (!pacienteMatch) {
-              alert("Hay multiples pacientes con ese nombre. Abra Cobro y seleccione el paciente manualmente.");
+              agendaToast("Hay multiples pacientes con ese nombre. Abra Cobro y seleccione el paciente manualmente.", "warning");
               return;
             }
 
             const idPaciente = Number(pacienteMatch?.idPaciente || 0);
             if (!idPaciente) {
-              alert("No se pudo resolver el paciente para cobrar");
+              agendaToast("No se pudo resolver el paciente para cobrar", "error");
               return;
             }
 
@@ -4010,7 +4133,7 @@
             if (typeof window.loadView === "function") {
               window.loadView("Cobro");
             } else {
-              alert("No se pudo abrir la vista Cobro");
+              agendaToast("No se pudo abrir la vista Cobro", "error");
             }
           } catch (err) {
             console.error("Error validando paciente desde agenda", err);
@@ -4060,7 +4183,7 @@
         btnEliminar.addEventListener("click", async () => {
           const idAgenda = Number(item.idAgendaAP || 0);
           if (!idAgenda) {
-            alert("No se pudo identificar la cita a eliminar");
+            agendaToast("No se pudo identificar la cita a eliminar", "error");
             return;
           }
 
@@ -4092,7 +4215,7 @@
             aplicarFiltros();
           } catch (err) {
             console.error("Error eliminando cita de agenda", err);
-            alert("No se pudo eliminar la cita");
+            agendaToast("No se pudo eliminar la cita", "error");
           }
         });
 
@@ -4107,7 +4230,7 @@
           const contactoAgenda = String(item.contacto || "").trim();
 
           if (!nombreAgenda) {
-            alert("La cita no tiene nombre para crear paciente");
+            agendaToast("La cita no tiene nombre para crear paciente", "warning");
             return;
           }
 
@@ -4118,12 +4241,12 @@
             const json = await res.json();
 
             if (!json?.ok) {
-              alert(json?.message || "No se pudo validar paciente existente");
+              agendaToast(json?.message || "No se pudo validar paciente existente", "error");
               return;
             }
 
             if (json.exists) {
-              alert("Paciente ya existe. No se creara duplicado.");
+              agendaToast("Paciente ya existe. No se creara duplicado.", "warning");
               return;
             }
 
@@ -4136,7 +4259,7 @@
             if (typeof window.loadView === "function") {
               window.loadView("Paciente");
             } else {
-              alert("No se pudo abrir la vista Paciente");
+              agendaToast("No se pudo abrir la vista Paciente", "error");
             }
           } catch (err) {
             console.error("Error validando paciente para crear", err);
@@ -4394,20 +4517,30 @@
       aplicarFiltros();
       persistAgendaUiState();
     });
+    // Mostrar/ocultar columnas con el mismo patron de tableFx (salen, se deslizan, caen).
+    function animarColumnasAgenda(aplicar) {
+      if (typeof window.tableFx?.toggle === "function") {
+        window.tableFx.toggle(agendaTable, aplicar, {
+          selector: ".agenda-col-num, .agenda-col-contacto, .agenda-contacto-flag"
+        });
+        return;
+      }
+      aplicar();
+    }
     toggleNumeracionAgenda?.addEventListener("change", () => {
-      aplicarVisibilidadNumeracionAgenda();
+      animarColumnasAgenda(aplicarVisibilidadNumeracionAgenda);
       persistAgendaUiState();
     });
     toggleSmsAgenda?.addEventListener("change", () => {
-      aplicarVisibilidadContactadoAgenda();
+      animarColumnasAgenda(aplicarVisibilidadContactadoAgenda);
       persistAgendaUiState();
     });
     toggleLlamadaAgenda?.addEventListener("change", () => {
-      aplicarVisibilidadContactadoAgenda();
+      animarColumnasAgenda(aplicarVisibilidadContactadoAgenda);
       persistAgendaUiState();
     });
     togglePresenteAgenda?.addEventListener("change", () => {
-      aplicarVisibilidadContactadoAgenda();
+      animarColumnasAgenda(aplicarVisibilidadContactadoAgenda);
       persistAgendaUiState();
     });
     aplicarVisibilidadNumeracionAgenda();

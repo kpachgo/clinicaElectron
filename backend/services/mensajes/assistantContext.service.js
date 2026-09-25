@@ -8,6 +8,7 @@ const { getDb } = require("../mensajesDatabase.service");
 const { getPolicy } = require("./assistantPolicy.service");
 const { listAiServices, getClinicSchedule } = require("./aiAvailability.service");
 const { to12h } = require("./timeFormat.service");
+const { isModoVentaEnabled } = require("../appMode.service");
 
 const TIMEZONE = "America/El_Salvador";
 const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -108,6 +109,28 @@ function mapHistory(messages) {
   return result;
 }
 
+// Modo venta: la IA es solo una herramienta sobre recordatorios. Sin política general,
+// conocimiento, catálogo ni horario: confirma, cancela o pasa a recepción.
+function buildReminderToolContext({ conversation, historyLimit, history }) {
+  const { fecha, hora, iso } = nowParts();
+  const systemBlocks = [
+    [
+      "Sos el asistente de recordatorios de citas de una clínica, por WhatsApp. Tu ÚNICA tarea es gestionar la respuesta del paciente a un recordatorio de cita que la clínica le envió.",
+      "- Si el paciente da a entender que SÍ asistirá (con las palabras que sea: \"si\", \"ahí estaré\", \"primero Dios\", un 👍, etc.), llamá confirmar_asistencia y agradecé de forma breve.",
+      "- Si el paciente dice que NO podrá asistir o que quiere cancelar, llamá cancelar_cita_recordatorio con confirmado=true. Si no queda claro si quiere cancelar, preguntale primero si desea cancelar su cita.",
+      "- Para CUALQUIER otra cosa (cambiar fecha u hora, reprogramar, precios, preguntas, dudas, quejas, urgencias, temas que no son el recordatorio) llamá transferir_a_recepcion con un motivo breve y no respondas nada más.",
+      "- Si el paciente solo agradece o se despide, respondé con cortesía en una frase, sin herramientas.",
+      "- No inventes datos. No afirmes que una cita quedó confirmada o cancelada hasta que la herramienta devuelva estado \"ok\".",
+      "- Respuestas breves y amables. Horas en formato de 12 horas con AM/PM."
+    ].join("\n"),
+    `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}.`
+  ];
+  const resolvedHistory = Array.isArray(history)
+    ? history
+    : mapHistory(repo.listMessages(conversation.id, { limit: historyLimit }));
+  return { systemBlocks, history: resolvedHistory };
+}
+
 /**
  * @param {{ conversation: any, linkedPatient?: any, historyLimit?: number }} input
  * @returns {Promise<{ systemBlocks: string[], history: Array<{role:string,content:string}> }>}
@@ -123,6 +146,7 @@ function describeAssistantMemory(memory) {
 // ya ofrecido/acordado a mitad de la conversación. El corte por vacío de 48h (HISTORY_GAP_HOURS)
 // ya evita arrastrar temas viejos y cerrados, así que subir este número no reabre eso.
 async function buildAssistantContext({ conversation, linkedPatient = null, historyLimit = 60, history = null, assistantMemory = null } = {}) {
+  if (isModoVentaEnabled()) return buildReminderToolContext({ conversation, historyLimit, history });
   const knowledge = repo.getAssistantKnowledge().knowledge?.trim();
   const humanReview = repo.getHumanReviewInstructions().instructions?.trim();
   const services = await listAiServices("");

@@ -3,6 +3,9 @@
   const PAGE_SIZE_OPTIONS = [10, 25, 50];
   const DEFAULT_PAGE_SIZE = 25;
   const SEARCH_DEBOUNCE_MS = 220;
+  const MAX_COMENTARIO = 500;
+  // Clic en el encabezado "Proxima cita": Todos -> Con cita -> Sin cita -> Todos.
+  const PROXIMA_FILTRO_VALUES = ["all", "con", "sin"];
   const SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3", "cancelados"]);
   const ESTADO_VALUES = new Set(["all", "activo", "inactivo"]);
   const TRATAMIENTO_VALUES = new Set(["all", "odontologia", "ortodoncia", "sin_registrar"]);
@@ -114,6 +117,16 @@
     }
   }
 
+  function isEditingTextControl(el) {
+    if (!el || !(el instanceof HTMLElement)) return false;
+    if (el.isContentEditable) return true;
+    const tag = String(el.tagName || "").toUpperCase();
+    if (tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (tag !== "INPUT") return false;
+    const type = String(el.getAttribute("type") || "text").toLowerCase();
+    return !["button", "checkbox", "radio", "submit", "reset"].includes(type);
+  }
+
   function getSegmentByMonths(months) {
     const safeMonths = toInt(months, 0);
     if (safeMonths >= 3) return "m3";
@@ -158,6 +171,18 @@
     }
     if (iconName === "calendar-days") {
       return `<svg ${base}><rect x="3" y="4.75" width="18" height="16" rx="2.5"></rect><path d="M8 3v3.5M16 3v3.5M3 9.5h18"></path><path d="M8 13h3M13 13h3M8 16.5h3"></path></svg>`;
+    }
+    if (iconName === "comment") {
+      return `<svg ${base}><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4A2.5 2.5 0 0 1 4 13.5v-8Z"></path><path d="M8 8h8M8 11.5h5"></path></svg>`;
+    }
+    if (iconName === "check") {
+      return `<svg ${base}><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>`;
+    }
+    if (iconName === "funnel") {
+      return `<svg ${base}><path d="M4 5h16l-6.2 7.4v5.1L10.2 19v-6.6L4 5Z"></path></svg>`;
+    }
+    if (iconName === "x-mark") {
+      return `<svg ${base}><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg>`;
     }
     if (iconName === "phone") {
       return `<svg ${base}><path d="M2.25 4.5a1.5 1.5 0 0 1 1.5-1.5h2.6a1.5 1.5 0 0 1 1.48 1.26l.41 2.46a1.5 1.5 0 0 1-.43 1.31l-1.2 1.2a13.5 13.5 0 0 0 6.16 6.16l1.2-1.2a1.5 1.5 0 0 1 1.31-.43l2.46.41A1.5 1.5 0 0 1 21 17.65v2.6a1.5 1.5 0 0 1-1.5 1.5h-.75C9.94 21.75 2.25 14.06 2.25 4.5v0Z"></path></svg>`;
@@ -287,6 +312,8 @@
     params.set("q", String(state.q || "").trim());
     params.set("page", String(state.page));
     params.set("pageSize", String(state.pageSize));
+    if (state.showProximaCita) params.set("proximaCita", "1");
+    if (state.showProximaCita && state.proximaFiltro !== "all") params.set("proximaFiltro", state.proximaFiltro);
     return params.toString();
   }
 
@@ -317,6 +344,12 @@
         tratamientoKey: getTratamientoKey(tratamientoLabel),
         sms: toBit(item?.sms, 0),
         llamada: toBit(item?.llamada, 0),
+        comentario: String(item?.comentario || "").trim(),
+        fechaContacto: item?.fechaContacto ? String(item.fechaContacto).trim() : null,
+        contactoPor: String(item?.contactoPor || "").trim(),
+        contactoEn: item?.contactoEn ? String(item.contactoEn).trim() : null,
+        // undefined = no consultado (columna oculta); null = sin cita; "YYYY-MM-DD" = agendada.
+        proximaCita: item?.proximaCita === undefined ? undefined : (item.proximaCita ? String(item.proximaCita).trim() : null),
         fechaCancelacion: item?.fechaCancelacion ? String(item.fechaCancelacion).trim() : null
       };
     });
@@ -417,6 +450,10 @@
               <input type="checkbox" id="ms-toggle-llamada">
               Llamada
             </label>
+            <label class="ms-toggle-proxima" for="ms-toggle-proxima">
+              <input type="checkbox" id="ms-toggle-proxima">
+              Proxima cita
+            </label>
           </div>
         </div>
 
@@ -433,6 +470,11 @@
             <thead>
               <tr>
                 <th class="ms-col-contacto">Contactado</th>
+                <th class="ms-col-proxima">
+                  <button type="button" id="ms-proxima-filter" class="ms-th-filter-btn" title="Filtrar por proxima cita">
+                    Proxima cita <span class="ms-th-filter-state" id="ms-proxima-filter-state"></span>
+                  </button>
+                </th>
                 <th class="ms-col-num">#</th>
                 <th>Paciente</th>
                 <th class="ms-col-accion">Accion</th>
@@ -474,6 +516,9 @@
       toggleNumeracion: container.querySelector("#ms-toggle-numeracion"),
       toggleSms: container.querySelector("#ms-toggle-sms"),
       toggleLlamada: container.querySelector("#ms-toggle-llamada"),
+      toggleProximaCita: container.querySelector("#ms-toggle-proxima"),
+      proximaFilterBtn: container.querySelector("#ms-proxima-filter"),
+      proximaFilterState: container.querySelector("#ms-proxima-filter-state"),
       btnClear: container.querySelector("#ms-clear"),
       kpiGrid: container.querySelector("#ms-kpi-grid"),
       kpiStatus: container.querySelector("#ms-kpi-status"),
@@ -505,7 +550,13 @@
       showNumeracion: !!toBit(persistedUiState?.showNumeracion, 0),
       showSms: !!toBit(persistedUiState?.showSms, 0),
       showLlamada: !!toBit(persistedUiState?.showLlamada, 0),
-      page: 1,
+      showProximaCita: !!toBit(persistedUiState?.showProximaCita, 0),
+      proximaFiltro: PROXIMA_FILTRO_VALUES.includes(persistedUiState?.proximaFiltro)
+        && toBit(persistedUiState?.showProximaCita, 0)
+        ? persistedUiState.proximaFiltro
+        : "all",
+      // Se retoma la pagina donde iba; el backend la ajusta si ya no existe.
+      page: Math.max(1, toInt(persistedUiState?.page, 1)),
       pageSize: PAGE_SIZE_OPTIONS.includes(persistedPageSize) ? persistedPageSize : DEFAULT_PAGE_SIZE,
       rows: [],
       loading: false,
@@ -519,6 +570,8 @@
     let fetchSeq = 0;
     let fetchController = null;
     const savingContactoSet = new Set();
+    let commentTooltipEl = null;
+    let commentTooltipAnchor = null;
     const proximaCitaCache = new Map();
     const listeners = [];
 
@@ -532,6 +585,9 @@
         showNumeracion: state.showNumeracion ? 1 : 0,
         showSms: state.showSms ? 1 : 0,
         showLlamada: state.showLlamada ? 1 : 0,
+        showProximaCita: state.showProximaCita ? 1 : 0,
+        proximaFiltro: state.proximaFiltro,
+        page: state.page,
         pageSize: state.pageSize
       };
     }
@@ -551,7 +607,7 @@
     }
 
     function contactSaveKey(idPaciente) {
-      return `${idPaciente}:${state.fechaCorte}`;
+      return String(idPaciente);
     }
 
     function applyContactColumnVisibility() {
@@ -560,6 +616,108 @@
       refs.table.classList.toggle("hide-contacto-sms", !state.showSms);
       refs.table.classList.toggle("hide-contacto-llamada", !state.showLlamada);
       refs.table.classList.toggle("hide-contactado", !state.showSms && !state.showLlamada);
+      refs.table.classList.toggle("hide-proxima-cita", !state.showProximaCita);
+      renderProximaFilterHeader();
+    }
+
+    // Checkboxes de columnas: entran/salen con el patron de tableFx (salen, se deslizan, caen).
+    function animarColumnasMonitor() {
+      if (typeof window.tableFx?.toggle === "function" && refs.table) {
+        window.tableFx.toggle(refs.table, applyContactColumnVisibility, {
+          selector: ".ms-col-num, .ms-col-contacto, .ms-contacto-flag, .ms-col-proxima"
+        });
+        return;
+      }
+      applyContactColumnVisibility();
+    }
+
+    // Guarda SMS/Llamada/Comentario juntos: el backend fecha la marca con el dia real
+    // y la sigue mostrando mientras sea posterior a la ultima visita del paciente.
+    async function saveContactoRow(row, patch) {
+      const key = contactSaveKey(row.idPaciente);
+      if (savingContactoSet.has(key)) return;
+
+      const prev = {
+        sms: row.sms,
+        llamada: row.llamada,
+        comentario: row.comentario,
+        fechaContacto: row.fechaContacto,
+        contactoPor: row.contactoPor,
+        contactoEn: row.contactoEn
+      };
+      Object.assign(row, patch);
+      savingContactoSet.add(key);
+      renderTableRows();
+      applyContactColumnVisibility();
+
+      try {
+        const json = await apiSaveContacto({
+          idPaciente: row.idPaciente,
+          sms: row.sms ? 1 : 0,
+          llamada: row.llamada ? 1 : 0,
+          comentario: row.comentario || ""
+        });
+        const saved = json?.data || {};
+        row.sms = toBit(saved.sms, row.sms);
+        row.llamada = toBit(saved.llamada, row.llamada);
+        row.comentario = String(saved.comentario ?? row.comentario ?? "").trim();
+        row.fechaContacto = saved.fechaContacto || null;
+        row.contactoPor = String(saved.contactoPor || "").trim();
+        row.contactoEn = saved.contactoEn || null;
+      } catch (err) {
+        Object.assign(row, prev);
+        alert(err?.message || "No se pudo guardar contacto");
+      } finally {
+        savingContactoSet.delete(key);
+        if (isViewActive()) {
+          renderTableRows();
+          applyContactColumnVisibility();
+        }
+      }
+    }
+
+    function ensureCommentTooltip() {
+      if (commentTooltipEl) return commentTooltipEl;
+      commentTooltipEl = document.createElement("div");
+      commentTooltipEl.className = "ms-comment-tooltip";
+      commentTooltipEl.setAttribute("role", "tooltip");
+      document.body.appendChild(commentTooltipEl);
+      return commentTooltipEl;
+    }
+
+    function showCommentTooltip(anchor, row) {
+      const el = ensureCommentTooltip();
+      const flags = [row.sms ? "SMS" : "", row.llamada ? "Llamada" : ""].filter(Boolean).join(" + ");
+      const contactoEn = String(row.contactoEn || "");
+      const metaParts = [
+        contactoEn ? `${formatDateShort(contactoEn.slice(0, 10))}${contactoEn.slice(10)}` : "",
+        row.contactoPor,
+        flags ? `Contactado: ${flags}` : ""
+      ].filter(Boolean);
+      el.innerHTML = `
+        <div class="ms-comment-tooltip-title">${escapeHtml(row.NombreP || "Paciente")}</div>
+        <div class="ms-comment-tooltip-text">${escapeHtml(row.comentario)}</div>
+        ${metaParts.length ? `<div class="ms-comment-tooltip-meta">${escapeHtml(metaParts.join(" · "))}</div>` : ""}
+      `;
+      commentTooltipAnchor = anchor;
+      el.classList.add("is-open");
+
+      const rect = anchor.getBoundingClientRect();
+      const tipRect = el.getBoundingClientRect();
+      const margin = 8;
+      let left = rect.left + (rect.width - tipRect.width) / 2;
+      left = Math.max(margin, Math.min(left, window.innerWidth - tipRect.width - margin));
+      let top = rect.bottom + 6;
+      if (top + tipRect.height > window.innerHeight - margin) {
+        top = Math.max(margin, rect.top - tipRect.height - 6);
+      }
+      el.style.left = `${Math.round(left)}px`;
+      el.style.top = `${Math.round(top)}px`;
+    }
+
+    function hideCommentTooltip() {
+      commentTooltipAnchor = null;
+      if (commentTooltipEl) commentTooltipEl.classList.remove("is-open");
     }
 
     function renderKpis() {
@@ -621,6 +779,13 @@
       if (queryText) {
         pills.push({ label: "Busqueda", value: queryText, tone: "search" });
       }
+      if (state.showProximaCita && state.proximaFiltro !== "all") {
+        pills.push({
+          label: "Proxima cita",
+          value: state.proximaFiltro === "con" ? "Con cita" : "Sin cita",
+          tone: "estado"
+        });
+      }
 
       const extraCount = pills.length - 1;
       if (refs.activeFiltersMeta) {
@@ -637,28 +802,91 @@
       `).join("");
     }
 
+    function renderProximaFilterHeader() {
+      if (!refs.proximaFilterBtn) return;
+      const filtro = state.proximaFiltro;
+      refs.proximaFilterBtn.classList.toggle("is-con", filtro === "con");
+      refs.proximaFilterBtn.classList.toggle("is-sin", filtro === "sin");
+      refs.proximaFilterBtn.title = filtro === "con"
+        ? "Mostrando solo con proxima cita (clic: solo sin cita)"
+        : filtro === "sin"
+          ? "Mostrando solo sin proxima cita (clic: todos)"
+          : "Filtrar por proxima cita (clic: solo con cita)";
+      if (refs.proximaFilterState) {
+        refs.proximaFilterState.innerHTML = filtro === "con"
+          ? getMonitorIcon("check")
+          : filtro === "sin"
+            ? getMonitorIcon("x-mark")
+            : getMonitorIcon("funnel");
+      }
+    }
+
+    function renderProximaCitaCell(row) {
+      if (row.proximaCita === undefined) return "";
+      if (row.proximaCita) {
+        const label = `Proxima cita: ${formatDateShort(row.proximaCita)}`;
+        return `<span class="ms-proxima-flag is-si" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">${getMonitorIcon("check")}</span>`;
+      }
+      return `<span class="ms-proxima-flag is-no" title="Sin proxima cita agendada" aria-label="Sin proxima cita agendada">${getMonitorIcon("x-mark")}</span>`;
+    }
+
+    // Diente flotando sobre las filas atenuadas mientras se recarga (filtros, paginas, etc.).
+    // Asi el aviso de carga sale siempre, tambien cuando la tabla ya tenia filas.
+    function syncRefreshSpinner(visible) {
+      const wrap = refs.table?.closest(".ms-table-wrap");
+      if (!wrap) return;
+      let overlay = wrap.querySelector(":scope > .ms-refresh-ld");
+      if (!visible) {
+        overlay?.classList.remove("is-visible");
+        return;
+      }
+      if (typeof window.toothSpinner?.html !== "function") return;
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.className = "ms-refresh-ld";
+        wrap.appendChild(overlay);
+      }
+      if (!overlay.classList.contains("is-visible")) {
+        overlay.innerHTML = window.toothSpinner.html({ label: "Actualizando...", size: 44 });
+        overlay.classList.add("is-visible");
+      }
+    }
+
     function renderTableRows() {
       if (!refs.tbody) return;
+      hideCommentTooltip();
 
-      if (state.loading) {
-        refs.tbody.innerHTML = `
-          <tr><td colspan="10" class="ms-empty">Cargando monitor de seguimiento...</td></tr>
+      // En recargas se mantienen las filas actuales (atenuadas) para evitar el parpadeo;
+      // el aviso "Cargando" solo sale cuando todavia no hay nada que mostrar.
+      const refreshing = state.loading && state.rows.length > 0;
+      refs.table?.classList.toggle("is-refreshing", refreshing);
+      syncRefreshSpinner(refreshing);
+      // Llenado animado (tableFx.js): caen al cargar; al filtrar/paginar/actualizar se reacomodan.
+      const fx = window.tableFx?.begin(refs.tbody);
+      if (state.loading && !state.rows.length) {
+        refs.tbody.innerHTML = typeof window.toothSpinner?.tableRowHtml === "function"
+          ? window.toothSpinner.tableRowHtml(refs.tbody, "Cargando monitor de seguimiento...")
+          : `
+          <tr><td colspan="11" class="ms-empty">Cargando monitor de seguimiento...</td></tr>
         `;
+        fx?.end();
         return;
       }
 
       if (state.errorText) {
         refs.tbody.innerHTML = `
-          <tr><td colspan="10" class="ms-empty">${escapeHtml(state.errorText)}</td></tr>
+          <tr><td colspan="11" class="ms-empty">${escapeHtml(state.errorText)}</td></tr>
         `;
+        fx?.end();
         return;
       }
 
       const pageRows = state.rows;
       if (!pageRows.length) {
         refs.tbody.innerHTML = `
-          <tr><td colspan="10" class="ms-empty">No hay pacientes para el filtro actual</td></tr>
+          <tr><td colspan="11" class="ms-empty">No hay pacientes para el filtro actual</td></tr>
         `;
+        fx?.end();
         return;
       }
 
@@ -674,9 +902,15 @@
               : "is-al-dia";
         const rowNumber = offset + index + 1;
         const saving = savingContactoSet.has(contactSaveKey(row.idPaciente));
+        const hasComment = !!row.comentario;
+        const fxSig = [
+          row.sms, row.llamada, row.comentario, row.NombreP, row.telefonoP, row.ultimaVisitaP,
+          row.fechaCancelacion, row.mesesAusencia, row.tipoTratamientoP, row.estadoKey, row.segmentoKey,
+          row.proximaCita
+        ].map((v) => String(v ?? "")).join("|");
 
         return `
-          <tr>
+          <tr data-fx-key="${escapeHtml(row.idPaciente)}" data-fx-sig="${escapeHtml(fxSig)}">
             <td class="ms-col-contacto">
               <div class="ms-contacto-flags">
                 <label class="ms-contacto-flag is-sms" title="SMS">
@@ -703,8 +937,11 @@
                 </label>
               </div>
             </td>
+            <td class="ms-col-proxima">${renderProximaCitaCell(row)}</td>
             <td class="ms-col-num">${rowNumber}</td>
-            <td class="ms-col-paciente">${escapeHtml(row.NombreP || "-")}</td>
+            <td class="ms-col-paciente${hasComment ? " has-comment" : ""}" data-comment-row-index="${index}">
+              ${escapeHtml(row.NombreP || "-")}${hasComment ? `<span class="ms-comment-mark" aria-hidden="true">${getMonitorIcon("comment")}</span>` : ""}
+            </td>
             <td class="ms-col-accion">
               <div class="ms-row-actions">
                 <button
@@ -729,6 +966,16 @@
                 >
                   ${getMonitorIcon("calendar-days")}
                 </button>
+                <button
+                  type="button"
+                  class="ms-open-paciente-btn ms-comment-btn${hasComment ? " is-active" : ""}"
+                  data-id-paciente="${row.idPaciente}"
+                  title="${hasComment ? "Editar comentario" : "Agregar comentario"}"
+                  aria-label="${hasComment ? "Editar comentario" : "Agregar comentario"}"
+                  ${saving ? "disabled" : ""}
+                >
+                  ${getMonitorIcon("comment")}
+                </button>
               </div>
             </td>
             <td class="ms-col-telefono">${escapeHtml(row.telefonoP || "-")}</td>
@@ -740,6 +987,7 @@
           </tr>
         `;
       }).join("");
+      fx?.end();
     }
 
     function renderPagination() {
@@ -785,6 +1033,32 @@
       });
     }
 
+    async function loadProximasCitasVisibles() {
+      const pendientes = state.rows.filter((row) => row.proximaCita === undefined && row.idPaciente > 0);
+      if (!pendientes.length) return;
+      const seq = fetchSeq;
+      try {
+        const ids = pendientes.map((row) => row.idPaciente).join(",");
+        const json = await fetchJson(`/api/paciente/monitor-seguimiento/proximas-citas?ids=${ids}`, {
+          cache: "no-store"
+        });
+        // Si mientras tanto se recargo el listado, esas filas ya no son las visibles.
+        if (!isViewActive() || seq !== fetchSeq) return;
+        const data = json?.data || {};
+        pendientes.forEach((row) => {
+          const fecha = data[row.idPaciente];
+          row.proximaCita = fecha ? String(fecha).trim() : null;
+        });
+        renderTableRows();
+        applyContactColumnVisibility();
+      } catch (err) {
+        notifyMonitor(err?.message || "No se pudo consultar las proximas citas", {
+          title: "Monitor de Seguimiento",
+          type: "error"
+        });
+      }
+    }
+
     async function refreshData() {
       if (!isViewActive()) return;
 
@@ -817,6 +1091,7 @@
         state.loading = false;
         state.errorText = "";
         if (refs.pageSize) refs.pageSize.value = String(state.pageSize);
+        persistMonitorUiState();
         renderAll();
       } catch (err) {
         if (err?.name === "AbortError") return;
@@ -848,6 +1123,7 @@
       state.segmentFilter = "all";
       state.estadoFilter = "all";
       state.tratamientoFilter = "all";
+      state.proximaFiltro = "all";
       state.page = 1;
       state.pageSize = DEFAULT_PAGE_SIZE;
 
@@ -959,28 +1235,78 @@
       if (!isViewActive()) return;
       state.showNumeracion = !!e?.target?.checked;
       persistMonitorUiState();
-      applyContactColumnVisibility();
+      animarColumnasMonitor();
     });
 
     bind(refs.toggleSms, "change", (e) => {
       if (!isViewActive()) return;
       state.showSms = !!e?.target?.checked;
       persistMonitorUiState();
-      applyContactColumnVisibility();
+      animarColumnasMonitor();
     });
 
     bind(refs.toggleLlamada, "change", (e) => {
       if (!isViewActive()) return;
       state.showLlamada = !!e?.target?.checked;
       persistMonitorUiState();
-      applyContactColumnVisibility();
+      animarColumnasMonitor();
+    });
+
+    bind(refs.proximaFilterBtn, "click", (e) => {
+      if (!isViewActive()) return;
+      e.preventDefault();
+      const idx = PROXIMA_FILTRO_VALUES.indexOf(state.proximaFiltro);
+      state.proximaFiltro = PROXIMA_FILTRO_VALUES[(idx + 1) % PROXIMA_FILTRO_VALUES.length];
+      state.page = 1;
+      persistMonitorUiState();
+      void refreshData();
+    });
+
+    // Atajos como en Agenda: Alt+1..4 alterna Numeracion / SMS / Llamada / Proxima cita.
+    const toggleShortcutByKey = {
+      "1": refs.toggleNumeracion,
+      "2": refs.toggleSms,
+      "3": refs.toggleLlamada,
+      "4": refs.toggleProximaCita
+    };
+    bind(document, "keydown", (e) => {
+      if (!isViewActive()) return;
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (document.querySelector(".sys-alert-overlay.is-open")) return;
+      if (isEditingTextControl(document.activeElement)) return;
+
+      const input = toggleShortcutByKey[String(e.key || "")];
+      if (!(input instanceof HTMLInputElement) || input.disabled) return;
+      e.preventDefault();
+      input.checked = !input.checked;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    bind(refs.toggleProximaCita, "change", (e) => {
+      if (!isViewActive()) return;
+      state.showProximaCita = !!e?.target?.checked;
+      // Al ocultar la columna tambien se quita su filtro (si no, filtraria "a ciegas").
+      if (!state.showProximaCita && state.proximaFiltro !== "all") {
+        state.proximaFiltro = "all";
+        state.page = 1;
+        persistMonitorUiState();
+        renderActiveFilters();
+        applyContactColumnVisibility();
+        void refreshData();
+        return;
+      }
+      persistMonitorUiState();
+      animarColumnasMonitor();
+      // La agenda solo se consulta con la columna visible: al activarla se piden solo
+      // las filas en pantalla, sin recargar el listado.
+      if (state.showProximaCita) void loadProximasCitasVisibles();
     });
 
     bind(refs.tbody, "click", async (e) => {
       if (!isViewActive()) return;
       const btn = e?.target?.closest?.(".ms-open-paciente-btn");
       if (!btn) return;
-      if (btn.classList.contains("ms-next-cita-btn")) return;
+      if (btn.classList.contains("ms-next-cita-btn") || btn.classList.contains("ms-comment-btn")) return;
 
       e.preventDefault();
       if (btn.disabled) return;
@@ -1083,35 +1409,57 @@
         return;
       }
 
-      const prevSms = row.sms;
-      const prevLlamada = row.llamada;
-      if (kind === "sms") row.sms = input.checked ? 1 : 0;
-      if (kind === "llamada") row.llamada = input.checked ? 1 : 0;
-      savingContactoSet.add(key);
-      renderTableRows();
-      applyContactColumnVisibility();
-
-      try {
-        const payload = {
-          idPaciente,
-          fechaCorte: state.fechaCorte,
-          sms: row.sms ? 1 : 0,
-          llamada: row.llamada ? 1 : 0
-        };
-        const json = await apiSaveContacto(payload);
-        const saved = json?.data || {};
-        row.sms = toBit(saved.sms, row.sms);
-        row.llamada = toBit(saved.llamada, row.llamada);
-      } catch (err) {
-        row.sms = prevSms;
-        row.llamada = prevLlamada;
-        alert(err?.message || "No se pudo guardar contacto");
-      } finally {
-        savingContactoSet.delete(key);
-        renderTableRows();
-        applyContactColumnVisibility();
-      }
+      await saveContactoRow(row, { [kind]: input.checked ? 1 : 0 });
     });
+
+    bind(refs.tbody, "click", async (e) => {
+      if (!isViewActive()) return;
+      const btn = e?.target?.closest?.(".ms-comment-btn");
+      if (!btn) return;
+
+      e.preventDefault();
+      if (btn.disabled) return;
+
+      const idPaciente = toInt(btn.dataset.idPaciente, 0);
+      const row = state.rows.find((item) => item.idPaciente === idPaciente);
+      if (!row || savingContactoSet.has(contactSaveKey(idPaciente))) return;
+
+      hideCommentTooltip();
+      const message = "Motivo / comentario de seguimiento (dejar vacio para borrarlo):";
+      const value = typeof window.showSystemPrompt === "function"
+        ? await window.showSystemPrompt(message, row.comentario || "", {
+          title: `Comentario - ${row.NombreP || "Paciente"}`,
+          type: "info"
+        })
+        : prompt(message, row.comentario || "");
+      if (value === null || !isViewActive()) return;
+
+      const comentario = String(value || "").trim();
+      if (comentario.length > MAX_COMENTARIO) {
+        alert(`El comentario no puede superar ${MAX_COMENTARIO} caracteres`);
+        return;
+      }
+      if (comentario === row.comentario) return;
+      await saveContactoRow(row, { comentario });
+    });
+
+    bind(refs.tbody, "mouseover", (e) => {
+      if (!isViewActive()) return;
+      const cell = e?.target?.closest?.(".ms-col-paciente.has-comment");
+      if (!cell || cell === commentTooltipAnchor) return;
+      const row = state.rows[toInt(cell.dataset.commentRowIndex, -1)];
+      if (!row?.comentario) return;
+      showCommentTooltip(cell, row);
+    });
+
+    bind(refs.tbody, "mouseout", (e) => {
+      if (!commentTooltipAnchor) return;
+      const next = e?.relatedTarget;
+      if (next && commentTooltipAnchor.contains(next)) return;
+      hideCommentTooltip();
+    });
+
+    bind(window, "scroll", hideCommentTooltip, { passive: true, capture: true });
 
     if (refs.inputFecha) refs.inputFecha.value = state.fechaCorte;
     if (refs.inputSearch) refs.inputSearch.value = state.q;
@@ -1122,6 +1470,7 @@
     if (refs.toggleNumeracion) refs.toggleNumeracion.checked = state.showNumeracion;
     if (refs.toggleSms) refs.toggleSms.checked = state.showSms;
     if (refs.toggleLlamada) refs.toggleLlamada.checked = state.showLlamada;
+    if (refs.toggleProximaCita) refs.toggleProximaCita.checked = state.showProximaCita;
 
     persistMonitorUiState();
     renderAll();
@@ -1130,6 +1479,11 @@
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {
         isDisposed = true;
+        if (commentTooltipEl) {
+          commentTooltipEl.remove();
+          commentTooltipEl = null;
+          commentTooltipAnchor = null;
+        }
         if (searchDebounceTimer) {
           clearTimeout(searchDebounceTimer);
           searchDebounceTimer = null;

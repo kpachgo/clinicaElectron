@@ -4,8 +4,9 @@ const pool = require("../config/db");
 const authService = require("../services/auth.service");
 const { badRequest, notFound, serverError } = require("../utils/http");
 const { firstResultSet, firstRow } = require("../utils/dbResult");
-const { parsePngBase64, writeBufferFile } = require("../utils/file");
-const { firmasDir, legacyFrontendDir, imgDocsDir, docsDir } = require("../config/storagePaths");
+const { parsePngBase64 } = require("../utils/file");
+const fileStorage = require("../services/cloudStorage/fileStorage.service");
+const { legacyFrontendDir, imgDocsDir, docsDir } = require("../config/storagePaths");
 
 const ESTADO_AUTORIZACION_PENDIENTE = "PENDIENTE";
 const ESTADO_AUTORIZACION_OK = "AUTORIZADA";
@@ -19,6 +20,8 @@ const MONITOR_SEGMENT_VALUES = new Set(["all", "retrasado", "m2", "m3", "cancela
 const MONITOR_ESTADO_VALUES = new Set(["all", "activo", "inactivo"]);
 const MONITOR_TRATAMIENTO_VALUES = new Set(["all", "odontologia", "ortodoncia", "sin_registrar"]);
 const MONITOR_PAGE_SIZE_VALUES = new Set([10, 25, 50]);
+const MAX_COMENTARIO_SEGUIMIENTO = 500;
+const MONITOR_PROXIMA_FILTRO_VALUES = new Set(["all", "con", "sin"]);
 const PRINT_BRANDING_LOGO_BASENAME = "print_logo";
 const PRINT_BRANDING_LOGO_DIR = imgDocsDir;
 const PRINT_BRANDING_LOGO_LEGACY_DIR = path.join(legacyFrontendDir, "img", "docs");
@@ -108,6 +111,257 @@ async function contarMonitorCancelados(options) {
   const built = buildMonitorCanceladosSql({ ...options, mode: "count" });
   const [rows] = await queryReadWithRetry(built.sql, built.params);
   return Number(Array.isArray(rows) ? rows[0]?.totalRows || 0 : 0);
+}
+
+let monitorComentarioColumnaOk = false;
+
+// La columna llega con la migracion 2026-09-24; mientras no exista el monitor sigue
+// funcionando solo con SMS/Llamada.
+async function existeColumnaComentarioSeguimiento() {
+  if (monitorComentarioColumnaOk) return true;
+  const [rows] = await queryReadWithRetry(
+    `SELECT 1
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'paciente_seguimiento_contacto'
+        AND COLUMN_NAME = 'comentario'
+      LIMIT 1`
+  );
+  monitorComentarioColumnaOk = Array.isArray(rows) && rows.length > 0;
+  return monitorComentarioColumnaOk;
+}
+
+// Marcas vigentes por paciente: el registro mas reciente cuya fecha es mayor a la
+// ultima visita. Si el paciente ya volvio, sus marcas anteriores dejan de mostrarse.
+async function consultarMonitorContactoVigente(idsPacientes) {
+  const ids = [...new Set((idsPacientes || []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  const vigentes = new Map();
+  if (!ids.length) return vigentes;
+
+  const conComentario = await existeColumnaComentarioSeguimiento();
+  const [rows] = await queryReadWithRetry(
+    `SELECT
+        psc.idPaciente,
+        DATE_FORMAT(psc.fechaCorte, '%Y-%m-%d') AS fechaContacto,
+        psc.sms,
+        psc.llamada,
+        ${conComentario ? "psc.comentario" : "NULL"} AS comentario,
+        u.NombreU AS contactoPor,
+        DATE_FORMAT(psc.actualizadoEn, '%Y-%m-%d %H:%i') AS contactoEn
+      FROM paciente_seguimiento_contacto psc
+      INNER JOIN paciente p ON p.idPaciente = psc.idPaciente
+      LEFT JOIN usuario u ON u.idUsuario = psc.actualizadoPorUsuarioId
+      WHERE psc.idPaciente IN (?)
+        AND (p.ultimaVisitaP IS NULL OR psc.fechaCorte > p.ultimaVisitaP)
+      ORDER BY psc.idPaciente, psc.fechaCorte DESC`,
+    [ids]
+  );
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const id = Number(row.idPaciente);
+    if (vigentes.has(id)) continue;
+    vigentes.set(id, {
+      sms: normalizeBitValue(row.sms, 0),
+      llamada: normalizeBitValue(row.llamada, 0),
+      comentario: String(row.comentario || "").trim(),
+      fechaContacto: row.fechaContacto || null,
+      contactoPor: String(row.contactoPor || "").trim(),
+      contactoEn: row.contactoEn || null
+    });
+  }
+  return vigentes;
+}
+
+function normalizarNombreClave(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+// Proxima cita por paciente con el mismo criterio de monitorSeguimientoProximaCita:
+// agenda por nombre, no cancelada y con fecha/hora futura. Devuelve Map nombreClave -> fechaAP.
+async function consultarMonitorProximaCitaPorNombre(nombres) {
+  const lista = [...new Set((nombres || []).map((n) => String(n || "").trim()).filter(Boolean))];
+  const proximas = new Map();
+  if (!lista.length) return proximas;
+
+  const hoyIso = getTodayLocalISO();
+  const horaActual = getCurrentLocalHHMM();
+  const hora24Expr = `
+    COALESCE(
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%l:%i %p'), '%H:%i'),
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%l:%i%p'), '%H:%i'),
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%H:%i'), '%H:%i'),
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%H:%i:%s'), '%H:%i')
+    )
+  `;
+
+  const [rows] = await queryReadWithRetry(
+    `SELECT
+        TRIM(IFNULL(a.nombreAP, '')) AS nombreAP,
+        DATE_FORMAT(MIN(a.fechaAP), '%Y-%m-%d') AS fechaAP
+      FROM agendapersona a
+      WHERE LOWER(TRIM(IFNULL(a.nombreAP, ''))) IN (?)
+        AND LOWER(TRIM(IFNULL(a.estadoAP, ''))) NOT IN ('cancelado', 'cancelada')
+        AND (
+          a.fechaAP > ?
+          OR (a.fechaAP = ? AND (${hora24Expr} IS NULL OR ${hora24Expr} >= ?))
+        )
+      GROUP BY TRIM(IFNULL(a.nombreAP, ''))`,
+    [lista.map((n) => n.toLowerCase()), hoyIso, hoyIso, horaActual]
+  );
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const clave = normalizarNombreClave(row.nombreAP);
+    const fecha = String(row.fechaAP || "").trim();
+    if (!clave || !fecha) continue;
+    const actual = proximas.get(clave);
+    if (!actual || fecha < actual) proximas.set(clave, fecha);
+  }
+  return proximas;
+}
+
+// Listado del monitor filtrado por "tiene / no tiene proxima cita". Replica las reglas de
+// sp_paciente_monitor_seguimiento_listar/_totales (meses por aniversario vencido, filtros y
+// protocolo de seguridad) sin requerir migracion. La agenda futura se lee una sola vez.
+async function consultarMonitorConFiltroProxima({
+  fechaCorte,
+  segmento,
+  estado,
+  tratamiento,
+  q,
+  page,
+  pageSize,
+  proximaFiltro
+}) {
+  const [protocoloRows] = await queryReadWithRetry(
+    "SELECT IFNULL(enabled, 0) AS enabled FROM seguridad_protocolo_config WHERE id = 1 LIMIT 1"
+  );
+  const tratamientoEfectivo = Number(protocoloRows?.[0]?.enabled || 0) === 1 ? "odontologia" : tratamiento;
+
+  const hoyIso = getTodayLocalISO();
+  const horaActual = getCurrentLocalHHMM();
+  const hora24Expr = `
+    COALESCE(
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%l:%i %p'), '%H:%i'),
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%l:%i%p'), '%H:%i'),
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%H:%i'), '%H:%i'),
+      DATE_FORMAT(STR_TO_DATE(TRIM(IFNULL(a.horaAP, '')), '%H:%i:%s'), '%H:%i')
+    )
+  `;
+  const mesesExpr = `GREATEST(
+    TIMESTAMPDIFF(MONTH, p.ultimaVisitaP, cfg.fc) - (
+      cfg.fc <= DATE_ADD(p.ultimaVisitaP, INTERVAL TIMESTAMPDIFF(MONTH, p.ultimaVisitaP, cfg.fc) MONTH)
+    ),
+    0
+  )`;
+  const qNorm = String(q || "").trim().toLowerCase();
+
+  const cte = `
+    WITH futuras AS (
+      SELECT DISTINCT LOWER(TRIM(IFNULL(a.nombreAP, ''))) COLLATE utf8mb4_unicode_ci AS nombreKey
+      FROM agendapersona a
+      WHERE LOWER(TRIM(IFNULL(a.estadoAP, ''))) NOT IN ('cancelado', 'cancelada')
+        AND (a.fechaAP > ? OR (a.fechaAP = ? AND (${hora24Expr} IS NULL OR ${hora24Expr} >= ?)))
+    ),
+    base AS (
+      SELECT
+        p.idPaciente,
+        p.NombreP,
+        p.telefonoP,
+        p.ultimaVisitaP,
+        LOWER(REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(p.telefonoP, ''), ' ', ''), '-', ''), '(', ''), ')', '')) AS telefonoNorm,
+        ${mesesExpr} AS mesesAusencia,
+        CASE WHEN IFNULL(p.estadoP, 1) = 1 THEN 'activo' ELSE 'inactivo' END AS estadoKey,
+        CASE
+          WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'odontologia' THEN 'Odontologia'
+          WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'ortodoncia' THEN 'Ortodoncia'
+          ELSE 'Sin registrar'
+        END AS tipoTratamientoP,
+        CASE
+          WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'odontologia' THEN 'odontologia'
+          WHEN LOWER(TRIM(IFNULL(p.tipoTratamientoP, ''))) = 'ortodoncia' THEN 'ortodoncia'
+          ELSE 'sin_registrar'
+        END AS tratamientoKey,
+        (fz.nombreKey IS NOT NULL) AS tieneProxima
+      FROM paciente p
+      CROSS JOIN (SELECT CAST(? AS DATE) AS fc) cfg
+      LEFT JOIN futuras fz
+        ON fz.nombreKey = LOWER(TRIM(IFNULL(p.NombreP, ''))) COLLATE utf8mb4_unicode_ci
+      WHERE p.ultimaVisitaP IS NOT NULL
+    ),
+    f AS (
+      SELECT
+        b.*,
+        CASE
+          WHEN b.mesesAusencia >= 3 THEN 'm3'
+          WHEN b.mesesAusencia = 2 THEN 'm2'
+          WHEN b.mesesAusencia = 1 THEN 'retrasado'
+          ELSE 'al_dia'
+        END AS segmentoKey
+      FROM base b
+      WHERE (? = '' OR LOWER(IFNULL(b.NombreP, '')) LIKE CONCAT('%', ?, '%') OR b.telefonoNorm LIKE CONCAT('%', ?, '%'))
+        AND (? = 'all' OR b.estadoKey = ?)
+        AND (? = 'all' OR b.tratamientoKey = ?)
+        AND b.tieneProxima = ?
+    )
+  `;
+  const cteParams = [
+    hoyIso, hoyIso, horaActual,
+    fechaCorte,
+    qNorm, qNorm, qNorm,
+    estado, estado,
+    tratamientoEfectivo, tratamientoEfectivo,
+    proximaFiltro === "con" ? 1 : 0
+  ];
+
+  const [dataRows] = await queryReadWithRetry(
+    `${cte}
+    SELECT
+      f.idPaciente, f.NombreP, f.telefonoP,
+      DATE_FORMAT(f.ultimaVisitaP, '%Y-%m-%d') AS ultimaVisitaP,
+      f.mesesAusencia, f.segmentoKey, f.estadoKey, f.tipoTratamientoP, f.tratamientoKey
+    FROM f
+    WHERE (? = 'all' OR f.segmentoKey = ?)
+    ORDER BY f.mesesAusencia DESC, f.NombreP ASC
+    LIMIT ?, ?`,
+    [...cteParams, segmento, segmento, (page - 1) * pageSize, pageSize]
+  );
+
+  const [totalRowsResult] = await queryReadWithRetry(
+    `${cte}
+    SELECT
+      SUM(CASE WHEN ? = 'all' OR f.segmentoKey = ? THEN 1 ELSE 0 END) AS totalRows,
+      SUM(CASE WHEN f.segmentoKey = 'retrasado' THEN 1 ELSE 0 END) AS retrasado,
+      SUM(CASE WHEN f.segmentoKey = 'm2' THEN 1 ELSE 0 END) AS m2,
+      SUM(CASE WHEN f.segmentoKey = 'm3' THEN 1 ELSE 0 END) AS m3
+    FROM f`,
+    [...cteParams, segmento, segmento]
+  );
+  const totales = totalRowsResult?.[0] || {};
+
+  return {
+    dataRows: Array.isArray(dataRows) ? dataRows : [],
+    totalRows: Number(totales.totalRows || 0),
+    totales: {
+      retrasado: Number(totales.retrasado || 0),
+      m2: Number(totales.m2 || 0),
+      m3: Number(totales.m3 || 0)
+    }
+  };
+}
+
+function buildMonitorContactoData(vigente) {
+  return {
+    sms: vigente ? vigente.sms : 0,
+    llamada: vigente ? vigente.llamada : 0,
+    comentario: vigente ? vigente.comentario : "",
+    fechaContacto: vigente ? vigente.fechaContacto : null,
+    contactoPor: vigente ? vigente.contactoPor : "",
+    contactoEn: vigente ? vigente.contactoEn : null
+  };
 }
 
 async function queryReadWithRetry(sql, params = [], options = {}) {
@@ -601,26 +855,46 @@ const monitorSeguimiento = async (req, res) => {
     const q = normalizeMonitorQuery(req.query?.q);
     let page = normalizeMonitorPage(req.query?.page);
     const pageSize = normalizeMonitorPageSize(req.query?.pageSize);
+    const proximaFiltro = normalizeMonitorEnum(req.query?.proximaFiltro, MONITOR_PROXIMA_FILTRO_VALUES, "all");
+    if (proximaFiltro === "__INVALID__") {
+      return badRequest(res, "proximaFiltro invalido. Use all|con|sin");
+    }
+    // "Cancelados sin reprogramar" ya implica no tener cita futura: ahi no aplica el filtro.
+    const usarFiltroProxima = proximaFiltro !== "all" && segmento !== "cancelados";
     const canceladosTotal = await contarMonitorCancelados({ fechaCorte, estado, tratamiento, q });
 
-    let listado;
-    if (segmento === "cancelados") {
-      listado = await consultarMonitorCanceladosListado({ fechaCorte, estado, tratamiento, q, page, pageSize });
-      listado.totalRows = canceladosTotal;
-    } else {
-      listado = await consultarMonitorSeguimientoListado({ fechaCorte, segmento, estado, tratamiento, q, page, pageSize });
-    }
+    const listarPagina = async (pageArg) => {
+      if (segmento === "cancelados") {
+        const cancelados = await consultarMonitorCanceladosListado({ fechaCorte, estado, tratamiento, q, page: pageArg, pageSize });
+        cancelados.totalRows = canceladosTotal;
+        return cancelados;
+      }
+      if (usarFiltroProxima) {
+        return consultarMonitorConFiltroProxima({
+          fechaCorte, segmento, estado, tratamiento, q, page: pageArg, pageSize, proximaFiltro
+        });
+      }
+      return consultarMonitorSeguimientoListado({ fechaCorte, segmento, estado, tratamiento, q, page: pageArg, pageSize });
+    };
 
+    let listado = await listarPagina(page);
     let total = Number(listado.totalRows || 0);
     let totalPages = Math.max(1, Math.ceil(total / pageSize));
     if (total > 0 && page > totalPages) {
       page = totalPages;
-      listado = segmento === "cancelados"
-        ? await consultarMonitorCanceladosListado({ fechaCorte, estado, tratamiento, q, page, pageSize })
-        : await consultarMonitorSeguimientoListado({ fechaCorte, segmento, estado, tratamiento, q, page, pageSize });
+      listado = await listarPagina(page);
       total = Number(listado.totalRows || 0);
       totalPages = Math.max(1, Math.ceil(total / pageSize));
     }
+
+    const contactosVigentes = await consultarMonitorContactoVigente(
+      listado.dataRows.map((row) => row.idPaciente)
+    );
+    // Solo se consulta la agenda cuando la columna "Proxima cita" esta visible.
+    const incluirProximaCita = normalizeBitValue(req.query?.proximaCita, 0) === 1;
+    const proximasCitas = incluirProximaCita
+      ? await consultarMonitorProximaCitaPorNombre(listado.dataRows.map((row) => row.NombreP))
+      : null;
 
     const rows = listado.dataRows.map((row) => {
       const idPaciente = Number(row.idPaciente || 0);
@@ -648,12 +922,14 @@ const monitorSeguimiento = async (req, res) => {
         estadoLabel: estadoKey === "activo" ? "Activo" : "Inactivo",
         tipoTratamientoP: tratamientoLabel,
         tratamientoKey,
-        sms: normalizeBitValue(row.sms, 0),
-        llamada: normalizeBitValue(row.llamada, 0)
+        ...buildMonitorContactoData(contactosVigentes.get(idPaciente)),
+        ...(proximasCitas
+          ? { proximaCita: proximasCitas.get(normalizarNombreClave(row.NombreP)) || null }
+          : {})
       };
     });
 
-    const totalesRow = segmento === "cancelados" ? {} : await (async () => {
+    const totalesRow = segmento === "cancelados" ? {} : usarFiltroProxima ? listado.totales : await (async () => {
       const [rowsTotales] = await queryReadWithRetry(
         "CALL sp_paciente_monitor_seguimiento_totales(?,?,?,?)",
         [fechaCorte, estado, tratamiento, q]
@@ -686,6 +962,35 @@ const monitorSeguimiento = async (req, res) => {
     });
   } catch (err) {
     return handlePacienteError(res, err, "Error al listar monitor de seguimiento");
+  }
+};
+
+// Proxima cita en lote para las filas visibles (activar la columna sin recargar el listado).
+const monitorSeguimientoProximasCitas = async (req, res) => {
+  try {
+    const ids = [...new Set(
+      String(req.query?.ids || "")
+        .split(",")
+        .map((v) => Number(v.trim()))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    if (!ids.length) return res.json({ ok: true, data: {} });
+    if (ids.length > 50) return badRequest(res, "Maximo 50 pacientes por consulta");
+
+    const [pacientes] = await queryReadWithRetry(
+      "SELECT idPaciente, NombreP FROM paciente WHERE idPaciente IN (?)",
+      [ids]
+    );
+    const lista = Array.isArray(pacientes) ? pacientes : [];
+    const proximas = await consultarMonitorProximaCitaPorNombre(lista.map((p) => p.NombreP));
+
+    const data = {};
+    for (const p of lista) {
+      data[p.idPaciente] = proximas.get(normalizarNombreClave(p.NombreP)) || null;
+    }
+    return res.json({ ok: true, data });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al consultar proximas citas de monitor");
   }
 };
 
@@ -803,35 +1108,56 @@ const monitorSeguimientoProximaCita = async (req, res) => {
 const guardarMonitorContacto = async (req, res) => {
   try {
     const idPaciente = Number(req.body?.idPaciente || 0);
-    const fechaCorte = String(req.body?.fechaCorte || "").trim();
     const sms = normalizeBitValue(req.body?.sms);
     const llamada = normalizeBitValue(req.body?.llamada);
+    const comentarioEnviado = req.body?.comentario !== undefined && req.body?.comentario !== null;
     const actualizadoPorUsuarioId = Number(req.user?.idUsuario || 0) || null;
+    // La marca se fecha con el dia real del contacto (no la fecha de corte de la
+    // pantalla): se sigue mostrando mientras sea posterior a la ultima visita.
+    const fechaContacto = getTodayLocalISO();
 
     if (!Number.isInteger(idPaciente) || idPaciente <= 0) {
       return badRequest(res, "idPaciente invalido");
-    }
-    if (!esFechaISOValida(fechaCorte)) {
-      return badRequest(res, "fechaCorte invalida, use YYYY-MM-DD");
     }
     if (sms === "__INVALID__" || llamada === "__INVALID__") {
       return badRequest(res, "sms/llamada invalidos. Use 0|1 o boolean");
     }
 
-    const [rows] = await pool.query(
-      "CALL sp_paciente_monitor_contacto_guardar(?,?,?,?,?)",
-      [idPaciente, fechaCorte, sms, llamada, actualizadoPorUsuarioId]
-    );
+    let comentario = comentarioEnviado ? String(req.body.comentario).trim() : "";
+    if (comentario.length > MAX_COMENTARIO_SEGUIMIENTO) {
+      return badRequest(res, `El comentario no puede superar ${MAX_COMENTARIO_SEGUIMIENTO} caracteres`);
+    }
 
-    const saved = firstRow(rows) || {};
+    if (await existeColumnaComentarioSeguimiento()) {
+      if (!comentarioEnviado) {
+        // Cliente sin comentario: se conserva el comentario vigente del paciente.
+        const vigentes = await consultarMonitorContactoVigente([idPaciente]);
+        comentario = vigentes.get(idPaciente)?.comentario || "";
+      }
+      await pool.query(
+        "CALL sp_paciente_monitor_contacto_guardar_v2(?,?,?,?,?,?)",
+        [idPaciente, fechaContacto, sms, llamada, comentario, actualizadoPorUsuarioId]
+      );
+    } else {
+      if (comentario) {
+        return badRequest(
+          res,
+          "Falta aplicar la migracion 2026-09-24_seguimiento_comentario.sql para guardar comentarios"
+        );
+      }
+      await pool.query(
+        "CALL sp_paciente_monitor_contacto_guardar(?,?,?,?,?)",
+        [idPaciente, fechaContacto, sms, llamada, actualizadoPorUsuarioId]
+      );
+    }
+
+    const vigentes = await consultarMonitorContactoVigente([idPaciente]);
 
     return res.json({
       ok: true,
       data: {
         idPaciente,
-        fechaCorte: String(saved.fechaCorte || fechaCorte),
-        sms: normalizeBitValue(saved.sms, sms),
-        llamada: normalizeBitValue(saved.llamada, llamada)
+        ...buildMonitorContactoData(vigentes.get(idPaciente))
       }
     });
   } catch (err) {
@@ -855,15 +1181,28 @@ const guardarFirma = async (req, res) => {
       return badRequest(res, "Formato de firma invalido");
     }
 
+    const [anteriorRows] = await pool.query(
+      "SELECT firmaP FROM paciente WHERE idPaciente = ? LIMIT 1",
+      [idPaciente]
+    );
+    const firmaAnterior = String(anteriorRows?.[0]?.firmaP || "").trim();
+
     const nombre = `firma_${idPaciente}_${Date.now()}.png`;
     const rutaRelativa = `/firmas/${nombre}`;
-    await writeBufferFile(firmasDir, nombre, buffer);
+    await fileStorage.saveFile("firmas", nombre, buffer, "image/png");
 
     // 💾 guardar ruta en paciente
     await pool.query(
       "UPDATE paciente SET firmaP = ? WHERE idPaciente = ?",
       [rutaRelativa, idPaciente]
     );
+
+    // La firma reemplazada ya no la referencia nadie: se borra en disco y en R2.
+    if (firmaAnterior && firmaAnterior !== rutaRelativa) {
+      await fileStorage.deleteByPublicPath(firmaAnterior).catch((err) => {
+        console.error("[Firma paciente] No se pudo borrar la firma anterior:", err.message);
+      });
+    }
 
     res.json({
       ok: true,
@@ -1530,6 +1869,7 @@ module.exports = {
   existePaciente,
   monitorSeguimiento,
   monitorSeguimientoProximaCita,
+  monitorSeguimientoProximasCitas,
   guardarMonitorContacto,
   obtenerPorId,
   obtenerPrintBrandingLogo,

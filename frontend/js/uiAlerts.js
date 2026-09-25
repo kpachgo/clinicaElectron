@@ -1,5 +1,15 @@
 (function () {
   const TITLE_DEFAULT = "Sistema Clinica dice...";
+  // Titulo por defecto segun tipo (el icono grande centrado ya indica que es un aviso del sistema).
+  const TITLE_BY_TYPE = {
+    info: "Información",
+    success: "Listo",
+    warning: "Atención",
+    error: "Ocurrió un error"
+  };
+  const TITLE_BY_MODE = { confirm: "Confirmar", prompt: "Ingrese un dato" };
+  const CLOSE_ANIMATION_MS = 420;
+  let isClosing = false;
   const TYPE_CLASSES = ["sys-alert--info", "sys-alert--success", "sys-alert--warning", "sys-alert--error"];
   const queue = [];
 
@@ -93,14 +103,14 @@
   }
 
   function openNext() {
-    if (isOpen || queue.length === 0) return;
+    if (isOpen || isClosing || queue.length === 0) return;
     ensureUi();
 
     const item = queue.shift();
-    const title = String(item?.title || TITLE_DEFAULT);
     const message = String(item?.message || "");
     const type = String(item?.type || inferType(message));
     const mode = String(item?.mode || "alert");
+    const title = String(item?.title || TITLE_BY_MODE[mode] || TITLE_BY_TYPE[type] || TITLE_DEFAULT);
 
     TYPE_CLASSES.forEach((cls) => modalEl.classList.remove(cls));
     modalEl.classList.add(`sys-alert--${type}`);
@@ -109,7 +119,7 @@
     messageEl.textContent = message;
     iconEl.innerHTML = iconSvgByType(type);
 
-    if (typeof window.playUiSound === "function") {
+    if (item?.silent !== true && typeof window.playUiSound === "function") {
       let soundKey = type;
       if (mode === "confirm" || mode === "prompt") soundKey = "question";
       window.playUiSound(soundKey, { minIntervalMs: 120 });
@@ -122,6 +132,9 @@
 
     activeItem = item;
     isOpen = true;
+    overlayEl.classList.remove("is-closing");
+    // Reinicia las animaciones de entrada aunque se abra un aviso tras otro.
+    void overlayEl.offsetWidth;
     overlayEl.classList.add("is-open");
     if (mode === "prompt") {
       inputEl.focus();
@@ -154,22 +167,31 @@
     if (!overlayEl || !isOpen) return;
 
     overlayEl.classList.remove("is-open");
+    overlayEl.classList.add("is-closing");
     isOpen = false;
+    isClosing = true;
 
+    // Se resuelve de inmediato; el modal termina su animacion de salida antes de abrir el siguiente.
     resolveByMode(action);
     activeItem = null;
 
-    window.setTimeout(openNext, 0);
+    window.setTimeout(() => {
+      isClosing = false;
+      overlayEl.classList.remove("is-closing");
+      openNext();
+    }, CLOSE_ANIMATION_MS);
   }
 
   function enqueueDialog(mode, message, options = {}) {
     return new Promise((resolve) => {
       queue.push({
         mode,
-        title: options.title || TITLE_DEFAULT,
+        title: options.title || "",
         message: String(message || ""),
         type: options.type || null,
         defaultValue: options.defaultValue ?? "",
+        // silent: sin sonido (ej. exito tras un guardado, donde el fetch global ya sono).
+        silent: options.silent === true,
         resolve
       });
       openNext();
@@ -189,6 +211,86 @@
       ...options,
       defaultValue
     });
+  };
+
+  // ================= TOASTS (avisos no bloqueantes) =================
+  // window.showToast(mensaje, { type, title, duration })
+  // - type: info | success | warning | error (si no se pasa, se infiere del texto como en alert).
+  // - Se cierra solo (pausa con el mouse encima) o con clic. Mensajes iguales no se apilan: se reinicia el existente.
+  // - success no suena: el fetch global de web.js ya suena al guardar.
+  const TOAST_MAX = 4;
+  const TOAST_DURATION = { info: 4000, success: 3000, warning: 4500, error: 6000 };
+  let toastContainerEl = null;
+
+  function ensureToastContainer() {
+    if (toastContainerEl?.isConnected) return toastContainerEl;
+    toastContainerEl = document.createElement("div");
+    toastContainerEl.className = "sys-toasts";
+    toastContainerEl.setAttribute("aria-live", "polite");
+    document.body.appendChild(toastContainerEl);
+    return toastContainerEl;
+  }
+
+  function closeToast(toastEl) {
+    if (!toastEl || toastEl.classList.contains("is-leaving")) return;
+    toastEl.classList.add("is-leaving");
+    window.setTimeout(() => toastEl.remove(), 280);
+  }
+
+  function restartToastBar(toastEl, duration) {
+    const bar = toastEl.querySelector(".sys-toast-bar");
+    if (!bar) return;
+    bar.style.animation = "none";
+    void bar.offsetWidth;
+    bar.style.animation = "";
+    bar.style.animationDuration = `${duration}ms`;
+  }
+
+  window.showToast = function showToast(message, options = {}) {
+    const text = String(message || "").trim();
+    if (!text) return null;
+    const type = String(options.type || inferType(text));
+    const title = String(options.title || "").trim();
+    const duration = Math.max(1500, Number(options.duration) || TOAST_DURATION[type] || 4000);
+    const container = ensureToastContainer();
+
+    if (type !== "success" && typeof window.playUiSound === "function") {
+      window.playUiSound(type, { minIntervalMs: 120 });
+    }
+
+    const existing = Array.from(container.children).find(
+      (el) => !el.classList.contains("is-leaving") && el.dataset.message === `${type}|${title}|${text}`
+    );
+    if (existing) {
+      existing.classList.remove("is-bump");
+      void existing.offsetWidth;
+      existing.classList.add("is-bump");
+      restartToastBar(existing, duration);
+      return existing;
+    }
+
+    const toastEl = document.createElement("div");
+    toastEl.className = `sys-toast sys-toast--${type}`;
+    toastEl.dataset.message = `${type}|${title}|${text}`;
+    toastEl.setAttribute("role", type === "error" ? "alert" : "status");
+    toastEl.innerHTML = `
+      <div class="sys-toast-icon">${iconSvgByType(type)}</div>
+      <div class="sys-toast-body">
+        ${title ? '<div class="sys-toast-title"></div>' : ""}
+        <div class="sys-toast-message"></div>
+      </div>
+      <div class="sys-toast-bar"></div>
+    `;
+    if (title) toastEl.querySelector(".sys-toast-title").textContent = title;
+    toastEl.querySelector(".sys-toast-message").textContent = text;
+    toastEl.querySelector(".sys-toast-bar").style.animationDuration = `${duration}ms`;
+    toastEl.querySelector(".sys-toast-bar").addEventListener("animationend", () => closeToast(toastEl));
+    toastEl.addEventListener("click", () => closeToast(toastEl));
+
+    container.appendChild(toastEl);
+    const activos = Array.from(container.children).filter((el) => !el.classList.contains("is-leaving"));
+    activos.slice(0, Math.max(0, activos.length - TOAST_MAX)).forEach(closeToast);
+    return toastEl;
   };
 
   window.__nativeAlert = window.alert ? window.alert.bind(window) : null;

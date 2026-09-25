@@ -1,10 +1,11 @@
 {
   "name": "Cl\u00ednica Dental",
   "short_name": "Cl\u00ednica",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
-  "display": "browser",
-  "orientation": "portrait",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#ffffff",
   "theme_color": "#2563eb",
   "icons": [

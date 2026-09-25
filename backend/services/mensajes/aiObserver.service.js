@@ -2,6 +2,7 @@ const { MensajesRepository } = require("./mensajesRepository.service");
 const { getDb } = require("../mensajesDatabase.service");
 const { triageMessage } = require("./messageTriage.service");
 const { runAssistant } = require("./assistantAgent.service");
+const { isModoVentaEnabled } = require("../appMode.service");
 
 const repo = new MensajesRepository(getDb());
 let timer; let typingHandler; let sendHandler; let lidResolver; let ticking = false;
@@ -49,6 +50,14 @@ async function resolveUnlinkedLid(conversation) {
   return conversation;
 }
 
+// Misma correlación teléfono -> recordatorio que usan confirmar_asistencia y
+// cancelar_cita_recordatorio (ventana de 18 h).
+function hasRecentReminder(conversation) {
+  const phone = String(conversation?.waContactNumber || conversation?.phone || "").replace(/\D/g, "");
+  if (phone.length < 7) return false;
+  return Boolean(repo.getRecentSentReminderForPhone(phone, 18)?.appointmentId);
+}
+
 function enqueueIncomingResponse(conversationId, messageId, text) {
   if (!repo.getAutomationSettings().enabled) return null;
   const conversation = repo.getConversation(conversationId);
@@ -94,6 +103,12 @@ async function processBatch(batch) {
     repo.updateConversationState(conversation.id, { ...heldState, collected: { ...(heldState.collected || {}), _humanReviewReason: reason }, missing: heldState.missing || [], offeredSlots: heldState.offeredSlots || [], pendingAction: heldState.pendingAction || null, humanTransition: true });
     console.log("[Mensajes][IA] Revisión humana: LID sin resolver tras la espera", { batchId: batch.id, conversationId: conversation.id, esperaSegundos: Math.round(waitedMs / 1000) });
     return repo.updateResponseQueue(batch.id, { status: "cancelled", error: reason });
+  }
+  // Modo venta: la IA solo gestiona respuestas a recordatorios. Sin un recordatorio
+  // reciente para este número no se genera nada; el chat queda para recepción.
+  if (isModoVentaEnabled() && !hasRecentReminder(conversation)) {
+    console.log("[Mensajes][IA] Modo venta: sin recordatorio reciente, se deja a recepción", { batchId: batch.id, conversationId: conversation.id });
+    return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "Modo venta: la IA solo responde a recordatorios recientes" });
   }
   if (conversation && !repo.shouldAllowAutomatedResponseForConversation(conversation.id, conversation.phone)) return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "Teléfono fuera de la lista permitida para IA" });
   if (!conversation || conversation.attentionMode !== "assistant") return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "Conversación en atención humana" });

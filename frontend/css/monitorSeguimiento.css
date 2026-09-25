@@ -66,6 +66,9 @@
   --ms-contacto-llamada-bg: #f0fdf4;
   --ms-contacto-llamada-border: #bbf7d0;
   --ms-contacto-llamada-text: #15803d;
+  --ms-comment-bg: #fef3c7;
+  --ms-comment-border: #fcd34d;
+  --ms-comment-text: #b45309;
   --ms-table-head-bg: rgba(248, 251, 255, 0.96);
   --ms-table-row-bg: #ffffff;
   --ms-table-row-alt-bg: #f8fbff;
@@ -138,6 +141,9 @@
   --ms-contacto-llamada-bg: rgba(21, 128, 61, 0.22);
   --ms-contacto-llamada-border: rgba(74, 222, 128, 0.5);
   --ms-contacto-llamada-text: #bbf7d0;
+  --ms-comment-bg: #3b2f14;
+  --ms-comment-border: #92662a;
+  --ms-comment-text: #fcd34d;
   --ms-table-head-bg: rgba(17, 24, 39, 0.96);
   --ms-table-row-bg: #0f172a;
   --ms-table-row-alt-bg: #111c2f;
@@ -233,7 +239,8 @@
 
 .ms-toggle-numeracion,
 .ms-toggle-sms,
-.ms-toggle-llamada {
+.ms-toggle-llamada,
+.ms-toggle-proxima {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -248,7 +255,8 @@
 
 .ms-toggle-numeracion input[type="checkbox"],
 .ms-toggle-sms input[type="checkbox"],
-.ms-toggle-llamada input[type="checkbox"] {
+.ms-toggle-llamada input[type="checkbox"],
+.ms-toggle-proxima input[type="checkbox"] {
   width: 16px;
   height: 16px;
   margin: 0;
@@ -528,7 +536,7 @@
 }
 
 .ms-col-accion {
-  width: 76px;
+  width: 100px;
   text-align: center;
   white-space: nowrap;
 }
@@ -610,6 +618,77 @@
   cursor: not-allowed;
 }
 
+/* Comentario de seguimiento: boton, marca junto al nombre y globo flotante */
+.ms-comment-btn.is-active {
+  background: var(--ms-comment-bg);
+  border-color: var(--ms-comment-border);
+  color: var(--ms-comment-text);
+}
+
+.ms-comment-btn.is-active:hover:not(:disabled) {
+  background: var(--ms-comment-bg);
+  filter: brightness(0.96);
+}
+
+.ms-col-paciente.has-comment {
+  cursor: help;
+}
+
+.ms-comment-mark {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 5px;
+  color: var(--ms-comment-text);
+}
+
+.ms-comment-mark .ms-contact-icon-svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2;
+}
+
+.ms-comment-tooltip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 3000;
+  max-width: 320px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ms-comment-border);
+  border-left: 3px solid var(--ms-comment-text);
+  background: var(--ms-surface);
+  color: var(--ms-text);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  font-size: 12.5px;
+  line-height: 1.4;
+  pointer-events: none;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.ms-comment-tooltip.is-open {
+  visibility: visible;
+  opacity: 1;
+}
+
+.ms-comment-tooltip-title {
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+
+.ms-comment-tooltip-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ms-comment-tooltip-meta {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--ms-muted);
+}
+
 .ms-contacto-flags {
   display: inline-flex;
   align-items: center;
@@ -674,6 +753,147 @@
 
 .ms-table.hide-contactado .ms-col-contacto {
   display: none;
+}
+
+.ms-table tbody {
+  transition: opacity 0.15s ease;
+}
+
+.ms-table.is-refreshing tbody {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* Diente sobre las filas atenuadas durante una recarga (syncRefreshSpinner). */
+.ms-table-wrap {
+  position: relative;
+}
+
+.ms-refresh-ld {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: none;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 72px;
+  pointer-events: none;
+}
+
+/* Pequeño retraso para que no aparezca en respuestas instantaneas. */
+.ms-refresh-ld.is-visible {
+  display: flex;
+  animation: msRefreshLdIn 0.2s ease 0.15s both;
+}
+
+.ms-refresh-ld .tooth-ld {
+  padding: 14px 22px 12px;
+  border: 1px solid var(--ms-border);
+  border-radius: 14px;
+  background: var(--ms-surface);
+  box-shadow: 0 10px 26px rgba(22, 38, 61, 0.12);
+}
+
+@keyframes msRefreshLdIn {
+  from { opacity: 0; transform: translateY(6px); }
+}
+
+.ms-table.hide-proxima-cita .ms-col-proxima {
+  display: none;
+}
+
+.ms-col-proxima {
+  width: 92px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Encabezado "Proxima cita" como filtro rapido (Todos / Con cita / Sin cita) */
+.ms-th-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ms-th-filter-btn:hover {
+  background: var(--ms-row-hover);
+  border-color: var(--ms-border);
+}
+
+.ms-th-filter-state {
+  display: inline-flex;
+  opacity: 0.55;
+}
+
+.ms-th-filter-state .ms-contact-icon-svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.4;
+}
+
+.ms-th-filter-btn.is-con,
+.ms-th-filter-btn.is-sin {
+  font-weight: 800;
+}
+
+.ms-th-filter-btn.is-con {
+  background: var(--ms-activo-bg);
+  border-color: var(--ms-activo-border);
+  color: var(--ms-activo-text);
+}
+
+.ms-th-filter-btn.is-sin {
+  background: var(--ms-m3-bg);
+  border-color: var(--ms-m3-border);
+  color: var(--ms-m3-text);
+}
+
+.ms-th-filter-btn.is-con .ms-th-filter-state,
+.ms-th-filter-btn.is-sin .ms-th-filter-state {
+  opacity: 1;
+}
+
+.ms-col-proxima {
+  min-width: 118px;
+}
+
+.ms-proxima-flag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: default;
+}
+
+.ms-proxima-flag .ms-contact-icon-svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.6;
+}
+
+.ms-proxima-flag.is-si {
+  background: var(--ms-activo-bg);
+  border-color: var(--ms-activo-border);
+  color: var(--ms-activo-text);
+}
+
+.ms-proxima-flag.is-no {
+  background: var(--ms-m3-bg);
+  border-color: var(--ms-m3-border);
+  color: var(--ms-m3-text);
 }
 
 .ms-table.hide-contacto-sms .ms-contacto-flag.is-sms {
@@ -784,7 +1004,8 @@
 
 .dark-mode .ms-toggle-numeracion,
 .dark-mode .ms-toggle-sms,
-.dark-mode .ms-toggle-llamada {
+.dark-mode .ms-toggle-llamada,
+.dark-mode .ms-toggle-proxima {
   color: #cbd5e1;
 }
 

@@ -550,6 +550,9 @@
     const fechaVista = getLocalTodayISO();
     let idsVistos = new Set();
     let cargaInicialCompleta = false;
+    // true mientras llega la cola (desde el montaje o en una recarga visible): la tabla vacia
+    // muestra el diente en vez de "Sin pacientes en cola" aunque otro codigo llame a draw().
+    let colaCargando = true;
     let isDisposed = false;
     let colaFetchSeq = 0;
     let colaFetchController = null;
@@ -780,6 +783,15 @@
       if (btnClearAll) btnClearAll.disabled = total === 0;
 
       if (!tbody) return;
+      if (colaCargando && !colaData.length && typeof window.toothSpinner?.tableRowHtml === "function") {
+        // No repintar si ya esta el diente (evita reiniciar la animacion / cambiar de variante).
+        if (!tbody.querySelector(":scope > tr.tooth-ld-row")) {
+          tbody.innerHTML = window.toothSpinner.tableRowHtml(tbody, "Cargando cola...");
+        }
+        return;
+      }
+      // Llenado animado (tableFx.js): caen al cargar; al filtrar/refrescar se reacomodan.
+      const fx = window.tableFx?.begin(tbody);
       tbody.innerHTML = "";
 
       if (!filtrada.length) {
@@ -790,11 +802,17 @@
         td.textContent = "Sin pacientes en cola";
         tr.appendChild(td);
         tbody.appendChild(tr);
+        fx?.end();
         return;
       }
 
       filtrada.forEach((item, index) => {
         const tr = document.createElement("tr");
+        if (item.idColaPaciente != null) {
+          tr.dataset.fxKey = String(item.idColaPaciente);
+          tr.dataset.fxSig = [item.estado, item.nombrePaciente, item.tratamiento, item.doctorId, item.horaAgenda, item.fechaAgendaISO]
+            .map((v) => String(v ?? "")).join("|");
+        }
         if (item.estado === ESTADO_ATENDIDO) {
           tr.className = "cola-row cola-row-atendido is-atendido";
         } else {
@@ -1118,6 +1136,7 @@
 
         tbody.appendChild(tr);
       });
+      fx?.end();
     }
 
     async function recargar(options = {}) {
@@ -1134,6 +1153,10 @@
       if (networkMode === "background") {
         requestOptions.__networkMode = "background";
       }
+      if (!silent) {
+        colaCargando = true;
+        if (!colaData.length) draw();
+      }
       let dataNueva = null;
       try {
         dataNueva = await apiList(
@@ -1145,8 +1168,13 @@
         if (isDisposed || localSeq !== colaFetchSeq) return;
         if (!silent) {
           colaData = [];
+          colaCargando = false;
           draw();
           alert(err.message || "No se pudo cargar la cola");
+        } else if (colaCargando) {
+          // Un refresco silencioso reemplazo a la carga visible y fallo: no dejar el diente girando.
+          colaCargando = false;
+          draw();
         }
         return;
       } finally {
@@ -1171,6 +1199,7 @@
       notificarNuevosIngresos(ingresosNuevos);
       idsVistos = idsNuevos;
       cargaInicialCompleta = true;
+      colaCargando = false;
       draw();
     }
 
@@ -1223,8 +1252,15 @@
 
     searchInput?.addEventListener("input", draw);
     toggleNumeracion?.addEventListener("change", () => {
-      aplicarVisibilidadNumeracion();
-      draw();
+      // La columna entra/sale animada (tableFx.toggle). Solo se repinta si la tabla esta
+      // vacia (el colspan de "Sin pacientes" depende de la numeracion): repintar filas
+      // con datos cortaria la animacion.
+      if (typeof window.tableFx?.toggle === "function") {
+        window.tableFx.toggle(colaTable, aplicarVisibilidadNumeracion, { selector: ".cola-col-num" });
+      } else {
+        aplicarVisibilidadNumeracion();
+      }
+      if (!tbody?.querySelector(":scope > tr[data-fx-key]")) draw();
       persistColaUiState();
     });
     toggleAcciones?.addEventListener("change", () => {
@@ -1392,6 +1428,7 @@
     aplicarVisibilidadNumeracion();
     aplicarVisibilidadAccionesGlobales();
     persistColaUiState();
+    draw();
     recargarDoctores().finally(() => {
       recargar();
     });

@@ -10,6 +10,7 @@
 //   /buscar <nombre>         busca pacientes y muestra su id
 //   /paciente <idPaciente>   vincula un paciente (consultas/reprogramar/cancelar)
 //   /sinpaciente             quita la vinculacion
+//   /recordatorio            agrega al historial un recordatorio de cita (modo venta)
 //   /reset                   reinicia la conversacion
 //   /historial               muestra el historial acumulado
 //   /salir
@@ -31,12 +32,15 @@ let linkedPatient = null;
 let history = [];
 let assistantMemory = {};
 
-const MUTATING = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia"]);
+const MUTATING = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia", "cancelar_cita_recordatorio"]);
 
 async function consoleRunTool(name, args, ctx) {
   if (!LIVE && MUTATING.has(name)) {
     if (name === "crear_cita" && args?.confirmado !== true) return realRunTool(name, args, ctx);
     if (name === "confirmar_asistencia") return { estado: "ok", simulado: true, mensaje: "(simulado) confirmar_asistencia habría marcado la cita como Confirmado" };
+    if (name === "cancelar_cita_recordatorio") return args?.confirmado === true
+      ? { estado: "ok", simulado: true, mensaje: "(simulado) cancelar_cita_recordatorio habría marcado la cita como Cancelado" }
+      : { estado: "falta_confirmacion", mensaje: "Preguntale al paciente si desea cancelar la cita y volvé a llamar con confirmado=true." };
     const already = ctx?.memory?.lastAppointment;
     if (name === "crear_cita" && already?.appointmentId && already.date === args?.fecha && already.time === args?.hora) {
       return { estado: "ya_registrada", id_cita: already.appointmentId, mensaje: "(simulado) esta cita ya estaba registrada en esta conversación" };
@@ -128,6 +132,7 @@ rl.on("line", async (line) => {
   if (value === "/salir") return rl.close();
   if (value === "/reset") { history = []; assistantMemory = {}; console.log("Conversación reiniciada.\n"); return rl.prompt(); }
   if (value === "/sinpaciente") { linkedPatient = null; console.log("Paciente desvinculado.\n"); return rl.prompt(); }
+  if (value === "/recordatorio") { history.push({ role: "assistant", content: "Hola, le recordamos su cita de mañana a las 9:00 AM. ¿Podrá asistir?" }); console.log("Recordatorio agregado al historial.\n"); return rl.prompt(); }
   if (value === "/historial") { console.log(JSON.stringify(history, null, 2), "\n"); return rl.prompt(); }
   const search = value.match(/^\/buscar\s+(.+)$/);
   if (search) { await searchPatients(search[1].trim()); rl.prompt(); return; }

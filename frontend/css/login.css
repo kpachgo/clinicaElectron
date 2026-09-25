@@ -92,6 +92,23 @@
         rgba(255, 255, 255, 0.3) 0px 0px 38px inset;
 }
 
+/* Temas: el degradado blanco de arriba tapaba --login-panel-bg */
+.dark-mode .login-box-main {
+    background: var(--login-panel-bg);
+    box-shadow:
+        var(--login-panel-shadow),
+        rgba(255, 255, 255, 0.04) 0px 1px 0px inset;
+}
+
+body[data-theme="princess"] .login-box-main {
+    background:
+        linear-gradient(145deg, rgba(255, 247, 252, 0.92), rgba(255, 232, 244, 0.78)),
+        var(--login-panel-bg);
+    box-shadow:
+        var(--login-panel-shadow),
+        rgba(255, 255, 255, 0.7) 0px 1px 0px inset;
+}
+
 .login-brand {
     display: flex;
     flex-direction: column;
@@ -255,6 +272,16 @@
 .login-box-main .btn-login.ui-toolbar-btn.is-primary:hover {
     filter: brightness(1.03);
     transform: translateY(-1px);
+}
+
+body[data-theme="vampire"] .login-box-main .btn-login.ui-toolbar-btn.is-primary {
+    background: linear-gradient(135deg, #1a8ad4 0%, #007acc 100%);
+    box-shadow: rgba(0, 0, 0, 0.35) 0px 12px 26px;
+}
+
+body[data-theme="princess"] .login-box-main .btn-login.ui-toolbar-btn.is-primary {
+    background: linear-gradient(135deg, #ff8cc6 0%, #ff4fa7 100%);
+    box-shadow: rgba(214, 51, 154, 0.26) 0px 16px 34px;
 }
 
 .login-error {
@@ -688,6 +715,66 @@
     grid-template-columns: 1fr 1fr;
     gap: 10px;
     margin-top: 14px;
+}
+
+.db-config-storage {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--login-register-separator);
+}
+
+.db-config-hint {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.db-config-progress {
+    margin-top: 14px;
+}
+
+.db-config-progress-label {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.db-config-progress-label strong {
+    color: var(--text-color);
+}
+
+.db-config-progress-track {
+    height: 10px;
+    overflow: hidden;
+    border: 1px solid var(--login-input-border);
+    border-radius: 999px;
+    background: var(--login-input-bg);
+}
+
+.db-config-progress-fill {
+    width: 0;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--blue);
+    transition: width 0.4s ease;
+}
+
+.db-config-progress-fill.is-indeterminate {
+    width: 30%;
+    animation: db-config-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes db-config-progress-slide {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(340%); }
+}
+
+.db-config-actions.db-config-actions-single {
+    grid-template-columns: 1fr;
+    margin-top: 10px;
 }
 
 .db-config-feedback {

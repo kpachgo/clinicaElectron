@@ -26,6 +26,13 @@ build/icons/*
 .env.*
 !.env.example
 
+# Credenciales locales de Cloudflare R2: nunca al repo.
+backend/cloud/
+
+# Pagina de pruebas de diseño (local, no es parte de la app).
+frontend/prueba.html
+frontend/prueba-assets/
+
 # Exportaciones de configuración de Mensajes: contienen la API key del proveedor IA.
 ExportImportJson/
 clinica-config-*.json

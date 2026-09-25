@@ -13,6 +13,7 @@ const { resolveDatePreference, timeFromText } = require("./dateTimeResolver.serv
 const { to12h } = require("./timeFormat.service");
 const { MensajesRepository } = require("./mensajesRepository.service");
 const { getDb } = require("../mensajesDatabase.service");
+const { isModoVentaEnabled } = require("../appMode.service");
 
 // Solo para leer el recordatorio reciente que se está confirmando (correlación
 // teléfono -> cita). Ninguna interpretación vive acá: eso lo hace el modelo.
@@ -143,6 +144,22 @@ const TOOL_SPECS = [
       required: ["motivo"]
     }
   }
+];
+
+// Modo venta: la IA actúa solo como herramienta sobre recordatorios. Confirma o
+// cancela la cita del recordatorio y todo lo demás lo pasa a recepción.
+const SALE_TOOL_SPECS = [
+  TOOL_SPECS.find((spec) => spec.name === "confirmar_asistencia"),
+  {
+    name: "cancelar_cita_recordatorio",
+    description: "Cancela la cita del recordatorio que se le envió al paciente. Úsala solo cuando el paciente responde al recordatorio diciendo que NO podrá asistir o que quiere cancelar. Si el paciente ya fue claro en que cancela, llamala directo con confirmado=true; si queda en duda, preguntale primero si desea cancelar la cita. NO la uses si pide cambiar fecha u hora (eso va a recepción).",
+    parameters: {
+      type: "object",
+      properties: { confirmado: { type: "boolean", description: "true solo cuando el paciente dejó claro que quiere cancelar." } },
+      required: ["confirmado"]
+    }
+  },
+  TOOL_SPECS.find((spec) => spec.name === "transferir_a_recepcion")
 ];
 
 function toIsoDate(value) {
@@ -399,6 +416,25 @@ async function confirmarAsistencia(args, ctx) {
   return { estado: "cita_no_confirmable", mensaje: "Esa cita ya no se puede confirmar (fue cancelada, reprogramada o ya pasó). Si el paciente necesita algo más, derivá a recepción." };
 }
 
+async function cancelarCitaRecordatorio(args, ctx) {
+  if (!isModoVentaEnabled()) return { estado: "herramienta_desconocida", mensaje: "Esta herramienta no está disponible." };
+  const conv = ctx?.conversation || {};
+  const phone = String(conv.waContactNumber || conv.phone || "").replace(/\D/g, "");
+  const sinRecordatorio = { estado: "sin_recordatorio_reciente", mensaje: "No hay un recordatorio de cita reciente para este número. No afirmes que se canceló nada; transferí a recepción." };
+  if (phone.length < 7) return sinRecordatorio;
+  const reminder = reminderRepo.getRecentSentReminderForPhone(phone, 18);
+  if (!reminder?.appointmentId) return sinRecordatorio;
+  if (args?.confirmado !== true) return { estado: "falta_confirmacion", mensaje: "Preguntale al paciente si desea cancelar la cita y volvé a llamar con confirmado=true." };
+  let result;
+  try {
+    result = await appointmentActions.cancelAppointmentFromReminder({ appointmentId: reminder.appointmentId });
+  } catch (error) {
+    return { estado: "error", mensaje: error.message || "No se pudo cancelar la cita." };
+  }
+  if (result.status === "cancelled" || result.status === "already_cancelled") return { estado: "ok", id_cita: reminder.appointmentId, fecha: result.date, hora: to12h(result.time), mensaje: "Cita cancelada." };
+  return { estado: "cita_no_cancelable", mensaje: "Esa cita ya no se puede cancelar desde aquí (fue reprogramada o ya pasó). Transferí a recepción." };
+}
+
 async function transferirARecepcion(args) {
   return { estado: "transferido", motivo: String(args?.motivo || "Solicitud del asistente") };
 }
@@ -411,6 +447,7 @@ const HANDLERS = {
   reprogramar_cita: reprogramarCita,
   cancelar_cita: cancelarCita,
   confirmar_asistencia: confirmarAsistencia,
+  cancelar_cita_recordatorio: cancelarCitaRecordatorio,
   transferir_a_recepcion: transferirARecepcion
 };
 
@@ -424,4 +461,4 @@ async function runTool(name, args, ctx = {}) {
   }
 }
 
-module.exports = { TOOL_SPECS, runTool, findExistingPatient };
+module.exports = { TOOL_SPECS, SALE_TOOL_SPECS, runTool, findExistingPatient };

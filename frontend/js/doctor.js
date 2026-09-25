@@ -562,6 +562,7 @@
 
       isUpdatingFirma = true;
       if (modalFirmaUpdateSave) modalFirmaUpdateSave.disabled = true;
+      window.saveFx?.start(modalFirmaUpdateSave);
 
       try {
         const firmaBase64 = modalFirmaUpdateCanvas.toDataURL("image/png");
@@ -577,12 +578,15 @@
 
         const local = doctorData.find((d) => Number(d.id || 0) === id);
         if (local) local.firma = cacheBustMedia(json.firma);
+        await window.saveFx?.success(modalFirmaUpdateSave);
         cerrarModalActualizarFirma();
         aplicarFiltroTexto();
       } catch (err) {
         console.error("No se pudo actualizar firma de doctor", err);
+        window.saveFx?.error(modalFirmaUpdateSave);
         alert(err?.message || "No se pudo actualizar la firma.");
       } finally {
+        window.saveFx?.stop(modalFirmaUpdateSave);
         isUpdatingFirma = false;
         if (modalFirmaUpdateSave && modalFirmaUpdateSave.isConnected) {
           modalFirmaUpdateSave.disabled = false;
@@ -625,6 +629,7 @@
         ? new AbortController()
         : null;
       doctorFetchController = controller;
+      const stopLd = window.toothSpinner?.tableLoading(tbody, { label: "Cargando doctores..." }) || (() => {});
 
       try {
         await resolverDoctorPropio();
@@ -665,6 +670,7 @@
           alert("Opps ocurrio un error de conexion");
         }
       } finally {
+        stopLd();
         if (doctorFetchController === controller) {
           doctorFetchController = null;
         }
@@ -686,6 +692,7 @@
         ? new AbortController()
         : null;
       pendientesFetchController = controller;
+      const stopLd = window.toothSpinner?.tableLoading(pendientesTbody, { label: "Cargando pendientes..." }) || (() => {});
 
       try {
         const fetchOptions = controller ? { signal: controller.signal, cache: "no-store" } : { cache: "no-store" };
@@ -722,6 +729,7 @@
         pendientesData.length = 0;
         drawPendientes(err?.message || "Error al cargar pendientes");
       } finally {
+        stopLd();
         if (pendientesFetchController === controller) {
           pendientesFetchController = null;
         }
@@ -811,6 +819,7 @@
       isChangingPassword = true;
       if (passwordSave) passwordSave.disabled = true;
       setPasswordMessage("");
+      window.saveFx?.start(passwordSave);
 
       try {
         const res = await fetch("/api/auth/change-password", {
@@ -828,14 +837,14 @@
         }
 
         setPasswordMessage("Contrasena actualizada correctamente.", "success");
-        setTimeout(() => {
-          if (!modalPassword?.isConnected) return;
-          cerrarModalCambiarPassword();
-        }, 450);
+        await window.saveFx?.success(passwordSave);
+        if (modalPassword?.isConnected) cerrarModalCambiarPassword();
       } catch (err) {
         console.error("No se pudo cambiar contrasena", err);
+        window.saveFx?.error(passwordSave);
         setPasswordMessage(err?.message || "No se pudo cambiar la contrasena.");
       } finally {
+        window.saveFx?.stop(passwordSave);
         isChangingPassword = false;
         if (passwordSave && passwordSave.isConnected) {
           passwordSave.disabled = false;
@@ -1011,16 +1020,23 @@
       }
     }
 
+    // Llenado animado (tableFx.js): caen al cargar; al buscar/actualizar se reacomodan.
     function drawRows(list) {
+      const fx = window.tableFx?.begin(tbody);
       tbody.innerHTML = "";
 
       if (!Array.isArray(list) || list.length === 0) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="6" style="text-align:center; color:var(--text-muted)">No hay doctores</td></tr>`;
+        fx?.end();
         return;
       }
 
       list.forEach((doctor) => {
         const tr = document.createElement("tr");
+        if (doctor.id != null) {
+          tr.dataset.fxKey = String(doctor.id);
+          tr.dataset.fxSig = JSON.stringify(doctor);
+        }
 
         const estadoD = normalizarEstadoDoctor(doctor.estadoD);
         const esActivo = estadoD === 1;
@@ -1162,24 +1178,32 @@
 
         tbody.appendChild(tr);
       });
+      fx?.end();
     }
 
     function drawPendientes(errorMessage = "") {
       if (!pendientesTbody) return;
+      const fx = window.tableFx?.begin(pendientesTbody);
       pendientesTbody.innerHTML = "";
 
       if (errorMessage) {
         pendientesTbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center; color:var(--text-muted)">${errorMessage}</td></tr>`;
+        fx?.end();
         return;
       }
 
       if (!pendientesData.length) {
         pendientesTbody.innerHTML = `<tr class="empty-row"><td colspan="8" style="text-align:center; color:var(--text-muted)">Sin citas pendientes por autorizar</td></tr>`;
+        fx?.end();
         return;
       }
 
       pendientesData.forEach((item, index) => {
         const tr = document.createElement("tr");
+        if (item.idCita != null) {
+          tr.dataset.fxKey = String(item.idCita);
+          tr.dataset.fxSig = JSON.stringify(item);
+        }
 
         const tdIndex = document.createElement("td");
         tdIndex.textContent = String(index + 1);
@@ -1225,6 +1249,7 @@
 
         pendientesTbody.appendChild(tr);
       });
+      fx?.end();
     }
 
     function setPendientesAuthorizationBusy(isBusy, message = "Autorizando pendientes...") {
@@ -1532,6 +1557,7 @@
         const firmaBase64 = canvas && firmaTieneTrazo ? canvas.toDataURL("image/png") : "";
         isCreatingDoctor = true;
         modalSave.disabled = true;
+        window.saveFx?.start(modalSave);
 
         try {
           const res = await fetch("/api/doctor", {
@@ -1565,6 +1591,7 @@
           });
 
           aplicarFiltroTexto();
+          await window.saveFx?.success(modalSave);
           resetDoctorModalState();
           closeModalCompat(modal);
 
@@ -1573,8 +1600,10 @@
           }
         } catch (err) {
           console.error(err);
+          window.saveFx?.error(modalSave);
           alert(err?.message || "Error al registrar doctor");
         } finally {
+          window.saveFx?.stop(modalSave);
           isCreatingDoctor = false;
           if (modalSave && modalSave.isConnected) {
             modalSave.disabled = false;

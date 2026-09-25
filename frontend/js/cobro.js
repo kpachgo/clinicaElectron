@@ -1181,6 +1181,8 @@
       if (faltantesCobroCobrados) faltantesCobroCobrados.textContent = String(safeResumen.cobrados);
       if (faltantesCobroTotal) faltantesCobroTotal.textContent = String(safeResumen.faltantes);
 
+      // Llenado animado (tableFx.js).
+      const fx = window.tableFx?.begin(tbodyFaltantesCobro);
       tbodyFaltantesCobro.innerHTML = "";
       if (!rows.length) {
         tbodyFaltantesCobro.innerHTML = `
@@ -1188,6 +1190,7 @@
             <td colspan="6" style="text-align:center;color:#64748b">No hay faltantes por cobrar</td>
           </tr>
         `;
+        fx?.end();
         return;
       }
 
@@ -1222,6 +1225,8 @@
           ? "Preparar cobro"
           : "No se pudo resolver el paciente de forma unica";
         const tr = document.createElement("tr");
+        tr.dataset.fxKey = [row.idPaciente, row.nombrePaciente, row.horaAgenda].map((v) => String(v ?? "")).join("|");
+        tr.dataset.fxSig = JSON.stringify(row);
         tr.innerHTML = `
           <td>${escapeHtml(row.nombrePaciente || "-")}</td>
           <td style="text-align:center">${escapeHtml(formatearHoraCola(row.horaAgenda))}</td>
@@ -1247,6 +1252,7 @@
         `;
         tbodyFaltantesCobro.appendChild(tr);
       });
+      fx?.end();
     }
 
     async function cargarFaltantesCobro() {
@@ -1269,7 +1275,9 @@
         fecha
       );
       if (tbodyFaltantesCobro) {
-        tbodyFaltantesCobro.innerHTML = `
+        tbodyFaltantesCobro.innerHTML = typeof window.toothSpinner?.tableRowHtml === "function"
+          ? window.toothSpinner.tableRowHtml(tbodyFaltantesCobro, "Cargando faltantes...")
+          : `
           <tr>
             <td colspan="6" style="text-align:center;color:#64748b">Cargando faltantes...</td>
           </tr>
@@ -1482,10 +1490,16 @@
     }
 
     function refrescarTabla() {
+      // Llenado animado (tableFx.js): servicio agregado cae, quitado sale, cantidad cambiada destella.
+      const fx = window.tableFx?.begin(tbody);
       tbody.innerHTML = "";
 
       cobroItems.forEach((item) => {
         const tr = document.createElement("tr");
+        if (item.id != null) {
+          tr.dataset.fxKey = String(item.id);
+          tr.dataset.fxSig = JSON.stringify(item);
+        }
 
         const tdServ = document.createElement("td");
         tdServ.textContent = item.nombre;
@@ -1564,6 +1578,7 @@
 
         tbody.appendChild(tr);
       });
+      fx?.end();
 
       actualizarTotal();
     }
@@ -1834,6 +1849,7 @@
 
       isSavingCuenta = true;
       btnGuardar.disabled = true;
+      window.saveFx?.start(btnGuardar);
       try {
         const res = await fetch("/api/cuenta", {
           method: "POST",
@@ -1845,7 +1861,8 @@
         if (!json.ok) throw new Error(json.message);
         if (!isCobroViewActive()) return;
 
-        alert("Cuenta guardada correctamente");
+        // El check del boton confirma el guardado (sin alert para no duplicar animacion/sonido).
+        await window.saveFx?.success(btnGuardar);
         cobroItems = [];
         pacienteActual = null;
         cobroSuggestionActual = null;
@@ -1858,8 +1875,10 @@
       } catch (err) {
         if (!isCobroViewActive()) return;
         console.error(err);
+        window.saveFx?.error(btnGuardar);
         alert("Error al guardar la cuenta");
       } finally {
+        window.saveFx?.stop(btnGuardar);
         isSavingCuenta = false;
         if (isCobroViewActive()) {
           actualizarEstadoFlujo();
@@ -1873,6 +1892,7 @@
       if (!fechaObjetivo) return;
       const req = beginRequest("cuentas");
       const localSeq = req.seq;
+      const stopLd = window.toothSpinner?.tableLoading(document.getElementById("cuenta-tbody"), { label: "Cargando cuentas..." }) || (() => {});
       try {
         const res = await fetch(
           `/api/cuenta?fecha=${encodeURIComponent(fechaObjetivo)}`,
@@ -1899,6 +1919,7 @@
           alert("Opps ocurrio un error de conexion");
         }
       } finally {
+        stopLd();
         endRequest("cuentas", req.controller);
       }
     }
@@ -1909,6 +1930,7 @@
       if (!fechaObjetivo) return;
       const req = beginRequest("descuentos");
       const localSeq = req.seq;
+      const stopLd = window.toothSpinner?.tableLoading(descuentoTbody, { label: "Cargando descuentos..." }) || (() => {});
       try {
         const res = await fetch(
           `/api/cuenta/descuento?fecha=${encodeURIComponent(fechaObjetivo)}`,
@@ -1923,6 +1945,7 @@
         if (isAbortError(err) || isStaleRequest("descuentos", localSeq)) return;
         console.error(err);
       } finally {
+        stopLd();
         endRequest("descuentos", req.controller);
       }
     }
@@ -2180,6 +2203,8 @@
     }
 
     function renderReporteMensual(lista, totales, totalesGlobalMes) {
+      // Llenado animado (tableFx.js): caen al cargar; al buscar paciente se reacomodan.
+      const fx = window.tableFx?.begin(tbodyReporteMensual);
       tbodyReporteMensual.innerHTML = "";
       const rows = Array.isArray(lista) ? lista : [];
       const rowsVisibles = filtrarReporteMensualPorPaciente(rows);
@@ -2208,6 +2233,8 @@
       } else {
         rowsVisibles.forEach((item) => {
           const tr = document.createElement("tr");
+          tr.dataset.fxKey = String(item.idPaciente ?? item.nombrePaciente ?? "");
+          tr.dataset.fxSig = `${item.cantidadPaciente ?? ""}|${item.montoPaciente ?? ""}`;
           tr.innerHTML = `
             <td>${escapeHtml(item.nombrePaciente || "-")}</td>
             <td style="text-align:center">${Number(item.cantidadPaciente || 0)}</td>
@@ -2216,6 +2243,7 @@
           tbodyReporteMensual.appendChild(tr);
         });
       }
+      fx?.end();
 
       const strongPacientes = reporteMensualPacientesBox?.querySelector("strong");
       const strongCantidad = reporteMensualCantidadBox?.querySelector("strong");
@@ -2260,6 +2288,7 @@
       }
       const req = beginRequest("reporteMensual");
       const localSeq = req.seq;
+      const stopLd = window.toothSpinner?.tableLoading(tbodyReporteMensual, { label: "Cargando reporte..." }) || (() => {});
 
       try {
         const query = new URLSearchParams({ mes });
@@ -2315,6 +2344,7 @@
           alert("Opps ocurrio un error de conexion");
         }
       } finally {
+        stopLd();
         endRequest("reporteMensual", req.controller);
       }
     }
@@ -2668,6 +2698,8 @@
       aplicarVisibilidadColumnasCuenta();
       const tbodyCuenta = document.getElementById("cuenta-tbody");
       const duplicateCounts = buildCuentaPacienteDuplicateCounts(cuentasActuales);
+      // Llenado animado (tableFx.js): caen al cargar; al buscar/filtrar/cobrar se reacomodan.
+      const fx = window.tableFx?.begin(tbodyCuenta);
       tbodyCuenta.innerHTML = "";
 
       if (!list.length) {
@@ -2677,12 +2709,17 @@
           </tr>
         `;
         calcularTotalesCuentas([]);
+        fx?.end();
         return;
       }
 
       list.forEach((c, index) => {
         const tr = document.createElement("tr");
         tr.dataset.idCuenta = c.idCuenta;
+        if (c.idCuenta != null) {
+          tr.dataset.fxKey = String(c.idCuenta);
+          tr.dataset.fxSig = JSON.stringify(c);
+        }
         const formaPago = String(c.FormaPagoC || "").trim();
         const formaPagoClass = claseFormaPago(formaPago);
         const formaPagoHtml = formaPago
@@ -2795,6 +2832,7 @@
 
         tbodyCuenta.appendChild(tr);
       });
+      fx?.end();
 
       calcularTotalesCuentas(list);
     }
@@ -2843,6 +2881,8 @@
     }
 
     function renderDescuento(lista) {
+      // Llenado animado (tableFx.js).
+      const fx = window.tableFx?.begin(descuentoTbody);
       descuentoTbody.innerHTML = "";
 
       if (!lista.length) {
@@ -2852,11 +2892,16 @@
           </tr>
         `;
         actualizarTotalDescuento([]);
+        fx?.end();
         return;
       }
 
       lista.forEach((d) => {
         const tr = document.createElement("tr");
+        if (d.idDescuento != null) {
+          tr.dataset.fxKey = String(d.idDescuento);
+          tr.dataset.fxSig = JSON.stringify(d);
+        }
         tr.innerHTML = `
           <td>${d.nombreD}</td>
           <td>${formatearFecha(d.fechaD)}</td>
@@ -2888,6 +2933,7 @@
 
         descuentoTbody.appendChild(tr);
       });
+      fx?.end();
 
       actualizarTotalDescuento(lista);
     }
@@ -3040,14 +3086,25 @@
       aplicarFiltroCuenta();
       persistCobroUiState();
     });
+    // Columnas # / Doctor: entran/salen con el patron de tableFx. Solo se repinta si la tabla
+    // esta vacia (el colspan del mensaje depende de las columnas): repintar filas con datos
+    // cortaria la animacion.
+    function animarColumnasCuenta() {
+      if (typeof window.tableFx?.toggle === "function" && cuentaTable) {
+        window.tableFx.toggle(cuentaTable, aplicarVisibilidadColumnasCuenta, {
+          selector: ".cuenta-col-num, .cuenta-col-doctor"
+        });
+      } else {
+        aplicarVisibilidadColumnasCuenta();
+      }
+      if (!document.querySelector("#cuenta-tbody > tr[data-fx-key]")) aplicarFiltroCuenta();
+    }
     toggleNumeracionCuentas?.addEventListener("change", () => {
-      aplicarVisibilidadColumnasCuenta();
-      aplicarFiltroCuenta();
+      animarColumnasCuenta();
       persistCobroUiState();
     });
     toggleDoctorCuentas?.addEventListener("change", () => {
-      aplicarVisibilidadColumnasCuenta();
-      aplicarFiltroCuenta();
+      animarColumnasCuenta();
       persistCobroUiState();
     });
     btnReporteCobro?.addEventListener("click", generarReporteCobroPdf);

@@ -137,4 +137,23 @@ async function confirmAppointmentAttendance({ appointmentId }) {
   return { ok: true, status: "confirmed", date: appt.fechaAP, time: appt.horaAP };
 }
 
-module.exports = { findPatientByName, createAppointmentForAssistant: createAppointmentForAssistantWithCapacity, cancelAppointment, rescheduleAppointment, confirmAppointmentAttendance };
+// Cancela la cita a la que apunta un recordatorio enviado (modo venta: la IA solo
+// gestiona respuestas a recordatorios y el chat no suele estar vinculado a un
+// paciente). La correlación teléfono -> cita ya la hizo el recordatorio. No toca
+// citas ya canceladas, reprogramadas ni pasadas. Idempotente.
+async function cancelAppointmentFromReminder({ appointmentId }) {
+  const id = Number(appointmentId);
+  if (!Number.isInteger(id) || id < 1) { const error = new Error("Cita invalida"); error.status = 400; throw error; }
+  const [rows] = await pool.query("SELECT idAgendaAP, DATE_FORMAT(fechaAP,'%Y-%m-%d') AS fechaAP, LEFT(TRIM(IFNULL(horaAP,'')),5) AS horaAP, LOWER(TRIM(IFNULL(estadoAP,''))) AS estado FROM agendapersona WHERE idAgendaAP=? LIMIT 1", [id]);
+  const appt = rows[0];
+  if (!appt) return { ok: false, status: "not_cancellable" };
+  if (["cancelado", "cancelada"].includes(appt.estado)) return { ok: true, status: "already_cancelled", date: appt.fechaAP, time: appt.horaAP };
+  if (["reprogramado", "reprogramada"].includes(appt.estado)) return { ok: false, status: "not_cancellable" };
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
+  if (appt.fechaAP < today) return { ok: false, status: "not_cancellable" };
+  const [result] = await pool.query("UPDATE agendapersona SET estadoAP='Cancelado' WHERE idAgendaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) NOT IN ('cancelado','cancelada','reprogramado','reprogramada')", [id]);
+  if (!result.affectedRows) return { ok: true, status: "already_cancelled", date: appt.fechaAP, time: appt.horaAP };
+  return { ok: true, status: "cancelled", date: appt.fechaAP, time: appt.horaAP };
+}
+
+module.exports = { findPatientByName, createAppointmentForAssistant: createAppointmentForAssistantWithCapacity, cancelAppointment, rescheduleAppointment, confirmAppointmentAttendance, cancelAppointmentFromReminder };
