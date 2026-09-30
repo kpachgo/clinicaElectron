@@ -194,4 +194,32 @@ router.get(
   controller.listarCitasPaciente
 );
 
+// ============================
+// NOTAS PARA LA PROXIMA CITA
+// ============================
+router.get(
+  "/:id/notas-proxima-cita",
+  auth,
+  role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  controller.listarNotasProximaCita
+);
+router.post(
+  "/nota-proxima-cita",
+  auth,
+  role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  controller.crearNotaProximaCita
+);
+router.put(
+  "/nota-proxima-cita/:id",
+  auth,
+  role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  controller.actualizarNotaProximaCita
+);
+router.delete(
+  "/nota-proxima-cita/:id",
+  auth,
+  role(["Administrador", "Recepcion", "Doctor", "Asistente"]),
+  controller.eliminarNotaProximaCita
+);
+
 module.exports = router;

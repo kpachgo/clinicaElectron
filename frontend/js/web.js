@@ -113,11 +113,11 @@ themeBtn?.addEventListener("click", () => {
    AUTENTICACION
 ========================================================= */
 const ROLE_VIEWS = {
-    Administrador: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro", "Mensajes"],
-    Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro", "Mensajes"],
+    Administrador: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro", "Mensajes", "Inventario"],
+    Recepcion: ["Agenda", "Paciente", "Monitor de Seguimiento", "En Cola", "Doctores", "Servicios", "Cobro", "Mensajes", "Inventario"],
     Redes: ["Agenda", "Monitor de Seguimiento"],
     Doctor: ["Paciente", "En Cola", "Doctores"],
-    Asistente: ["Paciente", "En Cola"]
+    Asistente: ["Paciente", "En Cola", "Inventario"]
 };
 const ROLE_DEFAULT_VIEW = {
     Administrador: "Agenda",
@@ -821,7 +821,11 @@ function setLicenseBellMetaLines(metaEl, lines) {
 function normalizePatientBellNotice(rawNotice) {
     const source = rawNotice && typeof rawNotice === "object" ? rawNotice : {};
     const note = String(source.note ?? source.nota ?? "").trim();
-    if (!note) return null;
+    // Notas para la proxima cita vigentes (vista Paciente), aparte de la nota global.
+    const nextVisitNotes = (Array.isArray(source.nextVisitNotes) ? source.nextVisitNotes : [])
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean);
+    if (!note && !nextVisitNotes.length) return null;
 
     const patientId = Number(source.patientId ?? source.idPaciente ?? 0);
     const patientName = String(source.patientName ?? source.nombre ?? "Paciente").trim() || "Paciente";
@@ -829,7 +833,8 @@ function normalizePatientBellNotice(rawNotice) {
     return {
         patientId: Number.isInteger(patientId) && patientId > 0 ? patientId : null,
         patientName,
-        note
+        note,
+        nextVisitNotes
     };
 }
 
@@ -903,8 +908,16 @@ function renderLicenseBellUi(options = {}) {
     let hasWarning = false;
 
     if (patientNotice) {
-        title = "Nota del paciente";
-        message = patientNotice.note;
+        const nextVisitNotes = patientNotice.nextVisitNotes || [];
+        if (patientNotice.note) {
+            title = "Nota del paciente";
+            message = patientNotice.note;
+            nextVisitNotes.forEach((item) => metaLines.push(`Proxima cita: ${item}`));
+        } else {
+            title = "Indicaciones para la proxima cita";
+            message = nextVisitNotes[0];
+            nextVisitNotes.slice(1).forEach((item) => metaLines.push(`Proxima cita: ${item}`));
+        }
         metaLines.push(`Paciente: ${patientNotice.patientName}`);
         if (patientNotice.patientId) {
             metaLines.push(`ID paciente: ${patientNotice.patientId}`);
@@ -1070,11 +1083,21 @@ function renderTopUser() {
     const userName = String(user?.nombre ?? "Usuario").trim() || "Usuario";
 
     if (avatarEl) {
-        const parts = userName.split(/\s+/).filter(Boolean);
-        const initials = parts.length > 1
-            ? `${parts[0][0] || ""}${parts[1][0] || ""}`
-            : userName.slice(0, 2);
-        avatarEl.textContent = initials.toUpperCase();
+        // Avatar SVG por rol (js/avatares.js, estilo claro); si no cargo el modulo, iniciales como antes.
+        const rol = String(user?.rol || "").trim();
+        const svg = typeof window.clinicaAvatares?.usuario === "function" ? window.clinicaAvatares.usuario(rol) : "";
+        if (svg) {
+            avatarEl.innerHTML = `<span class="cav cav-claro">${svg}</span>`;
+            avatarEl.classList.add("has-cav");
+            avatarEl.title = rol ? `${userName} · ${rol}` : userName;
+        } else {
+            const parts = userName.split(/\s+/).filter(Boolean);
+            const initials = parts.length > 1
+                ? `${parts[0][0] || ""}${parts[1][0] || ""}`
+                : userName.slice(0, 2);
+            avatarEl.textContent = initials.toUpperCase();
+            avatarEl.classList.remove("has-cav");
+        }
     }
     if (nameEl) nameEl.textContent = userName;
     if (emailEl) emailEl.textContent = user?.correo ?? "";
@@ -1085,7 +1108,11 @@ function clearTopUser() {
     const nameEl = document.getElementById("top-user-name");
     const emailEl = document.getElementById("top-user-email");
 
-    if (avatarEl) avatarEl.textContent = "";
+    if (avatarEl) {
+        avatarEl.textContent = "";
+        avatarEl.classList.remove("has-cav");
+        avatarEl.removeAttribute("title");
+    }
     if (nameEl) nameEl.textContent = "";
     if (emailEl) emailEl.textContent = "";
 }
@@ -1124,7 +1151,8 @@ const VIEW_MOUNTERS = {
     "En Cola": "__mountEnCola",
     Doctores: "__mountDoctor",
     Servicios: "__mountServicios",
-    Cobro: "__mountCobro"
+    Cobro: "__mountCobro",
+    Inventario: "__mountInventario"
     ,Mensajes: "__mountMensajes"
 };
 
@@ -1136,10 +1164,26 @@ function resetContentAnimationState() {
     content?.classList.remove("spa-view-in", "spa-view-out", "spa-animating");
 }
 
-async function runSpaViewTransition(renderFn) {
+// Posicion de la vista en el menu superior (-1 si no esta).
+function menuIndexOfView(viewName) {
+    if (!viewName) return -1;
+    return Array.from(document.querySelectorAll(".topbar .sidebar-menu .accordion")).findIndex(
+        (btn) => String(btn.dataset?.view || btn.querySelector(".label")?.innerText || "").trim() === viewName
+    );
+}
+
+// 1 = la nueva vista esta a la derecha de la anterior en el menu, -1 = a la izquierda, 0 = sin direccion.
+function menuDirectionBetween(fromView, toView) {
+    const from = menuIndexOfView(fromView);
+    const to = menuIndexOfView(toView);
+    if (from === -1 || to === -1 || from === to) return 0;
+    return to > from ? 1 : -1;
+}
+
+async function runSpaViewTransition(renderFn, options = {}) {
     if (typeof renderFn !== "function") return;
     if (typeof window.__animateSpaTransition === "function") {
-        await window.__animateSpaTransition(renderFn, { host: content });
+        await window.__animateSpaTransition(renderFn, { host: content, dir: options.dir || 0 });
         return;
     }
     await Promise.resolve(renderFn());
@@ -1217,6 +1261,34 @@ function runCurrentViewCleanup() {
 window.__setViewCleanup = function (fn) {
     window.__currentViewCleanup = typeof fn === "function" ? fn : null;
 };
+// Atajos del buscador principal de cada vista: Ctrl+F lo enfoca y Escape borra la busqueda.
+// Cada vista registra su input al renderizar; al cambiar de vista el input se desconecta
+// del DOM y el atajo deja de actuar solo.
+let viewSearchShortcut = null;
+window.__registerViewSearch = function (input, options = {}) {
+    viewSearchShortcut = input
+        ? { input, canFocus: typeof options.canFocus === "function" ? options.canFocus : null }
+        : null;
+};
+document.addEventListener("keydown", (e) => {
+    const input = viewSearchShortcut?.input;
+    if (!input || !input.isConnected) return;
+
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && String(e.key || "").toLowerCase() === "f") {
+        if (input.disabled || input.offsetParent === null) return;
+        if (viewSearchShortcut.canFocus && !viewSearchShortcut.canFocus()) return;
+        e.preventDefault();
+        input.focus();
+        input.select();
+        return;
+    }
+
+    if (e.key === "Escape" && e.target === input && input.value !== "") {
+        e.preventDefault();
+        input.value = "";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+});
 window.__setViewLeaveGuard = function (fn) {
     window.__currentViewLeaveGuard = typeof fn === "function" ? fn : null;
 };
@@ -1255,6 +1327,8 @@ async function loadView(name, options = {}) {
     const needsRecovery = contentNeedsViewRecovery();
     if (!force && window.currentView === name && !spaNavigationInFlight && !needsRecovery) return;
 
+    // Se toma antes de limpiar: currentView pasa a null durante el cambio.
+    const direction = menuDirectionBetween(window.currentView, name);
     const localSeq = ++spaNavigationSeq;
     spaNavigationInFlight = true;
 
@@ -1283,7 +1357,7 @@ async function loadView(name, options = {}) {
         await runSpaViewTransition(() => {
             if (localSeq !== spaNavigationSeq) return;
             return mountViewByName(name);
-        });
+        }, { dir: direction });
         if (localSeq !== spaNavigationSeq) return;
 
         if (!contentHasMountedView()) {

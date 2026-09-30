@@ -1311,53 +1311,124 @@ body.cobro-modal-open {
   padding: 24px;
 }
 
+/* Faltantes de cobro: colores desde tokens --app-* para respetar los 4 temas */
 .cobro-modal-dialog-faltantes {
+  --falt-text: var(--app-text, #16263d);
+  --falt-muted: var(--app-text-muted, #66778d);
+  --falt-border: var(--app-border, #dde8f3);
+  --falt-primary: var(--app-primary, #2775f5);
+  --falt-soft: color-mix(in srgb, var(--app-primary, #2775f5) 8%, transparent);
+  --falt-ok: #15803d;
+  --falt-warn: #c2410c;
   width: min(1320px, 100%);
   padding: 24px;
 }
 
+.dark-mode .cobro-modal-dialog-faltantes {
+  --falt-ok: #4ade80;
+  --falt-warn: #fdba74;
+}
+
 .cobro-modal-dialog-faltantes .cobro-modal-header {
+  align-items: flex-start;
   margin-bottom: 18px;
+}
+
+.faltantes-cobro-heading h3 {
+  margin: 0;
 }
 
 .faltantes-cobro-meta {
-  margin-bottom: 14px;
-  font-size: 12px;
-  color: #475569;
-  font-weight: 700;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--falt-muted);
 }
 
+#faltantes-cobro-fecha {
+  font-weight: 800;
+  color: var(--falt-primary);
+}
+
+/* ---------- Resumen ---------- */
 .faltantes-cobro-resumen {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .faltantes-cobro-kpi {
-  border: 1px solid #dbe5f0;
-  border-radius: 10px;
-  padding: 12px 14px;
-  background: #f8fafc;
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding: 14px 16px 14px 18px;
+  border: 1px solid var(--falt-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.faltantes-cobro-kpi::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--falt-muted);
+  opacity: 0.45;
+}
+
+.faltantes-cobro-kpi.is-success::before {
+  background: var(--falt-ok);
+  opacity: 1;
+}
+
+.faltantes-cobro-kpi.is-danger::before {
+  background: var(--falt-warn);
+  opacity: 1;
 }
 
 .faltantes-cobro-kpi span {
-  font-size: 11px;
-  color: #64748b;
+  font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  color: var(--falt-muted);
 }
 
 .faltantes-cobro-kpi strong {
-  font-size: 22px;
+  font-size: 26px;
   line-height: 1.1;
-  color: #0f172a;
+  font-weight: 800;
+  color: var(--falt-text);
 }
 
+.faltantes-cobro-kpi.is-danger strong {
+  color: var(--falt-warn);
+}
+
+.faltantes-cobro-kpi small {
+  font-size: 12px;
+  color: var(--falt-muted);
+}
+
+.faltantes-cobro-progress {
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--falt-ok) 15%, transparent);
+  overflow: hidden;
+}
+
+.faltantes-cobro-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--falt-ok);
+  transition: width 0.4s ease;
+}
+
+/* ---------- Tabla ---------- */
 .faltantes-cobro-table-wrap {
   margin-top: 0;
   border: 1px solid var(--cobro-table-wrap-border);
@@ -1367,15 +1438,15 @@ body.cobro-modal-open {
 }
 
 .faltantes-cobro-table {
-  min-width: 1240px;
+  min-width: 860px;
   table-layout: fixed;
 }
 
 .faltantes-cobro-table thead th,
 .faltantes-cobro-table tbody td {
-  padding: 12px 10px;
+  padding: 12px;
   line-height: 1.4;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .faltantes-cobro-table thead th {
@@ -1393,76 +1464,65 @@ body.cobro-modal-open {
   color: var(--cobro-table-text);
 }
 
-.faltantes-cobro-table tbody tr:nth-child(even) td {
-  background: var(--cobro-table-row-alt-bg);
+.faltantes-cobro-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
-.faltantes-cobro-table tbody tr {
-  height: auto;
+.faltantes-cobro-table tbody tr:hover td {
+  background: var(--cobro-table-row-hover-bg);
 }
 
-.faltantes-cobro-table .faltantes-col-paciente {
-  width: 20%;
-}
+.faltantes-cobro-table .faltantes-col-paciente { width: 26%; }
+.faltantes-cobro-table .faltantes-col-hora { width: 110px; text-align: center; }
+.faltantes-cobro-table .faltantes-col-procedimiento { width: auto; }
+.faltantes-cobro-table .faltantes-col-sugerencia { width: 190px; }
+.faltantes-cobro-table .faltantes-col-accion { width: 120px; }
 
-.faltantes-cobro-table .faltantes-col-hora {
-  width: 9%;
-  text-align: center;
-}
-
-.faltantes-cobro-table .faltantes-col-procedimiento {
-  width: 46%;
-}
-
-.faltantes-cobro-table .faltantes-col-sugerencia {
-  width: 17%;
-}
-
-.faltantes-cobro-table .faltantes-col-accion {
-  width: 8%;
-  text-align: center;
-}
-
-.faltantes-cobro-table tbody td:first-child {
+.faltante-cobro-paciente {
+  font-weight: 700;
   word-break: break-word;
 }
 
-.faltantes-cobro-table thead th:nth-child(1),
-.faltantes-cobro-table tbody td:nth-child(1),
-.faltantes-cobro-table thead th:nth-child(2),
-.faltantes-cobro-table tbody td:nth-child(2) {
-  padding-left: 6px;
-  padding-right: 6px;
+.faltante-cobro-hora {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--falt-soft);
+  color: var(--falt-primary);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
-.faltantes-cobro-kpi.is-danger {
-  background: #fff7ed;
-  border-color: #fdba74;
-}
-
-.faltantes-cobro-kpi.is-danger strong {
-  color: #9a3412;
-}
-
+/* Valor / Saldo apilados */
 .faltante-cobro-suggestion {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  font-size: 12px;
-  color: #334155;
-  line-height: 1.25;
+  gap: 16px;
 }
 
-.faltante-cobro-suggestion strong {
-  color: #0f172a;
+.faltante-cobro-money {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
 }
 
-.faltante-cobro-suggestion-separator {
-  color: #94a3b8;
+.faltante-cobro-money small {
   font-size: 11px;
+  font-weight: 700;
+  color: var(--falt-muted);
 }
 
+.faltante-cobro-money strong {
+  font-size: 14px;
+  color: var(--falt-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.faltante-cobro-money.has-saldo strong {
+  color: var(--falt-warn);
+}
+
+/* Procedimiento: chips de reglas visuales; una linea salvo que se expanda */
 .faltante-procedimiento-cell {
   display: flex;
   align-items: center;
@@ -1475,34 +1535,35 @@ body.cobro-modal-open {
 }
 
 .faltante-procedimiento-content {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--falt-text);
   line-height: 1.25;
-  color: #334155;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1 1 auto;
+}
+
+/* Contraido con boton Expandir: se desvanece en el borde en vez de cortarse */
+.faltante-procedimiento-cell:not(.is-expanded):has(.faltante-procedimiento-toggle) .faltante-procedimiento-content {
+  -webkit-mask-image: linear-gradient(to right, #000 80%, transparent);
+  mask-image: linear-gradient(to right, #000 80%, transparent);
 }
 
 .faltante-procedimiento-content.is-expanded {
   display: block;
   white-space: normal;
   overflow: visible;
-  text-overflow: clip;
   word-break: break-word;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .faltante-procedimiento-toggle {
-  align-self: flex-start;
+  flex: none;
   border: 0;
   padding: 0;
   background: transparent;
-  color: #2563eb;
+  color: var(--falt-primary);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -1513,22 +1574,84 @@ body.cobro-modal-open {
 }
 
 .faltante-procedimiento-toggle:focus-visible {
-  outline: 2px solid #93c5fd;
+  outline: 2px solid var(--falt-primary);
   outline-offset: 2px;
   border-radius: 4px;
 }
 
+/* Accion principal */
+.faltante-cobro-action-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--falt-primary);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--falt-primary) 30%, transparent);
+  transition: transform 0.12s ease, filter 0.15s ease;
+}
+
+/* En oscuro el primario es claro: texto oscuro para contraste (Vampire tiene primario fuerte) */
+.dark-mode .faltante-cobro-action-btn:not([disabled]) {
+  color: #0b1220;
+}
+
+body[data-theme="vampire"].dark-mode .faltante-cobro-action-btn:not([disabled]) {
+  color: #fff;
+}
+
+.faltante-cobro-action-btn:hover:not([disabled]) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.faltante-cobro-action-btn:focus-visible {
+  outline: 2px solid var(--falt-primary);
+  outline-offset: 2px;
+}
+
 .faltante-cobro-action-btn[disabled] {
-  opacity: 0.55;
+  background: var(--falt-border);
+  color: var(--falt-muted);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
-.dark-mode .faltante-procedimiento-content {
-  color: #cbd5e1;
+/* Estado vacio */
+.faltantes-cobro-table tbody tr.faltantes-cobro-empty-row td {
+  background: transparent;
 }
 
-.dark-mode .faltante-procedimiento-toggle {
-  color: #93c5fd;
+.faltantes-cobro-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--falt-muted);
+}
+
+.faltantes-cobro-empty strong {
+  font-size: 16px;
+  color: var(--falt-text);
+}
+
+.faltantes-cobro-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--falt-ok) 15%, transparent);
+  color: var(--falt-ok);
+  font-size: 20px;
+  font-weight: 900;
 }
 
 /* descuentos */
@@ -1894,53 +2017,6 @@ body.cobro-modal-open {
 
 .dark-mode .cobro-modal-header h3 {
   color: #e2e8f0;
-}
-
-.dark-mode .faltantes-cobro-meta {
-  color: #cbd5e1;
-}
-
-.dark-mode .faltantes-cobro-kpi {
-  border-color: #334155;
-  background: #111b2d;
-}
-
-.dark-mode .faltantes-cobro-kpi span {
-  color: #9fb0c5;
-}
-
-.dark-mode .faltantes-cobro-kpi strong {
-  color: #e2e8f0;
-}
-
-.dark-mode .faltantes-cobro-kpi.is-danger {
-  background: #3d2c1c;
-  border-color: #9a5b20;
-}
-
-.dark-mode .faltantes-cobro-kpi.is-danger strong {
-  color: #fdba74;
-}
-
-.dark-mode .faltantes-cobro-table thead th,
-.dark-mode .faltantes-cobro-table tbody td {
-  border-bottom-color: var(--cobro-table-row-border);
-}
-
-.dark-mode .faltante-cobro-suggestion {
-  color: #cbd5e1;
-}
-
-.dark-mode .faltante-cobro-suggestion strong {
-  color: #f8fafc;
-}
-
-.dark-mode .faltante-cobro-suggestion-separator {
-  color: #64748b;
-}
-
-.dark-mode .faltante-procedimiento-content {
-  color: #cbd5e1;
 }
 
 .dark-mode .descuento-total-line {

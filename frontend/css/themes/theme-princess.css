@@ -36,6 +36,8 @@ body[data-theme="princess"] {
   --app-nav-active-bg: #ffd7ec;
   --app-nav-active-border: #ff9cce;
   --app-nav-active-shadow: 0 10px 24px rgba(214, 51, 154, 0.12);
+  --app-nav-pill-bg: linear-gradient(135deg, #e0409a, #ff69b4);
+  --app-nav-pill-shadow: 0 4px 12px rgba(214, 51, 154, 0.32);
   --app-control-bg: rgba(255, 232, 244, 0.74);
   --app-avatar-bg: linear-gradient(135deg, #ff69b4, #a855f7);
   --app-avatar-shadow: 0 10px 22px rgba(214, 51, 154, 0.22);
@@ -675,6 +677,7 @@ body[data-theme="princess"] .modal-content-firma,
 body[data-theme="princess"] #modal-cita-paciente .modal-content,
 body[data-theme="princess"] #modal-autorizar-cita .modal-content,
 body[data-theme="princess"] #modal-ver-firma .modal-content,
+body[data-theme="princess"] #modal-ver-sello .modal-content,
 body[data-theme="princess"] #modal-doctor-info .modal-content {
   background: #ffe2f1;
   border: 1px solid #ff9cce;

@@ -49,6 +49,13 @@ router.get(
   role(["Administrador", "Recepcion"]),
   controller.listarReporteMensualPacientes
 );
+
+router.get(
+  "/reporte-mensual-analisis",
+  auth,
+  role(["Administrador", "Recepcion"]),
+  controller.listarReporteMensualAnalisis
+);
 // DESCUENTOS
 router.post(
   "/descuento",

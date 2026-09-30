@@ -111,8 +111,10 @@
   - compara por nombre normalizado (minusculas, trim, sin acentos),
   - faltante = atendido en cola que no aparece en cuentas cobradas.
 - Salida:
-  - resumen `Atendidos en cola`, `Cobrados`, `Faltantes`,
-  - tabla con `Paciente`, `Hora`, `Contacto`, `Sugerencia`, `Accion`.
+  - resumen `Atendidos en cola`, `Cobrados` (con barra de % del dia cobrado), `Faltantes`,
+  - tabla con `Paciente`, `Hora` (pastilla), `Procedimiento` (chips de reglas visuales, una linea con
+    desvanecido + `Expandir` si pasa de 50 caracteres), `Valor / Saldo` (saldo > 0 resaltado) y boton `Cobrar`.
+- Estilos con tokens `--app-*` (variables `--falt-*` en `.cobro-modal-dialog-faltantes`), sin overrides por tema.
 - Enriquecimiento:
   - intenta resolver `idPaciente` por columna directa si existe o por nombre/contacto,
   - busca la ultima cita del paciente para la fecha actual del sistema,
@@ -158,6 +160,30 @@
   - `totales`,
   - `totalesGlobalMes`.
 
+### Pestanas del modal: Pacientes / Analisis
+- Pestanas, en este orden: `#rm-tab-analisis` (panel `#reporte-mensual-analisis`, activa por defecto
+  cada vez que se abre el modal) y `#rm-tab-pacientes` (tabla, `#reporte-mensual-panel-pacientes`).
+  Flechas izq/der cambian de pestana.
+- Los filtros del modal (mes, tratamiento, doctor, forma de pago) aplican a ambas pestanas
+  (`refrescarReporteMensual`); el buscador de paciente se oculta en Analisis.
+- El analisis solo se pide con la pestana visible y se recarga si cambiaron los filtros
+  desde la ultima carga (`reporteAnalisisKeyCargada`). Request con `abort + seq` (`reporteAnalisis`).
+- Dibujo en `frontend/js/cobroAnalisis.js` + `frontend/css/cobroAnalisis.css` (HTML/CSS sin libreria,
+  colores con tokens `--app-*` para los temas):
+  - tarjetas: monto, tratamientos, pacientes, promedio por paciente, con % vs mes anterior,
+  - ingresos por dia (columnas, tooltip por dia, etiqueta solo en el mejor dia),
+  - rankings por forma de pago, tratamiento y doctor (top 7 + "Otros").
+
+### Contrato de `GET /api/cuenta/reporte-mensual-analisis`
+- Mismos query params y validacion que `reporte-mensual-pacientes` (`parseReporteMensualFiltros`),
+  incluido `idDoctor`.
+- SP `sp_cuenta_reporte_mensual_analisis` (migracion `2026-09-26_cuenta_reporte_mensual_analisis.sql`).
+  Mismo criterio de monto que el reporte por pacientes (subtotal bruto de `detallecuenta`, sin descuentos
+  ni protocolo) para que ambas pestanas cuadren. Si el SP no existe responde 400 "Falta migracion...".
+- Respuesta: `ok`, `mes`, `totales` y `totalesMesAnterior` (`pacientes`, `cuentas`, `cantidad`, `monto`),
+  `porDia` (`dia` + totales), `porFormaPago`, `porTratamiento`, `porDoctor`
+  (`idDoctor` null = "Sin doctor asignado").
+
 ## Exportacion PDF
 - Diario:
   - boton `#btn-reporte-cobro`,
@@ -188,6 +214,7 @@
 - `PUT /api/cuenta/:id/doctor`
 - `DELETE /api/cuenta/:id`
 - `GET /api/cuenta/reporte-mensual-pacientes`
+- `GET /api/cuenta/reporte-mensual-analisis`
 - `POST /api/cuenta/descuento`
 - `GET /api/cuenta/descuento?fecha=YYYY-MM-DD`
 - `DELETE /api/cuenta/descuento/:id`
@@ -213,6 +240,7 @@
 - Reportes:
   - `sp_cuenta_reporte_mensual`
   - `sp_cuenta_reporte_mensual_pacientes`
+  - `sp_cuenta_reporte_mensual_analisis`
 - Eliminacion:
   - `sp_cuenta_eliminar`.
 - Descuentos:

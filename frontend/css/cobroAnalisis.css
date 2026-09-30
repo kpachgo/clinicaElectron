@@ -1,0 +1,427 @@
+/* =====================================================
+   COBRO - REPORTE MENSUAL: PESTANAS + ANALISIS (graficas)
+   Colores desde los tokens --app-* para respetar los 4 temas.
+===================================================== */
+.rm-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  border-bottom: 1px solid var(--app-border, #dde8f3);
+}
+
+.rm-tab {
+  position: relative;
+  padding: 8px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--app-text-muted, #66778d);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+}
+
+.rm-tab:hover {
+  color: var(--app-text, #16263d);
+}
+
+.rm-tab[aria-selected="true"] {
+  color: var(--app-primary, #2775f5);
+}
+
+.rm-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--app-primary, #2775f5);
+}
+
+.rm-tab:focus-visible {
+  outline: 2px solid var(--app-primary, #2775f5);
+  outline-offset: -2px;
+}
+
+/* Mismo ancho que el modal de faltantes (1320px; la base de .cobro-modal-dialog es 1080px) */
+#reporte-mensual-modal .cobro-modal-dialog {
+  width: min(1320px, 100%);
+}
+
+#reporte-mensual-panel-pacientes[hidden] {
+  display: none;
+}
+
+/* El buscador de paciente solo aplica a la pestana Pacientes */
+#reporte-mensual-modal.is-tab-analisis #reporte-mensual-paciente-search {
+  display: none;
+}
+
+.rm-analisis {
+  --rma-bar: var(--app-primary, #2775f5);
+  --rma-bar-hover: var(--app-primary-dark, #185ed1);
+  --rma-track: color-mix(in srgb, var(--app-primary, #2775f5) 10%, transparent);
+  --rma-grid: var(--app-border, #dde8f3);
+  --rma-text: var(--app-text, #16263d);
+  --rma-muted: var(--app-text-muted, #66778d);
+  --rma-up: #15803d;
+  --rma-down: #b91c1c;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--rma-text);
+  transition: opacity 0.2s ease;
+}
+
+.dark-mode .rm-analisis {
+  --rma-up: #4ade80;
+  --rma-down: #f87171;
+}
+
+.rm-analisis[hidden] {
+  display: none;
+}
+
+.rm-analisis.is-loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.rma-empty {
+  margin: 0;
+  padding: 36px 12px;
+  text-align: center;
+  color: var(--rma-muted);
+  font-weight: 600;
+}
+
+.rma-empty-inline {
+  margin: 4px 0 0;
+  color: var(--rma-muted);
+  font-size: 13px;
+}
+
+/* ---------- Tarjetas de totales ---------- */
+.rma-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rma-kpi,
+.rma-card {
+  border: 1px solid var(--rma-grid);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.rma-kpi-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--rma-muted);
+}
+
+.rma-kpi-value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--rma-text);
+  overflow-wrap: anywhere;
+}
+
+.rma-kpi.is-hero .rma-kpi-value {
+  font-size: 26px;
+  color: var(--app-primary, #2775f5);
+}
+
+.rma-kpi-delta {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rma-kpi-delta.is-up { color: var(--rma-up); }
+.rma-kpi-delta.is-down { color: var(--rma-down); }
+.rma-kpi-delta.is-neutral { color: var(--rma-muted); }
+
+/* ---------- Tarjeta generica ---------- */
+.rma-card-head {
+  margin-bottom: 10px;
+}
+
+.rma-card-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--rma-text);
+}
+
+.rma-card-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--rma-muted);
+}
+
+/* ---------- Ingresos por dia (columnas) ---------- */
+.rma-cols-chart {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  height: 220px;
+  padding-top: 18px;
+}
+
+.rma-cols-y {
+  position: relative;
+}
+
+.rma-cols-tick {
+  position: absolute;
+  right: 8px;
+  transform: translateY(50%);
+  font-size: 11px;
+  color: var(--rma-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rma-cols-plot {
+  position: relative;
+}
+
+.rma-cols-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--rma-grid);
+}
+
+.rma-cols-grid.is-base {
+  background: color-mix(in srgb, var(--rma-muted) 45%, transparent);
+}
+
+.rma-cols,
+.rma-cols-x {
+  display: grid;
+  grid-template-columns: repeat(var(--rma-n, 31), minmax(0, 1fr));
+}
+
+.rma-cols {
+  position: absolute;
+  inset: 0;
+}
+
+/* Toda la franja del dia es zona de hover, no solo la barra */
+.rma-col {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+  border-radius: 4px;
+}
+
+.rma-col:hover,
+.rma-col:focus-visible {
+  background: var(--rma-track);
+  outline: none;
+}
+
+.rma-col-bar {
+  display: block;
+  width: min(24px, 70%);
+  background: var(--rma-bar);
+  border-radius: 4px 4px 0 0;
+  transition: height 0.35s ease, background-color 0.15s ease;
+}
+
+.rma-col:hover .rma-col-bar,
+.rma-col:focus-visible .rma-col-bar {
+  background: var(--rma-bar-hover);
+}
+
+.rma-col-cap {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -4px);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--rma-text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.rma-cols-xwrap {
+  padding-left: 52px;
+  margin-top: 4px;
+}
+
+.rma-x-label {
+  text-align: center;
+  font-size: 10px;
+  color: var(--rma-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rma-x-label.is-sunday {
+  font-weight: 800;
+  color: var(--rma-text);
+}
+
+/* ---------- Rankings ---------- */
+.rma-rankings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rma-rank {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rma-rank-row {
+  padding: 5px 6px;
+  border-radius: 8px;
+  outline: none;
+}
+
+.rma-rank-row:hover,
+.rma-rank-row:focus-visible {
+  background: var(--rma-track);
+}
+
+.rma-rank-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.rma-rank-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--rma-text);
+  font-weight: 600;
+}
+
+.rma-rank-row.is-otros .rma-rank-name {
+  color: var(--rma-muted);
+  font-style: italic;
+}
+
+.rma-rank-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.rma-rank-value strong {
+  color: var(--rma-text);
+}
+
+.rma-rank-pct {
+  min-width: 34px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--rma-muted);
+}
+
+.rma-rank-track {
+  margin-top: 4px;
+  height: 10px;
+  border-radius: 4px;
+  background: var(--rma-track);
+}
+
+.rma-rank-bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--rma-bar);
+  transition: width 0.35s ease;
+}
+
+.rma-rank-row.is-otros .rma-rank-bar {
+  background: color-mix(in srgb, var(--rma-bar) 45%, transparent);
+}
+
+.rma-rank-row:hover .rma-rank-bar,
+.rma-rank-row:focus-visible .rma-rank-bar {
+  background: var(--rma-bar-hover);
+}
+
+/* ---------- Tooltip ---------- */
+.rma-tooltip {
+  position: absolute;
+  z-index: 5;
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid var(--rma-grid);
+  border-radius: 8px;
+  background: var(--app-surface, #fff);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.rma-tooltip[hidden] {
+  display: none;
+}
+
+.rma-tooltip-value {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--rma-text);
+}
+
+.rma-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--rma-muted);
+}
+
+.rma-tooltip-row strong {
+  color: var(--rma-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1100px) {
+  .rma-rankings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .rma-kpis,
+  .rma-rankings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rma-x-label.is-even {
+    visibility: hidden;
+  }
+}
+
+@media (max-width: 520px) {
+  .rma-kpis,
+  .rma-rankings {
+    grid-template-columns: 1fr;
+  }
+}

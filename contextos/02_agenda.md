@@ -131,6 +131,14 @@
 - No se implemento filtro por doctor porque el contrato actual de Agenda no trae doctor.
 - No hay columnas fijas en la tabla para evitar solapes con numeracion, contacto y acciones.
 
+## Tablet (2026-09-30)
+- Galaxy Tab A9 con escala 1,5x: ~533 px vertical, ~893 px horizontal. La tabla usa container query sobre `.agenda-table-wrap` (ancho real de la tabla, no de la ventana). Final de `agenda.css`.
+- `<= 1000px` (horizontal): columnas fijas mas angostas (hora 78, fecha 100, telefono 92, estado 128, acciones 168).
+- `<= 700px` (vertical): cada fila es una ficha flex de 3 lineas: `[#] Nombre | Hora`, `Fecha Telefono | Estado`, `Marcas Comentario | Acciones` (saltos con `tr::before/::after` de ancho 100%). Fondo: celdas transparentes y la del nombre pinta el suyo en toda la ficha con `::before { background: inherit }` (respeta tema, franja par, hover y resaltado sin repetir colores; por eso la celda nombre va `position: static`). Botones de accion de 30px.
+- Las celdas de hora y acciones llevan `agenda-col-hora` / `agenda-col-acciones` (antes sin clase) para ubicarlas en la ficha.
+- `<= 760px`: tarjetas de conteo con `auto-fill minmax(104px, 1fr)` y filtros Estado/Contacto mitad y mitad.
+- `<= 760px` herramientas: con `order` en `.agenda-control-row-primary` queda `[Hoy] [Dia][Mes] ... [Inasistencias][Resumen]` en una fila, luego la fecha y las tarjetas de conteo a todo el ancho; buscador a todo el ancho.
+
 ## Atajos de teclado
 - `Alt + Flecha izquierda`: mueve agenda al dia anterior.
 - `Alt + Flecha derecha`: mueve agenda al dia siguiente.

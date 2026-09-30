@@ -7,7 +7,7 @@
   window.__fotoModalIndex = -1;
   window.pacienteFotoPrincipalId = null;
   const PACIENTE_EDITABLE_IDS = [
-    "NombreP", "direccionP", "telefonoP", "fechaRegistroP", "estadoP", "fechaNacimientoP",
+    "NombreP", "direccionP", "telefonoP", "fechaRegistroP", "estadoP", "fechaNacimientoP", "sexoP",
     "recomendadoP", "encargadoP", "motivoConsultaP", "ultimaVisitaP", "duiP", "correoP",
     "tipoMordidaP", "tipoTratamientoP", "historiaMedicaP", "historiaOdontologicaP",
     "examenClinicoP", "examenRadiologicoP", "examenComplementarioP", "endodonciaP",
@@ -26,7 +26,8 @@
     "odontogramaVersion",
     "odontogramaUltimo",
     "doctoresSelect",
-    "doctorInfo"
+    "doctorInfo",
+    "notasProximaCita"
   ];
   const pacienteRequestState = PACIENTE_REQUEST_KEYS.reduce((acc, key) => {
     acc[key] = { seq: 0, controller: null };
@@ -37,10 +38,14 @@
   let isSavingCitaPaciente = false;
   let isSavingFirmaPaciente = false;
   let isSavingOdontogramaPaciente = false;
-  let isUploadingFotoPaciente = false;
   let isDeletingFotosPaciente = false;
   let isSettingFotoPrincipalPaciente = false;
   let isAuthorizingCitaPaciente = false;
+  let isSavingNotaProximaCita = false;
+  // Aviso de la campana del paciente: nota global (notasObservacionP) + notas de proxima cita vigentes.
+  let avisoCampanaPaciente = null;
+  // Paciente al que ya se le mostro el toast de notas de proxima cita (solo una vez al abrirlo).
+  let notasProximaAvisadasId = 0;
   let odontoPrintDraft = null;
   let odontoPrintMode = "pendiente";
   let odontoPrintActiveIframe = null;
@@ -53,6 +58,7 @@
   let odontoPrintServicePriceCache = null;
   let odontoPrintServicePricePromise = null;
   const MAX_PROCEDIMIENTO_CITA = 500;
+  const MAX_NOTA_PROXIMA_CITA = 500;
   const ODONTO_VISUAL_SUPERIOR_PIEZAS = new Set([18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]);
   const ODONTO_VISUAL_INFERIOR_PIEZAS = new Set([48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38]);
   const ODONTO_VISUAL_TEMPORAL_PIEZAS = new Set([55, 54, 53, 52, 51, 61, 62, 63, 64, 65, 85, 84, 83, 82, 81, 71, 72, 73, 74, 75]);
@@ -257,22 +263,9 @@ function isSecurityProtocolEnabledForPaciente() {
   const state = window.getSecurityProtocolState();
   return Number(state?.enabled || 0) === 1;
 }
-function isCitasFirmaSelloVisibleEnabled() {
-  if (isSecurityProtocolEnabledForPaciente()) return true;
-  return document.getElementById("toggle-citas-firma-sello")?.checked === true;
-}
 function isCitasDeleteEnabled() {
   return usuarioActualEsAdministrador()
     && document.getElementById("toggle-citas-delete")?.checked === true;
-}
-function restoreCitasFirmaSelloToggle() {
-  const toggle = document.getElementById("toggle-citas-firma-sello");
-  if (!toggle) return;
-  const protocolEnabled = isSecurityProtocolEnabledForPaciente();
-  toggle.checked = protocolEnabled ? true : loadPacienteUiState().citasFirmaSelloVisible !== false;
-  toggle.disabled = protocolEnabled;
-  toggle.closest(".citas-firma-toggle")?.classList.toggle("is-security-forced", protocolEnabled);
-  toggle.title = protocolEnabled ? "Activo por protocolo de seguridad" : "";
 }
 function initCitasDeleteToggle() {
   const toggle = document.getElementById("toggle-citas-delete");
@@ -290,7 +283,6 @@ function bindPacienteSecurityProtocolSync() {
   }
   pacienteSecurityProtocolHandler = () => {
     if (!isPacienteViewActive()) return;
-    restoreCitasFirmaSelloToggle();
     renderCitasPaciente();
   };
   window.addEventListener("security-protocol:changed", pacienteSecurityProtocolHandler);
@@ -398,10 +390,7 @@ function renderAccionCita(cita, idCita) {
     const label = esDoctorRegistroFisicoCita(cita) ? "Autorizado en fisico" : "Autorizado";
     return `<span class="cita-accion-wrap"><span class="cita-estado-check" title="${label}" aria-label="${label}">&#10003;</span>${eliminarHtml}</span>`;
   };
-  const firmaSelloVisible = isCitasFirmaSelloVisibleEnabled();
-  const puedeMostrarFirmaSello = firmaSelloVisible && citaPuedeVerFirmaSello(cita);
-
-  if (puedeMostrarFirmaSello) {
+  if (citaPuedeVerFirmaSello(cita)) {
     const firma = String(cita?.FirmaD || "").trim();
     const sello = String(cita?.SelloD || "").trim();
     const firmaHtml = firma
@@ -416,11 +405,15 @@ function renderAccionCita(cita, idCita) {
         <div class="cita-doctor-media-inline">
           <div class="cita-doctor-media-item">
             <span class="cita-doctor-media-label">Firma</span>
-            <span class="cita-doctor-media-box">${firmaHtml}</span>
+            ${firma
+              ? `<button type="button" class="cita-doctor-media-box is-zoomable" data-cita-media="firma" data-media-src="${escapeHtml(firma)}" title="Ver firma en grande" aria-label="Ver firma en grande">${firmaHtml}</button>`
+              : `<span class="cita-doctor-media-box">${firmaHtml}</span>`}
           </div>
           <div class="cita-doctor-media-item">
             <span class="cita-doctor-media-label">Sello</span>
-            <span class="cita-doctor-media-box">${selloHtml}</span>
+            ${sello
+              ? `<button type="button" class="cita-doctor-media-box is-zoomable" data-cita-media="sello" data-media-src="${escapeHtml(sello)}" title="Ver sello en grande" aria-label="Ver sello en grande">${selloHtml}</button>`
+              : `<span class="cita-doctor-media-box">${selloHtml}</span>`}
           </div>
           ${eliminarHtml ? `<div class="cita-accion-delete-inline">${eliminarHtml}</div>` : ""}
         </div>
@@ -814,6 +807,7 @@ async function cargarPacienteCompleto(idPaciente) {
       setPacienteLoadProgress(75);
       limpiarOdontogramaActivoEnVista({ clearHistorial: false });
       setPacienteLoadProgress(92);
+      window.pacienteExpediente?.onPacienteCargado();
       await ocultarPacienteLoadProgress();
       mostrarPacienteDetailShell();
       void cargarPacienteRecursosSecundarios(idPaciente);
@@ -1597,6 +1591,14 @@ function renderPaciente(container) {
             <input type="date" class="form-control" id="fechaNacimientoP">
           </div>
           <div class="p-col p-15">
+            <label class="form-label">Sexo</label>
+            <select class="form-control" id="sexoP">
+              <option value="">Sin especificar</option>
+              <option value="F">Femenino</option>
+              <option value="M">Masculino</option>
+            </select>
+          </div>
+          <div class="p-col p-15">
             <label class="form-label">Firma Paciente / Encargado</label>
             <input type="hidden" id="firmaP">
             <div id="firmaEstadoP" class="form-control firma-status firma-status-empty">Sin Firma</div>
@@ -2135,6 +2137,8 @@ function renderPaciente(container) {
             </div>
           </div>
         </div>
+      </div>
+      <!-- /Odontograma (faltaba este cierre: Diagnostico, Fotos y Citas quedaban dentro de su tarjeta) -->
 
 
       <!--  Diagnostico Final -->
@@ -2164,7 +2168,7 @@ function renderPaciente(container) {
         <div class="fotos-header">
           <button id="add-foto" class="btn-cita-paciente btn-with-icon"><span class="btn-icon">+</span><span>Agregar Fotografia</span></button>
           <button id="delete-foto" class="btn-cita-paciente btn-with-icon"><span class="btn-icon">x</span><span>Eliminar Seleccionadas</span></button>
-          <input type="file" id="input-foto" accept="image/*" style="display:none">
+          <input type="file" id="input-foto" accept="image/*" multiple style="display:none">
         </div>
 
         <div class="fotos-grid" id="fotos-grid"></div>
@@ -2218,12 +2222,18 @@ function renderPaciente(container) {
               <input type="checkbox" id="toggle-citas-delete">
               <span>Borrar</span>
             </label>
-            <label class="citas-firma-toggle" for="toggle-citas-firma-sello">
-              <input type="checkbox" id="toggle-citas-firma-sello" checked>
-              <span>Ver firma/sello</span>
-            </label>
             <button id="citas-add" class="btn-cita-paciente btn-with-icon"><span class="btn-icon">+</span><span>Registrar Cita Paciente</span></button>
           </div>
+        </div>
+
+        <div class="notas-proxima" id="notas-proxima">
+          <div class="notas-proxima-head">
+            <span class="notas-proxima-title">Notas para la proxima cita <span class="notas-proxima-count" hidden></span></span>
+            <div class="notas-proxima-head-actions">
+              <button type="button" id="notas-proxima-add" class="btn-nota-proxima btn-with-icon" disabled><span class="btn-icon">+</span><span>Nota proxima cita</span></button>
+            </div>
+          </div>
+          <ul class="notas-proxima-list" id="notas-proxima-list"></ul>
         </div>
 
         <div class="citas-table-wrap">
@@ -2357,6 +2367,27 @@ function renderFotosPaciente() {
         grid.appendChild(div);
     });
 
+    // Fotos en cola de subida de este paciente: vista previa atenuada con spinner.
+    const idActual = Number(window.pacienteActual?.idPaciente || 0);
+    fotoUploadQueue.filter((p) => p.pacienteId === idActual).forEach((p) => {
+        const div = document.createElement("div");
+        div.className = "foto-item foto-item-subiendo";
+        const nombre = escapeHtml(p.file?.name || "");
+        div.innerHTML = `
+            <div class="foto-media">
+              ${p.preview ? `<img src="${p.preview}" alt="">` : ""}
+              <div class="foto-upload-overlay">
+                <span class="foto-upload-spinner" aria-hidden="true"></span>
+                <span>${p.subiendo ? "Subiendo..." : "En cola"}</span>
+              </div>
+            </div>
+            <div class="foto-item-meta">
+              <div class="foto-fecha foto-upload-nombre" title="${nombre}">${nombre}</div>
+            </div>
+        `;
+        grid.appendChild(div);
+    });
+
     renderFotoPrincipalPaciente();
 }
 async function cargarFotosPaciente(idPaciente) {
@@ -2406,40 +2437,79 @@ async function cargarFotosPaciente(idPaciente) {
     endRequest("fotosPaciente", req.controller);
   }
 }
-async function subirFotografia(file) {
-  if (!window.pacienteActual?.idPaciente) {
+// ---------- Cola de subida de fotografias ----------
+// Se pueden elegir varias a la vez; se suben de a una, en orden. Cada una se muestra en la cuadricula
+// con su vista previa y spinner hasta que termina. Cada item guarda su paciente: si se cambia de
+// paciente a mitad de la cola, las que faltan se siguen subiendo al paciente correcto.
+const fotoUploadQueue = []; // { file, pacienteId, preview, subiendo }
+let fotoUploadRunning = false;
+let fotoUploadErrores = [];
+
+function encolarFotografias(files) {
+  const pacienteId = Number(window.pacienteActual?.idPaciente || 0);
+  if (!pacienteId) {
     alert("Debe seleccionar un paciente");
     return;
   }
-  if (!file) return;
-  if (isUploadingFotoPaciente) return;
+  const imagenes = Array.from(files || []).filter((f) => f && (!f.type || f.type.startsWith("image/")));
+  if (!imagenes.length) return;
+  imagenes.forEach((file) => {
+    let preview = "";
+    try { preview = URL.createObjectURL(file); } catch { preview = ""; }
+    fotoUploadQueue.push({ file, pacienteId, preview, subiendo: false });
+  });
+  renderFotosPaciente();
+  procesarColaFotos();
+}
 
-  isUploadingFotoPaciente = true;
+async function procesarColaFotos() {
+  if (fotoUploadRunning) return;
+  fotoUploadRunning = true;
+  try {
+    while (fotoUploadQueue.length) {
+      const item = fotoUploadQueue[0];
+      item.subiendo = true;
+      renderFotosPaciente();
+      try {
+        await subirFotografia(item.file, item.pacienteId);
+      } catch (err) {
+        console.error("Error subiendo fotografia", err);
+        fotoUploadErrores.push(item.file?.name || "imagen");
+      }
+      fotoUploadQueue.shift();
+      if (item.preview) URL.revokeObjectURL(item.preview);
+      // Recargar desde BD solo si ese paciente sigue abierto (la foto nueva reemplaza a su tarjeta de carga).
+      if (Number(window.pacienteActual?.idPaciente || 0) === item.pacienteId) {
+        await cargarFotosPaciente(item.pacienteId);
+      }
+      renderFotosPaciente();
+    }
+  } finally {
+    fotoUploadRunning = false;
+  }
+  if (fotoUploadErrores.length) {
+    const nombres = fotoUploadErrores.join(", ");
+    const total = fotoUploadErrores.length;
+    fotoUploadErrores = [];
+    alert(`No se pudo subir ${total} fotografia(s): ${nombres}`);
+  }
+}
+
+async function subirFotografia(file, pacienteId) {
   const formData = new FormData();
   // En multipart el orden importa para multer.filename:
   // enviar campos antes del archivo evita nombres con "undefined".
-  formData.append("pacienteId", String(window.pacienteActual.idPaciente));
+  formData.append("pacienteId", String(pacienteId));
   formData.append("fecha", new Date().toISOString().split("T")[0]);
   formData.append("foto", file);
 
-  try {
-    const res = await fetch("/api/foto-paciente", {
-      method: "POST",
-      body: formData
-    });
-
-    const json = await res.json();
-    if (!json.ok) throw new Error(json.message);
-
-    // Y recargar fotos desde BD
-    await cargarFotosPaciente(window.pacienteActual.idPaciente);
-
-  } catch (err) {
-    console.error(err);
-    alert("Error al subir fotografia");
-  } finally {
-    isUploadingFotoPaciente = false;
-  }
+  const res = await fetch("/api/foto-paciente", {
+    method: "POST",
+    body: formData
+  });
+  let json = null;
+  try { json = await res.json(); } catch { json = null; }
+  if (!res.ok || !json?.ok) throw new Error(json?.message || `HTTP ${res.status}`);
 }
 async function eliminarFotosSeleccionadas() {
   if (!window.pacienteActual?.idPaciente) {
@@ -2528,20 +2598,16 @@ function initFotoModal() {
 
     const getFotos = () => Array.isArray(window.fotosPaciente) ? window.fotosPaciente : [];
 
-    let swipeStartX = null;
-    let swipeStartY = null;
-    let swipePointerId = null;
-    let swipeActive = false;
-    let pinchInProgress = false;
+    // Zoom propio de la imagen (pellizco, doble toque, rueda) y arrastre para moverla.
+    // El modal usa touch-action: none, asi el navegador de la tablet no hace zoom a toda la pagina.
+    const ZOOM_MIN = 1;
+    const ZOOM_MAX = 5;
+    const ZOOM_DOBLE_TOQUE = 2.5;
+    const zoom = { scale: 1, tx: 0, ty: 0 };
+    const punteros = new Map();
+    let gesto = null;
+    let ultimoToque = { time: 0, x: 0, y: 0 };
     let suppressBackdropClickUntil = 0;
-
-    function resetSwipeState() {
-      swipeStartX = null;
-      swipeStartY = null;
-      swipePointerId = null;
-      swipeActive = false;
-      pinchInProgress = false;
-    }
 
     function isModalVisible() {
       return modal.style.display === "flex";
@@ -2554,13 +2620,67 @@ function initFotoModal() {
       );
     }
 
+    function clampZoom() {
+      zoom.scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom.scale));
+      if (zoom.scale <= 1.001) {
+        zoom.scale = 1;
+        zoom.tx = 0;
+        zoom.ty = 0;
+        return;
+      }
+      // Se puede mover hasta ver cada borde de la imagen, sin perderla de vista.
+      const maxX = (modalImg.offsetWidth * (zoom.scale - 1)) / 2;
+      const maxY = (modalImg.offsetHeight * (zoom.scale - 1)) / 2;
+      zoom.tx = Math.min(maxX, Math.max(-maxX, zoom.tx));
+      zoom.ty = Math.min(maxY, Math.max(-maxY, zoom.ty));
+    }
+
+    function aplicarZoom({ animar = false } = {}) {
+      clampZoom();
+      modalImg.classList.toggle("is-animating", animar);
+      modalImg.style.transform = zoom.scale === 1
+        ? ""
+        : `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`;
+      modal.classList.toggle("is-zoomed", zoom.scale > 1);
+    }
+
+    function quitarZoom(opts) {
+      zoom.scale = 1;
+      zoom.tx = 0;
+      zoom.ty = 0;
+      aplicarZoom(opts);
+    }
+
+    function resetZoom() {
+      punteros.clear();
+      gesto = null;
+      quitarZoom();
+    }
+
+    // Centro de la imagen sin transformar (el transform-origin es el centro).
+    function centroImagen() {
+      const r = modalImg.getBoundingClientRect();
+      return { x: r.left + r.width / 2 - zoom.tx, y: r.top + r.height / 2 - zoom.ty };
+    }
+
+    // Cambia la escala dejando fijo el punto de la pantalla (px, py).
+    function zoomEnPunto(nuevaEscala, px, py, opts) {
+      const c = centroImagen();
+      const ux = (px - c.x - zoom.tx) / zoom.scale;
+      const uy = (py - c.y - zoom.ty) / zoom.scale;
+      zoom.scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, nuevaEscala));
+      zoom.tx = px - c.x - ux * zoom.scale;
+      zoom.ty = py - c.y - uy * zoom.scale;
+      aplicarZoom(opts);
+    }
+
     function cerrarModalFoto() {
       modal.style.display = "none";
       document.body.classList.remove("foto-modal-open");
       modalImg.src = "";
       indicador.textContent = "";
       window.__fotoModalIndex = -1;
-      resetSwipeState();
+      resetZoom();
       suppressBackdropClickUntil = 0;
     }
 
@@ -2576,6 +2696,7 @@ function initFotoModal() {
       if (nextIndex < 0) nextIndex = fotos.length - 1;
       if (nextIndex >= fotos.length) nextIndex = 0;
 
+      resetZoom();
       window.__fotoModalIndex = nextIndex;
       const foto = fotos[nextIndex];
       modalImg.src = foto.ruta;
@@ -2604,7 +2725,7 @@ function initFotoModal() {
         }
         return;
       }
-      if (e.target.matches(".foto-item img")) {
+      if (e.target.matches(".foto-item:not(.foto-item-subiendo) img")) {
         const idx = Number(e.target.dataset.index ?? -1);
         mostrarFotoModal(idx >= 0 ? idx : 0);
         return;
@@ -2623,6 +2744,11 @@ function initFotoModal() {
       if (modal.style.display !== "flex") return;
       if (e.key === "Escape") {
         e.preventDefault();
+        // Con zoom, Escape primero vuelve al tamano normal; otro Escape cierra.
+        if (zoom.scale > 1) {
+          quitarZoom({ animar: true });
+          return;
+        }
         cerrarModalFoto();
         return;
       }
@@ -2647,104 +2773,148 @@ function initFotoModal() {
       }
     }
 
-    // Swipe sobre todo el modal para tablets: no depende de tocar exactamente la imagen.
-    if ("PointerEvent" in window) {
-      modal.onpointerdown = e => {
-        if (!isModalVisible()) return;
-        if (e.pointerType === "touch") return;
-        if (shouldIgnoreSwipeTarget(e.target)) return;
-        if (e.pointerType === "mouse" && e.button !== 0) return;
-        swipeStartX = e.clientX;
-        swipeStartY = e.clientY;
-        swipePointerId = e.pointerId;
-        swipeActive = true;
-      };
-      modal.onpointerup = e => {
-        if (!isModalVisible()) return;
-        if (e.pointerType === "touch") return;
-        if (!swipeActive) return;
-        if (swipePointerId !== null && e.pointerId !== swipePointerId) return;
-        if (swipeStartX === null || swipeStartY === null) return;
-        const deltaX = e.clientX - swipeStartX;
-        const deltaY = e.clientY - swipeStartY;
+    function iniciarGesto() {
+      const pts = [...punteros.values()];
+      if (pts.length >= 2) {
+        const [a, b] = pts;
+        gesto = {
+          tipo: "pinch",
+          dist: Math.hypot(b.x - a.x, b.y - a.y) || 1,
+          mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+          scale: zoom.scale,
+          tx: zoom.tx,
+          ty: zoom.ty,
+          centro: centroImagen(),
+          movio: true
+        };
+      } else if (pts.length === 1) {
+        gesto = {
+          tipo: zoom.scale > 1 ? "pan" : "swipe",
+          x: pts[0].x,
+          y: pts[0].y,
+          tx: zoom.tx,
+          ty: zoom.ty,
+          movio: false
+        };
+      } else {
+        gesto = null;
+      }
+    }
+
+    modalImg.ondragstart = e => e.preventDefault();
+
+    modal.onpointerdown = e => {
+      if (!isModalVisible()) return;
+      if (shouldIgnoreSwipeTarget(e.target)) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      punteros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      modalImg.classList.remove("is-animating");
+      iniciarGesto();
+    };
+
+    modal.onpointermove = e => {
+      if (!punteros.has(e.pointerId) || !gesto) return;
+      punteros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pts = [...punteros.values()];
+      // Captura solo cuando ya hay gesto: con captura desde el toque, el click iria al fondo y cerraria el visor.
+      if ((gesto.tipo === "pinch" || gesto.movio) && !modal.hasPointerCapture?.(e.pointerId)) {
+        try { modal.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+
+      if (gesto.tipo === "pinch" && pts.length >= 2) {
+        const [a, b] = pts;
+        const dist = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        // El punto de la imagen que estaba bajo los dedos sigue bajo los dedos (zoom + arrastre).
+        const ux = (gesto.mid.x - gesto.centro.x - gesto.tx) / gesto.scale;
+        const uy = (gesto.mid.y - gesto.centro.y - gesto.ty) / gesto.scale;
+        zoom.scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, gesto.scale * (dist / gesto.dist)));
+        zoom.tx = mid.x - gesto.centro.x - ux * zoom.scale;
+        zoom.ty = mid.y - gesto.centro.y - uy * zoom.scale;
+        aplicarZoom();
+        return;
+      }
+
+      const dx = e.clientX - gesto.x;
+      const dy = e.clientY - gesto.y;
+      if (Math.abs(dx) > 6 || Math.abs(dy) > 6) gesto.movio = true;
+      if (gesto.tipo === "pan") {
+        zoom.tx = gesto.tx + dx;
+        zoom.ty = gesto.ty + dy;
+        aplicarZoom();
+      }
+    };
+
+    // Circulo breve en el punto del doble toque: indica donde se acerca (o desde donde se aleja).
+    function mostrarPulsoZoom(x, y, tipo) {
+      const pulso = document.createElement("span");
+      pulso.className = `foto-modal-zoom-pulse is-${tipo}`;
+      pulso.style.left = `${x}px`;
+      pulso.style.top = `${y}px`;
+      pulso.addEventListener("animationend", () => pulso.remove(), { once: true });
+      modal.appendChild(pulso);
+      setTimeout(() => pulso.remove(), 800);
+    }
+
+    function terminarPuntero(e, cancelado = false) {
+      if (!punteros.has(e.pointerId)) return;
+      const g = gesto;
+      punteros.delete(e.pointerId);
+      if (g?.movio) suppressBackdropClickUntil = Date.now() + 260;
+
+      if (punteros.size > 0) {
+        // Queda un dedo tras el pellizco: sigue como arrastre desde donde esta.
+        iniciarGesto();
+        if (gesto) gesto.movio = true;
+        return;
+      }
+      gesto = null;
+      if (cancelado || !g) return;
+
+      if (g.tipo === "swipe") {
+        const deltaX = e.clientX - g.x;
+        const deltaY = e.clientY - g.y;
         if (Math.abs(deltaX) > Math.abs(deltaY) + 8 && Math.abs(deltaX) >= 50) {
           resolverSwipe(deltaX);
           suppressBackdropClickUntil = Date.now() + 260;
+          return;
         }
-        resetSwipeState();
-      };
-      modal.onpointercancel = () => {
-        resetSwipeState();
-      };
-    } else {
-      modal.onpointerdown = null;
-      modal.onpointerup = null;
-      modal.onpointercancel = null;
+      }
+
+      // Doble toque / doble clic: acerca en ese punto o vuelve al tamano normal.
+      if (!g.movio && g.tipo !== "pinch") {
+        const ahora = Date.now();
+        const cerca = Math.hypot(e.clientX - ultimoToque.x, e.clientY - ultimoToque.y) < 30;
+        if (ahora - ultimoToque.time < 320 && cerca) {
+          ultimoToque = { time: 0, x: 0, y: 0 };
+          suppressBackdropClickUntil = ahora + 320;
+          if (zoom.scale > 1) {
+            mostrarPulsoZoom(e.clientX, e.clientY, "out");
+            quitarZoom({ animar: true });
+          } else if (e.target === modalImg) {
+            mostrarPulsoZoom(e.clientX, e.clientY, "in");
+            zoomEnPunto(ZOOM_DOBLE_TOQUE, e.clientX, e.clientY, { animar: true });
+          }
+          return;
+        }
+        ultimoToque = { time: ahora, x: e.clientX, y: e.clientY };
+      }
     }
 
-    modal.ontouchstart = e => {
+    modal.onpointerup = e => terminarPuntero(e);
+    modal.onpointercancel = e => terminarPuntero(e, true);
+
+    modal.onwheel = e => {
       if (!isModalVisible()) return;
-      if (shouldIgnoreSwipeTarget(e.target)) {
-        resetSwipeState();
-        return;
-      }
-      if (!e.touches || e.touches.length !== 1) {
-        pinchInProgress = true;
-        swipeActive = false;
-        swipeStartX = null;
-        swipeStartY = null;
-        return;
-      }
-      pinchInProgress = false;
-      swipeActive = true;
-      swipeStartX = e.touches[0].clientX;
-      swipeStartY = e.touches[0].clientY;
+      e.preventDefault();
+      zoomEnPunto(zoom.scale * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
     };
-    modal.ontouchmove = e => {
-      if (!isModalVisible() || !swipeActive) return;
-      if (!e.touches || e.touches.length !== 1) {
-        pinchInProgress = true;
-        swipeActive = false;
-        return;
-      }
-      if (swipeStartX === null || swipeStartY === null) return;
-      const dx = e.touches[0].clientX - swipeStartX;
-      const dy = e.touches[0].clientY - swipeStartY;
-      if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) + 4) {
-        e.preventDefault();
-      }
-    };
-    modal.ontouchend = e => {
-      if (!isModalVisible()) {
-        resetSwipeState();
-        return;
-      }
-      if (pinchInProgress) {
-        if (!e.touches || e.touches.length === 0) {
-          pinchInProgress = false;
-        }
-        resetSwipeState();
-        return;
-      }
-      if (!swipeActive || swipeStartX === null || swipeStartY === null) {
-        resetSwipeState();
-        return;
-      }
-      if (!e.changedTouches || !e.changedTouches.length) {
-        resetSwipeState();
-        return;
-      }
-      const deltaX = e.changedTouches[0].clientX - swipeStartX;
-      const deltaY = e.changedTouches[0].clientY - swipeStartY;
-      if (Math.abs(deltaX) > Math.abs(deltaY) + 8 && Math.abs(deltaX) >= 50) {
-        resolverSwipe(deltaX);
-        suppressBackdropClickUntil = Date.now() + 260;
-      }
-      resetSwipeState();
-    };
-    modal.ontouchcancel = () => {
-      resetSwipeState();
-    };
+
+    // Los gestos touch viejos se reemplazaron por pointer events.
+    modal.ontouchstart = null;
+    modal.ontouchmove = null;
+    modal.ontouchend = null;
+    modal.ontouchcancel = null;
 
     btnPrev.onclick = () => mostrarFotoModal((window.__fotoModalIndex ?? 0) - 1);
     btnNext.onclick = () => mostrarFotoModal((window.__fotoModalIndex ?? 0) + 1);
@@ -2774,7 +2944,9 @@ function initFotosPaciente() {
     };
 
     document.getElementById("input-foto").onchange = e => {
-        subirFotografia(e.target.files[0]);
+        encolarFotografias(e.target.files);
+        // Limpiar para poder volver a elegir los mismos archivos (si no, "change" no se dispara).
+        e.target.value = "";
     };
 
     document.getElementById("delete-foto").onclick = eliminarFotosSeleccionadas;
@@ -3156,6 +3328,8 @@ function initAutocompletePaciente() {
   input.addEventListener("input", e => {
     buscar(e.target.value.trim());
   });
+  // Ctrl+F enfoca el buscador y Escape cancela la busqueda (atajo compartido en web.js)
+  window.__registerViewSearch?.(input);
 }
 async function cargarPaciente(idPaciente) {
   const idPacienteNum = Number(idPaciente || 0);
@@ -3211,6 +3385,8 @@ async function cargarPaciente(idPaciente) {
       estadoP.value = estadoNormalizado;
       actualizarColorEstadoPaciente();
       fechaNacimientoP.value = toInputDate(p.fechaNacimientoP) || "";
+      // Pacientes creados antes del campo (o desde Agenda) vienen sin sexo: "Sin especificar".
+      document.getElementById("sexoP").value = ["F", "M"].includes(String(p.sexoP || "").toUpperCase()) ? String(p.sexoP).toUpperCase() : "";
       recomendadoP.value     = p.recomendadoP || "";
       encargadoP.value       = p.encargadoP || "";
       motivoConsultaP.value  = p.motivoConsultaP || "";
@@ -3260,15 +3436,19 @@ async function cargarPaciente(idPaciente) {
     if (isStaleRequest("detallePaciente", localSeq)) return false;
     if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteCargado) return false;
     const notaObservacionPaciente = String(p.notasObservacionP || "").trim();
+    const nombreNotaPaciente = String(p.NombreP || "Paciente").trim() || "Paciente";
+    // Las notas de proxima cita se cargan despues (con las citas) y se suman a esta campana.
+    avisoCampanaPaciente = {
+      patientId: idPacienteCargado,
+      patientName: nombreNotaPaciente,
+      note: notaObservacionPaciente,
+      nextVisitNotes: []
+    };
+    notasProximaAvisadasId = 0;
+    window.notasProximaCita = [];
+    renderNotasProximaCita();
     if (notaObservacionPaciente) {
-      const nombreNotaPaciente = String(p.NombreP || "Paciente").trim() || "Paciente";
-      if (typeof window.__setTopPatientObservationNotice === "function") {
-        window.__setTopPatientObservationNotice({
-          patientId: idPacienteCargado,
-          patientName: nombreNotaPaciente,
-          note: notaObservacionPaciente
-        });
-      }
+      actualizarCampanaPaciente();
       // Ademas de la campana, toast de advertencia con la nota. El toast ya suena
       // (warning), asi que la campana solo suena si no hay toast.
       if (typeof window.showToast === "function") {
@@ -3281,8 +3461,8 @@ async function cargarPaciente(idPaciente) {
       } else if (typeof window.playUiSound === "function") {
         window.playUiSound("bell", { minIntervalMs: 0 });
       }
-    } else if (typeof window.__clearTopPatientObservationNotice === "function") {
-      window.__clearTopPatientObservationNotice();
+    } else {
+      actualizarCampanaPaciente();
     }
     setPacienteCambiosPendientes(false);
     return true;
@@ -3306,6 +3486,7 @@ async function cargarCitasPaciente(idPaciente) {
     invalidateRequest("citasPaciente");
     window.citasPaciente = [];
     renderCitasPaciente();
+    void cargarNotasProximaCita(0);
     return;
   }
 
@@ -3330,6 +3511,9 @@ async function cargarCitasPaciente(idPaciente) {
     // renderizar tabla
     renderCitasPaciente();
 
+    // La vigencia de las notas de proxima cita depende de las citas: se recargan con ellas.
+    void cargarNotasProximaCita(idPacienteNum);
+
   } catch (err) {
     if (isAbortError(err)) return;
     console.error("Error cargando citas del paciente", err);
@@ -3337,6 +3521,210 @@ async function cargarCitasPaciente(idPaciente) {
     stopLd();
     endRequest("citasPaciente", req.controller);
   }
+}
+// ============= NOTAS PARA LA PROXIMA CITA ==============================
+// Indicaciones puntuales ("extraccion antes de la proxima cita", "endodoncia con Dr. X"), distintas
+// a la nota global del paciente. Vigente = aun no hay una cita con fecha posterior a la nota (lo
+// calcula el backend); las cumplidas quedan en el historial.
+function actualizarCampanaPaciente() {
+  const aviso = avisoCampanaPaciente;
+  const tieneAviso = aviso && Number(window.pacienteActual?.idPaciente || 0) === aviso.patientId
+    && (aviso.note || aviso.nextVisitNotes.length);
+  if (tieneAviso && typeof window.__setTopPatientObservationNotice === "function") {
+    window.__setTopPatientObservationNotice(aviso);
+  } else if (!tieneAviso && typeof window.__clearTopPatientObservationNotice === "function") {
+    window.__clearTopPatientObservationNotice();
+  }
+}
+function puedeModificarNotaProxima(nota) {
+  if (usuarioActualEsAdministrador()) return true;
+  const user = typeof window.getCurrentUser === "function" ? window.getCurrentUser() : null;
+  return Number(user?.idUsuario || 0) > 0 && Number(user.idUsuario) === Number(nota?.creadoPorUsuarioId || 0);
+}
+function formatFechaNotaProxima(iso) {
+  const [y, m, d] = String(iso || "").split("-");
+  return y && m && d ? `${d}-${m}-${y}` : String(iso || "");
+}
+function notasProximaDelPacienteActual() {
+  const idPac = Number(window.pacienteActual?.idPaciente || 0);
+  return (Array.isArray(window.notasProximaCita) ? window.notasProximaCita : [])
+    .filter((n) => idPac && Number(n.idPaciente) === idPac);
+}
+let notasProximaTablaFirma = "[]";
+function renderNotasProximaCita() {
+  // Tarjeta Notas (turna global + proxima cita) y Evolucion del expediente.
+  window.pacienteExpediente?.refreshNotasProxima?.();
+  // El historial completo va como filas amarillas en la tabla de citas: redibujar si cambio.
+  const firmaTabla = JSON.stringify(notasProximaDelPacienteActual());
+  if (firmaTabla !== notasProximaTablaFirma) {
+    notasProximaTablaFirma = firmaTabla;
+    renderCitasPaciente();
+  }
+  const wrap = document.getElementById("notas-proxima");
+  const list = document.getElementById("notas-proxima-list");
+  if (!wrap || !list) return;
+  const notas = notasProximaDelPacienteActual();
+  const vigentes = notas.filter((n) => n.vigente);
+  const tienePaciente = !!window.pacienteActual?.idPaciente;
+
+  const btnAdd = document.getElementById("notas-proxima-add");
+  if (btnAdd) btnAdd.disabled = !tienePaciente;
+  const count = wrap.querySelector(".notas-proxima-count");
+  if (count) {
+    count.textContent = vigentes.length ? String(vigentes.length) : "";
+    count.hidden = !vigentes.length;
+  }
+  const visibles = vigentes;
+  if (!visibles.length) {
+    list.innerHTML = `<li class="notas-proxima-empty">${tienePaciente ? "Sin indicaciones pendientes para la proxima cita" : "Seleccione un paciente"}</li>`;
+    return;
+  }
+  list.innerHTML = visibles.map((n) => {
+    const meta = [formatFechaNotaProxima(n.fechaNotaPC), n.creadoPor].filter(Boolean).join(" · ");
+    const estado = n.vigente
+      ? '<span class="notas-proxima-chip is-pendiente">Pendiente</span>'
+      : `<span class="notas-proxima-chip is-cumplida">Cita del ${escapeHtml(formatFechaNotaProxima(n.cumplidaEnCita))}</span>`;
+    const acciones = puedeModificarNotaProxima(n)
+      ? `<div class="notas-proxima-item-actions">
+          <button type="button" class="notas-proxima-btn" data-nota-proxima-edit="${n.idNotaPC}" title="Editar nota">Editar</button>
+          <button type="button" class="notas-proxima-btn is-danger" data-nota-proxima-delete="${n.idNotaPC}" title="Eliminar nota">Eliminar</button>
+        </div>`
+      : "";
+    return `
+      <li class="notas-proxima-item ${n.vigente ? "is-vigente" : "is-cumplida"}">
+        <div class="notas-proxima-item-main">
+          <div class="notas-proxima-item-text">${escapeHtml(n.notaPC)}</div>
+          <div class="notas-proxima-item-meta">${estado}<span>${escapeHtml(meta)}</span></div>
+        </div>
+        ${acciones}
+      </li>`;
+  }).join("");
+}
+async function cargarNotasProximaCita(idPaciente) {
+  const idPacienteNum = Number(idPaciente || 0);
+  if (!Number.isInteger(idPacienteNum) || idPacienteNum <= 0) {
+    invalidateRequest("notasProximaCita");
+    window.notasProximaCita = [];
+    renderNotasProximaCita();
+    return;
+  }
+  const req = beginRequest("notasProximaCita");
+  try {
+    const res = await fetch(`/api/paciente/${idPacienteNum}/notas-proxima-cita`, {
+      cache: "no-store",
+      signal: req.signal
+    });
+    const json = await res.json();
+    if (isStaleRequest("notasProximaCita", req.seq)) return;
+    if (Number(window.pacienteActual?.idPaciente || 0) !== idPacienteNum) return;
+    if (!json.ok) return;
+    if (json.migracionPendiente) {
+      console.warn(`Notas de proxima cita: falta aplicar la migracion ${json.migracionPendiente}`);
+    }
+
+    window.notasProximaCita = Array.isArray(json.data) ? json.data : [];
+    renderNotasProximaCita();
+
+    const vigentes = window.notasProximaCita.filter((n) => n.vigente).map((n) => n.notaPC);
+    if (avisoCampanaPaciente?.patientId === idPacienteNum) {
+      avisoCampanaPaciente.nextVisitNotes = vigentes;
+      actualizarCampanaPaciente();
+    }
+    // Toast solo la primera vez que se abre el paciente (no al recargar citas despues de guardar).
+    if (notasProximaAvisadasId !== idPacienteNum) {
+      notasProximaAvisadasId = idPacienteNum;
+      if (vigentes.length && typeof window.showToast === "function") {
+        const texto = vigentes.map((t) => (vigentes.length > 1 ? `• ${t}` : t)).join("\n");
+        window.showToast(texto, {
+          type: "warning",
+          title: `Indicaciones para la proxima cita: ${avisoCampanaPaciente?.patientName || "Paciente"}`,
+          duration: Math.min(15000, Math.max(7000, texto.length * 60))
+        });
+      }
+    }
+  } catch (err) {
+    if (isAbortError(err)) return;
+    console.error("Error cargando notas de proxima cita", err);
+  } finally {
+    endRequest("notasProximaCita", req.controller);
+  }
+}
+async function pedirTextoNotaProxima(valorInicial = "") {
+  const mensaje = "Indicacion para la proxima cita (ej. extraccion antes de la proxima cita, endodoncia con Dr. ...):";
+  const valor = typeof window.showSystemPrompt === "function"
+    ? await window.showSystemPrompt(mensaje, valorInicial, { title: "Nota para la proxima cita" })
+    : prompt(mensaje, valorInicial);
+  if (valor === null || valor === undefined) return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+  if (texto.length > MAX_NOTA_PROXIMA_CITA) {
+    alert(`La nota permite maximo ${MAX_NOTA_PROXIMA_CITA} caracteres (actual: ${texto.length}).`);
+    return null;
+  }
+  return texto;
+}
+async function guardarNotaProximaCita({ idNotaPC = 0, textoInicial = "" } = {}) {
+  const idPaciente = Number(window.pacienteActual?.idPaciente || 0);
+  if (!idPaciente || isSavingNotaProximaCita) return;
+  const texto = await pedirTextoNotaProxima(textoInicial);
+  if (!texto || texto === textoInicial) return;
+
+  isSavingNotaProximaCita = true;
+  try {
+    const res = await fetch(idNotaPC ? `/api/paciente/nota-proxima-cita/${idNotaPC}` : "/api/paciente/nota-proxima-cita", {
+      method: idNotaPC ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(idNotaPC ? { nota: texto } : { idPaciente, nota: texto })
+    });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.message);
+    await cargarNotasProximaCita(idPaciente);
+  } catch (err) {
+    console.error(err);
+    alert(err?.message || "No se pudo guardar la nota");
+  } finally {
+    isSavingNotaProximaCita = false;
+  }
+}
+async function eliminarNotaProximaCita(idNotaPC) {
+  const idPaciente = Number(window.pacienteActual?.idPaciente || 0);
+  if (!idPaciente || !idNotaPC || isSavingNotaProximaCita) return;
+  const ok = typeof window.showSystemConfirm === "function"
+    ? await window.showSystemConfirm("¿Eliminar esta nota para la proxima cita?", { title: "Eliminar nota", type: "warning" })
+    : confirm("¿Eliminar esta nota para la proxima cita?");
+  if (!ok) return;
+
+  isSavingNotaProximaCita = true;
+  try {
+    const res = await fetch(`/api/paciente/nota-proxima-cita/${idNotaPC}`, { method: "DELETE" });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.message);
+    await cargarNotasProximaCita(idPaciente);
+  } catch (err) {
+    console.error(err);
+    alert(err?.message || "No se pudo eliminar la nota");
+  } finally {
+    isSavingNotaProximaCita = false;
+  }
+}
+function initNotasProximaCita() {
+  document.getElementById("notas-proxima-add")
+    ?.addEventListener("click", () => guardarNotaProximaCita());
+  // Editar/Eliminar desde el bloque de pendientes o desde la fila amarilla de la tabla.
+  document.getElementById("citas-paciente-card")
+    ?.addEventListener("click", (e) => {
+      const btnEdit = e.target.closest("[data-nota-proxima-edit]");
+      const btnDelete = e.target.closest("[data-nota-proxima-delete]");
+      const id = Number(btnEdit?.dataset.notaProximaEdit || btnDelete?.dataset.notaProximaDelete || 0);
+      if (!id) return;
+      if (btnDelete) {
+        void eliminarNotaProximaCita(id);
+        return;
+      }
+      const nota = (window.notasProximaCita || []).find((n) => Number(n.idNotaPC) === id);
+      if (nota) void guardarNotaProximaCita({ idNotaPC: id, textoInicial: nota.notaPC });
+    });
+  renderNotasProximaCita();
 }
 function calcularEdad(fechaNacimiento) {
   if (!fechaNacimiento) return "";
@@ -7573,6 +7961,27 @@ function cerrarModalVerFirma() {
   const modal = document.getElementById("modal-ver-firma");
   if (modal) modal.style.display = "none";
 }
+function cerrarModalVerSello() {
+  const modal = document.getElementById("modal-ver-sello");
+  if (modal) modal.style.display = "none";
+}
+// Click sobre la firma o el sello del doctor en la tabla de citas -> verlo en grande.
+function registrarEventoZoomFirmaSello() {
+  if (window.__pacienteZoomFirmaSelloHandler) {
+    document.removeEventListener("click", window.__pacienteZoomFirmaSelloHandler);
+  }
+  window.__pacienteZoomFirmaSelloHandler = (e) => {
+    const box = e.target.closest?.("[data-cita-media][data-media-src]");
+    if (!box) return;
+    const esSello = box.dataset.citaMedia === "sello";
+    const modal = document.getElementById(esSello ? "modal-ver-sello" : "modal-ver-firma");
+    const img = document.getElementById(esSello ? "sello-img" : "firma-img");
+    if (!modal || !img) return;
+    img.src = box.dataset.mediaSrc;
+    modal.style.display = "flex";
+  };
+  document.addEventListener("click", window.__pacienteZoomFirmaSelloHandler);
+}
 async function guardarFirmaPaciente() {
   if (isSavingFirmaPaciente) return;
 
@@ -7613,7 +8022,7 @@ async function guardarFirmaPaciente() {
   }
 }
 async function guardarPaciente() {
-  if (isSavingPaciente) return;
+  if (isSavingPaciente) return false;
   const debeGuardarOdontograma = odontogramaTieneCambiosPendientes();
     
   const payload = {
@@ -7625,6 +8034,7 @@ async function guardarPaciente() {
     fechaRegistroP: fechaRegistroP.value,
     estadoP: estadoP.value === "" ? null : Number(estadoP.value),
     fechaNacimientoP: fechaNacimientoP.value || null,
+    sexoP: document.getElementById("sexoP").value || null,
     recomendadoP: recomendadoP.value,
     encargadoP: encargadoP.value,
     motivoConsultaP: motivoConsultaP.value,
@@ -7684,11 +8094,14 @@ async function guardarPaciente() {
     if (debeGuardarOdontograma) {
       await guardarOdontogramaEnBD();
     }
+    window.pacienteExpediente?.onGuardado();
+    return true;
 
   } catch (err) {
     console.error(err);
     window.saveFx?.error(btnGuardarPaciente);
     alert(" Error al guardar paciente");
+    return false;
   } finally {
     window.saveFx?.stop(btnGuardarPaciente);
     isSavingPaciente = false;
@@ -7714,7 +8127,22 @@ function renderCitasPaciente() {
   let lastVisibleFechaKey = "";
   let fechaGroupIndex = -1;
 
+  // Notas para la proxima cita: fila amarilla debajo de la ultima cita con fecha <= a la nota
+  // (normalmente la cita de ese mismo dia). Asi el historial queda en la tabla y se distingue
+  // que no es una cita sino una indicacion.
+  const notasTabla = notasProximaDelPacienteActual()
+    .filter((n) => !search || String(n.notaPC || "").toLowerCase().includes(search))
+    .sort((a, b) => String(a.fechaNotaPC).localeCompare(String(b.fechaNotaPC)) || a.idNotaPC - b.idNotaPC);
+  let notaIdx = 0;
+  const agregarNotasHasta = (limiteKey) => {
+    while (notaIdx < notasTabla.length && (limiteKey === null || String(notasTabla[notaIdx].fechaNotaPC) < limiteKey)) {
+      tbody.appendChild(crearFilaNotaProxima(notasTabla[notaIdx], fechaGroupIndex));
+      notaIdx += 1;
+    }
+  };
+
   vista.forEach((c, idx) => {
+      agregarNotasHasta(fechaLocalKey(c.fechaCP));
       const tr = document.createElement("tr");
       tr.dataset.rowIndex = String(idx);
       const idCita = getCitaPacienteId(c);
@@ -7733,19 +8161,8 @@ function renderCitasPaciente() {
       }
       tr.classList.add(fechaGroupIndex % 2 === 0 ? "cita-grupo-par" : "cita-grupo-impar");
       const procedimientoTxt = String(c.ProcedimientoCP || "");
-      const tieneDoctor = Number(c.idDoctor || 0) > 0;
       const esNotaMismaFecha = citaEsNotaObservacionMismaFecha(c, showFecha);
-      const puedeVer = tieneDoctor && citaPuedeVerFirmaSello(c);
-      const firmaSelloVisible = isCitasFirmaSelloVisibleEnabled();
       const accionHtml = esNotaMismaFecha ? renderEliminarCitaButton(idCita) : renderAccionCita(c, idCita);
-      const verDoctorHtml = esNotaMismaFecha || firmaSelloVisible
-        ? ""
-        : `<button
-        class="btn-ver-doctor"
-        data-doctor-id="${c.idDoctor}"
-        ${puedeVer ? "" : "disabled"}>
-        Ver
-        </button>`;
       const fechaHtml = showFecha
         ? (typeof window.__rvRenderFecha === "function"
           ? window.__rvRenderFecha(fechaTxt)
@@ -7761,7 +8178,6 @@ function renderCitasPaciente() {
         ? ""
         : `<div class="doctor-cell">
         <span class="doctor-nombre">${c.nombreDoctor || "-"}</span>
-        ${verDoctorHtml}
         </div>`;
       tr.innerHTML = `
         <td class="${showFecha ? "" : "cita-fecha-repetida"}">${fechaHtml}</td>
@@ -7774,7 +8190,44 @@ function renderCitasPaciente() {
       `;
       tbody.appendChild(tr);
     });
+  agregarNotasHasta(null);
   fx?.end();
+  window.pacienteExpediente?.refreshEvolucion();
+}
+// yyyy-mm-dd LOCAL de una fecha de cita (el servidor la manda con hora UTC).
+function fechaLocalKey(fechaISO) {
+  const raw = String(fechaISO || "").trim();
+  if (!raw || !raw.includes("T")) return raw.slice(0, 10);
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw.slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function crearFilaNotaProxima(n, fechaGroupIndex) {
+  const tr = document.createElement("tr");
+  tr.className = `cita-nota-proxima-row ${n.vigente ? "is-vigente" : "is-cumplida"} ${Math.max(0, fechaGroupIndex) % 2 === 0 ? "cita-grupo-par" : "cita-grupo-impar"}`;
+  tr.dataset.fxKey = `nota-${n.idNotaPC}`;
+  tr.dataset.fxSig = JSON.stringify(n);
+  const estado = n.vigente
+    ? '<span class="cita-nota-proxima-estado is-pendiente">Pendiente</span>'
+    : `<span class="cita-nota-proxima-estado is-cumplida">Cumplida · cita del ${escapeHtml(formatFechaNotaProxima(n.cumplidaEnCita))}</span>`;
+  const acciones = puedeModificarNotaProxima(n)
+    ? `<span class="cita-nota-proxima-acciones">
+        <button type="button" class="notas-proxima-btn" data-nota-proxima-edit="${n.idNotaPC}" title="Editar nota">Editar</button>
+        <button type="button" class="notas-proxima-btn is-danger" data-nota-proxima-delete="${n.idNotaPC}" title="Eliminar nota">Eliminar</button>
+      </span>`
+    : "";
+  tr.innerHTML = `
+    <td colspan="7">
+      <div class="cita-nota-proxima">
+        <span class="cita-nota-proxima-tag">Nota proxima cita</span>
+        <span class="cita-nota-proxima-fecha">${escapeHtml(formatFechaNotaProxima(n.fechaNotaPC))}</span>
+        <span class="cita-nota-proxima-texto">${escapeHtml(n.notaPC)}</span>
+        ${estado}
+        ${n.creadoPor ? `<span class="cita-nota-proxima-autor">${escapeHtml(n.creadoPor)}</span>` : ""}
+        ${acciones}
+      </div>
+    </td>`;
+  return tr;
 }
 function registrarEventoVerDoctor() {
   if (window.__pacienteVerDoctorHandler) {
@@ -8048,13 +8501,13 @@ function registrarEventoEliminarCita() {
 // ============= FUNCION PARA LIMPIAR TODO LO DE LA VISTA PACIENTE ====
 function limpiarVistaPaciente() {
   ocultarPacienteDetailShellInmediato();
+  window.pacienteExpediente?.setMode("form");
   ocultarPacienteLoadProgressInmediato();
   abortAllPacienteRequests();
   isSavingPaciente = false;
   isSavingCitaPaciente = false;
   isSavingFirmaPaciente = false;
   isSavingOdontogramaPaciente = false;
-  isUploadingFotoPaciente = false;
   isDeletingFotosPaciente = false;
   isSettingFotoPrincipalPaciente = false;
   isAuthorizingCitaPaciente = false;
@@ -8072,6 +8525,11 @@ function limpiarVistaPaciente() {
   window.ultimoOdontogramaId = null;
   window.pacienteFotoPrincipalId = null;
   window.__pacienteLoading = false;
+  window.notasProximaCita = [];
+  avisoCampanaPaciente = null;
+  notasProximaAvisadasId = 0;
+  isSavingNotaProximaCita = false;
+  renderNotasProximaCita();
   if (typeof window.__clearTopPatientObservationNotice === "function") {
     window.__clearTopPatientObservationNotice();
   }
@@ -8203,6 +8661,8 @@ function limpiarVistaPaciente() {
 
   const modalVerFirma = document.getElementById("modal-ver-firma");
   if (modalVerFirma) modalVerFirma.style.display = "none";
+  const modalVerSello = document.getElementById("modal-ver-sello");
+  if (modalVerSello) modalVerSello.style.display = "none";
 
   const odontoPieceModal = document.getElementById("odonto-piece-modal");
   if (odontoPieceModal) odontoPieceModal.classList.remove("is-open");
@@ -8312,13 +8772,16 @@ window.__mountPaciente = function () {
     isSavingCitaPaciente = false;
     isSavingFirmaPaciente = false;
     isSavingOdontogramaPaciente = false;
-    isUploadingFotoPaciente = false;
     isDeletingFotosPaciente = false;
     isSettingFotoPrincipalPaciente = false;
     isAuthorizingCitaPaciente = false;
 
     // 1a Renderizar TODA la vista paciente
     renderPaciente(content);
+    // Diseño de expediente (pacienteExpediente.js): mueve las tarjetas a su seccion, sin recrearlas.
+    window.__pacienteGuardar = guardarPaciente;
+    window.__pacienteSetCambiosPendientes = setPacienteCambiosPendientes;
+    window.pacienteExpediente?.mount();
     window.__pacienteLoading = false;
     setPacienteCambiosPendientes(false);
     clearOdontoSummaryHighlightState();
@@ -8359,16 +8822,9 @@ window.__mountPaciente = function () {
     blindarInputContraAutofill(citasSearch, "paciente-citas-search");
     citasSearch.addEventListener("input", renderCitasPaciente);
     }
-    const citasFirmaSelloToggle = document.getElementById("toggle-citas-firma-sello");
-    restoreCitasFirmaSelloToggle();
     initCitasDeleteToggle();
     bindPacienteSecurityProtocolSync();
-    if (citasFirmaSelloToggle) {
-      citasFirmaSelloToggle.addEventListener("change", () => {
-        savePacienteUiState({ citasFirmaSelloVisible: citasFirmaSelloToggle.checked === true });
-        renderCitasPaciente();
-      });
-    }
+    registrarEventoZoomFirmaSello();
     const citasDeleteToggle = document.getElementById("toggle-citas-delete");
     if (citasDeleteToggle) {
       citasDeleteToggle.addEventListener("change", renderCitasPaciente);
@@ -8376,6 +8832,7 @@ window.__mountPaciente = function () {
     // 7a Listeners de citas
     document.getElementById("citas-add")
         ?.addEventListener("click", abrirModalCita);
+    initNotasProximaCita();
 
     document.getElementById("modal-cita-cancel").onclick = cerrarModalCita;
 
@@ -8387,6 +8844,8 @@ window.__mountPaciente = function () {
         ?.addEventListener("click", onVerFirmaPaciente);
     document.getElementById("btn-cerrar-firma").onclick = cerrarModalFirmaPaciente;
     document.getElementById("modal-ver-cerrar").onclick = cerrarModalVerFirma;
+    const btnCerrarSello = document.getElementById("modal-ver-sello-cerrar");
+    if (btnCerrarSello) btnCerrarSello.onclick = cerrarModalVerSello;
      // 8a Listener de "guardar paciente
      document.getElementById("btn-guardar-paciente")
      .addEventListener("click", guardarPaciente);

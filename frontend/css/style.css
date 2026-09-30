@@ -407,6 +407,9 @@ body {
     padding: 24px;
     background: var(--bg-gray);
     overflow-y: auto;
+    /* Reserva el mismo espacio a ambos lados que ocupa la barra de scroll,
+       para que las vistas queden centradas respecto al navbar */
+    scrollbar-gutter: stable both-edges;
     width: 100%;
     /* 👇 CLAVE: centra TODAS las vistas */
     display: flex;
@@ -908,6 +911,8 @@ body[data-theme="princess"] .theme-btn .crown {
     --app-nav-active-bg: #edf5ff;
     --app-nav-active-border: #dceaff;
     --app-nav-active-shadow: 0 10px 24px rgba(39, 117, 245, 0.12);
+    --app-nav-pill-bg: linear-gradient(135deg, var(--app-primary), #2e8bff);
+    --app-nav-pill-shadow: 0 4px 12px rgba(39, 117, 245, 0.3);
     --app-control-bg: rgba(255, 255, 255, 0.72);
     --app-avatar-bg: linear-gradient(135deg, var(--app-primary), #2e8bff);
     --app-avatar-shadow: 0 10px 22px rgba(39, 117, 245, 0.26);
@@ -922,6 +927,22 @@ body {
     background:
         radial-gradient(circle at 72% 0%, var(--app-content-accent), transparent 30%),
         var(--app-background);
+}
+
+/* Ancho estandar de las 8 vistas (referencia: Agenda). Todas ocupan el ancho de .content
+   hasta --app-view-max-width y se centran; el margen lateral lo da solo el padding de .content. */
+.content > :is(.agenda-container, .paciente-container, .cola-container, .doctor-container,
+               .servicios-container, .cobro-view, .mensajes-view, .ms-container) {
+    width: min(var(--app-view-max-width), 100%);
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Estas vistas no son tarjeta: su padding lateral solo encogia el contenido. */
+.content > :is(.paciente-container, .cobro-view, .mensajes-view) {
+    padding-left: 0;
+    padding-right: 0;
 }
 
 .topbar {
@@ -1116,6 +1137,230 @@ body {
         max-width: 140px;
     }
 }
+/* Tablet (Galaxy Tab A9 con escala 1,5x: ~533 px vertical, ~893 px horizontal): menos margen
+   alrededor del topbar y de las vistas para que el contenido use casi todo el ancho. */
+@media (max-width: 900px) {
+    .topbar {
+        height: 60px;
+        margin: 8px 8px 0;
+    }
+    .content {
+        padding: 12px 8px;
+        scrollbar-gutter: auto;
+    }
+}
+
+/* =====================================================
+   TOPBAR NAV — ICONOS + DOCK (prueba2.html, variante 8)
+   Solo el activo muestra su nombre en una pastilla de color; el resto son iconos que crecen al
+   acercar el mouse (js/topbarNav.js pone --nav-icon-px en pixeles enteros). Crece con tamaño real,
+   no con transform: scale, para que el SVG se redibuje nitido. La linea escala con el icono (sin
+   non-scaling-stroke: fijarla en px la dejaba ~40% mas gruesa que el diseño a 18px).
+   Va despues de las reglas anteriores del menu (incluidas las de .dark-mode) para ganarles.
+===================================================== */
+/* El menu tiene scroll horizontal (recorta lo que sobresale): el padding deja espacio a la sombra de la
+   pastilla y el margen negativo lo compensa para no mover nada. */
+.topbar .sidebar-menu {
+    gap: 6px;
+    padding: 12px;
+    margin: -8px -10px;
+}
+
+.topbar .sidebar-menu .accordion,
+.dark-mode .topbar .sidebar-menu .accordion {
+    min-height: 42px;
+    padding: 0 12px;
+    gap: 0;
+    font-size: 13px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--app-text);
+    box-shadow: none;
+    transition: background 0.22s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.topbar .sidebar-menu .accordion .label {
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition:
+        max-width 0.5s var(--btn-ease-standard),
+        opacity 0.33s ease,
+        margin 0.5s var(--btn-ease-standard);
+}
+
+.topbar .sidebar-menu .accordion.active .label {
+    max-width: 140px;
+    opacity: 1;
+    margin-left: 8px;
+}
+
+.topbar .sidebar-menu .accordion:hover:not(.active),
+.dark-mode .topbar .sidebar-menu .accordion:hover:not(.active) {
+    background: transparent;
+    border-color: transparent;
+    color: var(--app-primary-dark);
+}
+
+.topbar .sidebar-menu .accordion.active,
+.dark-mode .topbar .sidebar-menu .accordion.active {
+    background: var(--app-nav-pill-bg);
+    border-color: transparent;
+    color: #fff;
+    box-shadow: var(--app-nav-pill-shadow);
+}
+
+.topbar .sidebar-menu .accordion.active .icon {
+    color: currentColor;
+}
+
+.topbar .sidebar-menu .accordion .icon,
+.topbar .sidebar-menu .accordion .icon svg {
+    width: var(--nav-icon-px, 18px);
+    height: var(--nav-icon-px, 18px);
+    transition: width 0.15s ease-out, height 0.15s ease-out;
+}
+
+/* El activo ya destaca con la pastilla: no crece, asi no empuja su texto. */
+.topbar .sidebar-menu .accordion.active .icon,
+.topbar .sidebar-menu .accordion.active .icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.topbar .sidebar-menu .accordion:focus-visible {
+    outline: 2px solid var(--app-primary);
+    outline-offset: 2px;
+}
+
+/* Lado derecho (tema, campana, cerrar sesion): mismo patron que el menu. Iconos de 18px sin caja que
+   crecen al acercar el mouse (js/topbarNav.js); el avatar baja a 36px para no verse mas grande. */
+.topbar .top-right {
+    gap: 4px;
+}
+
+.topbar .top-right .top-icon-btn,
+.topbar .top-right .theme-btn,
+.topbar .top-right .btn-logout {
+    width: 40px;
+    height: 42px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--app-text);
+    font-size: 13px;
+    white-space: nowrap;
+    transition: background 0.22s ease, color 0.25s ease, border-color 0.22s ease, transform 0.15s ease;
+}
+
+.topbar .top-right .btn-logout {
+    color: #b91c1c;
+}
+
+.dark-mode .topbar .top-right .btn-logout {
+    color: #fca5a5;
+}
+
+.topbar .top-right .top-icon-btn:hover,
+.topbar .top-right .theme-btn:hover {
+    background: transparent;
+    border-color: transparent;
+    color: var(--app-primary-dark);
+}
+
+.topbar .top-right .btn-logout:hover {
+    background: transparent;
+    border-color: transparent;
+    color: #dc2626;
+}
+
+.dark-mode .topbar .top-right .btn-logout:hover {
+    color: #fecaca;
+}
+
+/* Campana con aviso de suscripcion: se sigue notando (icono rojo con fondo suave). */
+.topbar .top-right .license-bell-btn.has-warning {
+    background: rgba(254, 226, 226, 0.72);
+    color: #b91c1c;
+}
+
+.dark-mode .topbar .top-right .license-bell-btn.has-warning {
+    background: rgba(127, 29, 29, 0.35);
+    color: #fecaca;
+}
+
+.topbar .top-right .top-icon-btn svg,
+.topbar .top-right .theme-btn svg,
+.topbar .top-right .btn-logout .logout-icon,
+.topbar .top-right .btn-logout .logout-icon svg {
+    width: var(--nav-icon-px, 18px);
+    height: var(--nav-icon-px, 18px);
+    transition: width 0.15s ease-out, height 0.15s ease-out;
+}
+
+/* Mismo grosor que el menu (1.7 sobre 24 = ~1.3px a 18px); la linea escala con el icono. */
+.topbar .top-right .top-icon-btn svg,
+.topbar .top-right .theme-btn svg,
+.topbar .top-right .btn-logout svg {
+    stroke-width: 1.7;
+}
+
+/* El icono del tema vive en un span inline: sin esto queda desalineado al crecer. */
+.topbar .top-right .theme-btn > span {
+    line-height: 0;
+}
+
+.topbar .top-right .user-avatar {
+    width: 36px;
+    height: 36px;
+    font-size: 12px;
+}
+
+/* Avatar SVG por rol (js/avatares.js, estilo claro): sin el degradado de las iniciales; linea fina a 36px. */
+.topbar .top-right .user-avatar.has-cav {
+    overflow: hidden;
+    background: none;
+    box-shadow: 0 6px 14px color-mix(in srgb, var(--app-primary) 22%, transparent);
+}
+
+.topbar .top-right .user-avatar .cav svg {
+    stroke-width: 1.1;
+}
+
+.topbar .top-right .user-info {
+    gap: 8px;
+    padding-left: 6px;
+}
+
+/* Auto-ocultar al hacer scroll (js/topbarNav.js pone .is-autohidden y --topbar-hide-offset).
+   El margen negativo devuelve el alto del topbar a .content, asi la vista gana espacio. */
+.topbar {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease,
+                margin-top 0.28s ease, transform 0.28s ease, opacity 0.2s ease;
+}
+
+.topbar.is-autohidden {
+    margin-top: calc(-1 * var(--topbar-hide-offset, 84px));
+    transform: translateY(-12px);
+    opacity: 0;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .topbar {
+        transition: none;
+    }
+    .topbar .sidebar-menu .accordion .label,
+    .topbar .sidebar-menu .accordion .icon,
+    .topbar .sidebar-menu .accordion .icon svg,
+    .topbar .top-right svg,
+    .topbar .top-right .logout-icon {
+        transition: none;
+    }
+}
+
 /* ===============================
    FORM CONTROLS — GLOBAL (AGENDA STYLE)
 =============================== */
@@ -1283,4 +1528,31 @@ textarea.form-control {
 .ui-toolbar-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Topbar en tablet vertical (~533 px): el menu tiene scroll horizontal y su margen negativo
+   (para la sombra de la pastilla) dejaba el ultimo icono recortado encima del boton de tema.
+   Sin nombre de usuario (queda el avatar) y con un desvanecido que indica que hay mas iconos. */
+@media (max-width: 640px) {
+    .topbar {
+        gap: 6px;
+        padding: 0 8px;
+    }
+    .topbar .sidebar-menu {
+        margin-right: 0;
+        padding-right: 16px;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent);
+    }
+    .topbar .top-right .user-text {
+        display: none;
+    }
+    .topbar .top-right .top-icon-btn,
+    .topbar .top-right .theme-btn,
+    .topbar .top-right .btn-logout {
+        width: 34px;
+    }
+    .topbar .top-right .user-info {
+        padding-left: 2px;
+    }
 }

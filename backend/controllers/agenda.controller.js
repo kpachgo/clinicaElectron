@@ -325,6 +325,7 @@ exports.listarPorFecha = async (req, res) => {
     );
 
     const data = firstResultSet(rows);
+    await adjuntarNotasProximaCita(data, fecha);
 
     return res.json({
       ok: true,
@@ -335,6 +336,81 @@ exports.listarPorFecha = async (req, res) => {
     return serverError(res, error, "Error al obtener la agenda");
   }
 };
+
+// Agrega `notasProximaCita` (indicaciones vigentes del paciente) a cada fila de la agenda del dia.
+// Paciente por pacienteIdAP; si la fila no lo tiene, por nombre exacto cuando es unico.
+// Si falla (ej. falta la migracion 2026-09-28) la agenda se devuelve igual, sin notas.
+async function adjuntarNotasProximaCita(data, fecha) {
+  if (!Array.isArray(data) || data.length === 0) return;
+  try {
+    const nombreKey = (v) => String(v || "").trim().toLowerCase();
+    const [agendaRows] = await pool.query(
+      "SELECT idAgendaAP, pacienteIdAP, nombreAP FROM agendapersona WHERE fechaAP = ?",
+      [fecha]
+    );
+    const infoPorAgenda = new Map(agendaRows.map((r) => [Number(r.idAgendaAP), r]));
+
+    const nombresSinId = [...new Set(
+      agendaRows.filter((r) => !r.pacienteIdAP).map((r) => nombreKey(r.nombreAP)).filter(Boolean)
+    )];
+    const idPorNombre = new Map();
+    if (nombresSinId.length) {
+      const [pacRows] = await pool.query(
+        "SELECT idPaciente, LOWER(TRIM(NombreP)) AS nombreKey FROM paciente WHERE LOWER(TRIM(NombreP)) IN (?)",
+        [nombresSinId]
+      );
+      const conteo = new Map();
+      pacRows.forEach((p) => conteo.set(p.nombreKey, (conteo.get(p.nombreKey) || 0) + 1));
+      pacRows.forEach((p) => {
+        if (conteo.get(p.nombreKey) === 1) idPorNombre.set(p.nombreKey, Number(p.idPaciente));
+      });
+    }
+
+    const pacientePorAgenda = new Map();
+    agendaRows.forEach((r) => {
+      const idPaciente = Number(r.pacienteIdAP || 0) || idPorNombre.get(nombreKey(r.nombreAP)) || 0;
+      if (idPaciente) pacientePorAgenda.set(Number(r.idAgendaAP), idPaciente);
+    });
+    const idsPaciente = [...new Set(pacientePorAgenda.values())];
+    if (!idsPaciente.length) return;
+
+    const [notas] = await pool.query(
+      `SELECT n.idNotaPC, n.idPaciente, DATE_FORMAT(n.fechaNotaPC, '%Y-%m-%d') AS fechaNotaPC,
+              n.notaPC, u.NombreU AS creadoPor
+       FROM paciente_nota_proxima_cita n
+       LEFT JOIN usuario u ON u.idUsuario = n.creadoPorUsuarioId
+       WHERE n.idPaciente IN (?)
+         AND n.fechaNotaPC <= ?
+         AND NOT EXISTS (
+           SELECT 1 FROM citaspaciente c
+           WHERE c.idPaciente = n.idPaciente
+             AND DATE(c.fechaCP) > n.fechaNotaPC
+         )
+       ORDER BY n.fechaNotaPC ASC, n.idNotaPC ASC`,
+      [idsPaciente, fecha]
+    );
+    const notasPorPaciente = new Map();
+    notas.forEach((n) => {
+      const key = Number(n.idPaciente);
+      if (!notasPorPaciente.has(key)) notasPorPaciente.set(key, []);
+      notasPorPaciente.get(key).push({
+        idNotaPC: Number(n.idNotaPC),
+        fechaNotaPC: n.fechaNotaPC,
+        notaPC: n.notaPC,
+        creadoPor: n.creadoPor || null
+      });
+    });
+
+    data.forEach((item) => {
+      const idAgenda = Number(item.idAgendaAP);
+      if (!infoPorAgenda.has(idAgenda)) return;
+      const lista = notasPorPaciente.get(pacientePorAgenda.get(idAgenda));
+      if (lista?.length) item.notasProximaCita = lista;
+    });
+  } catch (err) {
+    console.warn("Agenda: no se pudieron adjuntar notas de proxima cita:", err?.code || err?.message || err);
+  }
+}
 
 exports.listarMes = async (req, res) => {
   try {
@@ -406,6 +482,9 @@ exports.obtenerPorId = async (req, res) => {
     if (!row) {
       return notFound(res, "Cita de agenda no encontrada");
     }
+    // La verificacion tras crear/editar pinta la fila con esta respuesta: debe traer las
+    // indicaciones de proxima cita igual que el listado del dia (si no, el icono no aparece).
+    await adjuntarNotasProximaCita([row], row.fechaAP);
 
     return res.json({
       ok: true,

@@ -1,5 +1,6 @@
 (function () {
   const IN_MS = 320;
+  const DIR_MS = 400; // deslizar segun la posicion en el menu (--spa-view-dir-ms)
   let transitionSeq = 0;
 
   function wait(ms) {
@@ -18,6 +19,7 @@
     const el = host || document.querySelector(".content");
     if (!el) return;
     el.classList.remove("spa-view-in", "spa-view-out", "spa-animating");
+    delete el.dataset.spaDir;
   }
 
   window.__cancelSpaTransition = function cancelSpaTransition(options = {}) {
@@ -40,11 +42,15 @@
       return;
     }
 
+    // options.dir: 1 = la vista esta a la derecha en el menu (entra desde la derecha), -1 = a la izquierda.
+    const dir = options.dir > 0 ? "next" : options.dir < 0 ? "prev" : "";
+
     try {
       await nextFrame();
       if (localSeq !== transitionSeq) return;
+      if (dir) el.dataset.spaDir = dir;
       el.classList.add("spa-animating", "spa-view-in");
-      await wait(IN_MS);
+      await wait(dir ? DIR_MS : IN_MS);
     } finally {
       if (localSeq === transitionSeq) {
         clearTransitionClasses(el);

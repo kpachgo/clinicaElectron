@@ -492,6 +492,8 @@
     }
 
     searchInput?.addEventListener("input", aplicarFiltro);
+    // Ctrl+F enfoca el buscador y Escape lo borra (atajo compartido en web.js)
+    window.__registerViewSearch?.(searchInput);
 
     if (window.__setViewCleanup) {
       window.__setViewCleanup(() => {

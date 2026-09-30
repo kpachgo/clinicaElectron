@@ -36,6 +36,8 @@ body[data-theme="vampire"] {
   --app-nav-active-bg: #094771;
   --app-nav-active-border: #007acc;
   --app-nav-active-shadow: 0 10px 24px rgba(0, 122, 204, 0.16);
+  --app-nav-pill-bg: linear-gradient(135deg, #007acc, #1f8ad2);
+  --app-nav-pill-shadow: 0 4px 12px rgba(0, 122, 204, 0.32);
   --app-control-bg: rgba(31, 31, 31, 0.88);
   --app-avatar-bg: linear-gradient(135deg, #007acc, #4ec9b0);
   --app-avatar-shadow: 0 10px 22px rgba(0, 122, 204, 0.24);

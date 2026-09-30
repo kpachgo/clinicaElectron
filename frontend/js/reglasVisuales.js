@@ -106,7 +106,8 @@
       }
 
       const categoriaResto = categoriaPorToken(resto);
-      return `<span class="rv-cita-num">${escapeHtml(numero)}</span> <span class="rv-chip rv-${categoriaResto}">${escapeHtml(resto)}</span>`;
+      // Numero y texto juntos: con texto largo el chip se parte en lineas pero el numero queda a su lado.
+      return `<span class="rv-cita-item"><span class="rv-cita-num">${escapeHtml(numero)}</span><span class="rv-chip rv-${categoriaResto}">${escapeHtml(resto)}</span></span>`;
     }
 
     const categoria = categoriaPorToken(clean);

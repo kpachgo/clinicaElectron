@@ -349,6 +349,29 @@
       end
     };
   }
+  // Servicios de varias palabras: la busqueda usa solo la palabra del cursor ("me" en "control me"),
+  // asi que al elegir "Control Mensual" tambien se reemplazan las palabras anteriores que ya forman
+  // el inicio del servicio ("control "). Sin esto quedaba "control Control Mensual".
+  function extenderInicioConPalabrasDelServicio(value, start, end, nombreServicio) {
+    const clave = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+    const servicio = clave(nombreServicio);
+    let mejor = start;
+    let pos = start;
+    for (let palabras = 0; palabras < 6 && pos > 0; palabras++) {
+      let p = pos;
+      while (p > 0 && /\s/.test(value[p - 1])) p--;
+      if (p === pos || p === 0) break; // debe haber un espacio y una palabra antes
+      const finPalabra = p;
+      while (p > 0 && isTokenChar(value[p - 1])) p--;
+      if (p === finPalabra) break; // antes del espacio no hay palabra (ej. una coma)
+      // Se sigue hacia atras aunque no coincida ("de orto" no es inicio de "Control de ortodoncia",
+      // pero "control de orto" si): gana el tramo mas largo que sea inicio del servicio.
+      const tramo = clave(value.slice(p, end));
+      if (tramo && servicio.startsWith(tramo)) mejor = p;
+      pos = p;
+    }
+    return mejor;
+  }
   function soloDigitos(value) {
     return String(value || "").replace(/\D+/g, "");
   }
@@ -409,12 +432,62 @@
     if (!td) return;
     const safeNombre = String(nombre || "").trim();
     const isDuplicate = options?.duplicate === true;
+    const notas = Array.isArray(options?.notas) ? options.notas : [];
     td.classList.toggle("agenda-nombre-duplicado", isDuplicate);
+    td.classList.toggle("has-nota-proxima", notas.length > 0);
     if (isDuplicate) {
       td.innerHTML = `<strong class="agenda-duplicate-name">${escapeHtml(safeNombre)}</strong>`;
-      return;
+    } else {
+      td.textContent = safeNombre;
     }
-    td.textContent = safeNombre;
+    if (notas.length) {
+      const mark = document.createElement("span");
+      mark.className = "agenda-nota-proxima-mark";
+      mark.setAttribute("aria-label", "Indicaciones para la proxima cita");
+      mark.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>${notas.length > 1 ? `<b>${notas.length}</b>` : ""}`;
+      td.appendChild(mark);
+    }
+    td.__notasProximaCita = notas;
+  }
+
+  // Tooltip de "Indicaciones para la proxima cita" (mismo estilo que el comentario del Monitor).
+  let notaProximaTooltipEl = null;
+  function showNotaProximaTooltip(anchor) {
+    const notas = anchor?.__notasProximaCita;
+    if (!Array.isArray(notas) || !notas.length) return;
+    if (!notaProximaTooltipEl) {
+      notaProximaTooltipEl = document.createElement("div");
+      notaProximaTooltipEl.className = "agenda-nota-proxima-tooltip";
+      notaProximaTooltipEl.setAttribute("role", "tooltip");
+      document.body.appendChild(notaProximaTooltipEl);
+    }
+    const el = notaProximaTooltipEl;
+    el.innerHTML = `
+      <div class="agenda-nota-proxima-tooltip-title">Indicaciones para la proxima cita</div>
+      ${notas.map((n) => `
+        <div class="agenda-nota-proxima-tooltip-item">
+          <div class="agenda-nota-proxima-tooltip-text">${escapeHtml(n.notaPC)}</div>
+          <div class="agenda-nota-proxima-tooltip-meta">${escapeHtml([isoToDDMMYYYY(n.fechaNotaPC), n.creadoPor].filter(Boolean).join(" · "))}</div>
+        </div>`).join("")}
+    `;
+    el.classList.add("is-open");
+    const rect = anchor.getBoundingClientRect();
+    const tipRect = el.getBoundingClientRect();
+    const margin = 8;
+    const left = Math.max(margin, Math.min(rect.left, window.innerWidth - tipRect.width - margin));
+    let top = rect.bottom + 6;
+    if (top + tipRect.height > window.innerHeight - margin) {
+      top = Math.max(margin, rect.top - tipRect.height - 6);
+    }
+    el.style.left = `${Math.round(left)}px`;
+    el.style.top = `${Math.round(top)}px`;
+  }
+  function hideNotaProximaTooltip() {
+    notaProximaTooltipEl?.classList.remove("is-open");
+  }
+  function bindNotaProximaTooltip(td) {
+    td.addEventListener("mouseenter", () => showNotaProximaTooltip(td));
+    td.addEventListener("mouseleave", hideNotaProximaTooltip);
   }
   function getAgendaFechaIsoItem(item) {
     const fechaIso = String(item?._fechaISO || "").trim();
@@ -765,6 +838,7 @@
       contacto: item.contactoAP,
       estado: item.estadoAP || "Pendiente",
       comentario: item.comentarioAP,
+      notasProximaCita: Array.isArray(item.notasProximaCita) ? item.notasProximaCita : [],
       sms: normalizarBanderaContacto(item.smsAP),
       llamada: normalizarBanderaContacto(item.llamadaAP),
       presente: normalizarBanderaContacto(item.presenteAP)
@@ -2647,6 +2721,7 @@
         start = Number.isInteger(tokenActual?.start) ? tokenActual.start : value.length;
         end = Number.isInteger(tokenActual?.end) ? tokenActual.end : start;
       }
+      start = extenderInicioConPalabrasDelServicio(value, start, end, nombreServicio);
 
       const nextValue = value.slice(0, start) + nombreServicio + value.slice(end);
       const nextPos = start + nombreServicio.length;
@@ -3410,7 +3485,8 @@
     function renderCellValue(value) {
       if (campo === "nombre") {
         renderAgendaNombreCell(td, value, {
-          duplicate: agendaItemYaExisteEnLista(item, agendaData.filter((candidate) => candidate !== item))
+          duplicate: agendaItemYaExisteEnLista(item, agendaData.filter((candidate) => candidate !== item)),
+          notas: item.notasProximaCita
         });
       } else {
         td.textContent = value;
@@ -3762,8 +3838,10 @@
         const tdNombre = document.createElement("td");
         tdNombre.classList.add("agenda-col-nombre");
         renderAgendaNombreCell(tdNombre, item.nombre, {
-          duplicate: Number(duplicateCounts.get(item) || 0) > 1
+          duplicate: Number(duplicateCounts.get(item) || 0) > 1,
+          notas: item.notasProximaCita
         });
+        bindNotaProximaTooltip(tdNombre);
         tdNombre.classList.add("editable");
         aplicarRefuerzoVisualNombre(tdNombre, item.estado);
         tdNombre.addEventListener("dblclick", () => editarTexto(tdNombre, item, "nombre"));
@@ -3776,7 +3854,7 @@
             <small>${escapeHtml(horaParts.period)}</small>
           </span>
         `;
-        tdHora.classList.add("editable");
+        tdHora.classList.add("editable", "agenda-col-hora");
         aplicarRefuerzoVisualHora(tdHora, item.hora);
         tdHora.addEventListener("dblclick", () => editarHora(tdHora, item));
 
@@ -3910,6 +3988,7 @@
 
         // Acciones (iconos compactos)
         const tdAcciones = document.createElement("td");
+        tdAcciones.classList.add("agenda-col-acciones");
         tdAcciones.style.textAlign = "center";
         const actionsWrap = document.createElement("div");
         actionsWrap.className = "agenda-actions";
@@ -4502,6 +4581,10 @@
       aplicarFiltros();
       persistAgendaUiState();
     });
+    // Ctrl+F enfoca el buscador y Escape lo borra (atajo compartido en web.js)
+    window.__registerViewSearch?.(searchInput, {
+      canFocus: () => !isAgendaModalOpen() && !isAgendaCriticalSaveInProgress()
+    });
     estadoFilter.addEventListener("change", () => {
       aplicarFiltros();
       persistAgendaUiState();
@@ -4561,6 +4644,10 @@
       window.__setViewCleanup(() => {
         if (isAgendaCriticalSaveInProgress()) {
           return;
+        }
+        if (notaProximaTooltipEl) {
+          notaProximaTooltipEl.remove();
+          notaProximaTooltipEl = null;
         }
         if (window.__agendaDateNavKeydownHandler) {
           document.removeEventListener("keydown", window.__agendaDateNavKeydownHandler);

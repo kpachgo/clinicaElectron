@@ -10,6 +10,25 @@
 - `frontend/js/paciente.js`: monta la vista, renderiza HTML, integra API de paciente/citas/fotos y orquesta odontograma.
 - `frontend/js/odontograma.js`: motor completo del odontograma (UI, modos, serializacion JSON, reconstruccion, API global).
 - `frontend/css/odontograma.css`: estilos de odontograma normal, menu flotante y modal de seleccion por pieza.
+- `frontend/js/pacienteExpediente.js` + `frontend/css/pacienteExpediente.css`: diseño de expediente (aprobado en `prueba.html`, opcion 3). Ver seccion "Expediente (diseño)".
+
+## Expediente (diseño)
+- No recrea nada: `pacienteExpediente.mount()` (llamado en `__mountPaciente` justo despues de `renderPaciente`) crea `.pe` dentro de `#paciente-detail-shell` y MUEVE las tarjetas existentes (mismos ids/eventos) a paneles `.pe-panel[data-pe-sec]`: filiacion (Datos Personales), historia (Datos Clinicos; se le mueven `motivoConsultaP` y `ultimaVisitaP`), odontograma, endodoncia, diagnostico (incluye `notasObservacionP` y el boton Guardar), fotos (`#fotos-paciente-card`), citas (`#citas-paciente-card`). La `<img>` de foto principal pasa al avatar del perfil (visible solo con clase `is-clickable`, o sea foto real); la tarjeta de foto queda oculta (`pe-hidden-card`).
+- Tarjetas identificadas por el texto de `.paciente-titulo` o por id: si se renombra un titulo en `renderPaciente`, actualizar `SECS` en pacienteExpediente.js.
+- Modos: `is-exp` (paciente cargado: lectura tipo documento; "Editar" muestra el formulario actual solo de esa seccion con barra Guardar cambios/Cancelar; Cancelar restaura los valores y dispara `change`) e `is-form` (nuevo/limpiar: tarjetas apiladas como antes, con "Guardar Paciente"). Enganches en paciente.js: `onPacienteCargado()` en `cargarPacienteCompleto`, `setMode("form")` en `limpiarVistaPaciente`, `onGuardado()` en `guardarPaciente` (que ahora devuelve true/false), `refreshEvolucion()` al final de `renderCitasPaciente`. Expuestos: `window.__pacienteGuardar`, `window.__pacienteSetCambiosPendientes`.
+- Disposicion: perfil + menu (contraible, recordado en `localStorage` `clinica-paciente-exp-collapsed`) | Etiquetas/Notas/Alergias arriba (alergias = lineas con "alergi" de historia medica, o de notas si no hay) | seccion | Evolucion (citas con fecha <= hoy, fecha local como la tabla). A lo ancho (sin tarjetas de arriba ni Evolucion): odontograma (lleno o vacio), endodoncia, diagnostico, fotos, citas. Solo Filiacion e Historia clinica muestran tarjetas de arriba + Evolucion. En tablets se gana espacio contrayendo el panel izquierdo. (Se descarto desplegar el odontograma vacio abajo de todo: dejaba un hueco vacio arriba.)
+- Diseño del buscador (estilo Agenda, en pacienteExpediente.css): sin titulo "Buscador" y con la etiqueta solo para lectores de pantalla; campo de 40px con lupa (imagen de fondo); fila en cuadricula `1fr auto auto` (antes 60%+15%+15% dejaba 10% vacio). Container query: con el buscador <= 720px, campo arriba y los dos botones mitad y mitad abajo. Anula el `@media (max-width: 900px)` de paciente.css que pone las `.p-row` en columna.
+- Buscador (`.paciente-busqueda`): en modo `is-exp` se oculta (`pe-search-hidden`) y aparece una pestaña vertical fija en el borde derecho junto a la barra de scroll de `.content` (`.pe-search-tab`, dentro de `.pe`; `--pe-tab-right`); clic la muestra (sube `.content` y enfoca `#buscar-paciente-p`) o la vuelve a ocultar. Al cargar otro paciente se oculta de nuevo. En `is-form` siempre visible y sin pestaña. (Se descarto el ocultar/mostrar por scroll.)
+- Encabezado `.pe-head` (estilo `.ms-header` del Monitor): "Expediente clinico" / "Historia medica, odontograma, citas y radiografias del paciente"; en `is-form`: "Nuevo paciente" / "Complete los datos para crear el expediente" (textos en `setMode`).
+- Odontograma responsive (en pacienteExpediente.css): `.odontograma-scale-container` es container query (`container-type: inline-size`, sin scroll lateral). Dentro, `--odo-tooth = min(66px, (100cqi - 15*gap)/16)`: la fila adulta de 16 dientes siempre cabe (66px maximo como antes). Etiqueta, nota e imagen del modo visual escalan con `--odo-tooth`. Reglas limitadas al recuadro: el diente clonado del modal "Seleccion por pieza" no cambia. Medido: 1920px -> 66px, 1340px -> 51px, 800px -> 37px, 600px -> 27px.
+- Registro de citas sin scroll lateral (solo en `.pe-panel[data-pe-sec="citas"]`): sin `min-width: 800px`; procedimiento (col 2) y doctor (col 6) pueden ir en 2 lineas, fecha y montos no; firma/sello en cuadros de 64px. Container query sobre `.citas-table-wrap`: <= 820px firma y sello apilados y sin etiqueta; <= 600px cada cita es una ficha (thead oculto; fila 1 fecha + procedimiento, fila 2 VALOR/ABONO/SALDO con etiqueta por `::before`, fila 3 doctor + accion). `overflow-x: auto` queda como respaldo para no cortar datos. Si cambia el orden de columnas en `renderCitasPaciente`, ajustar los `nth-child`.
+- Tamaño real de la tablet (Galaxy Tab A9, 1340x800 fisicos con escala del navegador 1,5x): vertical ~533 px de ancho, horizontal ~893 x ~450 px. Las dos orientaciones caen en `<= 900px`.
+- Ajustes tablet (2026-09-30): `.content` con padding 12px 8px y topbar de 60px con margen 8px (`style.css`); titulo de la vista sin subtitulo y oculto en horizontal (`max-height: 560px`); tarjetas de arriba sin alto minimo; `.pe-search-tab` pasa a boton redondo de 50px abajo a la derecha (solo icono, `.lbl` para lectores de pantalla) y `.pe.is-exp` deja 64px abajo para que no tape la ultima fila. El topbar ademas se auto-oculta al hacer scroll (ver `01_general.md`).
+- Registro de citas en vertical (container `<= 600px`): ficha: `Fecha + Tratamiento` (el tratamiento sigue en 2a linea al lado de la fecha si es largo) y `Valor Abono Saldo` a la izquierda + `Doctor` a la derecha; firma y sello en una 3a linea a la derecha, debajo del doctor (salto con `tr::after`). En horizontal queda la tabla.
+- Datos de Informacion/Historia (`.pe-fields`) en dos columnas hasta 420px (antes una columna desde 640px); los largos (correo, direccion, motivo, examen, diagnostico, notas) siguen a todo el ancho con `wide`. Con el panel contraido guardado, en `<= 900px` nombre/edad/iconos se muestran con selectores `:not()` extra (la regla de contraido tiene 5 clases; el `display: revert` anterior perdia y el perfil quedaba solo con el avatar).
+- Tablets (<= 900px): perfil compacto y menu de iconos en una barra horizontal arriba; contenido a todo el ancho; boton de contraer oculto. <= 640px: perfil y menu apilados, tarjetas de arriba y campos en una columna.
+- La animacion de entrada de las secciones (`pe-in`) usa `fill-mode: backwards`: con `both` quedaba un `transform` aplicado y los modales `position:fixed` de las tarjetas (Seleccion por pieza, Dictado, impresion) quedaban encerrados en la seccion. No poner transform/filter persistentes en ancestros de las tarjetas.
+- Se corrigio en `renderPaciente` un `</div>` faltante de la tarjeta Odontograma: Diagnostico, Fotos y Citas quedaban anidadas dentro de ella.
 
 ## Estado global usado en Paciente
 - `window.pacienteActual`
@@ -28,6 +47,7 @@
 4. Carga historial de odontogramas y ultimo odontograma del paciente.
 5. Edicion y guardado de datos del paciente.
 6. Gestion de fotos (subir/listar/eliminar/foto principal).
+   - Subida multiple (2026-09-30): `#input-foto` con `multiple`; `encolarFotografias()` mete cada archivo en `fotoUploadQueue` (con su `pacienteId` y vista previa `URL.createObjectURL`) y `procesarColaFotos()` las sube de a una a `POST /api/foto-paciente`, recargando la lista tras cada una. Las pendientes se dibujan al final de `#fotos-grid` (`.foto-item-subiendo`: previa atenuada + spinner, "En cola"/"Subiendo..."; no abren el visor). Si se cambia de paciente, las que faltan se suben igual a su paciente. Errores se juntan y se avisan al final en un solo alert. El input se limpia tras elegir (permite repetir los mismos archivos).
 7. Gestion de citas (crear/editar inline/listar/autorizar/eliminar).
 - UX de carga:
   - al montar la vista solo queda visible el buscador.
@@ -393,7 +413,7 @@
 - Esta vista queda afectada en los endpoints de lectura de paciente.
 - Cuando el protocolo esta ON:
   - `GET /api/paciente/search` (SP `sp_paciente_buscar_ligero`) solo retorna `Odontologia`.
-  - `GET /api/paciente/:id` (SP `sp_paciente_get_by_id`) no devuelve fila para pacientes fuera de `Odontologia`.
+  - `GET /api/paciente/:id` (SP `sp_paciente_get_by_id_v2`, antes `sp_paciente_get_by_id`) no devuelve fila para pacientes fuera de `Odontologia`. El filtro esta copiado en ambos SP: si se cambia, cambiarlo en los dos.
 - Impacto UX:
   - pacientes de `Ortodoncia` dejan de aparecer en busquedas/carga durante el modo ON.
   - al volver OFF, reaparecen sin perder datos.
@@ -442,3 +462,27 @@
   - Posiciones aproximadas: si una pieza queda desfasada, ajustar por pieza en `getOdontoVisualCariesPoint`.
 - Pendiente si se continua: extender a obturacion, fractura, corona, etc. con el mismo mecanismo; validar en la app
   real (solo se verifico en una pagina de prueba con las imagenes y CSS reales).
+
+## Sexo del paciente y avatar sin foto (2026-09-25)
+- Campo `paciente.sexoP CHAR(1) NULL`: `'F'`, `'M'` o `NULL` (sin especificar). Migracion `backend/sql/2026-09-25_paciente_sexo.sql`.
+- Compatibilidad con versiones desplegadas: la migracion solo AGREGA (columna nullable + SP nuevos).
+  - Guardar: `sp_paciente_guardar_v3` (30 params, `p_sexoP` despues de `p_fechaNacimientoP`). `sp_paciente_guardar` (28) y `_v2` (29) no se tocan; su UPDATE no escribe `sexoP`, asi que lo conservan.
+  - Leer: `sp_paciente_get_by_id_v2` = copia de `sp_paciente_get_by_id` + `sexoP`. El original no se toca.
+  - Orden al desplegar: primero el SQL, despues el backend (si no, guardar falla porque `_v3` no existe).
+- Backend (`paciente.controller.js`): `guardarPaciente` valida `sexoP` (`F`, `M` o vacio -> `NULL`); `obtenerPorId` llama `_v2`.
+- Frontend:
+  - `paciente.js`: select `#sexoP` (Sin especificar / Femenino / Masculino) en Datos Personales, en `PACIENTE_EDITABLE_IDS`, carga y payload de guardado. Pacientes anteriores al campo o creados desde Agenda quedan "Sin especificar".
+  - `pacienteExpediente.js`: "Sexo" en la lectura de Informacion; el circulo del perfil (sin foto principal) muestra un avatar SVG en lugar de iniciales (`pintarAvatar`, solo redibuja si cambia).
+- Avatares (`js/avatares.js` + `css/avatares.css`, diseño aprobado en `frontend/prueba2.html`, estilo "suave"):
+  - Bebe 0-5 · niño/niña 6-11 · adolescente 12-22 · adulto/a 23-33 · adulto con barba / adulta con moño 34-59 · adulto/a mayor 60+.
+  - Sin sexo: bebe hasta 5 años y figura neutra despues.
+  - Linea de 1.6px en pantalla (`vector-effect: non-scaling-stroke`); a 44px (panel contraido, tablet/movil) 1.1px.
+
+## Notas para la proxima cita (2026-09-28)
+- Distintas a la nota global `notasObservacionP` (esa se mantiene hasta borrarla). Son indicaciones puntuales: "extraccion antes de la proxima cita", "endodoncia con Dr. X" (doctor en texto libre).
+- Tabla `paciente_nota_proxima_cita` (`idNotaPC`, `idPaciente`, `fechaNotaPC`, `notaPC` 500, `creadoPorUsuarioId`, `creadoEn`). Migracion `backend/sql/2026-09-28_paciente_nota_proxima_cita.sql` (SPs `sp_paciente_nota_proxima_listar/crear/actualizar/eliminar`). Orden al desplegar: primero el SQL, despues el backend.
+- Vigencia calculada, sin columna de estado: vigente mientras no exista en `citaspaciente` una cita con `DATE(fechaCP) > fechaNotaPC`. Al registrar la siguiente cita deja de avisar sola y queda en el historial con `cumplidaEnCita`; si se borra esa cita vuelve a estar vigente. `fechaNotaPC` = dia real del servidor al crearla.
+- API: `GET /api/paciente/:id/notas-proxima-cita`, `POST /api/paciente/nota-proxima-cita`, `PUT|DELETE /api/paciente/nota-proxima-cita/:id`. Editar/eliminar solo el autor o Administrador (403 si no). Sin migracion, el GET responde `data: []` + `migracionPendiente` para no romper la vista.
+- UI (`paciente.js`): bloque `#notas-proxima` dentro de Registro de Citas (boton "Nota proxima cita" + solo las pendientes). El historial completo va en la tabla de citas: cada nota es una fila amarilla (`tr.cita-nota-proxima-row`, un solo `td colspan=7`) debajo de la ultima cita con fecha <= a la nota (`crearFilaNotaProxima`, fecha local via `fechaLocalKey`); pendientes amarillo fuerte, cumplidas suave. La tabla se redibuja cuando cambian las notas (`notasProximaTablaFirma`). Se recarga al final de cada `cargarCitasPaciente` (la vigencia depende de las citas). Al abrir el paciente: toast de advertencia una sola vez (`notasProximaAvisadasId`) y la campana suma las vigentes (`avisoCampanaPaciente.nextVisitNotes` -> `normalizePatientBellNotice` en web.js).
+- Agenda: `listarPorFecha` agrega `notasProximaCita` a cada fila (paciente por `pacienteIdAP` o nombre exacto unico; solo notas con `fechaNotaPC <= fecha` de la agenda). En el nombre aparece una burbuja ambar y al pasar el mouse un tooltip con las indicaciones (estilo del comentario del Monitor).
+- Expediente (`pacienteExpediente.js`): la tarjeta Notas turna cada 6 s (pausa con hover, puntos indicadores) la nota global + las de proxima cita vigentes (chip "Antes de la proxima cita"). Evolucion intercala todas las notas de proxima cita en su fecha, arriba de la cita de ese dia: pendientes en amarillo fuerte, cumplidas en amarillo suave. `renderNotasProximaCita()` llama `pacienteExpediente.refreshNotasProxima()`.

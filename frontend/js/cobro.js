@@ -668,12 +668,17 @@
       </div>
     </div>
 
-    <div id="reporte-mensual-modal" class="cobro-modal" hidden>
+    <div id="reporte-mensual-modal" class="cobro-modal is-tab-analisis" hidden>
       <div class="cobro-modal-backdrop" data-cobro-modal-close="1"></div>
       <div class="cobro-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="reporte-mensual-modal-title">
         <div class="cobro-modal-header">
           <h3 id="reporte-mensual-modal-title">Reporte mensual por pacientes</h3>
           <button id="btn-cerrar-reporte-mensual" class="btn-cobro-secondary" type="button">Cerrar</button>
+        </div>
+
+        <div class="rm-tabs" role="tablist" aria-label="Vistas del reporte mensual">
+          <button id="rm-tab-analisis" class="rm-tab" type="button" role="tab" data-rm-tab="analisis" aria-selected="true" aria-controls="reporte-mensual-analisis">Analisis</button>
+          <button id="rm-tab-pacientes" class="rm-tab" type="button" role="tab" data-rm-tab="pacientes" aria-selected="false" aria-controls="reporte-mensual-panel-pacientes" tabindex="-1">Pacientes</button>
         </div>
 
         <div class="cuenta-controls cobro-modal-controls">
@@ -695,7 +700,7 @@
           <button id="btn-reporte-mensual-pdf" class="btn-cobro-secondary" type="button">PDF</button>
         </div>
 
-        <div class="cuenta-table-wrap">
+        <div id="reporte-mensual-panel-pacientes" class="cuenta-table-wrap" role="tabpanel" aria-labelledby="rm-tab-pacientes" hidden>
           <table class="cuenta-table">
             <thead>
               <tr>
@@ -726,6 +731,8 @@
             </div>
           </div>
         </div>
+
+        <div id="reporte-mensual-analisis" class="rm-analisis" role="tabpanel" aria-labelledby="rm-tab-analisis"></div>
       </div>
     </div>
 
@@ -733,12 +740,15 @@
       <div class="cobro-modal-backdrop" data-cobro-modal-close="1"></div>
       <div class="cobro-modal-dialog cobro-modal-dialog-faltantes" role="dialog" aria-modal="true" aria-labelledby="faltantes-cobro-modal-title">
         <div class="cobro-modal-header">
-          <h3 id="faltantes-cobro-modal-title">Faltantes de cobro (En Cola)</h3>
+          <div class="faltantes-cobro-heading">
+            <h3 id="faltantes-cobro-modal-title">Faltantes de cobro</h3>
+            <p class="faltantes-cobro-meta">
+              <span id="faltantes-cobro-fecha">-</span>
+              <span aria-hidden="true">&middot;</span>
+              <span>Pacientes atendidos en En Cola que aun no tienen cuenta</span>
+            </p>
+          </div>
           <button id="btn-cerrar-faltantes-cobro" class="btn-cobro-secondary" type="button">Cerrar</button>
-        </div>
-
-        <div class="faltantes-cobro-meta">
-          <span id="faltantes-cobro-fecha">Fecha: -</span>
         </div>
 
         <div class="faltantes-cobro-resumen">
@@ -746,13 +756,18 @@
             <span>Atendidos en cola</span>
             <strong id="faltantes-cobro-atendidos">0</strong>
           </article>
-          <article class="faltantes-cobro-kpi">
+          <article class="faltantes-cobro-kpi is-success">
             <span>Cobrados</span>
             <strong id="faltantes-cobro-cobrados">0</strong>
+            <div class="faltantes-cobro-progress" aria-hidden="true">
+              <span id="faltantes-cobro-progress-bar" style="width:0%"></span>
+            </div>
+            <small id="faltantes-cobro-progress-label">0% del dia cobrado</small>
           </article>
           <article class="faltantes-cobro-kpi is-danger">
             <span>Faltantes</span>
             <strong id="faltantes-cobro-total">0</strong>
+            <small>Pendientes de cobrar</small>
           </article>
         </div>
 
@@ -763,8 +778,8 @@
                 <th class="faltantes-col-paciente">Paciente</th>
                 <th class="faltantes-col-hora">Hora</th>
                 <th class="faltantes-col-procedimiento">Procedimiento</th>
-                <th class="faltantes-col-sugerencia">Sugerencia</th>
-                <th class="faltantes-col-accion">Accion</th>
+                <th class="faltantes-col-sugerencia">Valor / Saldo</th>
+                <th class="faltantes-col-accion" aria-label="Accion"></th>
               </tr>
             </thead>
             <tbody id="faltantes-cobro-tbody"></tbody>
@@ -824,6 +839,9 @@
     const reporteMensualCantidadBox = document.getElementById("reporte-mensual-cantidad");
     const reporteMensualTotalBox = document.getElementById("reporte-mensual-total");
     const reporteMensualTotalGlobalBox = document.getElementById("reporte-mensual-total-global");
+    const reporteMensualTabs = Array.from(document.querySelectorAll("#reporte-mensual-modal [data-rm-tab]"));
+    const reporteMensualPanelPacientes = document.getElementById("reporte-mensual-panel-pacientes");
+    const reporteMensualAnalisisRoot = document.getElementById("reporte-mensual-analisis");
     const faltantesCobroModal = document.getElementById("faltantes-cobro-modal");
     const btnCerrarFaltantesCobro = document.getElementById("btn-cerrar-faltantes-cobro");
     const faltantesCobroFecha = document.getElementById("faltantes-cobro-fecha");
@@ -860,6 +878,7 @@
       doctores: { seq: 0, controller: null },
       serviciosMensual: { seq: 0, controller: null },
       reporteMensual: { seq: 0, controller: null },
+      reporteAnalisis: { seq: 0, controller: null },
       faltantes: { seq: 0, controller: null }
     };
     const cobroUiStateKey = `ui_state_cobro_${getUiStateUserId()}`;
@@ -1175,8 +1194,15 @@
       };
 
       if (faltantesCobroFecha) {
-        faltantesCobroFecha.textContent = `Fecha: ${formatearFechaCorta(fecha) || "-"}`;
+        faltantesCobroFecha.textContent = formatearFechaCorta(fecha) || "-";
       }
+      const pctCobrado = safeResumen.atendidosCola > 0
+        ? Math.min(100, Math.round((safeResumen.cobrados / safeResumen.atendidosCola) * 100))
+        : 0;
+      const progressBar = document.getElementById("faltantes-cobro-progress-bar");
+      const progressLabel = document.getElementById("faltantes-cobro-progress-label");
+      if (progressBar) progressBar.style.width = `${pctCobrado}%`;
+      if (progressLabel) progressLabel.textContent = `${pctCobrado}% del dia cobrado`;
       if (faltantesCobroAtendidos) faltantesCobroAtendidos.textContent = String(safeResumen.atendidosCola);
       if (faltantesCobroCobrados) faltantesCobroCobrados.textContent = String(safeResumen.cobrados);
       if (faltantesCobroTotal) faltantesCobroTotal.textContent = String(safeResumen.faltantes);
@@ -1186,8 +1212,14 @@
       tbodyFaltantesCobro.innerHTML = "";
       if (!rows.length) {
         tbodyFaltantesCobro.innerHTML = `
-          <tr>
-            <td colspan="6" style="text-align:center;color:#64748b">No hay faltantes por cobrar</td>
+          <tr class="faltantes-cobro-empty-row">
+            <td colspan="5">
+              <div class="faltantes-cobro-empty">
+                <span class="faltantes-cobro-empty-icon" aria-hidden="true">&#10003;</span>
+                <strong>Todo cobrado</strong>
+                <span>No hay pacientes atendidos pendientes de cobro para esta fecha.</span>
+              </div>
+            </td>
           </tr>
         `;
         fx?.end();
@@ -1197,11 +1229,8 @@
       rows.forEach((row, index) => {
         const isExpanded = faltantesCobroExpandedRows.has(index);
         const procedimientoTexto = row.procedimientoCitaHoy || "";
-        const procedimientoVisible = row.procedimientoExpandible && !isExpanded
-          ? `${procedimientoTexto.slice(0, 50)}...`
-          : procedimientoTexto;
-        const procedimientoHtml = procedimientoVisible
-          ? escapeHtml(procedimientoVisible)
+        const procedimientoHtml = procedimientoTexto
+          ? renderProcedimientoVisual(procedimientoTexto)
           : "-";
         const procedimientoToggleHtml = row.procedimientoExpandible
           ? `
@@ -1215,9 +1244,8 @@
           : "";
         const suggestionHtml = `
           <div class="faltante-cobro-suggestion">
-            <span><strong>Valor:</strong> ${escapeHtml(precioUSD(row.valorCitaHoy))}</span>
-            <span class="faltante-cobro-suggestion-separator" aria-hidden="true">•</span>
-            <span><strong>Saldo:</strong> ${escapeHtml(precioUSD(row.saldoCitaHoy))}</span>
+            <span class="faltante-cobro-money"><small>Valor</small><strong>${escapeHtml(precioUSD(row.valorCitaHoy))}</strong></span>
+            <span class="faltante-cobro-money${row.saldoCitaHoy > 0 ? " has-saldo" : ""}"><small>Saldo</small><strong>${escapeHtml(precioUSD(row.saldoCitaHoy))}</strong></span>
           </div>
         `;
         const disabledAttr = row.resolved && row.idPaciente ? "" : "disabled";
@@ -1228,8 +1256,8 @@
         tr.dataset.fxKey = [row.idPaciente, row.nombrePaciente, row.horaAgenda].map((v) => String(v ?? "")).join("|");
         tr.dataset.fxSig = JSON.stringify(row);
         tr.innerHTML = `
-          <td>${escapeHtml(row.nombrePaciente || "-")}</td>
-          <td style="text-align:center">${escapeHtml(formatearHoraCola(row.horaAgenda))}</td>
+          <td class="faltante-cobro-paciente">${escapeHtml(row.nombrePaciente || "-")}</td>
+          <td style="text-align:center"><span class="faltante-cobro-hora">${escapeHtml(formatearHoraCola(row.horaAgenda) || "-")}</span></td>
           <td>
             <div class="faltante-procedimiento-cell${isExpanded ? " is-expanded" : ""}">
               <div class="faltante-procedimiento-content${isExpanded ? " is-expanded" : ""}">
@@ -1242,7 +1270,7 @@
           <td style="text-align:center">
             <button
               type="button"
-              class="btn-cobro-secondary faltante-cobro-action-btn"
+              class="faltante-cobro-action-btn"
               data-row-index="${index}"
               title="${escapeHtml(actionTitle)}"
               aria-label="${escapeHtml(actionTitle)}"
@@ -1279,7 +1307,7 @@
           ? window.toothSpinner.tableRowHtml(tbodyFaltantesCobro, "Cargando faltantes...")
           : `
           <tr>
-            <td colspan="6" style="text-align:center;color:#64748b">Cargando faltantes...</td>
+            <td colspan="5" style="text-align:center;color:#64748b">Cargando faltantes...</td>
           </tr>
         `;
       }
@@ -1316,7 +1344,7 @@
         if (tbodyFaltantesCobro) {
           tbodyFaltantesCobro.innerHTML = `
             <tr>
-              <td colspan="6" style="text-align:center;color:#64748b">No se pudieron cargar los faltantes</td>
+              <td colspan="5" style="text-align:center;color:#64748b">No se pudieron cargar los faltantes</td>
             </tr>
           `;
         }
@@ -1772,6 +1800,8 @@
     }, 350);
 
     inputPaciente.addEventListener("input", (e) => buscarPaciente(e.target.value.trim()));
+    // Ctrl+F enfoca el buscador de paciente y Escape lo borra (atajo compartido en web.js)
+    window.__registerViewSearch?.(inputPaciente);
     inputServicio.addEventListener("input", (e) => buscarServicio(e.target.value.trim()));
     formaPagoSelect.addEventListener("change", () => {
       actualizarEstadoFlujo();
@@ -2346,6 +2376,101 @@
       } finally {
         stopLd();
         endRequest("reporteMensual", req.controller);
+      }
+    }
+
+    // ---- Pestana "Analisis" del reporte mensual (graficas en cobroAnalisis.js) ----
+    let reporteMensualTab = "analisis";
+    let reporteAnalisisKeyCargada = null;
+
+    function getFiltrosReporteMensual() {
+      return {
+        mes: String(inputReporteMensualMes?.value || "").trim(),
+        idServicio: String(selectReporteMensualServicio?.value || "").trim(),
+        idDoctor: String(selectReporteMensualDoctor?.value || "").trim(),
+        formaPago: String(selectReporteMensualFormaPago?.value || "").trim()
+      };
+    }
+
+    async function cargarAnalisisReporteMensual() {
+      if (!isCobroViewActive() || !reporteMensualAnalisisRoot || !window.cobroAnalisis) return;
+      const filtros = getFiltrosReporteMensual();
+      const key = JSON.stringify(filtros);
+      if (!filtros.mes) {
+        invalidateRequest("reporteAnalisis");
+        reporteAnalisisKeyCargada = key;
+        window.cobroAnalisis.renderMensaje(reporteMensualAnalisisRoot, "Seleccione un mes para ver el analisis");
+        return;
+      }
+
+      const req = beginRequest("reporteAnalisis");
+      const localSeq = req.seq;
+      window.cobroAnalisis.setLoading(reporteMensualAnalisisRoot, true);
+
+      try {
+        const query = new URLSearchParams({ mes: filtros.mes });
+        if (filtros.idServicio) query.set("idServicio", filtros.idServicio);
+        if (filtros.idDoctor) query.set("idDoctor", filtros.idDoctor);
+        if (filtros.formaPago) query.set("formaPago", filtros.formaPago);
+
+        const res = await fetch(
+          `/api/cuenta/reporte-mensual-analisis?${query.toString()}`,
+          req.signal ? { signal: req.signal, cache: "no-store" } : { cache: "no-store" }
+        );
+        const json = await res.json();
+        if (isStaleRequest("reporteAnalisis", localSeq)) return;
+        if (!json.ok) {
+          reporteAnalisisKeyCargada = null;
+          window.cobroAnalisis.renderMensaje(
+            reporteMensualAnalisisRoot,
+            json.message || "Error al cargar el analisis del reporte mensual"
+          );
+          return;
+        }
+        if (JSON.stringify(getFiltrosReporteMensual()) !== key) return;
+
+        reporteAnalisisKeyCargada = key;
+        window.cobroAnalisis.render(reporteMensualAnalisisRoot, json, { labelFormaPago: labelFormaPagoAnalisis });
+      } catch (err) {
+        if (isAbortError(err) || isStaleRequest("reporteAnalisis", localSeq)) return;
+        console.error(err);
+        reporteAnalisisKeyCargada = null;
+        window.cobroAnalisis.renderMensaje(reporteMensualAnalisisRoot, "Opps ocurrio un error de conexion");
+      } finally {
+        endRequest("reporteAnalisis", req.controller);
+      }
+    }
+
+    function labelFormaPagoAnalisis(valor) {
+      const v = String(valor || "").trim().toLowerCase();
+      if (v === "efectivo") return "Efectivo";
+      if (v === "tarjeta") return "Tarjeta";
+      if (v === "igs") return igsDisplayLabel();
+      if (v === "transferencia") return "Transferencia";
+      return labelFormaPago(valor);
+    }
+
+    function setReporteMensualTab(tab, { cargar = true } = {}) {
+      reporteMensualTab = tab === "analisis" ? "analisis" : "pacientes";
+      const esAnalisis = reporteMensualTab === "analisis";
+      reporteMensualTabs.forEach((btn) => {
+        const activo = btn.dataset.rmTab === reporteMensualTab;
+        btn.setAttribute("aria-selected", activo ? "true" : "false");
+        btn.tabIndex = activo ? 0 : -1;
+      });
+      if (reporteMensualPanelPacientes) reporteMensualPanelPacientes.hidden = esAnalisis;
+      if (reporteMensualAnalisisRoot) reporteMensualAnalisisRoot.hidden = !esAnalisis;
+      reporteMensualModal?.classList.toggle("is-tab-analisis", esAnalisis);
+      if (cargar && esAnalisis && reporteAnalisisKeyCargada !== JSON.stringify(getFiltrosReporteMensual())) {
+        cargarAnalisisReporteMensual();
+      }
+    }
+
+    // Los filtros del modal alimentan ambas pestanas; el analisis solo se pide si esta visible.
+    function refrescarReporteMensual() {
+      cargarReporteMensual();
+      if (reporteMensualTab === "analisis") {
+        cargarAnalisisReporteMensual();
       }
     }
 
@@ -3016,10 +3141,12 @@
     });
     btnAbrirReporteMensual?.addEventListener("click", () => {
       abrirReporteMensualModal();
+      // Siempre abre en "Analisis"; la carga la hace refrescarReporteMensual al tener los catalogos.
+      setReporteMensualTab("analisis", { cargar: false });
       Promise.all([
         Promise.resolve(cargarServiciosReporteMensual()),
         Promise.resolve(cargarDoctoresCuenta())
-      ]).then(() => cargarReporteMensual());
+      ]).then(() => refrescarReporteMensual());
     });
     btnCerrarReporteMensual?.addEventListener("click", cerrarReporteMensualModal);
     reporteMensualModal?.addEventListener("click", (e) => {
@@ -3055,7 +3182,7 @@
       };
       document.addEventListener("keydown", window.__cobroModalEscHandler);
     }
-    inputReporteMensualMes?.addEventListener("change", cargarReporteMensual);
+    inputReporteMensualMes?.addEventListener("change", refrescarReporteMensual);
     inputReporteMensualPacienteSearch?.addEventListener("input", () => {
       renderReporteMensual(
         reporteMensualActual,
@@ -3063,12 +3190,23 @@
         reporteMensualTotalesGlobalActual
       );
     });
-    selectReporteMensualServicio?.addEventListener("change", cargarReporteMensual);
+    selectReporteMensualServicio?.addEventListener("change", refrescarReporteMensual);
     selectReporteMensualDoctor?.addEventListener("change", () => {
       aplicarColorDoctorCuentaSelect(selectReporteMensualDoctor, selectReporteMensualDoctor.value, true);
-      cargarReporteMensual();
+      refrescarReporteMensual();
     });
-    selectReporteMensualFormaPago?.addEventListener("change", cargarReporteMensual);
+    selectReporteMensualFormaPago?.addEventListener("change", refrescarReporteMensual);
+    reporteMensualTabs.forEach((btn) => {
+      btn.addEventListener("click", () => setReporteMensualTab(btn.dataset.rmTab));
+      btn.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        const idx = reporteMensualTabs.indexOf(btn);
+        const next = reporteMensualTabs[(idx + (e.key === "ArrowRight" ? 1 : -1) + reporteMensualTabs.length) % reporteMensualTabs.length];
+        setReporteMensualTab(next.dataset.rmTab);
+        next.focus();
+      });
+    });
 
     cuentaSearch.addEventListener("input", () => {
       aplicarFiltroCuenta();

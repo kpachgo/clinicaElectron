@@ -1,0 +1,54 @@
+/* avatares.css - Avatares SVG de js/avatares.js (aprobados en prueba2.html).
+   .cav        contenedor circular; el SVG lo llena.
+   .cav-suave  pacientes (vista Paciente): trazo azul oscuro sobre degradado celeste.
+   .cav-claro  usuario del topbar: trazo azul sobre degradado azul claro.
+   Colores desde el tema (--app-*): en temas oscuros el fondo sale de la superficie oscura. */
+.cav {
+    --cav-ink: var(--app-primary, #2775f5);
+    --cav-skin: var(--app-surface, #fff);
+    --cav-ring: transparent;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    overflow: hidden;
+    color: var(--cav-ink);
+    background: var(--cav-ring);
+}
+
+.cav svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Linea de grosor fijo en pantalla (1.6px) en tamaños de tarjeta; en los chicos se afina (ver abajo). */
+.cav svg * { vector-effect: non-scaling-stroke; }
+.cav .sk { fill: var(--cav-skin); }
+.cav .fl { fill: currentColor; }
+.cav .gap { stroke: var(--cav-skin); }
+.cav.is-small svg { stroke-width: 1.1; }
+
+.cav-suave {
+    --cav-ink: var(--app-primary-dark, #185ed1);
+    --cav-ring: linear-gradient(160deg,
+        color-mix(in srgb, var(--app-primary, #2775f5) 12%, var(--app-surface, #fff)),
+        color-mix(in srgb, var(--app-secondary, #18bfd0) 18%, var(--app-surface, #fff)));
+}
+
+.cav-claro {
+    --cav-ink: var(--app-primary, #2775f5);
+    --cav-ring: linear-gradient(135deg,
+        color-mix(in srgb, var(--app-primary, #2775f5) 12%, var(--app-surface, #fff)),
+        color-mix(in srgb, var(--app-primary, #2775f5) 24%, var(--app-surface, #fff)));
+}
+
+/* En temas oscuros --app-primary-dark es un azul muy claro: el trazo se lee sobre fondo oscuro. */
+.dark-mode .cav-suave { --cav-ink: var(--app-primary-dark, #bfdbfe); }
+
+.cav-in { animation: cav-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@keyframes cav-in { from { transform: scale(0.8); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+    .cav-in { animation: none; }
+}

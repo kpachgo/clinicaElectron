@@ -15,7 +15,7 @@
   - `light` sigue como tema predeterminado y ahora usa refresh azul clinico del chrome principal.
   - `style.css` agrega variables `--app-*` para topbar, contenido, botones superiores, nav activo y avatar.
   - `theme-light.css` conserva la paleta base clara y ajustes del odontograma por pieza.
-  - `web.js` renderiza iniciales en `#top-user-avatar`; `index.html` incluye ese nodo en la topbar.
+  - `web.js` (`renderTopUser`) pone en `#top-user-avatar` el avatar SVG del rol (`window.clinicaAvatares.usuario(user.rol)`, `js/avatares.js`, estilo "claro": figura neutra + accesorio: Doctor bata/estetoscopio, Asistente gorro/mascarilla, Administrador traje, Recepcion diadema, Redes globito, otro credencial). Si el modulo no carga, vuelve a las iniciales.
 - Agenda:
   - autocomplete de servicios en `Comentario` reemplaza solo el token actual, evitando duplicar texto como `promo Promo Rellenos`.
 - Paciente:
@@ -60,7 +60,22 @@
   - el sonido `notebook-tab-changed.ogg` se dispara en click del menu lateral (`.accordion`).
   - el estado visual `active` del menu no se cambia por click directo; se sincroniza solo con `syncActiveAccordion(viewName)` cuando `loadView(name)` si cambia de vista.
   - si un guard de salida cancela la navegacion (ej. cambios sin guardar), el foco visual del menu se mantiene en la vista actual.
-  - iconografia actual del topbar/menu: SVG inline estilo `Heroicons outline` (sin CDN), usando `stroke=\"currentColor\"` para respetar tema.
+  - iconografia actual del topbar/menu: SVG inline estilo `Heroicons outline` (sin CDN), usando `stroke=\"currentColor\"` para respetar tema. Mensajes tambien usa SVG (antes era el caracter `✉`).
+  - menu "iconos + dock" (elegido en `frontend/prueba2.html`, variante 8; estilos en `style.css` "TOPBAR NAV — ICONOS + DOCK", logica en `js/topbarNav.js`):
+    - solo el activo muestra su nombre en una pastilla de color (`--app-nav-pill-bg` / `--app-nav-pill-shadow`, definidas por tema); el resto son iconos sin nombre ni tooltip.
+    - los botones de la derecha (tema, campana, cerrar sesion) siguen el mismo patron: iconos de 18px sin caja que tambien crecen; la campana con aviso conserva fondo rojo suave; avatar de 36px.
+    - los iconos crecen al acercar el mouse (hasta ~32px). Crecen con tamaño real en pixeles enteros (`--nav-icon-px`), no con `transform: scale`: asi el SVG no se ve borroso. El trazo escala con el icono (`stroke-width` 1.7 sobre 24); no usar `vector-effect: non-scaling-stroke`, deja la linea ~40% mas gruesa a 18px.
+  - la vista nueva entra deslizandose desde el lado de su boton en el menu (`menuDirectionBetween` en `web.js` -> `options.dir` en `__animateSpaTransition`, `data-spa-dir` en `.content`). Sin direccion (login, recarga, vista abierta por codigo) queda la animacion vertical de siempre.
+  - atajos globales (`js/topbarNav.js`, pasan por el mismo clic del menu: sonido, permisos, `loadView`):
+    - `Ctrl + ←/→`: vista anterior/siguiente (circular). No actua mientras se escribe en un campo (ahi `Ctrl + flecha` salta palabras).
+    - `Ctrl + 1..9`: vista por posicion entre las visibles segun el rol.
+    - ignoran la repeticion de tecla sostenida y no actuan si un modal/overlay tapa el menu.
+    - `Alt + ←/→` NO se usa para vistas: cambia la fecha en Agenda y Cobros.
+  - auto-ocultar al hacer scroll (todas las vistas, pensado para la tablet 1340x800; `bindAutoHide` en `js/topbarNav.js`, CSS `.topbar.is-autohidden` en `style.css`):
+    - bajar ~28px oculta el topbar con margen negativo (`--topbar-hide-offset` = su alto), asi `.content` gana ese espacio; subir ~20px, llegar arriba (<48px), cambiar de vista, mouse en el borde superior o foco con teclado lo muestran.
+    - escucha `scroll` en captura: cubre `.content` y listas con scroll propio dentro de la vista (ej. `.pe-evo`); ignora scrollers de menos de 180px de alto (dropdowns).
+    - no oculta si al ganar el alto ya no quedaria scroll (evita bucle mostrar/ocultar) ni con el panel de la campana abierto. API: `window.topbarAutoHide.show()/hide()/isHidden()`.
+  - tablet: `<= 900px` topbar de 60px con margen 8px y `.content` con padding 12px 8px; `<= 640px` sin nombre de usuario (queda el avatar), botones derechos de 34px y el menu sin margen derecho negativo + desvanecido al final (antes el ultimo icono recortado quedaba encima del boton de tema).
 
 ## Sesion y usuario
 - Token en `localStorage.token`.

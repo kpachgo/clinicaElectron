@@ -1033,6 +1033,8 @@ body[data-theme="princess"] .paciente-container .citas-table tbody tr:hover td {
     align-items: center;
     overflow: hidden;
     z-index: 10000;
+    touch-action: none;
+    overscroll-behavior: contain;
 }
 .foto-modal-img {
     display: block;
@@ -1044,9 +1046,46 @@ body[data-theme="princess"] .paciente-container .citas-table tbody tr:hover td {
     border-radius: 10px;
     background: #ffffff;
     box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-    touch-action: pinch-zoom;
+    touch-action: none;
     -webkit-user-drag: none;
     user-select: none;
+    transform-origin: center center;
+    cursor: zoom-in;
+}
+.foto-modal-img.is-animating {
+    transition: transform 0.22s ease;
+}
+.foto-modal.is-zoomed .foto-modal-img {
+    cursor: grab;
+    border-radius: 0;
+}
+.foto-modal.is-zoomed .foto-modal-img:active {
+    cursor: grabbing;
+}
+/* Circulo del doble toque/clic (paciente.js -> mostrarPulsoZoom) */
+.foto-modal-zoom-pulse {
+    position: fixed;
+    width: 64px;
+    height: 64px;
+    margin: -32px 0 0 -32px;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.35), 0 0 18px rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+    z-index: 3;
+    animation: fotoZoomPulseIn 0.45s ease-out forwards;
+}
+.foto-modal-zoom-pulse.is-out {
+    animation-name: fotoZoomPulseOut;
+}
+@keyframes fotoZoomPulseIn {
+    from { transform: scale(0.35); opacity: 1; }
+    to { transform: scale(1.6); opacity: 0; }
+}
+@keyframes fotoZoomPulseOut {
+    from { transform: scale(1.6); opacity: 1; }
+    to { transform: scale(0.35); opacity: 0; }
 }
 body.foto-modal-open {
     overflow: hidden;
@@ -1342,6 +1381,24 @@ body.foto-modal-open {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+}
+.cita-doctor-media-box.is-zoomable {
+  padding: 0;
+  font: inherit;
+  cursor: zoom-in;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.cita-doctor-media-box.is-zoomable:hover,
+.cita-doctor-media-box.is-zoomable:focus-visible {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+  transform: translateY(-1px);
+  outline: none;
+}
+#modal-ver-firma .firma-img,
+#modal-ver-sello .firma-img {
+  max-height: 70vh;
+  object-fit: contain;
 }
 .cita-doctor-media-img {
   width: 100%;
@@ -1899,6 +1956,7 @@ body.foto-modal-open {
 .dark-mode #modal-cita-paciente .modal-content,
 .dark-mode #modal-autorizar-cita .modal-content,
 .dark-mode #modal-ver-firma .modal-content,
+.dark-mode #modal-ver-sello .modal-content,
 .dark-mode #modal-doctor-info .modal-content {
     background: var(--pac-card-bg);
     border: 1px solid var(--pac-card-border);
@@ -1908,6 +1966,7 @@ body.foto-modal-open {
 .dark-mode #modal-cita-paciente h2,
 .dark-mode #modal-autorizar-cita h2,
 .dark-mode #modal-ver-firma h2,
+.dark-mode #modal-ver-sello h2,
 .dark-mode #modal-doctor-info h2 {
     color: var(--pac-title);
 }
@@ -1927,6 +1986,7 @@ body.foto-modal-open {
 }
 
 .dark-mode #modal-ver-firma .firma-img,
+.dark-mode #modal-ver-sello .firma-img,
 .dark-mode .modal-info-doctor .doctor-img-box {
     border-color: var(--pac-input-border);
     background: #101b2d;
@@ -1974,4 +2034,272 @@ body.foto-modal-open {
     background: var(--pac-disabled-bg);
     color: var(--pac-disabled-text);
     border-color: var(--pac-disabled-border);
+}
+
+/* =======================================================
+   NOTAS PARA LA PROXIMA CITA (Registro de Citas)
+   Se usa #notas-proxima para ganarle a la regla generica de botones de .paciente-card.
+======================================================= */
+#notas-proxima {
+    --np-bg: #fffbeb;
+    --np-border: #fcd34d;
+    --np-accent: #b45309;
+    --np-chip-bg: #fef3c7;
+    --np-muted: #78716c;
+    --np-done-bg: #f8fafc;
+    --np-done-border: #e2e8f0;
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--np-border);
+    border-left: 4px solid var(--np-accent);
+    border-radius: 10px;
+    background: var(--np-bg);
+}
+.dark-mode #notas-proxima {
+    --np-bg: #2a2416;
+    --np-border: #92662a;
+    --np-accent: #fcd34d;
+    --np-chip-bg: #3b2f14;
+    --np-muted: #a8a29e;
+    --np-done-bg: #1e1e1e;
+    --np-done-border: #3c3c3c;
+}
+#notas-proxima .notas-proxima-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+#notas-proxima .notas-proxima-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--np-accent);
+}
+#notas-proxima .notas-proxima-count {
+    min-width: 20px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--np-accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+}
+.dark-mode #notas-proxima .notas-proxima-count { color: #1f1a0e; }
+#notas-proxima .notas-proxima-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+#notas-proxima button.notas-proxima-link {
+    padding: 4px 6px;
+    border: none;
+    background: transparent;
+    color: var(--np-accent);
+    font-size: 12.5px;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+#notas-proxima button.btn-nota-proxima {
+    padding: 6px 12px;
+    border: 1px solid var(--np-accent);
+    border-radius: 8px;
+    background: var(--np-accent);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.dark-mode #notas-proxima button.btn-nota-proxima { color: #1f1a0e; }
+#notas-proxima button.btn-nota-proxima:hover:not(:disabled) { filter: brightness(1.08); }
+#notas-proxima button.btn-nota-proxima:disabled { opacity: 0.55; cursor: not-allowed; }
+#notas-proxima .notas-proxima-list {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+#notas-proxima .notas-proxima-empty {
+    font-size: 12.5px;
+    font-style: italic;
+    color: var(--np-muted);
+}
+#notas-proxima .notas-proxima-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--np-border);
+    background: var(--pac-table-row-bg, #fff);
+}
+#notas-proxima .notas-proxima-item.is-cumplida {
+    background: var(--np-done-bg);
+    border-color: var(--np-done-border);
+    opacity: 0.8;
+}
+#notas-proxima .notas-proxima-item-main { min-width: 0; flex: 1; }
+#notas-proxima .notas-proxima-item-text {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--pac-table-text, #0f172a);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+#notas-proxima .notas-proxima-item.is-cumplida .notas-proxima-item-text { font-weight: 500; }
+#notas-proxima .notas-proxima-item-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 11.5px;
+    color: var(--np-muted);
+}
+#notas-proxima .notas-proxima-chip {
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+}
+#notas-proxima .notas-proxima-chip.is-pendiente { background: var(--np-chip-bg); color: var(--np-accent); border: 1px solid var(--np-border); }
+#notas-proxima .notas-proxima-chip.is-cumplida { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+.dark-mode #notas-proxima .notas-proxima-chip.is-cumplida { background: #14301e; color: #86efac; border-color: #166534; }
+#notas-proxima .notas-proxima-item-actions {
+    display: inline-flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+#notas-proxima button.notas-proxima-btn {
+    padding: 3px 8px;
+    border: 1px solid var(--np-done-border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--np-muted);
+    font-size: 11.5px;
+    cursor: pointer;
+}
+#notas-proxima button.notas-proxima-btn:hover { border-color: var(--np-accent); color: var(--np-accent); }
+#notas-proxima button.notas-proxima-btn.is-danger:hover { border-color: #dc2626; color: #dc2626; }
+
+/* Fila amarilla "Nota proxima cita" dentro de Registro de Citas (debajo de la cita de su fecha).
+   No es una cita: ocupa todo el ancho y no tiene montos, doctor ni firma. */
+.citas-table tbody tr.cita-nota-proxima-row td {
+    padding: 2px 8px 8px !important;
+    white-space: normal !important;
+    border-top: none !important;
+}
+.citas-table tbody tr.cita-nota-proxima-row .cita-nota-proxima {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid #fcd34d;
+    border-left: 4px solid #d4a106;
+    background: #fef3c7;
+    color: #78350f;
+    font-size: 13px;
+}
+.citas-table tbody tr.cita-nota-proxima-row.is-cumplida .cita-nota-proxima {
+    background: #fefce8;
+    border-color: #f1e3a6;
+    border-left-color: #e0c55c;
+    color: #6b5a2a;
+}
+.cita-nota-proxima-tag {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #d4a106;
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+.is-cumplida .cita-nota-proxima-tag { background: #cbb56a; }
+.cita-nota-proxima-fecha { font-weight: 800; font-size: 12px; white-space: nowrap; }
+.cita-nota-proxima-texto { flex: 1 1 220px; min-width: 0; font-weight: 700; overflow-wrap: anywhere; }
+.is-cumplida .cita-nota-proxima-texto { font-weight: 500; }
+.cita-nota-proxima-estado {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.cita-nota-proxima-estado.is-pendiente { background: #fde68a; color: #92400e; border: 1px solid #f5c542; }
+.cita-nota-proxima-estado.is-cumplida { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+.cita-nota-proxima-autor { font-size: 11.5px; opacity: 0.8; white-space: nowrap; }
+.cita-nota-proxima-acciones { display: inline-flex; gap: 4px; margin-left: auto; }
+.paciente-card .cita-nota-proxima-acciones button.notas-proxima-btn {
+    padding: 2px 8px;
+    border: 1px solid rgba(180, 83, 9, 0.3);
+    border-radius: 6px;
+    background: transparent;
+    color: #92400e;
+    font-size: 11.5px;
+}
+.paciente-card .cita-nota-proxima-acciones button.notas-proxima-btn:hover { border-color: #b45309; background: rgba(180, 83, 9, 0.08); }
+.paciente-card .cita-nota-proxima-acciones button.notas-proxima-btn.is-danger:hover { border-color: #dc2626; color: #dc2626; }
+.pe-panel[data-pe-sec="citas"] .citas-table tbody tr.cita-nota-proxima-row td { flex: 1 1 100%; }
+
+.dark-mode .citas-table tbody tr.cita-nota-proxima-row .cita-nota-proxima { background: #3b2f14; border-color: #92662a; border-left-color: #fcd34d; color: #fde68a; }
+.dark-mode .citas-table tbody tr.cita-nota-proxima-row.is-cumplida .cita-nota-proxima { background: #2a2416; border-color: #5c4a22; border-left-color: #a8893c; color: #d6c98f; }
+.dark-mode .cita-nota-proxima-estado.is-pendiente { background: #5c4515; color: #fde68a; border-color: #92662a; }
+.dark-mode .cita-nota-proxima-estado.is-cumplida { background: #14301e; color: #86efac; border-color: #166534; }
+.dark-mode .paciente-card .cita-nota-proxima-acciones button.notas-proxima-btn { color: #fcd34d; border-color: #92662a; }
+
+/* ---------- Fotos en cola de subida (js/paciente.js encolarFotografias) ----------
+   Vista previa atenuada con spinner; "En cola" hasta que le toca, luego "Subiendo...". */
+.foto-item-subiendo .foto-media {
+    overflow: hidden;
+    border-radius: 10px;
+    background: var(--app-surface-muted, #f1f5f9);
+}
+.foto-item-subiendo .foto-media img {
+    opacity: 0.45;
+    filter: grayscale(0.4);
+    cursor: default;
+}
+.foto-upload-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--app-text, #16263d);
+    font-size: 12px;
+    font-weight: 700;
+}
+.foto-upload-spinner {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 3px solid color-mix(in srgb, var(--app-primary, #2775f5) 22%, transparent);
+    border-top-color: var(--app-primary, #2775f5);
+    animation: foto-upload-spin 0.8s linear infinite;
+}
+.foto-upload-nombre {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@keyframes foto-upload-spin {
+    to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .foto-upload-spinner { animation-duration: 2.4s; }
 }

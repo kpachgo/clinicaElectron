@@ -157,6 +157,22 @@
   color: #94a3b8;
 }
 
+/* Numero de cita + su chip: el numero no se separa del texto aunque este ocupe varias lineas. */
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-cita-item {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-cita-item > .rv-cita-num {
+  flex: none;
+}
+
+:is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-cita-item > .rv-chip {
+  min-width: 0;
+}
+
 :is(.paciente-container, .agenda-container, .cola-container, .cobro-view, .cobro-container, .cuenta-container, .descuento-container) .rv-cita-num {
   display: inline-flex;
   align-items: center;

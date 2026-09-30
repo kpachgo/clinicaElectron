@@ -116,6 +116,7 @@ app.use("/api/cuenta", licenciaMiddleware.requireLicensedAccess, require("./rout
 app.use("/api/odontograma", licenciaMiddleware.requireLicensedAccess, require("./routes/odontograma.routes"));
 app.use("/api/foto-paciente", licenciaMiddleware.requireLicensedAccess, require("./routes/fotoPaciente.routes"));
 app.use("/api/cola", licenciaMiddleware.requireLicensedAccess, require("./routes/cola.routes"));
+app.use("/api/inventario", licenciaMiddleware.requireLicensedAccess, require("./routes/inventario.routes"));
 app.use("/api/mensajes", licenciaMiddleware.requireLicensedAccess, require("./routes/mensajes.routes"));
 app.use("/api/mensajes-view", licenciaMiddleware.requireLicensedAccess, require("./routes/mensajesView.routes"));
 

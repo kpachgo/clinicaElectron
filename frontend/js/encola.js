@@ -825,10 +825,12 @@
         tr.appendChild(tdNum);
 
         const tdNombre = document.createElement("td");
+        tdNombre.className = "cola-c-nombre";
         tdNombre.textContent = item.nombrePaciente || "-";
         tr.appendChild(tdNombre);
 
         const tdTratamiento = document.createElement("td");
+        tdTratamiento.className = "cola-c-trat";
         const tratamientoText = document.createElement("div");
         tratamientoText.className = "cola-tratamiento-text";
 
@@ -913,14 +915,17 @@
         tr.appendChild(tdTratamiento);
 
         const tdHora = document.createElement("td");
+        tdHora.className = "cola-c-hora";
         tdHora.textContent = formatHora(item.horaAgenda);
         tr.appendChild(tdHora);
 
         const tdFechaAgenda = document.createElement("td");
+        tdFechaAgenda.className = "cola-c-fecha";
         tdFechaAgenda.innerHTML = renderFechaVisual(formatFecha(item.fechaAgendaISO));
         tr.appendChild(tdFechaAgenda);
 
         const tdDoctor = document.createElement("td");
+        tdDoctor.className = "cola-c-doctor";
         const selDoctor = document.createElement("select");
         selDoctor.className = "cola-doctor-select";
         buildDoctorOptions(selDoctor, item.doctorId);
@@ -948,6 +953,7 @@
         tr.appendChild(tdDoctor);
 
         const tdEstado = document.createElement("td");
+        tdEstado.className = "cola-c-estado";
         const selEstado = document.createElement("select");
         selEstado.className = "cola-estado-select";
         [ESTADO_ESPERA, ESTADO_ATENDIDO].forEach((estadoOption) => {
@@ -1251,6 +1257,8 @@
     }
 
     searchInput?.addEventListener("input", draw);
+    // Ctrl+F enfoca el buscador y Escape lo borra (atajo compartido en web.js)
+    window.__registerViewSearch?.(searchInput);
     toggleNumeracion?.addEventListener("change", () => {
       // La columna entra/sale animada (tableFx.toggle). Solo se repinta si la tabla esta
       // vacia (el colspan de "Sin pacientes" depende de la numeracion): repintar filas

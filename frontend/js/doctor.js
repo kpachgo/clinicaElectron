@@ -1299,6 +1299,8 @@
         searchInput.value = "";
       }, 1200);
       searchInput.addEventListener("input", aplicarFiltroTexto);
+      // Ctrl+F enfoca el buscador y Escape lo borra (atajo compartido en web.js)
+      window.__registerViewSearch?.(searchInput);
     }
 
     if (regBtn) {

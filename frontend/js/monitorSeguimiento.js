@@ -1147,6 +1147,8 @@
       void refreshData();
     });
 
+    // Ctrl+F enfoca el buscador y Escape lo borra (atajo compartido en web.js)
+    window.__registerViewSearch?.(refs.inputSearch);
     bind(refs.inputSearch, "input", (e) => {
       if (!isViewActive()) return;
       state.q = String(e?.target?.value || "");

@@ -1,0 +1,497 @@
+/* =========================================================
+   VISTA PACIENTE COMO EXPEDIENTE (js/pacienteExpediente.js)
+   Diseño aprobado en prueba.html (opcion 3). Colores del tema via --app-*.
+========================================================= */
+.pe {
+  --pe-surface: var(--app-surface, #fff);
+  /* Acento = color principal del tema activo (el mismo azul de "Nueva cita" en Agenda). */
+  --pe-accent: var(--app-primary, #2775f5);
+  --pe-accent-soft: color-mix(in srgb, var(--pe-accent) 12%, var(--pe-surface));
+  --pe-accent-shadow: color-mix(in srgb, var(--pe-accent) 28%, transparent);
+  --pe-nav-active: linear-gradient(135deg, color-mix(in srgb, var(--app-secondary, #18bfd0) 35%, var(--pe-accent)), var(--pe-accent));
+  --pe-line: var(--app-border, #e6edf4);
+  --pe-text: var(--app-text, #16263d);
+  --pe-muted: var(--app-text-muted, #66778d);
+  --pe-soft-bg: color-mix(in srgb, var(--pe-surface) 92%, var(--pe-muted));
+  --pe-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 18px;
+  color: var(--pe-text);
+  transition: grid-template-columns 0.35s var(--pe-ease);
+}
+body.dark-mode .pe {
+  --pe-accent-soft: color-mix(in srgb, var(--pe-accent) 16%, transparent);
+  --pe-nav-active: linear-gradient(135deg, color-mix(in srgb, var(--pe-accent) 55%, var(--pe-surface)), color-mix(in srgb, var(--pe-accent) 38%, var(--pe-surface)));
+}
+
+.pe-card {
+  background: var(--pe-surface);
+  border: 1px solid var(--pe-line);
+  border-radius: 16px;
+  box-shadow: 0 4px 14px rgba(22, 38, 61, 0.04);
+}
+.pe-left, .pe-center, .pe-right { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* Las columnas terminan en el mismo borde inferior (aunque quede espacio vacio). */
+.pe-left, .pe-center { align-self: stretch; }
+.pe-left > .pe-nav { flex: 1; }
+.pe-center > .pe-panel.on { flex: 1; }
+.pe-hidden-card { display: none !important; }
+
+/* ---------- Buscador de pacientes (estilo del buscador de Agenda) ----------
+   Sin el titulo "Buscador" ni la etiqueta (el campo ya dice "Buscar por nombre o telefono"; la etiqueta
+   queda solo para lectores de pantalla). El campo ocupa todo el ancho libre y los botones van a la
+   derecha: antes 60% + 15% + 15% dejaba un 10% vacio. */
+.paciente-busqueda { padding: 12px 14px; border-radius: 16px; container-type: inline-size; }
+.paciente-busqueda > .paciente-titulo { display: none; }
+/* Cuadricula: campo + 2 botones en una linea; con el buscador angosto, campo arriba y botones
+   mitad y mitad abajo. (Tambien anula el @media 900px de paciente.css que pone las .p-row en columna.) */
+.paciente-busqueda > .p-row { display: grid !important; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; margin: 0; }
+.paciente-busqueda > .p-row > .p-col.p-60 { width: auto; max-width: none; min-width: 0; }
+.paciente-busqueda > .p-row > .p-col.p-60 > .form-label {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}
+.paciente-busqueda #buscar-paciente-p {
+  min-height: 40px; padding: 0 12px 0 38px; border-radius: 9px; font-size: 14px; font-weight: 600;
+  background: var(--app-surface, #fff) url("data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%237892ad%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22m21%2021-5.2-5.2m0%200A7.5%207.5%200%201%200%205.2%205.2a7.5%207.5%200%200%200%2010.6%2010.6Z%22%2F%3E%3C%2Fsvg%3E") no-repeat 12px center / 16px 16px;
+}
+.paciente-busqueda .btn-action-clear, .paciente-busqueda .btn-action-new {
+  width: auto; min-width: 160px; height: 40px; margin: 0; padding: 0 18px; border-radius: 9px;
+  display: inline-flex; align-items: center; justify-content: center; line-height: 1; white-space: nowrap;
+}
+@container (max-width: 720px) {
+  .paciente-busqueda > .p-row { grid-template-columns: 1fr 1fr; }
+  .paciente-busqueda > .p-row > .p-col.p-60 { grid-column: 1 / -1; }
+  .paciente-busqueda .btn-action-clear, .paciente-busqueda .btn-action-new { min-width: 0; }
+}
+
+/* ---------- Buscador oculto con paciente cargado (se muestra con la pestaña vertical) ---------- */
+.paciente-busqueda.pe-search-hidden {
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  border-width: 0 !important;
+  box-shadow: none !important;
+  opacity: 0;
+  transform: translateY(-10px);
+  overflow: hidden !important;
+  pointer-events: none;
+}
+
+/* Pestaña vertical en el borde DERECHO (junto a la barra de scroll): solo con paciente cargado.
+   --pe-tab-right lo ajusta pacienteExpediente.js al ancho de la barra de scroll de .content. */
+.pe-search-tab { display: none; }
+.pe.is-exp .pe-search-tab {
+  position: fixed; right: var(--pe-tab-right, 0px); top: 0; bottom: 0; z-index: 25; /* debajo de los modales */
+  /* Centrado con margenes auto y no con translateY(-50%): el transform la dejaba en medio pixel y el texto se veia borroso. */
+  margin: auto 0; height: max-content;
+  display: flex; align-items: center; gap: 8px;
+  writing-mode: vertical-rl;
+  padding: 16px 8px 16px 9px; border: none; border-radius: 12px 0 0 12px;
+  background: var(--pe-accent); color: #fff; cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+  box-shadow: 0 6px 18px var(--pe-accent-shadow);
+  transition: padding 0.2s var(--pe-ease), background 0.2s, color 0.2s;
+}
+.pe.is-exp .pe-search-tab:hover { padding-left: 14px; }
+.pe.is-exp .pe-search-tab svg { width: 16px; height: 16px; }
+.pe.is-exp .pe-search-tab.is-open { background: var(--pe-surface); color: var(--pe-accent); border: 1px solid var(--pe-line); border-right: none; }
+.pe.is-exp .pe-search-tab:focus { outline: none; }
+.pe.is-exp .pe-search-tab:focus-visible { outline: 2px solid var(--pe-accent); outline-offset: 2px; }
+
+/* ---------- Encabezado de la vista (mismo estilo que Monitor de Seguimiento) ---------- */
+/* Sin relleno superior (el Monitor no lo tiene): asi el titulo arranca a la misma altura (+20px antes). */
+.paciente-container:has(> .paciente-detail-shell .pe) { padding-top: 0; }
+.pe-head { grid-column: 1 / -1; margin: 0 0 -4px; padding: 0 8px; }
+.pe-head-title { margin: 0; color: var(--pe-text); font-size: 20px; line-height: 1.15; font-weight: 900; letter-spacing: 0; }
+.pe-head-sub { margin: 4px 0 0; color: var(--pe-muted); font-size: 11px; font-weight: 800; }
+.pe.is-form .pe-head { margin-bottom: 14px; }
+
+/* ---------- Perfil ---------- */
+.pe-profile { position: relative; overflow: hidden; text-align: center; padding-bottom: 14px; }
+.pe-cover { height: 70px; background: linear-gradient(135deg, color-mix(in srgb, var(--pe-accent) 30%, #fff), color-mix(in srgb, var(--pe-accent) 16%, #fff)); }
+body.dark-mode .pe-cover { background: linear-gradient(135deg, color-mix(in srgb, var(--pe-accent) 40%, #0f172a), color-mix(in srgb, var(--pe-accent) 18%, #0f172a)); }
+.pe-avatar { position: relative; width: 96px; height: 96px; margin: -52px auto 8px; border-radius: 50%; border: 5px solid var(--pe-surface);
+             overflow: hidden; display: grid; place-items: center; font-size: 32px; font-weight: 800; color: color-mix(in srgb, var(--pe-accent) 80%, #000);
+             background: linear-gradient(135deg, color-mix(in srgb, var(--pe-accent) 14%, #fff), color-mix(in srgb, var(--pe-accent) 32%, #fff)); box-shadow: 0 6px 16px var(--pe-accent-shadow); }
+.pe-avatar img { display: none; width: 100%; height: 100%; object-fit: cover; }
+.pe-avatar.has-photo img { display: block; cursor: pointer; }
+.pe-avatar.has-photo .pe-initials { display: none; }
+/* Sin foto: avatar SVG por edad y sexo (js/avatares.js, css/avatares.css) llenando el circulo. */
+.pe-avatar .pe-initials.cav { position: absolute; inset: 0; width: auto; height: auto; }
+.pe.is-collapsed .pe-avatar .cav svg { stroke-width: 1.1; }
+.pe-name { margin: 0 14px; font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
+.pe-age { margin: 3px 0 10px; color: var(--pe-muted); font-size: 13px; }
+.pe-icons { display: flex; justify-content: center; gap: 8px; margin-bottom: 4px; }
+.pe-icons button { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--pe-line); background: var(--pe-surface); color: var(--pe-muted);
+                   cursor: pointer; display: grid; place-items: center; padding: 0; transition: background 0.2s, color 0.2s, transform 0.12s var(--pe-ease); }
+.pe-icons button:hover:not(:disabled) { background: var(--pe-accent-soft); color: var(--pe-accent); }
+.pe-icons button:active:not(:disabled) { transform: scale(0.94); }
+.pe-icons button:disabled { opacity: 0.35; cursor: not-allowed; }
+.pe-icons svg { width: 17px; height: 17px; }
+.pe-meta { margin-top: 10px; font-size: 12px; color: var(--pe-muted); display: flex; flex-direction: column; gap: 3px; align-items: center; padding: 0 12px; }
+.pe-meta .loc { color: var(--pe-accent); font-weight: 600; display: inline-flex; gap: 4px; align-items: center; }
+.pe-meta svg { width: 14px; height: 14px; flex: none; }
+
+/* Boton para contraer el panel izquierdo (en la esquina de la franja) */
+.pe-collapse { position: absolute; top: 8px; right: 8px; z-index: 2; width: 28px; height: 28px; padding: 0; border-radius: 50%; border: none;
+               background: rgba(255, 255, 255, 0.75); color: var(--pe-accent); display: grid; place-items: center; cursor: pointer;
+               box-shadow: 0 1px 4px var(--pe-accent-shadow); transition: background 0.2s, transform 0.12s var(--pe-ease); }
+.pe-collapse:hover { background: #fff; }
+.pe-collapse:active { transform: scale(0.92); }
+.pe-collapse:focus { outline: none; }
+.pe-collapse:focus-visible { outline: 2px solid var(--pe-accent); outline-offset: 2px; }
+.pe-collapse svg { width: 15px; height: 15px; transition: transform 0.35s var(--pe-ease); }
+
+/* ---------- Menu de secciones ---------- */
+.pe-nav { position: relative; overflow: hidden; }
+.pe-nav button { position: relative; z-index: 1; width: 100%; display: flex; align-items: center; gap: 11px; padding: 13px 16px; border: none;
+                 border-bottom: 1px solid var(--pe-line); background: none; font-weight: 500; font-size: 14px; font-family: inherit; color: var(--pe-text);
+                 cursor: pointer; text-align: left; transition: color 0.25s, border-color 0.25s; }
+.pe-nav button:last-of-type { border-bottom: none; }
+.pe-nav button svg { width: 18px; height: 18px; flex: none; }
+.pe-nav button .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-nav button:hover { color: var(--pe-accent); }
+.pe-nav button.on { color: #fff; font-weight: 600; }
+/* La linea divisoria del boton anterior se dibuja encima del resaltado: se oculta junto a la del activo. */
+.pe-nav button.on, .pe-nav button:has(+ button.on) { border-bottom-color: transparent; }
+.pe-nav button:focus { outline: none; }
+.pe-nav button:focus-visible { outline: 2px solid var(--pe-accent); outline-offset: -3px; border-radius: 8px; }
+.pe-nav-ink { position: absolute; left: 0; right: 0; background: var(--pe-nav-active); transition: top 0.35s var(--pe-ease), height 0.35s var(--pe-ease); }
+
+/* ---------- Tarjetas de arriba ---------- */
+.pe-top { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pe-mini { padding: 12px 14px; min-height: 96px; }
+.pe-mini h4 { margin: 0 0 8px; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+.pe-mini h4 svg { width: 16px; height: 16px; }
+.pe-mini p { margin: 0; font-size: 12.5px; line-height: 1.45; white-space: pre-line; overflow-wrap: anywhere; }
+.pe .muted { color: var(--pe-muted); opacity: 0.8; font-style: italic; }
+.pe-mini.note { background: #fff8dc; border-color: #fbe7a1; }
+.pe-mini.note h4 svg { color: #d4a106; }
+.pe-mini.allergy { background: #ffe9e9; border-color: #fbcaca; }
+.pe-mini.allergy h4 svg { color: #e04848; }
+.pe-mini.allergy.none { background: var(--pe-surface); border-color: var(--pe-line); }
+.pe-mini.allergy.none h4 svg { color: var(--pe-muted); }
+body.dark-mode .pe-mini.note { background: rgba(250, 204, 21, 0.1); border-color: rgba(250, 204, 21, 0.3); }
+body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.35); }
+.pe-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.pe-tag { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pe-tag.t2 { background: #fff1c2; color: #a16207; }
+.pe-tag.t3 { background: #d9f5e6; color: #15803d; }
+.pe-tag.t4 { background: #e0ecff; color: #1d4ed8; }
+.pe-tag.t5 { background: #fee2e2; color: #b91c1c; }
+
+/* ---------- Secciones ---------- */
+.pe-panel { display: none; min-width: 0; }
+/* "backwards" y no "both": al terminar la animacion no debe quedar un transform aplicado, porque un
+   transform en un ancestro encierra los modales con position:fixed (Seleccion por pieza, Dictado,
+   impresion, fotos...) dentro de la seccion en vez de cubrir toda la pantalla. */
+.pe.is-exp .pe-panel.on { display: flex; flex-direction: column; gap: 12px; animation: pe-in 0.35s var(--pe-ease) backwards; }
+@keyframes pe-in { from { opacity: 0; transform: translateY(12px); } }
+.pe-read { padding: 16px 18px; flex: 1; }
+/* Sin titulo (ya esta en el menu): solo "Editar" a la derecha; sin datos no hay barra (esta "Agregar"). */
+.pe-read-h { display: flex; justify-content: flex-end; margin: -8px -10px 4px 0; }
+.pe-read-h:has(> .pe-edit-btn[hidden]) { display: none; }
+.pe .sp { flex: 1; }
+.pe-edit-btn { font-weight: 600; font-size: 12px; font-family: inherit; color: var(--pe-accent); background: none; border: 1px solid transparent; border-radius: 8px;
+               padding: 5px 9px; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; transition: background 0.2s, border-color 0.2s; }
+.pe-edit-btn:hover { background: var(--pe-accent-soft); border-color: color-mix(in srgb, var(--pe-accent) 30%, transparent); }
+.pe-edit-btn svg { width: 14px; height: 14px; }
+.pe-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; margin: 0; }
+.pe-f { min-width: 0; }
+.pe-f.wide { grid-column: 1 / -1; }
+.pe-f dt { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--pe-muted); margin-bottom: 3px; }
+.pe-f dd { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.pe-f.empty dd { color: var(--pe-muted); opacity: 0.75; font-style: italic; font-size: 13px; }
+.pe-link { margin-top: 4px; font-weight: 600; font-size: 12px; font-family: inherit; color: var(--pe-accent); background: none; border: none; padding: 0; cursor: pointer; }
+.pe-link:disabled { display: none; }
+.pe-blank { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--pe-muted); font-style: italic; font-size: 13px; }
+.pe-blank .pe-edit-btn { font-style: normal; }
+
+/* Edicion: se muestra el formulario actual solo de esa seccion */
+.pe-edit { display: none; }
+.pe-panel.is-editing .pe-read { display: none; }
+.pe-panel.is-editing .pe-edit { display: block; }
+.pe-editbar { position: sticky; top: 8px; z-index: 5; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 10px 14px;
+              border-radius: 12px; background: var(--pe-nav-active); color: #fff; font-size: 13px; box-shadow: 0 8px 18px var(--pe-accent-shadow); }
+.pe-bar-btn { font-weight: 600; font-size: 13px; font-family: inherit; padding: 7px 14px; border-radius: 9px; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.4);
+              background: rgba(255, 255, 255, 0.1); color: #fff; }
+.pe-bar-btn.pri { background: #22a45d; border-color: #22a45d; }
+.pe-bar-btn:disabled { opacity: 0.6; cursor: progress; }
+.pe-edit > .paciente-card { margin-bottom: 0; }
+/* En el expediente se guarda desde la barra de cada seccion. */
+.pe.is-exp #btn-guardar-paciente { display: none; }
+
+/* Secciones con su tarjeta tal cual (odontograma, fotos, citas) */
+.pe-raw > .paciente-card { margin-bottom: 0; flex: 1; }
+
+/* A lo ancho: sin tarjetas de arriba ni Evolucion */
+.pe.is-wide .pe-top, .pe.is-wide .pe-right { display: none; }
+.pe.is-wide .pe-center { grid-column: 2 / -1; }
+
+/* ---------- Evolucion ---------- */
+.pe-right { align-self: stretch; position: relative; min-height: 320px; }
+.pe-evo-card { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 14px 16px; }
+.pe-evo-card h4 { margin: 0 0 10px; font-size: 14px; display: flex; align-items: center; justify-content: space-between; }
+.pe-evo-count { font-size: 11px; font-weight: 700; color: var(--pe-accent); background: var(--pe-accent-soft); border-radius: 999px; padding: 2px 9px; }
+.pe-evo { list-style: none; margin: 0; padding: 0 4px 0 0; position: relative; flex: 1; min-height: 0; overflow-y: auto; }
+.pe-evo li { position: relative; padding: 0 0 14px 22px; }
+/* La linea une un punto con el siguiente: sin citas o en la ultima no se dibuja (antes cubria toda la lista). */
+.pe-evo li:not(:last-child)::after { content: ""; position: absolute; left: 6px; top: 16px; bottom: -16px; width: 2px; background: var(--pe-line); }
+.pe-evo li::before { content: ""; position: absolute; left: 1px; top: 4px; width: 12px; height: 12px; border-radius: 50%; background: var(--pe-surface);
+                     border: 3px solid var(--pe-accent); }
+.pe-evo li.pe-evo-empty { padding-left: 0; color: var(--pe-muted); font-style: italic; font-size: 13px; }
+.pe-evo li.pe-evo-empty::before { display: none; }
+.pe-evo small { display: block; font-size: 11.5px; color: var(--pe-muted); }
+/* Fecha resaltada y separador punteado entre citas para distinguir cada una a simple vista. */
+.pe-evo .pe-evo-fecha { display: inline-block; font-size: 12.5px; font-weight: 800; color: var(--pe-accent); background: var(--pe-accent-soft);
+  border-radius: 6px; padding: 1px 7px; margin-right: 2px; }
+.pe-evo li:not(:last-child):not(.pe-evo-empty) { margin-bottom: 12px; }
+.pe-evo li:not(:last-child):not(.pe-evo-empty) > b { padding-bottom: 12px; border-bottom: 2px dashed var(--pe-line); }
+.pe-evo b { display: block; font-size: 13px; margin: 2px 0; overflow-wrap: anywhere; }
+.pe-evo b .rv-cita-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin: 0 4px 0 0;
+  border-radius: 50%; background: #dc2626; color: #fff; font-size: 11.5px; font-weight: 800; line-height: 1; vertical-align: middle; }
+.pe-small { font-size: 11.5px; color: var(--pe-muted); margin-top: 8px; }
+
+/* ---------- Panel izquierdo contraido (acordeon) ---------- */
+.pe.is-collapsed { grid-template-columns: 64px minmax(0, 1fr) 280px; }
+.pe.is-collapsed .pe-collapse svg { transform: rotate(180deg); }
+.pe.is-collapsed .pe-nav .lbl { display: none; }
+.pe.is-collapsed .pe-profile { padding: 8px 0; }
+.pe.is-collapsed .pe-profile > :not(.pe-avatar):not(.pe-collapse) { display: none; }
+.pe.is-collapsed .pe-collapse { position: static; margin: 0 auto 8px; background: var(--pe-accent-soft); box-shadow: none; }
+.pe.is-collapsed .pe-avatar { width: 44px; height: 44px; margin: 0 auto; border-width: 3px; font-size: 15px; }
+.pe.is-collapsed .pe-nav button { justify-content: center; padding: 13px 0; }
+
+/* ---------- Modo formulario (nuevo paciente): tarjetas apiladas como antes ---------- */
+.pe.is-form { display: block; }
+.pe.is-form .pe-left, .pe.is-form .pe-top, .pe.is-form .pe-right, .pe.is-form .pe-read,
+.pe.is-form .pe-editbar { display: none !important; }
+.pe.is-form .pe-panel { display: block; }
+.pe.is-form .pe-edit { display: block; }
+.pe.is-form .pe-panel > .paciente-card, .pe.is-form .pe-edit > .paciente-card { margin-bottom: 18px; }
+
+/* ---------- Pantallas medianas / tablets ---------- */
+@media (max-width: 1150px) {
+  .pe { grid-template-columns: 240px minmax(0, 1fr); }
+  .pe.is-collapsed { grid-template-columns: 64px minmax(0, 1fr); }
+  .pe-right { grid-column: 1 / -1; min-height: 0; }
+  .pe-evo-card { position: static; }
+  .pe-evo { max-height: 420px; }
+}
+/* Tablets (Galaxy Tab A9 con escala 1,5x: ~533 px vertical, ~893 px horizontal) y menores: el perfil y el menu pasan a una
+   barra compacta horizontal arriba y el contenido usa todo el ancho (no hace falta contraer). */
+@media (max-width: 900px) {
+  .paciente-container { padding: 8px; }
+  .pe, .pe.is-collapsed { grid-template-columns: 1fr; gap: 12px; }
+  .pe.is-wide .pe-center { grid-column: auto; }
+  .pe-left { flex-direction: row; align-items: stretch; gap: 10px; }
+  .pe-left > .pe-nav { flex: 1; }
+  .pe-profile, .pe.is-collapsed .pe-profile {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; text-align: left; flex: 0 1 auto; min-width: 0;
+  }
+  .pe-profile > .pe-cover, .pe-profile > .pe-meta, .pe-collapse { display: none !important; }
+  .pe-profile > .pe-avatar, .pe.is-collapsed .pe-avatar { width: 44px; height: 44px; margin: 0; border-width: 3px; font-size: 15px; flex: none; }
+  .pe-avatar .cav svg { stroke-width: 1.1; }
+  /* Contraido (preferencia guardada, aunque en tablet no hay boton): la regla que oculta todo menos el
+     avatar tiene 5 clases; estas necesitan mas para ganarle (antes con "revert" perdian y el perfil
+     quedaba solo con el avatar). */
+  .pe.is-collapsed .pe-profile > :is(.pe-name, .pe-age):not(.pe-avatar):not(.pe-collapse) { display: block; }
+  .pe.is-collapsed .pe-profile > .pe-icons:not(.pe-avatar):not(.pe-collapse) { display: flex; }
+  .pe-name { margin: 0; font-size: 15px; max-width: 220px; }
+  .pe-age { margin: 0; white-space: nowrap; }
+  .pe-icons { margin: 0 0 0 auto; }
+  .pe-icons button { width: 30px; height: 30px; }
+  .pe-nav { display: flex; }
+  .pe-nav button, .pe.is-collapsed .pe-nav button { flex: 1; justify-content: center; padding: 10px 0; border-bottom: none; border-right: 1px solid var(--pe-line); }
+  .pe-nav button:last-of-type { border-right: none; }
+  .pe-nav .lbl { display: none; }
+  .pe-nav-ink { display: none; }
+  .pe-nav button.on { background: var(--pe-nav-active); }
+  .pe-right { grid-column: auto; }
+}
+@media (max-width: 640px) {
+  .pe-left { flex-direction: column; }
+  .pe-top { grid-template-columns: 1fr; }
+  /* Datos en dos columnas tambien en tablet vertical (~533 px): Nombre | Fecha de nacimiento, Edad | Sexo... */
+  .pe-fields { gap: 12px 16px; }
+  .pe-name { max-width: none; }
+}
+
+/* ---------- Galaxy Tab A9 real (escala 1,5x): vertical ~533 px de ancho, horizontal ~893 x ~450 ----------
+   En tablet la pestaña vertical "Buscar paciente" tapaba el contenido a media pantalla: pasa a boton
+   redondo abajo a la derecha (solo icono). Titulo sin subtitulo y tarjetas de arriba sin alto minimo. */
+@media (max-width: 900px) {
+  .pe-head { padding: 0 4px; }
+  .pe-head-title { font-size: 17px; }
+  .pe-head-sub { display: none; }
+  .pe-mini { min-height: 0; padding: 10px 12px; }
+  .pe-mini h4 { margin-bottom: 6px; }
+  .pe-read { padding: 12px 14px; }
+  .pe-evo { max-height: min(420px, 65vh); }
+  .pe.is-exp .pe-search-tab {
+    top: auto; bottom: 18px; right: calc(var(--pe-tab-right, 0px) + 14px); margin: 0;
+    width: 50px; height: 50px; padding: 0; justify-content: center;
+    writing-mode: horizontal-tb; border-radius: 50%;
+    box-shadow: 0 8px 22px var(--pe-accent-shadow);
+  }
+  .pe.is-exp .pe-search-tab:hover { padding-left: 0; }
+  .pe.is-exp .pe-search-tab.is-open { border: 1px solid var(--pe-line); }
+  .pe.is-exp .pe-search-tab svg { width: 20px; height: 20px; }
+  .pe.is-exp .pe-search-tab .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* Espacio al final para que el boton no tape la ultima fila. */
+  .pe.is-exp { padding-bottom: 64px; }
+}
+/* Horizontal (poco alto): el titulo de la vista se quita, el perfil+menu ya identifican la pantalla. */
+@media (max-width: 900px) and (max-height: 560px) {
+  .pe.is-exp .pe-head { display: none; }
+}
+@media (max-width: 640px) {
+  .pe-top { gap: 8px; }
+  .pe-profile, .pe.is-collapsed .pe-profile { flex-wrap: wrap; row-gap: 6px; }
+  .pe-name { flex: 1 1 0; }
+}
+
+/* ---------- Barra del odontograma compacta (en una sola linea) ----------
+   Sin el titulo "Odontograma" en el expediente (ya esta en el menu). Botones y selects mas chicos;
+   !important porque las reglas de botones de .paciente-card son muy especificas. */
+.pe.is-exp .pe-panel[data-pe-sec="odontograma"] .paciente-card > .paciente-titulo,
+.pe.is-exp .pe-panel[data-pe-sec="citas"] .paciente-card > .paciente-titulo { display: none; }
+.pe-panel[data-pe-sec="odontograma"] .toolbar { gap: 6px; row-gap: 8px; margin-bottom: 6px; }
+.pe-panel[data-pe-sec="odontograma"] .toolbar button {
+  padding: 5px 10px !important; font-size: 12.5px !important; line-height: 1.3; white-space: nowrap;
+}
+.pe-panel[data-pe-sec="odontograma"] .toolbar .toggle-ios { margin-left: 4px; gap: 6px; font-size: 13px; }
+.pe-panel[data-pe-sec="odontograma"] #odontogramaActualP { font-size: 13px; white-space: nowrap; }
+.pe-panel[data-pe-sec="odontograma"] #fechaO,
+.pe-panel[data-pe-sec="odontograma"] .toolbar .odonto-mordida-toolbar #tipoMordidaP {
+  width: auto; min-width: 0; height: 32px !important; padding: 3px 8px !important; font-size: 13px !important;
+}
+.pe-panel[data-pe-sec="odontograma"] .toolbar .odonto-mordida-toolbar { margin-left: 0; gap: 6px; }
+.pe-panel[data-pe-sec="odontograma"] .toolbar .odonto-mordida-toolbar label { font-size: 12.5px; }
+
+/* ---------- Registro de citas sin scroll lateral ----------
+   La tabla tenia min-width 800px y todo en nowrap; firma y sello en dos cuadros de 88px lado a lado.
+   En el expediente: procedimiento y doctor pueden ocupar 2 lineas (fecha y montos no), firma/sello mas
+   chicos y, con el recuadro angosto (tablet), apilados y sin etiquetas. !important: reglas previas
+   de .paciente-container .citas-table son mas especificas. */
+.pe-panel[data-pe-sec="citas"] .citas-table-wrap { container-type: inline-size; overflow-x: auto; } /* respaldo: nunca cortar informacion */
+.pe-panel[data-pe-sec="citas"] .citas-header { flex-wrap: wrap; }
+.pe-panel[data-pe-sec="citas"] .citas-header .form-control { flex: 1 1 260px; min-width: 0; max-width: none; }
+.pe-panel[data-pe-sec="citas"] .citas-header-actions { flex-wrap: wrap; }
+.pe-panel[data-pe-sec="citas"] #citas-add { white-space: nowrap; }
+.pe-panel[data-pe-sec="citas"] .citas-table { min-width: 0 !important; width: 100%; }
+.pe-panel[data-pe-sec="citas"] .citas-table td:nth-child(2), .pe-panel[data-pe-sec="citas"] .citas-table td:nth-child(6) { white-space: normal !important; }
+.pe-panel[data-pe-sec="citas"] .citas-table td:nth-child(2) { width: 100%; min-width: 180px; }
+.pe-panel[data-pe-sec="citas"] .citas-table td:nth-child(2) .rv-chip { white-space: normal; border-radius: 12px; max-width: 100%; }
+.pe-panel[data-pe-sec="citas"] .citas-table td:nth-child(6) { min-width: 110px; max-width: 190px; }
+.pe-panel[data-pe-sec="citas"] .doctor-nombre { white-space: normal; }
+.pe-panel[data-pe-sec="citas"] .cita-doctor-media-item { width: 64px; }
+.pe-panel[data-pe-sec="citas"] .cita-doctor-media-box { width: 64px; height: 40px; }
+.pe-panel[data-pe-sec="citas"] .cita-doctor-media-label { font-size: 9px; margin-bottom: 2px; }
+@container (max-width: 820px) {
+  .pe-panel[data-pe-sec="citas"] .cita-doctor-media-inline { flex-direction: column; gap: 4px; }
+  .pe-panel[data-pe-sec="citas"] .cita-doctor-media-label { display: none; }
+  .pe-panel[data-pe-sec="citas"] .cita-doctor-media-item, .pe-panel[data-pe-sec="citas"] .cita-doctor-media-box { width: 56px; }
+  .pe-panel[data-pe-sec="citas"] .cita-doctor-media-box { height: 34px; }
+  .pe-panel[data-pe-sec="citas"] .citas-table td { padding: 5px 5px !important; }
+  .pe-panel[data-pe-sec="citas"] .citas-table td:nth-child(2) { min-width: 140px; }
+}
+/* Muy angosto (tablet vertical / celular): cada cita como ficha, sin scroll lateral.
+     1) Fecha  Tratamiento (si es largo sigue en una 2a linea, al lado de la fecha)
+     2) Valor Abono Saldo (izquierda) ........ Doctor (derecha)
+     3) ...................................... Firma y sello (derecha, debajo del doctor)
+   Salto de linea forzado con tr::after (ancho 100%, alto 0) entre el tratamiento y los montos. */
+@container (max-width: 600px) {
+  .pe-panel[data-pe-sec="citas"] .citas-table thead { display: none; }
+  .pe-panel[data-pe-sec="citas"] .citas-table, .pe-panel[data-pe-sec="citas"] .citas-table tbody { display: block; width: 100%; }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; height: auto !important;
+    padding: 9px 10px; border-bottom: 1px solid var(--pac-table-row-border, #e2e8f0); }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr::after { content: ""; order: 3; flex-basis: 100%; height: 0; }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td { display: block; border: none !important; padding: 0 !important; background: none !important; width: auto; min-width: 0; max-width: none; }
+  /* Linea 1 */
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(1) { order: 1; flex: none; align-self: flex-start; }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(2) { order: 2; flex: 1 1 0; min-width: 0; }
+  /* Linea 2: montos a la izquierda */
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(n+3):nth-child(-n+5) { order: 4; flex: none; font-size: 12px; white-space: nowrap; }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(3):not(:empty)::before { content: "Valor "; }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(4):not(:empty)::before { content: "Abono "; }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(5):not(:empty)::before { content: "Saldo "; }
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(n+3):nth-child(-n+5)::before { color: var(--pe-muted, #64748b); font-size: 10px; font-weight: 800; text-transform: uppercase; }
+  /* Linea 2: doctor a la derecha de los montos (si no cabe, baja a la derecha) */
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(6) { order: 5; flex: 1 1 90px; min-width: 0; max-width: none; margin-left: auto; text-align: right; font-size: 12px; }
+  /* .doctor-cell es flex (paciente.css): el text-align de la celda no lo mueve, se alinea con justify-content. */
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(6) .doctor-cell { justify-content: flex-end; }
+  /* Firma y sello en su propia linea, debajo del nombre del doctor y alineados a la derecha. */
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td:nth-child(7) { order: 6; flex: 1 1 100%; display: flex; justify-content: flex-end; }
+  .pe-panel[data-pe-sec="citas"] .cita-doctor-media-inline { flex-direction: row; align-items: center; }
+  /* La fecha repetida (misma fecha que la cita anterior) no ocupa lugar en la ficha. */
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr td.cita-fecha-repetida { display: none; }
+  /* Filas de "Notas para la proxima cita": una sola celda a todo el ancho. */
+  .pe-panel[data-pe-sec="citas"] .citas-table tbody tr.cita-nota-proxima-row td { flex: 1 1 100%; }
+}
+
+/* ---------- Odontograma que se ajusta al ancho disponible (sin scroll lateral) ----------
+   Antes cada diente medía 66 px fijos y solo se achicaba segun el ancho de la VENTANA; con el menu
+   al lado no cabia y aparecia scroll. Ahora se calcula con el ancho real del recuadro (container
+   query): los 16 dientes de la fila adulta + 15 separaciones siempre caben (maximo 66 px como antes).
+   Solo dentro del recuadro: el diente clonado del modal "Seleccion por pieza" no cambia. */
+.odontograma-scale-container { container-type: inline-size; overflow-x: hidden; }
+.odontograma-scale-container #odontograma-wrapper {
+  --odo-gap: clamp(3px, 0.9cqi, 12px);
+  --odo-tooth: min(66px, calc((100cqi - 15 * var(--odo-gap) - 2px) / 16));
+  width: 100%;
+  gap: clamp(8px, 1.6cqi, 18px);
+}
+.odontograma-scale-container .odont-row { gap: var(--odo-gap); }
+.odontograma-scale-container .tooth { width: var(--odo-tooth); }
+.odontograma-scale-container .tooth svg { width: 100%; height: auto; }
+.odontograma-scale-container .tooth-label { font-size: clamp(9px, calc(var(--odo-tooth) * 0.19), 12px); margin-top: 2px; }
+.odontograma-scale-container .tooth-note { width: 100%; padding: 2px 1px; font-size: clamp(8px, calc(var(--odo-tooth) * 0.17), 11px); }
+.odontograma-scale-container .tooth-visual-image { max-width: 100%; height: calc(var(--odo-tooth) * 1.67); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pe, .pe-nav-ink, .pe-collapse svg { transition: none; }
+}
+
+/* ---------- Tarjeta Notas: turna nota global + notas para la proxima cita ---------- */
+.pe-mini.note { position: relative; }
+.pe-mini.note.is-proxima { background: #fff1c2; border-color: #f5c542; }
+body.dark-mode .pe-mini.note.is-proxima { background: rgba(250, 204, 21, 0.18); border-color: rgba(250, 204, 21, 0.5); }
+.pe-notes.pe-note-in { animation: peNoteIn 0.35s ease; }
+@keyframes peNoteIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.pe-note-chip { display: inline-block; margin: 0 0 4px; padding: 1px 8px; border-radius: 999px; background: #b45309; color: #fff;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.02em; }
+.pe-note-text { display: block; }
+.pe-note-meta { display: block; margin-top: 4px; font-size: 11px; color: var(--pe-muted); }
+.pe-note-dots { position: absolute; top: 14px; right: 14px; display: flex; gap: 4px; }
+.pe-note-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(180, 83, 9, 0.25); }
+.pe-note-dots span.on { background: #d4a106; }
+.pe-note-dots span.prox.on { background: #b45309; }
+@media (prefers-reduced-motion: reduce) { .pe-notes.pe-note-in { animation: none; } }
+
+/* ---------- Evolucion: notas para la proxima cita en amarillo ---------- */
+.pe-evo li.pe-evo-nota b { font-weight: 700; padding: 5px 8px; border-radius: 6px; background: #fef3c7; border-left: 3px solid #d4a106; color: #78350f; }
+.pe-evo li.pe-evo-nota::before { border-color: #d4a106; background: #fde68a; }
+.pe-evo li.pe-evo-nota small { color: #b45309; font-weight: 600; }
+.pe-evo li.pe-evo-nota.is-cumplida b { background: #fefce8; border-left-color: #e5d38a; color: #6b5a2a; font-weight: 500; }
+.pe-evo li.pe-evo-nota.is-cumplida::before { background: var(--pe-surface); border-color: #e5d38a; }
+.pe-evo li.pe-evo-nota.is-cumplida small { color: var(--pe-muted); font-weight: 400; }
+.pe-evo .pe-evo-nota-tag { display: inline-block; margin-right: 5px; padding: 0 6px; border-radius: 999px; background: #d4a106; color: #fff;
+  font-size: 10.5px; font-weight: 800; }
+.pe-evo li.pe-evo-nota.is-cumplida .pe-evo-nota-tag { background: #cbb56a; }
+body.dark-mode .pe-evo li.pe-evo-nota b { background: rgba(250, 204, 21, 0.14); color: #fde68a; }
+body.dark-mode .pe-evo li.pe-evo-nota.is-cumplida b { background: rgba(250, 204, 21, 0.06); color: #d6c98f; }
+body.dark-mode .pe-evo li.pe-evo-nota small { color: #fcd34d; }
+/* Fecha de la nota en Evolucion: mismo resalte que la cita pero en ambar. */
+.pe-evo li.pe-evo-nota .pe-evo-fecha { color: #b45309; background: #fde68a; margin-right: 5px; }
+.pe-evo li.pe-evo-nota.is-cumplida .pe-evo-fecha { color: #8a6d1f; background: #fef3c7; }
+body.dark-mode .pe-evo li.pe-evo-nota .pe-evo-fecha { color: #fde68a; background: rgba(250, 204, 21, 0.2); }
+
+/* Solo en celular (muy angosto) los datos pasan a una columna. */
+@media (max-width: 420px) {
+  .pe-fields { grid-template-columns: 1fr; }
+}

@@ -44,6 +44,34 @@
   }
 }
 
+/* Cambio desde el menu: la vista entra del lado donde esta su boton (js/web.js calcula la direccion). */
+:root {
+  --spa-view-dir-ms: 400ms;
+}
+
+.content.spa-animating[data-spa-dir] {
+  overflow-x: hidden; /* sin barra horizontal mientras entra de lado */
+  will-change: opacity, transform;
+}
+
+.content.spa-view-in[data-spa-dir="next"] {
+  animation: spaViewInNext var(--spa-view-dir-ms) var(--spa-ease-apple) both;
+}
+
+.content.spa-view-in[data-spa-dir="prev"] {
+  animation: spaViewInPrev var(--spa-view-dir-ms) var(--spa-ease-apple) both;
+}
+
+@keyframes spaViewInNext {
+  from { opacity: 0; transform: translateX(44px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes spaViewInPrev {
+  from { opacity: 0; transform: translateX(-44px); }
+  to { opacity: 1; transform: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .content.spa-animating,
   .content.spa-view-out,

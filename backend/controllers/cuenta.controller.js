@@ -898,74 +898,89 @@ const listarReporteMensual = async (req, res) => {
   }
 };
 
+// Valida los filtros comunes del reporte mensual (mes, tratamiento, forma de pago, doctor).
+// Devuelve { error } o los filtros normalizados.
+async function parseReporteMensualFiltros(req) {
+  const mes = String(req.query?.mes || "").trim();
+  const idServicioRaw = String(req.query?.idServicio || "").trim();
+  const formaPagoRaw = String(req.query?.formaPago || "").trim();
+  const idDoctorRaw = String(req.query?.idDoctor || "").trim();
+  const mesMatch = mes.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+
+  if (!mesMatch) {
+    return { error: "mes invalido (formato requerido: YYYY-MM)" };
+  }
+
+  let idServicio = null;
+  let servicio = null;
+  if (idServicioRaw) {
+    idServicio = Number(idServicioRaw);
+    if (!Number.isInteger(idServicio) || idServicio <= 0) {
+      return { error: "idServicio invalido" };
+    }
+
+    const [servicioRows] = await queryReadWithRetry(
+      "SELECT idServicio, nombreS FROM servicio WHERE idServicio = ? LIMIT 1",
+      [idServicio]
+    );
+    servicio = Array.isArray(servicioRows) ? servicioRows[0] : null;
+    if (!servicio) {
+      return { error: "Servicio no encontrado" };
+    }
+  }
+
+  const anio = Number(mesMatch[1]);
+  const mesNumero = Number(mesMatch[2]);
+  let formaPago = null;
+  if (formaPagoRaw) {
+    formaPago = normalizarFormaPago(formaPagoRaw);
+    if (!formaPago) {
+      return { error: "formaPago invalido (permitidos: efectivo, tarjeta, igs, transferencia)" };
+    }
+  }
+
+  let idDoctor = null;
+  let doctor = null;
+  if (idDoctorRaw) {
+    idDoctor = Number(idDoctorRaw);
+    if (!Number.isInteger(idDoctor) || idDoctor <= 0) {
+      return { error: "idDoctor invalido" };
+    }
+
+    const hasDoctorCol = await hasDetalleCuentaDoctorCol();
+    if (!hasDoctorCol) {
+      return { error: "Falta migracion en base de datos: detallecuenta.idDoctor" };
+    }
+
+    const [doctorRows] = await queryReadWithRetry(
+      "SELECT idDoctor, nombreD FROM doctor WHERE idDoctor = ? LIMIT 1",
+      [idDoctor]
+    );
+    doctor = Array.isArray(doctorRows) ? doctorRows[0] : null;
+    if (!doctor) {
+      return { error: "Doctor no encontrado" };
+    }
+  }
+
+  return {
+    mes,
+    anio,
+    mesNumero,
+    idServicio,
+    servicio,
+    formaPago,
+    idDoctor,
+    doctor
+  };
+}
+
 const listarReporteMensualPacientes = async (req, res) => {
   try {
-    const mes = String(req.query?.mes || "").trim();
-    const idServicioRaw = String(req.query?.idServicio || "").trim();
-    const formaPagoRaw = String(req.query?.formaPago || "").trim();
-    const idDoctorRaw = String(req.query?.idDoctor || "").trim();
-    const mesMatch = mes.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
-
-    if (!mesMatch) {
-      return badRequest(res, "mes invalido (formato requerido: YYYY-MM)");
+    const filtros = await parseReporteMensualFiltros(req);
+    if (filtros.error) {
+      return badRequest(res, filtros.error);
     }
-
-    let idServicio = null;
-    let servicio = null;
-    if (idServicioRaw) {
-      idServicio = Number(idServicioRaw);
-      if (!Number.isInteger(idServicio) || idServicio <= 0) {
-        return badRequest(res, "idServicio invalido");
-      }
-
-      const [servicioRows] = await queryReadWithRetry(
-        "SELECT idServicio, nombreS FROM servicio WHERE idServicio = ? LIMIT 1",
-        [idServicio]
-      );
-      servicio = Array.isArray(servicioRows) ? servicioRows[0] : null;
-      if (!servicio) {
-        return badRequest(res, "Servicio no encontrado");
-      }
-    }
-
-    const anio = Number(mesMatch[1]);
-    const mesNumero = Number(mesMatch[2]);
-    let formaPago = null;
-    if (formaPagoRaw) {
-      formaPago = normalizarFormaPago(formaPagoRaw);
-      if (!formaPago) {
-        return badRequest(
-          res,
-          "formaPago invalido (permitidos: efectivo, tarjeta, igs, transferencia)"
-        );
-      }
-    }
-
-    let idDoctor = null;
-    let doctor = null;
-    if (idDoctorRaw) {
-      idDoctor = Number(idDoctorRaw);
-      if (!Number.isInteger(idDoctor) || idDoctor <= 0) {
-        return badRequest(res, "idDoctor invalido");
-      }
-
-      const hasDoctorCol = await hasDetalleCuentaDoctorCol();
-      if (!hasDoctorCol) {
-        return badRequest(
-          res,
-          "Falta migracion en base de datos: detallecuenta.idDoctor"
-        );
-      }
-
-      const [doctorRows] = await queryReadWithRetry(
-        "SELECT idDoctor, nombreD FROM doctor WHERE idDoctor = ? LIMIT 1",
-        [idDoctor]
-      );
-      doctor = Array.isArray(doctorRows) ? doctorRows[0] : null;
-      if (!doctor) {
-        return badRequest(res, "Doctor no encontrado");
-      }
-    }
+    const { mes, anio, mesNumero, idServicio, servicio, formaPago, idDoctor, doctor } = filtros;
 
     const [rows] = await queryReporteMensualPacientesSP({
       anio,
@@ -1043,6 +1058,77 @@ const listarReporteMensualPacientes = async (req, res) => {
       return badRequest(res, err.message || "Falta migracion para reporte mensual por doctor");
     }
     return handleCuentaError(res, err, "Error al listar reporte mensual por pacientes");
+  }
+};
+
+function isMissingStoredProcedureError(err) {
+  if (Number(err?.errno || 0) === 1305) return true;
+  return String(err?.code || "").toUpperCase() === "ER_SP_DOES_NOT_EXIST";
+}
+
+function mapAnalisisTotales(row) {
+  return {
+    pacientes: Number(row?.pacientes || 0),
+    cuentas: Number(row?.cuentas || 0),
+    cantidad: Number(row?.cantidad || 0),
+    monto: Number(row?.monto || 0)
+  };
+}
+
+// Pestana "Analisis" del reporte mensual: totales vs mes anterior y desgloses para graficas.
+const listarReporteMensualAnalisis = async (req, res) => {
+  try {
+    const filtros = await parseReporteMensualFiltros(req);
+    if (filtros.error) {
+      return badRequest(res, filtros.error);
+    }
+    const { mes, anio, mesNumero, idServicio, formaPago, idDoctor } = filtros;
+
+    const [rows] = await queryReadWithRetry(
+      "CALL sp_cuenta_reporte_mensual_analisis(?, ?, ?, ?, ?)",
+      [anio, mesNumero, idServicio, formaPago, idDoctor]
+    );
+    const sets = (Array.isArray(rows) ? rows : []).filter(Array.isArray);
+    const [totalesRows = [], anteriorRows = [], diasRows = [], formasRows = [], tratamientosRows = [], doctoresRows = []] = sets;
+
+    res.json({
+      ok: true,
+      mes,
+      totales: mapAnalisisTotales(totalesRows[0]),
+      totalesMesAnterior: mapAnalisisTotales(anteriorRows[0]),
+      porDia: diasRows.map((row) => ({
+        dia: Number(row.dia),
+        ...mapAnalisisTotales(row)
+      })),
+      porFormaPago: formasRows.map((row) => ({
+        formaPago: String(row.formaPago || ""),
+        cuentas: Number(row.cuentas || 0),
+        cantidad: Number(row.cantidad || 0),
+        monto: Number(row.monto || 0)
+      })),
+      porTratamiento: tratamientosRows.map((row) => ({
+        idServicio: row.idServicio === null ? null : Number(row.idServicio),
+        nombre: String(row.nombre || ""),
+        pacientes: Number(row.pacientes || 0),
+        cantidad: Number(row.cantidad || 0),
+        monto: Number(row.monto || 0)
+      })),
+      porDoctor: doctoresRows.map((row) => ({
+        idDoctor: row.idDoctor === null ? null : Number(row.idDoctor),
+        nombre: String(row.nombre || ""),
+        pacientes: Number(row.pacientes || 0),
+        cantidad: Number(row.cantidad || 0),
+        monto: Number(row.monto || 0)
+      }))
+    });
+  } catch (err) {
+    if (isMissingStoredProcedureError(err)) {
+      return badRequest(
+        res,
+        "Falta migracion en base de datos: sp_cuenta_reporte_mensual_analisis (2026-09-26_cuenta_reporte_mensual_analisis.sql)"
+      );
+    }
+    return handleCuentaError(res, err, "Error al cargar analisis del reporte mensual");
   }
 };
 
@@ -1327,6 +1413,7 @@ module.exports = {
   actualizarDoctorCuenta,
   listarReporteMensual,
   listarReporteMensualPacientes,
+  listarReporteMensualAnalisis,
   eliminar,
   crearDescuento,
   listarDescuentoPorFecha,

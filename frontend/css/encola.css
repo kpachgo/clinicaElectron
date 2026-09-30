@@ -464,3 +464,201 @@ body[data-theme="princess"] {
   }
 
 }
+
+/* "Ocultar acciones" pone hidden a Limpiar atendidos / Borrar todo, pero el display:inline-flex
+   de .ui-toolbar-btn le ganaba al atributo y seguian visibles. */
+.cola-toolbar [hidden] {
+  display: none !important;
+}
+
+/* Tablet vertical (~533 px): cada paciente es una tarjeta, sin scroll horizontal.
+   Jerarquia: lo que importa en recepcion es QUIEN, A QUE viene y si ya fue ATENDIDO;
+   el doctor, la hora y la fecha van chicos y en gris.
+     linea 1: #  Paciente ...................... [Estado]
+     linea 2: Tratamiento
+     linea 3: hora  fecha  doctor .............. acciones
+   Borde izquierdo: naranja = en espera, verde = atendido.
+   Saltos de linea en flex: tr::before / tr::after con order intermedio y flex-basis 100%. */
+@media (max-width: 760px) {
+  .cola-container {
+    padding: 12px 10px;
+  }
+
+  .cola-title-wrap {
+    min-width: 0;
+  }
+
+  .cola-toolbar .ui-control:not(.ui-control-search) {
+    flex: 1 1 130px;
+  }
+
+  .cola-toolbar .ui-toolbar-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .cola-table-wrap {
+    overflow: visible;
+  }
+
+  .cola-table,
+  .cola-table tbody {
+    display: block;
+    min-width: 0;
+  }
+
+  .cola-table thead {
+    display: none;
+  }
+
+  .cola-table tbody tr.cola-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 8px;
+    height: auto;
+    padding: 10px 12px 10px 11px;
+    background: var(--cola-table-row-bg);
+    border-bottom: 1px solid var(--cola-row-border);
+    border-left: 4px solid var(--cola-status-wait-border);
+  }
+
+  .cola-table tbody tr.cola-row.is-atendido {
+    border-left-color: var(--cola-status-done-border);
+  }
+
+  .cola-table tbody tr.cola-row:nth-child(even) {
+    background: var(--cola-table-row-alt-bg);
+  }
+
+  .cola-table tbody tr.cola-row:last-child {
+    border-bottom: 0;
+  }
+
+  .cola-table tbody tr.cola-row::before,
+  .cola-table tbody tr.cola-row::after {
+    content: "";
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .cola-table tbody tr.cola-row::before { order: 3; }
+  .cola-table tbody tr.cola-row::after { order: 5; }
+
+  .cola-table tbody tr.cola-row td {
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent !important;
+  }
+
+  /* ---- Linea 1: numero, paciente, estado ---- */
+  .cola-table tbody tr.cola-row .cola-col-num {
+    order: 1;
+    width: auto;
+    font-size: 13px;
+  }
+
+  .cola-table tbody tr.cola-row .cola-col-num::before {
+    content: "#";
+  }
+
+  .cola-table.hide-numeracion tbody tr.cola-row .cola-col-num {
+    display: none;
+  }
+
+  .cola-table .cola-c-nombre {
+    order: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: 15px !important;
+    font-weight: 800;
+    line-height: 1.2 !important;
+    color: var(--cola-text) !important;
+  }
+
+  .cola-table .cola-c-estado {
+    order: 2;
+  }
+
+  .cola-table .cola-c-estado .cola-estado-select {
+    min-height: 30px;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  /* ---- Linea 2: motivo ---- */
+  .cola-table .cola-c-trat {
+    order: 4;
+    flex-basis: 100%;
+  }
+
+  .cola-table .cola-c-trat .cola-tratamiento-text {
+    padding: 0;
+  }
+
+  /* ---- Linea 3: datos secundarios en gris + acciones ---- */
+  .cola-table .cola-c-hora {
+    order: 6;
+    font-size: 12px !important;
+    font-weight: 700;
+    color: var(--cola-text-muted) !important;
+  }
+
+  .cola-table .cola-c-fecha {
+    order: 7;
+  }
+
+  .cola-table .cola-c-fecha .rv-fecha {
+    font-size: 11px;
+    padding: 1px 7px;
+    opacity: 0.85;
+  }
+
+  .cola-table .cola-c-doctor {
+    order: 8;
+    flex: 0 1 190px;
+    min-width: 0;
+  }
+
+  /* Doctor discreto: sin el relleno de color, solo una marca de su color a la izquierda. */
+  .cola-table .cola-c-doctor .cola-doctor-select {
+    width: 100%;
+    min-width: 0;
+    min-height: 28px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    background: transparent !important;
+    color: var(--cola-text-muted) !important;
+    border-color: var(--cola-row-border) !important;
+    border-left: 3px solid var(--doctor-border, var(--cola-input-border)) !important;
+  }
+
+  .cola-table .cola-col-acciones {
+    order: 9;
+    margin-left: auto;
+    padding: 0 !important;
+  }
+
+  .cola-actions {
+    padding: 0;
+    gap: 6px;
+  }
+
+  .cola-actions .ui-action-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* Vacio / cargando: fila normal a todo el ancho */
+  .cola-table tbody tr:not(.cola-row) {
+    display: block;
+  }
+
+  .cola-table tbody tr:not(.cola-row) td {
+    display: block;
+  }
+}

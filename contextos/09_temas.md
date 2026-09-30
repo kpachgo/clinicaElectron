@@ -46,6 +46,7 @@
   - `theme-light.css` define la paleta base clara y `color-scheme: light`.
   - el chrome principal se refresco en `style.css` con variables `--app-*` (`--app-primary`, `--app-secondary`, `--app-background`, `--app-surface`, `--app-border`, `--app-text`, `--app-text-muted`).
   - la topbar usa fondo blanco translucido, borde suave, sombra ligera, nav activo azul clinico y avatar circular con iniciales del usuario.
+  - el nav activo es una pastilla de color con texto blanco: `--app-nav-pill-bg` y `--app-nav-pill-shadow` (default en `style.css`; `theme-dark`, `theme-vampire` y `theme-princess` definen las suyas). Detalle del menu en `01_general.md`.
   - el contenido usa fondo claro `--app-background` con acento radial azul muy leve.
   - los botones superiores (`.top-icon-btn`, `.theme-btn`) y logout se compactaron a formato icono/cuadrado para el nuevo chrome.
   - existen ajustes de compatibilidad para `.dark-mode` sobre la topbar y botones, evitando que el refresh claro rompa temas oscuros.

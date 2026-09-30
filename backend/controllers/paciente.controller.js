@@ -786,7 +786,8 @@ const obtenerPorId = async (req, res) => {
     }
 
     const [rows] = await queryReadWithRetry(
-      "CALL sp_paciente_get_by_id(?)",
+      // _v2 = sp_paciente_get_by_id + sexoP (sql/2026-09-25_paciente_sexo.sql); el original queda para versiones anteriores.
+      "CALL sp_paciente_get_by_id_v2(?)",
       [id]
     );
 
@@ -1366,8 +1367,15 @@ const guardarPaciente = async (req, res) => {
       return badRequest(res, "correoP permite maximo 40 caracteres");
     }
 
+    // 'F' | 'M' | vacio (sin especificar -> NULL).
+    const sexoP = String(p?.sexoP || "").trim().toUpperCase();
+    if (sexoP && sexoP !== "F" && sexoP !== "M") {
+      return badRequest(res, "sexoP invalido (F, M o vacio)");
+    }
+
+    // _v3 = _v2 + sexoP (sql/2026-09-25_paciente_sexo.sql); _v2 y el original quedan para versiones anteriores.
     const [rows] = await pool.query(
-      "CALL sp_paciente_guardar_v2(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      "CALL sp_paciente_guardar_v3(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       [
         idPacienteNum,
         nombre,
@@ -1376,6 +1384,7 @@ const guardarPaciente = async (req, res) => {
         p.fechaRegistroP,
         p.estadoP ?? 1,
         p.fechaNacimientoP,
+        sexoP || null,
         p.recomendadoP,
         p.encargadoP,
         p.motivoConsultaP,
@@ -1864,7 +1873,138 @@ const existePaciente = async (req, res) => {
   }
 };
 
+// ============================
+// NOTAS PARA LA PROXIMA CITA
+// ============================
+// Indicaciones puntuales (ej. "extraccion antes de la proxima cita"). Vigencia calculada en el SP:
+// la nota avisa mientras no exista una cita con fecha posterior a fechaNotaPC.
+// Editar/eliminar: el autor de la nota o un Administrador.
+const MAX_NOTA_PROXIMA_CITA = 500;
+const MIGRACION_NOTA_PROXIMA_CITA = "2026-09-28_paciente_nota_proxima_cita.sql";
+
+function esErrorFaltaMigracionNotaProxima(err) {
+  return err?.code === "ER_NO_SUCH_TABLE" || err?.code === "ER_SP_DOES_NOT_EXIST";
+}
+
+function mapNotaProximaCita(row) {
+  return {
+    idNotaPC: Number(row.idNotaPC),
+    idPaciente: Number(row.idPaciente),
+    fechaNotaPC: row.fechaNotaPC,
+    notaPC: String(row.notaPC || ""),
+    creadoPorUsuarioId: row.creadoPorUsuarioId ? Number(row.creadoPorUsuarioId) : null,
+    creadoPor: row.creadoPor || null,
+    creadoEn: row.creadoEn || null,
+    cumplidaEnCita: row.cumplidaEnCita || null,
+    vigente: Number(row.vigente) === 1
+  };
+}
+
+function validarTextoNotaProxima(nota) {
+  const texto = String(nota ?? "").trim();
+  if (!texto) return { error: "La nota no puede estar vacia" };
+  if (texto.length > MAX_NOTA_PROXIMA_CITA) {
+    return { error: `La nota no puede superar ${MAX_NOTA_PROXIMA_CITA} caracteres` };
+  }
+  return { texto };
+}
+
+async function obtenerNotaProximaEditable(req, res) {
+  const idNota = Number(req.params?.id || 0);
+  if (!Number.isInteger(idNota) || idNota <= 0) {
+    badRequest(res, "ID de nota invalido");
+    return null;
+  }
+  const [rows] = await pool.query(
+    "SELECT idNotaPC, idPaciente, creadoPorUsuarioId FROM paciente_nota_proxima_cita WHERE idNotaPC = ? LIMIT 1",
+    [idNota]
+  );
+  const nota = rows?.[0];
+  if (!nota) {
+    notFound(res, "Nota no encontrada");
+    return null;
+  }
+  const esAdmin = req.user?.rol === "Administrador";
+  const esAutor = Number(nota.creadoPorUsuarioId || 0) === Number(req.user?.idUsuario || 0);
+  if (!esAdmin && !esAutor) {
+    res.status(403).json({ ok: false, message: "Solo quien escribio la nota o un Administrador puede modificarla" });
+    return null;
+  }
+  return nota;
+}
+
+const listarNotasProximaCita = async (req, res) => {
+  try {
+    const id = Number(req.params?.id || 0);
+    if (!Number.isInteger(id) || id <= 0) {
+      return badRequest(res, "ID de paciente invalido");
+    }
+    const [rows] = await queryReadWithRetry("CALL sp_paciente_nota_proxima_listar(?)", [id]);
+    return res.json({ ok: true, data: firstResultSet(rows).map(mapNotaProximaCita) });
+  } catch (err) {
+    if (esErrorFaltaMigracionNotaProxima(err)) {
+      // Sin migracion la vista Paciente sigue funcionando: simplemente no hay notas.
+      return res.json({ ok: true, data: [], migracionPendiente: MIGRACION_NOTA_PROXIMA_CITA });
+    }
+    return handlePacienteError(res, err, "Error al listar notas de proxima cita");
+  }
+};
+
+const crearNotaProximaCita = async (req, res) => {
+  try {
+    const idPaciente = Number(req.body?.idPaciente || 0);
+    if (!Number.isInteger(idPaciente) || idPaciente <= 0) {
+      return badRequest(res, "idPaciente invalido");
+    }
+    const { texto, error } = validarTextoNotaProxima(req.body?.nota);
+    if (error) return badRequest(res, error);
+
+    const creadoPorUsuarioId = Number(req.user?.idUsuario || 0) || null;
+    const [rows] = await pool.query(
+      "CALL sp_paciente_nota_proxima_crear(?,?,?,?)",
+      [idPaciente, getTodayLocalISO(), texto, creadoPorUsuarioId]
+    );
+    const out = firstRow(rows);
+    return res.json({ ok: true, idNotaPC: Number(out?.idNotaPC || 0) || null });
+  } catch (err) {
+    if (esErrorFaltaMigracionNotaProxima(err)) {
+      return badRequest(res, `Falta aplicar la migracion ${MIGRACION_NOTA_PROXIMA_CITA} para guardar notas`);
+    }
+    return handlePacienteError(res, err, "Error al guardar nota de proxima cita");
+  }
+};
+
+const actualizarNotaProximaCita = async (req, res) => {
+  try {
+    const nota = await obtenerNotaProximaEditable(req, res);
+    if (!nota) return;
+    const { texto, error } = validarTextoNotaProxima(req.body?.nota);
+    if (error) return badRequest(res, error);
+
+    await pool.query("CALL sp_paciente_nota_proxima_actualizar(?,?)", [nota.idNotaPC, texto]);
+    return res.json({ ok: true, idNotaPC: Number(nota.idNotaPC) });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al actualizar nota de proxima cita");
+  }
+};
+
+const eliminarNotaProximaCita = async (req, res) => {
+  try {
+    const nota = await obtenerNotaProximaEditable(req, res);
+    if (!nota) return;
+
+    await pool.query("CALL sp_paciente_nota_proxima_eliminar(?)", [nota.idNotaPC]);
+    return res.json({ ok: true, idNotaPC: Number(nota.idNotaPC) });
+  } catch (err) {
+    return handlePacienteError(res, err, "Error al eliminar nota de proxima cita");
+  }
+};
+
 module.exports = {
+  listarNotasProximaCita,
+  crearNotaProximaCita,
+  actualizarNotaProximaCita,
+  eliminarNotaProximaCita,
   buscar,
   existePaciente,
   monitorSeguimiento,
