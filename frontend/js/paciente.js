@@ -1386,6 +1386,29 @@ function setOdontoVisualMode(active, options = {}) {
   syncOdontoVisualModeButtonText();
   syncOdontoVisualModeControls();
 }
+// Respaldo de la escala del odontograma para navegadores sin unidad cqi (ver pacienteExpediente.css):
+// replica la misma formula usando el ancho real del contenedor.
+function initOdontoScaleFallback() {
+  if (window.CSS && CSS.supports && CSS.supports("width", "1cqi")) return;
+  const container = document.querySelector(".odontograma-scale-container");
+  const wrapper = document.getElementById("odontograma-wrapper");
+  if (!container || !wrapper) return;
+  const aplicar = () => {
+    const ancho = container.clientWidth;
+    if (!ancho) return;
+    const gap = Math.min(12, Math.max(3, ancho * 0.009));
+    const diente = Math.min(66, (ancho - 15 * gap - 2) / 16);
+    wrapper.style.setProperty("--odo-gap", `${gap}px`);
+    wrapper.style.setProperty("--odo-tooth", `${Math.max(diente, 10)}px`);
+    wrapper.style.gap = `${Math.min(18, Math.max(8, ancho * 0.016))}px`;
+  };
+  aplicar();
+  if (typeof ResizeObserver === "function") {
+    new ResizeObserver(aplicar).observe(container);
+  } else {
+    window.addEventListener("resize", aplicar);
+  }
+}
 function initOdontoVisualModeControls() {
   const btnVisual = document.getElementById("btn-visual-odontograma");
   if (!btnVisual) return;
@@ -8807,6 +8830,7 @@ window.__mountPaciente = function () {
 }
     resetOdontoVisualModeState();
     initOdontoVisualModeControls();
+    initOdontoScaleFallback();
     sincronizarSnapshotOdontogramaBase();
 
 

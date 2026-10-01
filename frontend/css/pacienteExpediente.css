@@ -88,8 +88,9 @@ body.dark-mode .pe {
   position: fixed; right: var(--pe-tab-right, 0px); top: 0; bottom: 0; z-index: 25; /* debajo de los modales */
   /* Centrado con margenes auto y no con translateY(-50%): el transform la dejaba en medio pixel y el texto se veia borroso. */
   margin: auto 0; height: max-content;
-  display: flex; align-items: center; gap: 8px;
-  writing-mode: vertical-rl;
+  /* El giro va en el texto (.lbl) y no en el <button>: Chrome < 121 ignora writing-mode en botones y
+     la pestaña salia horizontal a media pantalla tapando el odontograma (tablet del sillon). */
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
   padding: 16px 8px 16px 9px; border: none; border-radius: 12px 0 0 12px;
   background: var(--pe-accent); color: #fff; cursor: pointer;
   font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
@@ -98,6 +99,7 @@ body.dark-mode .pe {
 }
 .pe.is-exp .pe-search-tab:hover { padding-left: 14px; }
 .pe.is-exp .pe-search-tab svg { width: 16px; height: 16px; }
+.pe.is-exp .pe-search-tab .lbl { writing-mode: vertical-rl; }
 .pe.is-exp .pe-search-tab.is-open { background: var(--pe-surface); color: var(--pe-accent); border: 1px solid var(--pe-line); border-right: none; }
 .pe.is-exp .pe-search-tab:focus { outline: none; }
 .pe.is-exp .pe-search-tab:focus-visible { outline: 2px solid var(--pe-accent); outline-offset: 2px; }
@@ -498,11 +500,22 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
    query): los 16 dientes de la fila adulta + 15 separaciones siempre caben (maximo 66 px como antes).
    Solo dentro del recuadro: el diente clonado del modal "Seleccion por pieza" no cambia. */
 .odontograma-scale-container { container-type: inline-size; overflow-x: hidden; }
+/* Navegadores sin container queries (Chrome < 105, p. ej. la tablet del sillon): la unidad cqi es
+   invalida y --odo-tooth quedaba vacio -> el SVG tomaba todo el ancho (dientes gigantes). Ahi
+   initOdontoScaleFallback() (paciente.js) calcula --odo-tooth/--odo-gap en px; estos valores son
+   solo el arranque mientras corre. */
 .odontograma-scale-container #odontograma-wrapper {
-  --odo-gap: clamp(3px, 0.9cqi, 12px);
-  --odo-tooth: min(66px, calc((100cqi - 15 * var(--odo-gap) - 2px) / 16));
+  --odo-gap: 6px;
+  --odo-tooth: 40px;
   width: 100%;
-  gap: clamp(8px, 1.6cqi, 18px);
+  gap: 14px;
+}
+@supports (width: 1cqi) {
+  .odontograma-scale-container #odontograma-wrapper {
+    --odo-gap: clamp(3px, 0.9cqi, 12px);
+    --odo-tooth: min(66px, calc((100cqi - 15 * var(--odo-gap) - 2px) / 16));
+    gap: clamp(8px, 1.6cqi, 18px);
+  }
 }
 .odontograma-scale-container .odont-row { gap: var(--odo-gap); }
 .odontograma-scale-container .tooth { width: var(--odo-tooth); }
