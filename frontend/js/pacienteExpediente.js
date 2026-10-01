@@ -14,7 +14,7 @@
 // Enganches desde paciente.js: mount(), onPacienteCargado(), setMode("form"), onGuardado(), refreshEvolucion().
 (function () {
   const COLLAPSE_KEY = "clinica-paciente-exp-collapsed";
-  const WIDE = new Set(["odontograma", "endodoncia", "diagnostico", "fotos", "citas"]);
+  const WIDE = new Set(["odontograma", "endodoncia", "diagnostico", "fotos", "impresiones", "citas"]);
   const SECS = [
     { id: "filiacion", icon: "user", label: "Informacion", card: "Datos Personales" },
     { id: "historia", icon: "clip", label: "Historia clinica", card: "Datos Clinicos" },
@@ -22,6 +22,8 @@
     { id: "endodoncia", icon: "bolt", label: "Endodoncia / Cirugia", card: "Endodoncia Cirugia" },
     { id: "diagnostico", icon: "check", label: "Diagnostico final", card: "Diagnostico Final" },
     { id: "fotos", icon: "photo", label: "Radiografias y fotografias", cardId: "fotos-paciente-card", raw: true },
+    // Sin tarjeta propia en paciente.js: se arma en mount() con los botones de impresion del odontograma.
+    { id: "impresiones", icon: "print", label: "Impresiones", raw: true },
     { id: "citas", icon: "cal", label: "Citas", cardId: "citas-paciente-card", raw: true },
   ];
 
@@ -32,6 +34,7 @@
     bolt: '<path d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/>',
     check: '<path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>',
     photo: '<path d="m2.25 15.75 5.16-5.16a2.25 2.25 0 0 1 3.18 0l5.16 5.16m-1.5-1.5 1.41-1.41a2.25 2.25 0 0 1 3.18 0l2.91 2.91M3.75 21h16.5A1.5 1.5 0 0 0 21.75 19.5V4.5A1.5 1.5 0 0 0 20.25 3H3.75A1.5 1.5 0 0 0 2.25 4.5v15A1.5 1.5 0 0 0 3.75 21Z"/>',
+    print: '<path d="M6.72 13.83a42.4 42.4 0 0 1 10.56 0M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.46c0-1.08.77-2.01 1.84-2.17a48.5 48.5 0 0 1 14.32 0c1.07.16 1.84 1.09 1.84 2.17v6.29A2.25 2.25 0 0 1 18.75 18h-1.09M6.34 18l-.23 2.5a1.13 1.13 0 0 0 1.12 1.25h9.54a1.13 1.13 0 0 0 1.12-1.25L17.66 18M6.34 18l.38-4.17m10.94 4.17-.38-4.17M6.75 7.1V3.38c0-.62.5-1.13 1.13-1.13h8.24c.63 0 1.13.5 1.13 1.13V7.1M18 10.5h.01"/>',
     cal: '<path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/>',
     phone: '<path d="M2.25 6.75c0 8.28 6.72 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.37c0-.52-.35-.97-.85-1.09l-4.42-1.1c-.44-.12-.9.05-1.17.41l-.97 1.29a1.13 1.13 0 0 1-1.21.38 12.04 12.04 0 0 1-7.14-7.14 1.13 1.13 0 0 1 .38-1.21l1.3-.97c.35-.27.52-.73.4-1.17L6.97 3.1a1.13 1.13 0 0 0-1.09-.85H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z"/>',
     mail: '<path d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.24a2.25 2.25 0 0 1-1.07 1.92l-7.5 4.61a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.91V6.75"/>',
@@ -91,6 +94,67 @@
     return Array.from(shell.querySelectorAll(":scope > .paciente-card")).find(
       (c) => String(c.querySelector(".paciente-titulo")?.textContent || "").trim() === s.card
     ) || null;
+  }
+
+  // Seccion Impresiones: MUEVE la barra Impresiones / Consentimientos / Configuracion del resumen del
+  // odontograma (mismos ids y eventos). El resumen de tratamientos se queda en el odontograma.
+  // Se llama dentro de mount(): la tarjeta del odontograma ya se movio a su panel en `root`, que
+  // todavia no esta en la pagina (por eso se busca en root y no en shell ni en document).
+  // Cada boton se mueve a un mosaico (icono + nombre + descripcion). paciente.js solo usa su
+  // onclick y disabled, asi que cambiar su contenido y clases es seguro.
+  const IMPRESIONES = [
+    { group: "Documentos", items: [
+      ["odonto-summary-print-btn", "Pendiente", "Hoja de tratamientos pendientes con precios"],
+      ["odonto-summary-assist-btn", "Asistencia", "Constancia de asistencia con horario"],
+      ["odonto-summary-exp-btn", "Expediente", "Datos, odontograma, resumen y citas del paciente"],
+      ["odonto-summary-multi-btn", "Varios", "Documentos PDF guardados para imprimir"],
+    ] },
+    { group: "Consentimientos", items: [
+      ["odonto-summary-consent-btn", "Endodoncia", "Consentimiento informado de endodoncia"],
+      ["odonto-summary-ortho-consent-btn", "Ortodoncia", "Consentimiento informado de ortodoncia"],
+    ] },
+  ];
+
+  function buildImpresionesCard(shell) {
+    const sel = "#odontograma-summary-panel .odonto-summary-header-actions";
+    const actions = root?.querySelector(sel) || shell.querySelector(sel);
+    if (!actions) return null;
+    const btn = (id) => actions.querySelector(`#${id}`);
+    const card = document.createElement("div");
+    card.className = "paciente-card card pe-impresiones-card";
+    card.innerHTML = `
+      <div class="pe-print-head">
+        <div><h5 class="pe-print-title">Impresiones</h5>
+          <p class="pe-print-sub">Documentos del paciente listos para revisar e imprimir</p></div>
+      </div>`;
+
+    const config = btn("odonto-summary-config-btn");
+    if (config) {
+      config.className = "pe-print-config";
+      config.innerHTML = `${config.querySelector(".odonto-summary-btn-icon")?.outerHTML || ""}<span>Configuracion</span>`;
+      card.querySelector(".pe-print-head").appendChild(config);
+    }
+
+    IMPRESIONES.forEach(({ group, items }) => {
+      const found = items.map(([id, title, desc]) => [btn(id), title, desc]).filter(([b]) => b);
+      if (!found.length) return; // modo venta: sin consentimientos
+      const sec = document.createElement("section");
+      sec.className = "pe-print-group";
+      sec.innerHTML = `<h6 class="pe-print-group-title">${group}</h6><div class="pe-print-grid"></div>`;
+      const grid = sec.querySelector(".pe-print-grid");
+      found.forEach(([b, title, desc]) => {
+        const icon = b.querySelector(".odonto-summary-btn-icon")?.outerHTML || "";
+        b.className = "pe-print-tile";
+        b.innerHTML = `<span class="pe-print-ico">${icon}</span>
+          <span class="pe-print-txt"><b>${esc(title)}</b><small>${esc(desc)}</small></span>
+          <span class="pe-print-go" aria-hidden="true">&rsaquo;</span>`;
+        grid.appendChild(b);
+      });
+      card.appendChild(sec);
+    });
+
+    actions.remove(); // la barra queda vacia: fuera del resumen del odontograma
+    return card;
   }
 
   function mount() {
@@ -154,16 +218,20 @@
 
     const center = root.querySelector(".pe-center");
     SECS.forEach((s) => {
-      const card = findCard(shell, s);
+      const card = s.id === "impresiones" ? buildImpresionesCard(shell) : findCard(shell, s);
       const panel = document.createElement("section");
       panel.className = `pe-panel${s.raw ? " pe-raw" : ""}`;
       panel.dataset.peSec = s.id;
+      // Nombre de la seccion: solo visible con el menu contraido o en tablet (CSS .pe-sec-title).
+      // Impresiones ya trae su propio encabezado.
+      const secTitle = `<h3 class="pe-sec-title">${ico(s.icon)}${s.label}</h3>`;
       if (s.raw) {
+        if (card && s.id !== "impresiones") card.insertAdjacentHTML("afterbegin", secTitle);
         if (card) panel.appendChild(card);
       } else {
         panel.innerHTML = `
           <div class="pe-card pe-read">
-            <div class="pe-read-h">
+            <div class="pe-read-h">${secTitle}
               <button type="button" class="pe-edit-btn" data-pe-edit="${s.id}">${ico("pen")}Editar</button></div>
             <div class="pe-read-b"></div>
           </div>
@@ -185,6 +253,13 @@
       fotoCard.classList.add("pe-hidden-card");
       root.appendChild(fotoCard);
     }
+
+    // Modales de impresion: salen de la tarjeta del odontograma para abrirse tambien desde
+    // Impresiones (dentro de una seccion oculta no se verian). Son position:fixed.
+    ["odonto-print-modal", "odonto-print-config-modal", "odonto-multi-print-modal"].forEach((id) => {
+      const m = root.querySelector(`#${id}`) || el(id); // root aun no esta en la pagina
+      if (m) root.appendChild(m);
+    });
 
     shell.prepend(root);
     root.classList.toggle("is-collapsed", collapsed);
@@ -371,7 +446,7 @@
     const idPac = window.pacienteActual?.idPaciente;
     pintarAvatar(edad, val("sexoP"));
     root.querySelector(".pe-name").textContent = nombre || "Paciente";
-    root.querySelector(".pe-age").textContent = [edad ? `${edad} anos` : "", idPac ? `#${idPac}` : ""].filter(Boolean).join(" · ");
+    root.querySelector(".pe-age").textContent = [edad ? `${edad} años` : "", idPac ? `#${idPac}` : ""].filter(Boolean).join(" · ");
     root.querySelectorAll("[data-pe-copy]").forEach((b) => { b.disabled = !val(b.dataset.peCopy); });
     const firma = val("firmaP");
     const firmaBtn = root.querySelector("[data-pe-firma]");
@@ -410,7 +485,7 @@
     const set = (id, html) => { const b = body(id); if (b) b.innerHTML = html; };
     set("filiacion", `<dl class="pe-fields">
       ${field("Nombre", nombre)}${field("Fecha de nacimiento", fecha(val("fechaNacimientoP")))}
-      ${field("Edad", edad ? `${edad} anos` : "")}${field("Sexo", selText("sexoP"))}
+      ${field("Edad", edad ? `${edad} años` : "")}${field("Sexo", selText("sexoP"))}
       ${field("DUI", val("duiP"))}${field("Telefono", val("telefonoP"))}
       ${field("Correo", val("correoP"), { wide: true })}
       ${field("Direccion", val("direccionP"), { wide: true })}
@@ -444,11 +519,16 @@
   }
 
   // ---------- Tarjeta Notas: nota global + notas para la proxima cita vigentes ----------
-  // Con varias notas se van turnando (pausa con el mouse encima); los puntos indican cual se ve.
+  // Con varias notas se van turnando (pausa con el mouse encima). Flechas y puntos para ir a la
+  // anterior/siguiente; en tablet tambien deslizando el dedo sobre la nota. Al navegar a mano la
+  // rotacion espera un rato para dar tiempo de leer (en tablet no hay "mouse encima").
   const NOTAS_ROTACION_MS = 6000;
+  const NOTAS_PAUSA_MANUAL_MS = 15000;
   let notasTimer = null;
   let notasIdx = 0;
   let notasFirma = "";
+  let notasItems = [];
+  let notasManualAt = 0;
 
   function notasProximaDelPaciente() {
     const idPac = Number(window.pacienteActual?.idPaciente || 0);
@@ -456,11 +536,86 @@
       .filter((n) => Number(n.idPaciente) === idPac);
   }
 
-  function refreshNotas() {
-    if (!root) return;
-    const notesEl = root.querySelector(".pe-notes");
+  function notasCard() {
+    const notesEl = root?.querySelector(".pe-notes");
     const card = notesEl?.closest(".pe-mini");
-    if (!notesEl || !card) return;
+    return notesEl && card ? { notesEl, card } : null;
+  }
+
+  function pintarNota() {
+    const els = notasCard();
+    if (!els) return;
+    const { notesEl, card } = els;
+    const items = notasItems;
+    const it = items[notasIdx];
+    card.classList.toggle("is-proxima", !!it?.proxima);
+    if (!it) {
+      notesEl.textContent = "Sin notas / observaciones";
+      notesEl.classList.add("muted");
+    } else {
+      notesEl.classList.remove("muted");
+      notesEl.innerHTML = `${it.proxima ? '<span class="pe-note-chip">Antes de la proxima cita</span>' : ""}<span class="pe-note-text">${esc(it.texto)}</span>${it.meta ? `<small class="pe-note-meta">${esc(it.meta)}</small>` : ""}`;
+    }
+    let nav = card.querySelector(".pe-note-nav");
+    if (items.length > 1) {
+      if (!nav) {
+        nav = document.createElement("div");
+        nav.className = "pe-note-nav";
+        nav.innerHTML = `<button type="button" class="pe-note-arrow" data-note-step="-1" aria-label="Nota anterior" title="Nota anterior">&lsaquo;</button>`
+          + `<span class="pe-note-dots"></span>`
+          + `<button type="button" class="pe-note-arrow" data-note-step="1" aria-label="Nota siguiente" title="Nota siguiente">&rsaquo;</button>`;
+        card.appendChild(nav);
+      }
+      nav.querySelector(".pe-note-dots").innerHTML = items.map((x, i) =>
+        `<button type="button" class="pe-note-dot${i === notasIdx ? " on" : ""}${x.proxima ? " prox" : ""}" data-note-idx="${i}" aria-label="Nota ${i + 1} de ${items.length}"${i === notasIdx ? ' aria-current="true"' : ""}><span></span></button>`).join("");
+    } else {
+      nav?.remove();
+    }
+    notesEl.classList.remove("pe-note-in");
+    void notesEl.offsetWidth;
+    notesEl.classList.add("pe-note-in");
+  }
+
+  function irANota(idx) {
+    const n = notasItems.length;
+    if (n < 2) return;
+    notasIdx = ((idx % n) + n) % n;
+    notasManualAt = Date.now();
+    pintarNota();
+  }
+
+  // Se enlaza una sola vez por tarjeta: clic en flechas/puntos y deslizar con el dedo.
+  function bindNotasNav(card, notesEl) {
+    if (card.dataset.noteNavBound) return;
+    card.dataset.noteNavBound = "1";
+    card.addEventListener("click", (e) => {
+      const step = e.target.closest("[data-note-step]");
+      const dot = e.target.closest("[data-note-idx]");
+      if (step) irANota(notasIdx + Number(step.dataset.noteStep));
+      else if (dot) irANota(Number(dot.dataset.noteIdx));
+    });
+    let startX = null;
+    let startY = 0;
+    notesEl.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      startX = e.clientX;
+      startY = e.clientY;
+    });
+    notesEl.addEventListener("pointerup", (e) => {
+      if (startX === null) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      startX = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) irANota(notasIdx + (dx < 0 ? 1 : -1));
+    });
+    notesEl.addEventListener("pointercancel", () => { startX = null; });
+  }
+
+  function refreshNotas() {
+    const els = notasCard();
+    if (!els) return;
+    const { notesEl, card } = els;
+    bindNotasNav(card, notesEl);
     const global = val("notasObservacionP");
     const items = [
       ...(global ? [{ proxima: false, texto: global }] : []),
@@ -469,44 +624,20 @@
     ];
     // Si las notas no cambiaron se conserva la que se esta viendo (refresh() se llama seguido).
     const firma = JSON.stringify(items);
-    if (firma !== notasFirma) { notasFirma = firma; notasIdx = 0; }
+    if (firma !== notasFirma) { notasFirma = firma; notasIdx = 0; notasManualAt = 0; }
+    notasItems = items;
     if (notasIdx >= items.length) notasIdx = 0;
-
-    const pintar = () => {
-      const it = items[notasIdx];
-      card.classList.toggle("is-proxima", !!it?.proxima);
-      if (!it) {
-        notesEl.textContent = "Sin notas / observaciones";
-        notesEl.classList.add("muted");
-      } else {
-        notesEl.classList.remove("muted");
-        notesEl.innerHTML = `${it.proxima ? '<span class="pe-note-chip">Antes de la proxima cita</span>' : ""}<span class="pe-note-text">${esc(it.texto)}</span>${it.meta ? `<small class="pe-note-meta">${esc(it.meta)}</small>` : ""}`;
-      }
-      let dots = card.querySelector(".pe-note-dots");
-      if (items.length > 1) {
-        if (!dots) {
-          dots = document.createElement("div");
-          dots.className = "pe-note-dots";
-          card.appendChild(dots);
-        }
-        dots.innerHTML = items.map((x, i) => `<span class="${i === notasIdx ? "on" : ""}${x.proxima ? " prox" : ""}"></span>`).join("");
-      } else {
-        dots?.remove();
-      }
-      notesEl.classList.remove("pe-note-in");
-      void notesEl.offsetWidth;
-      notesEl.classList.add("pe-note-in");
-    };
 
     clearInterval(notasTimer);
     notasTimer = null;
-    pintar();
+    pintarNota();
     if (items.length > 1) {
       notasTimer = setInterval(() => {
         if (!root?.isConnected) { clearInterval(notasTimer); notasTimer = null; return; }
         if (card.matches(":hover")) return;
-        notasIdx = (notasIdx + 1) % items.length;
-        pintar();
+        if (Date.now() - notasManualAt < NOTAS_PAUSA_MANUAL_MS) return;
+        notasIdx = (notasIdx + 1) % notasItems.length;
+        pintarNota();
       }, NOTAS_ROTACION_MS);
     }
   }

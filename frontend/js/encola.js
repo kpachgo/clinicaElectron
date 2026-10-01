@@ -1353,15 +1353,27 @@
 
         await recargar({ silent: true });
 
+        // Tipo explicito: el alert global infiere "error" por palabras ("Fallidos: 0" lo pintaba de error).
+        // Volver a marcar con algunos ya presentes es normal: solo se actualizan los nuevos.
         const omitidos = omittedNoAgenda + omittedNotFound;
-        alert(
-          `Marcado masivo finalizado.\n` +
-          `Filas en cola: ${totalRows}\n` +
-          `Actualizados: ${updated}\n` +
-          `Ya marcados: ${already}\n` +
-          `Omitidos: ${omitidos} (sin agendaId: ${omittedNoAgenda}, no encontrados en agenda del dia: ${omittedNotFound})\n` +
-          `Fallidos: ${failed}`
-        );
+        const lineas = [
+          updated > 0
+            ? `Se marcaron ${updated} paciente(s) como presentes.`
+            : "No habia pacientes nuevos por marcar.",
+        ];
+        if (already > 0) lineas.push(`${already} ya estaban marcados como presentes.`);
+        if (omitidos > 0) {
+          lineas.push(`Omitidos: ${omitidos} (sin cita en agenda: ${omittedNoAgenda}, no encontrados en la agenda del dia: ${omittedNotFound}).`);
+        }
+        if (failed > 0) lineas.push(`No se pudieron marcar ${failed}. Intente de nuevo.`);
+        lineas.push(`Filas en cola: ${totalRows}`);
+        const resumen = lineas.join("\n");
+        const tipo = failed > 0 ? "warning" : (updated > 0 ? "success" : "info");
+        if (typeof window.showSystemMessage === "function") {
+          window.showSystemMessage(resumen, { type: tipo, title: "Marcar presentes" });
+        } else {
+          alert(resumen);
+        }
       } catch (err) {
         alert(err.message || "No se pudo completar el marcado masivo de presentes");
       } finally {

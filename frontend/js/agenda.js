@@ -3254,6 +3254,11 @@
         window.saveFx?.start(btnGuardar, "Comprobando...");
         const agendaVerificada = await fetchAgendaByIdForVerification(json.idAgendaAP, fechaISO);
         agendaData.unshift(agendaVerificada);
+        // Con texto en el buscador la tabla puede estar mostrando la busqueda del mes, hecha ANTES de
+        // guardar (no trae la cita nueva): se descarta, igual que al cambiar de dia. aplicarFiltros()
+        // pinta el dia con la cita nueva o, si no coincide con el texto, vuelve a buscar en el mes.
+        agendaMesResultados = null;
+        agendaMesBusquedaToken++;
         agendaMonthCacheKey = "";
         if (agendaViewMode === "mes") {
           await cargarAgendaMesCalendario(fechaISO);

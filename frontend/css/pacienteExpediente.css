@@ -211,6 +211,14 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
 .pe-blank { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--pe-muted); font-style: italic; font-size: 13px; }
 .pe-blank .pe-edit-btn { font-style: normal; }
 
+/* Nombre de la seccion dentro de la vista: solo con el menu contraido (o en tablet, abajo en el
+   @media 900px), cuando el menu muestra solo iconos. Con el menu completo seria redundante. */
+.pe-sec-title { display: none; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 800; color: var(--pe-text); }
+.pe-sec-title svg { width: 18px; height: 18px; color: var(--pe-accent); flex: none; }
+.pe.is-exp.is-collapsed .pe-sec-title { display: flex; }
+.pe.is-exp.is-collapsed .pe-read-h { display: flex; justify-content: space-between; align-items: center; margin: -4px -10px 12px 0; }
+.pe.is-exp.is-collapsed .paciente-card > .pe-sec-title { margin-bottom: 10px; }
+
 /* Edicion: se muestra el formulario actual solo de esa seccion */
 .pe-edit { display: none; }
 .pe-panel.is-editing .pe-read { display: none; }
@@ -312,6 +320,10 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
   .pe-nav-ink { display: none; }
   .pe-nav button.on { background: var(--pe-nav-active); }
   .pe-right { grid-column: auto; }
+  /* Menu solo con iconos: el nombre de la seccion va dentro de la vista (ver .pe-sec-title). */
+  .pe.is-exp .pe-sec-title { display: flex; }
+  .pe.is-exp .pe-read-h { display: flex; justify-content: space-between; align-items: center; margin: -4px -10px 12px 0; }
+  .pe.is-exp .paciente-card > .pe-sec-title { margin-bottom: 10px; }
 }
 @media (max-width: 640px) {
   .pe-left { flex-direction: column; }
@@ -359,7 +371,53 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
    Sin el titulo "Odontograma" en el expediente (ya esta en el menu). Botones y selects mas chicos;
    !important porque las reglas de botones de .paciente-card son muy especificas. */
 .pe.is-exp .pe-panel[data-pe-sec="odontograma"] .paciente-card > .paciente-titulo,
-.pe.is-exp .pe-panel[data-pe-sec="citas"] .paciente-card > .paciente-titulo { display: none; }
+.pe.is-exp .pe-panel[data-pe-sec="citas"] .paciente-card > .paciente-titulo,
+.pe.is-exp .pe-panel[data-pe-sec="fotos"] .paciente-card > .paciente-titulo { display: none; }
+
+/* ---------- Impresiones (js/pacienteExpediente.js buildImpresionesCard) ----------
+   Los botones del resumen del odontograma (mismos ids y eventos) como mosaicos con descripcion. */
+.pe-impresiones-card { display: flex; flex-direction: column; gap: 18px; }
+.pe-print-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.pe-print-title { margin: 0; font-size: 18px; font-weight: 800; color: var(--pe-text); }
+.pe-print-sub { margin: 2px 0 0; font-size: 13px; color: var(--pe-muted); }
+.pe-impresiones-card .pe-print-config {
+  display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; margin: 0;
+  border: 1px solid var(--pe-line); border-radius: 10px; background: var(--pe-surface); color: var(--pe-text);
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.pe-impresiones-card .pe-print-config:hover { background: var(--pe-accent-soft); color: var(--pe-accent); border-color: var(--pe-accent-soft); }
+.pe-print-config .odonto-action-icon { width: 16px; height: 16px; flex-basis: 16px; }
+.pe-print-group { --tile-c: var(--pe-accent); }
+.pe-print-group + .pe-print-group { --tile-c: color-mix(in srgb, var(--app-secondary, #18bfd0) 70%, var(--pe-text)); }
+.pe-print-group-title { margin: 0 0 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--pe-muted); }
+.pe-print-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.pe-impresiones-card .pe-print-tile {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 76px; margin: 0; padding: 14px 16px;
+  border: 1px solid var(--pe-line); border-radius: 14px; background: var(--pe-surface); color: var(--pe-text);
+  text-align: left; font: inherit; cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.12s var(--pe-ease);
+}
+.pe-impresiones-card .pe-print-tile:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--tile-c) 45%, var(--pe-line));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--tile-c) 14%, transparent);
+}
+.pe-impresiones-card .pe-print-tile:active:not(:disabled) { transform: scale(0.985); }
+.pe-impresiones-card .pe-print-tile:focus-visible, .pe-impresiones-card .pe-print-config:focus-visible { outline: 2px solid var(--pe-accent); outline-offset: 2px; }
+.pe-impresiones-card .pe-print-tile:disabled { opacity: 0.55; cursor: progress; }
+.pe-print-ico {
+  flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--tile-c) 12%, var(--pe-surface)); color: var(--tile-c);
+}
+.pe-print-ico .odonto-action-icon { width: 22px; height: 22px; flex-basis: 22px; }
+.pe-print-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pe-print-txt b { font-size: 15px; font-weight: 700; }
+.pe-print-txt small { font-size: 12.5px; line-height: 1.35; color: var(--pe-muted); }
+.pe-print-go { flex: none; font-size: 22px; line-height: 1; color: var(--pe-muted); transition: transform 0.2s var(--pe-ease), color 0.2s; }
+.pe-print-tile:hover:not(:disabled) .pe-print-go { transform: translateX(3px); color: var(--tile-c); }
+@media (max-width: 640px) {
+  .pe-print-grid { grid-template-columns: 1fr; gap: 10px; }
+  .pe-impresiones-card .pe-print-tile { min-height: 64px; padding: 12px 14px; }
+}
 .pe-panel[data-pe-sec="odontograma"] .toolbar { gap: 6px; row-gap: 8px; margin-bottom: 6px; }
 .pe-panel[data-pe-sec="odontograma"] .toolbar button {
   padding: 5px 10px !important; font-size: 12.5px !important; line-height: 1.3; white-space: nowrap;
@@ -467,11 +525,35 @@ body.dark-mode .pe-mini.note.is-proxima { background: rgba(250, 204, 21, 0.18); 
   font-size: 10.5px; font-weight: 800; letter-spacing: 0.02em; }
 .pe-note-text { display: block; }
 .pe-note-meta { display: block; margin-top: 4px; font-size: 11px; color: var(--pe-muted); }
-.pe-note-dots { position: absolute; top: 14px; right: 14px; display: flex; gap: 4px; }
-.pe-note-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(180, 83, 9, 0.25); }
-.pe-note-dots span.on { background: #d4a106; }
-.pe-note-dots span.prox.on { background: #b45309; }
-@media (prefers-reduced-motion: reduce) { .pe-notes.pe-note-in { animation: none; } }
+/* Navegacion: ‹ puntos › arriba a la derecha, en la fila del titulo. */
+.pe-mini.note:has(.pe-note-nav) h4 { padding-right: 96px; min-height: 22px; }
+.pe-notes { touch-action: pan-y; }
+.pe-note-nav { position: absolute; top: 9px; right: 8px; display: flex; align-items: center; gap: 2px; }
+.pe-note-dots { display: flex; align-items: center; }
+.pe-note-arrow, .pe-note-dot { appearance: none; border: 0; background: transparent; padding: 0; margin: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; color: #b45309; -webkit-tap-highlight-color: transparent; }
+.pe-note-arrow { width: 22px; height: 22px; border-radius: 6px; font-size: 18px; font-weight: 700; line-height: 1; }
+.pe-note-arrow:hover { background: rgba(180, 83, 9, 0.12); }
+.pe-note-arrow:active { background: rgba(180, 83, 9, 0.22); }
+.pe-note-dot { width: 13px; height: 22px; }
+.pe-note-dot span { width: 7px; height: 7px; border-radius: 50%; background: rgba(180, 83, 9, 0.25); transition: transform 0.15s ease; }
+.pe-note-dot:hover span { transform: scale(1.3); }
+.pe-note-dot.on span { background: #d4a106; }
+.pe-note-dot.prox.on span { background: #b45309; }
+.pe-note-arrow:focus-visible, .pe-note-dot:focus-visible { outline: 2px solid #d4a106; outline-offset: 1px; border-radius: 6px; }
+body.dark-mode .pe-note-arrow { color: #facc15; }
+body.dark-mode .pe-note-dot span { background: rgba(250, 204, 21, 0.3); }
+body.dark-mode .pe-note-dot.on span { background: #facc15; }
+/* Tablet / pantalla tactil: zonas de toque mas grandes. */
+@media (pointer: coarse) {
+  .pe-mini.note:has(.pe-note-nav) h4 { padding-right: 132px; min-height: 32px; }
+  .pe-note-nav { top: 6px; right: 4px; }
+  .pe-note-arrow { width: 34px; height: 34px; font-size: 22px; }
+  .pe-note-dot { width: 18px; height: 34px; }
+  .pe-note-dot span { width: 8px; height: 8px; }
+  .pe-note-dot:hover span { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .pe-notes.pe-note-in { animation: none; } .pe-note-dot span { transition: none; } }
 
 /* ---------- Evolucion: notas para la proxima cita en amarillo ---------- */
 .pe-evo li.pe-evo-nota b { font-weight: 700; padding: 5px 8px; border-radius: 6px; background: #fef3c7; border-left: 3px solid #d4a106; color: #78350f; }

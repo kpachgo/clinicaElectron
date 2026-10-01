@@ -2045,6 +2045,8 @@ function recalcAllBridgesIfNeeded() {
     if (!wrapper) return;
 
     const wrapRect = wrapper.getBoundingClientRect();
+    // vista oculta/colapsada: no medir, se recalcula al volver a mostrarse
+    if (wrapRect.width === 0 || wrapRect.height === 0) return;
 
     /* ==========================================================
        OBTENER TODOS LOS IDS DE PUENTES (PPF + PPR)
@@ -2098,12 +2100,28 @@ function recalcAllBridgesIfNeeded() {
         const top = Math.min(r1.top, r2.top) - wrapRect.top;
         const bottom = Math.max(r1.bottom, r2.bottom) - wrapRect.top;
 
-        // aplicar
-        bridge.style.left = left + "px";
-        bridge.style.top = (top - 8) + "px";
-        bridge.style.width = (right - left) + "px";
-        bridge.style.height = (bottom - top + 16) + "px";
+        // aplicar (div + viewBox + rect, igual que crearBridgeOverlay)
+        aplicarGeometriaBridge(bridge, left, right, top, bottom);
     });
+}
+/* Ajusta overlay, viewBox y rect del puente a las medidas actuales.
+   Si solo se ajusta el div, el SVG conserva el viewBox viejo y con
+   preserveAspectRatio="none" el trazo se estira (mancha rellena). */
+function aplicarGeometriaBridge(overlay, left, right, top, bottom) {
+    const width = Math.max(6, Math.round(right - left));
+    const height = Math.max(6, Math.round(bottom - top));
+
+    overlay.style.left = `${Math.round(left)}px`;
+    overlay.style.top = `${Math.round(top - 8)}px`;
+    overlay.style.width = `${width}px`;
+    overlay.style.height = `${height + 16}px`;
+
+    const svg = overlay.querySelector("svg");
+    const rect = svg && svg.querySelector("rect");
+    if (!svg || !rect) return;
+    svg.setAttribute("viewBox", `0 0 ${width} ${height + 16}`);
+    rect.setAttribute("width", `${Math.max(0, width - 4)}`);
+    rect.setAttribute("height", `${Math.max(0, height + 8)}`);
 }
 function scheduleBridgeRecalc(frameCount = 2) {
     const nextFrames = Number(frameCount) > 0 ? Number(frameCount) : 1;
@@ -3127,19 +3145,8 @@ function crearBridgeOverlay(type, id, inicio, fin, colorHex) {
     const top = Math.min(r1.top, r2.top) - wrapRect.top;
     const bottom = Math.max(r1.bottom, r2.bottom) - wrapRect.top;
 
-    const width = Math.max(6, Math.round(right - left));
-    const height = Math.max(6, Math.round(bottom - top));
-
-    // aplicar al overlay (ajustamos top/height para el padding visual como antes)
-    overlay.style.left = `${Math.round(left)}px`;
-    overlay.style.top = `${Math.round(top - 8)}px`;
-    overlay.style.width = `${width}px`;
-    overlay.style.height = `${height + 16}px`;
-
-    // ajustar SVG viewBox y rect dims
-    svg.setAttribute("viewBox", `0 0 ${width} ${height + 16}`);
-    rect.setAttribute("width", `${Math.max(0, width - 4)}`);
-    rect.setAttribute("height", `${Math.max(0, height + 8)}`);
+    // aplicar al overlay (div + viewBox + rect)
+    aplicarGeometriaBridge(overlay, left, right, top, bottom);
   });
 
   // devuelve el overlay creado por si quieres guardarlo
