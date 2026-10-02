@@ -213,6 +213,35 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
 .pe-blank { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--pe-muted); font-style: italic; font-size: 13px; }
 .pe-blank .pe-edit-btn { font-style: normal; }
 
+/* Ficha (Informacion / Historia clinica): icono pequeño junto al titulo y linea divisoria bajo cada dato. */
+.pe-fields.pe-ficha { row-gap: 0; }
+.pe-ficha .pe-f { padding: 12px 2px; border-bottom: 1px solid var(--pe-line); }
+.pe-ficha .pe-f dt { display: flex; align-items: center; gap: 7px; }
+.pe-ficha .pe-f dt svg { width: 15px; height: 15px; flex: none; color: var(--pe-accent); }
+/* Tipo de tratamiento: mismos colores que el select del formulario (paciente.css .tratamiento-*). */
+.pe-pill { display: inline-block; padding: 3px 12px; border-radius: 999px; border: 1px solid transparent; font-weight: 600; }
+.pe-pill.trat-orto, .pe-tag.trat-orto { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; }
+.pe-pill.trat-odonto, .pe-tag.trat-odonto { background: #fce7f3; border-color: #ec4899; color: #9d174d; }
+.pe-tag.trat-orto, .pe-tag.trat-odonto { border-width: 1px; border-style: solid; }
+body.dark-mode .pe-pill.trat-orto, body.dark-mode .pe-tag.trat-orto { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
+body.dark-mode .pe-pill.trat-odonto, body.dark-mode .pe-tag.trat-odonto { background: rgba(236, 72, 153, 0.18); color: #f9a8d4; }
+/* PC: 3 columnas y texto mas grande. */
+@media (min-width: 1200px) {
+  .pe-ficha { column-gap: 28px; }
+  .pe-ficha .pe-f { padding: 16px 2px; }
+  .pe-ficha .pe-f dt { font-size: 12px; margin-bottom: 5px; }
+  .pe-ficha .pe-f dd { font-size: 16px; line-height: 1.55; }
+  .pe-ficha .pe-f.empty dd { font-size: 14px; }
+  .pe-ficha .pe-link { font-size: 13px; }
+  .pe-ficha-fil { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pe-ficha-fil .pe-f.wide { grid-column: auto; }
+  /* Historia: motivo (4/6) + ultima visita; las dos historias lado a lado; examenes en 3. */
+  .pe-ficha-his { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .pe-ficha-his .pe-f, .pe-ficha-his .pe-f.wide { grid-column: span 2; }
+  .pe-ficha-his .pe-f.h-motivo { grid-column: span 4; }
+  .pe-ficha-his .pe-f.h-hist { grid-column: span 3; }
+}
+
 /* Nombre de la seccion dentro de la vista: solo con el menu contraido (o en tablet, abajo en el
    @media 900px), cuando el menu muestra solo iconos. Con el menu completo seria redundante. */
 .pe-sec-title { display: none; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 800; color: var(--pe-text); }

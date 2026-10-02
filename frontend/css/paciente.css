@@ -301,19 +301,47 @@ body[data-theme="princess"] {
     margin-bottom: 15px;
     flex-wrap: wrap;        /* 👈 CLAVE */
 }
-.p-row-datos-top {
-    flex-wrap: nowrap;
+/* Datos Personales: cuadricula de 12 columnas, cada fila suma 12 */
+.p-grid-datos {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 15px 20px;
+    margin-bottom: 15px;
 }
-.p-row-datos-top .p-col-nombre {
+.p-grid-datos .g-2 { grid-column: span 2; }
+.p-grid-datos .g-4 { grid-column: span 4; }
+.p-grid-datos .g-6 { grid-column: span 6; }
+.p-grid-datos .g-8 { grid-column: span 8; }
+.p-firma-group {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+}
+.p-firma-group .firma-status {
     flex: 1 1 auto;
+    min-width: 0;
 }
-.p-row-datos-top .p-col-fecha {
-    flex: 0 0 20%;
-    min-width: 210px;
+.p-firma-group #btn-ver-firma-paciente {
+    flex: 0 0 auto;
+    width: auto;
+    height: auto;
+    margin-top: 0;
+    white-space: nowrap;
 }
-.p-row-datos-top .p-col-estado {
-    flex: 0 0 13%;
-    min-width: 160px;
+/* Tablet: 6 columnas; cada fila suma 6 (clases t-*) */
+@media (max-width: 1100px) {
+    .p-grid-datos { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .p-grid-datos .t-1 { grid-column: span 1; }
+    .p-grid-datos .t-2 { grid-column: span 2; }
+    .p-grid-datos .t-3 { grid-column: span 3; }
+    .p-grid-datos .t-4 { grid-column: span 4; }
+    .p-grid-datos .t-6 { grid-column: span 6; }
+}
+/* Pantalla angosta: 2 columnas; m-full ocupa la fila completa */
+@media (max-width: 900px) {
+    .p-grid-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .p-grid-datos .p-col { grid-column: span 1; }
+    .p-grid-datos .m-full { grid-column: 1 / -1; }
 }
 .p-col {
     display: flex;
@@ -802,10 +830,6 @@ body[data-theme="princess"] .paciente-container .citas-table tbody tr:hover td {
     .p-55, .p-60, .p-65, .p-70, .p-75,
     .p-80, .p-90, .p-100 {
         flex: 1 1 100%;
-    }
-    .p-row-datos-top .p-col-fecha,
-    .p-row-datos-top .p-col-estado {
-        min-width: 0;
     }
 }
 /* ================================

@@ -39,6 +39,7 @@
     phone: '<path d="M2.25 6.75c0 8.28 6.72 15 15 15h2.25a2.25 2.25 0 0 0 2.25-2.25v-1.37c0-.52-.35-.97-.85-1.09l-4.42-1.1c-.44-.12-.9.05-1.17.41l-.97 1.29a1.13 1.13 0 0 1-1.21.38 12.04 12.04 0 0 1-7.14-7.14 1.13 1.13 0 0 1 .38-1.21l1.3-.97c.35-.27.52-.73.4-1.17L6.97 3.1a1.13 1.13 0 0 0-1.09-.85H4.5A2.25 2.25 0 0 0 2.25 4.5v2.25Z"/>',
     mail: '<path d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.24a2.25 2.25 0 0 1-1.07 1.92l-7.5 4.61a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.91V6.75"/>',
     id: '<path d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Zm6-10.13a1.88 1.88 0 1 1-3.75 0 1.88 1.88 0 0 1 3.75 0Zm1.29 7.13a6.04 6.04 0 0 0-8.33 0"/>',
+    users: '<path d="M15 19.13a9.38 9.38 0 0 0 2.63.37 9.34 9.34 0 0 0 4.12-.95 4.13 4.13 0 0 0-7.53-2.49M15 19.13v-.01c0-1.11-.29-2.16-.79-3.07M15 19.13v.1A12.32 12.32 0 0 1 8.62 21c-2.33 0-4.51-.64-6.37-1.77v-.11a6.38 6.38 0 0 1 11.96-3.07M12 6.38a3.38 3.38 0 1 1-6.75 0 3.38 3.38 0 0 1 6.75 0Zm8.25 2.25a2.63 2.63 0 1 1-5.25 0 2.63 2.63 0 0 1 5.25 0Z"/>',
     pen: '<path d="m16.86 4.49 1.69-1.69a1.88 1.88 0 1 1 2.65 2.65L10.58 16.07a4.5 4.5 0 0 1-1.9 1.13L6 18l.8-2.68a4.5 4.5 0 0 1 1.13-1.9l8.93-8.93Zm0 0L19.5 7.13"/>',
     pin: '<path d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/><path d="M19.5 10.5c0 7.14-7.5 11.25-7.5 11.25S4.5 17.64 4.5 10.5a7.5 7.5 0 1 1 15 0Z"/>',
     tag: '<path d="M9.57 3H5.25A2.25 2.25 0 0 0 3 5.25v4.32c0 .6.24 1.17.66 1.6l9.58 9.58c.7.7 1.78.87 2.61.33a18.1 18.1 0 0 0 5.22-5.22c.54-.83.37-1.91-.33-2.61L11.16 3.66A2.25 2.25 0 0 0 9.57 3Z"/><path d="M6 6h.01v.01H6V6Z"/>',
@@ -84,8 +85,12 @@
 
   function field(label, value, opts = {}) {
     const v = String(value || "").trim();
-    return `<div class="pe-f${v ? "" : " empty"}${opts.wide ? " wide" : ""}"><dt>${label}</dt><dd>${v ? esc(v) : EMPTY}</dd>${opts.extra || ""}</div>`;
+    const cls = `pe-f${v ? "" : " empty"}${opts.wide ? " wide" : ""}${opts.cls ? ` ${opts.cls}` : ""}`;
+    const shown = v && opts.pill ? `<span class="pe-pill ${opts.pill}">${esc(v)}</span>` : esc(v);
+    return `<div class="${cls}"><dt>${opts.icon ? ico(opts.icon) : ""}${label}</dt><dd>${v ? shown : EMPTY}</dd>${opts.extra || ""}</div>`;
   }
+  // Color del tipo de tratamiento: el mismo que toma el select en el formulario (paciente.css .tratamiento-*).
+  const tratClass = (t) => ({ Ortodoncia: "trat-orto", Odontologia: "trat-odonto" })[t] || "";
   const blank = (secId) => `<div class="pe-blank">Sin datos registrados<button type="button" class="pe-edit-btn" data-pe-edit="${secId}">${ico("plus")}Agregar</button></div>`;
 
   // ---------- montaje ----------
@@ -161,17 +166,6 @@
     const shell = el("paciente-detail-shell");
     if (!shell || shell.querySelector(":scope > .pe")) return;
     try { collapsed = localStorage.getItem(COLLAPSE_KEY) === "1"; } catch { collapsed = false; }
-
-    // Motivo de consulta y ultima visita pasan a "Datos Clinicos" (se leen y editan en Historia clinica).
-    const clinicos = findCard(shell, SECS[1]);
-    const motivoCol = el("motivoConsultaP")?.closest(".p-col");
-    const ultimaCol = el("ultimaVisitaP")?.closest(".p-col");
-    if (clinicos && motivoCol && ultimaCol) {
-      const row = document.createElement("div");
-      row.className = "p-row";
-      row.append(motivoCol, ultimaCol);
-      clinicos.querySelector(".paciente-titulo")?.after(row);
-    }
 
     root = document.createElement("div");
     root.className = "pe is-form";
@@ -463,7 +457,7 @@
 
     // Tarjetas de arriba
     const tags = [
-      [selText("tipoTratamientoP"), "t3"],
+      [selText("tipoTratamientoP"), tratClass(selText("tipoTratamientoP")) || "t3"],
       [selText("estadoP"), val("estadoP") === "1" ? "t4" : "t5"],
       [selText("recomendadoP") ? `Via ${selText("recomendadoP")}` : "", "t2"],
     ].filter(([t]) => t && t !== "Sin registrar");
@@ -483,22 +477,23 @@
     const body = (id) => panelOf(id)?.querySelector(".pe-read-b");
     const firmaExtra = `<button type="button" class="pe-link" data-pe-firma ${firma ? "" : "disabled"}>${firma ? "Ver firma" : ""}</button>`;
     const set = (id, html) => { const b = body(id); if (b) b.innerHTML = html; };
-    set("filiacion", `<dl class="pe-fields">
-      ${field("Nombre", nombre)}${field("Fecha de nacimiento", fecha(val("fechaNacimientoP")))}
-      ${field("Edad", edad ? `${edad} años` : "")}${field("Sexo", selText("sexoP"))}
-      ${field("DUI", val("duiP"))}${field("Telefono", val("telefonoP"))}
-      ${field("Correo", val("correoP"), { wide: true })}
-      ${field("Direccion", val("direccionP"), { wide: true })}
-      ${field("Encargado", val("encargadoP"))}${field("Recomendado por", selText("recomendadoP"))}
-      ${field("Tipo de tratamiento", selText("tipoTratamientoP"))}${field("Estado", selText("estadoP"))}
-      ${field("Fecha de registro", fecha(val("fechaRegistroP")))}
-      ${field("Firma paciente / encargado", firma ? "Registrada" : "", { extra: firma ? firmaExtra : "" })}
+    // Ficha: icono pequeño + linea divisoria; en PC 3 columnas (ver .pe-ficha en pacienteExpediente.css).
+    set("filiacion", `<dl class="pe-fields pe-ficha pe-ficha-fil">
+      ${field("Nombre", nombre, { icon: "user" })}${field("Fecha de nacimiento", fecha(val("fechaNacimientoP")), { icon: "cal" })}
+      ${field("Edad", edad ? `${edad} años` : "", { icon: "cal" })}${field("Sexo", selText("sexoP"), { icon: "user" })}
+      ${field("DUI", val("duiP"), { icon: "id" })}${field("Telefono", val("telefonoP"), { icon: "phone" })}
+      ${field("Correo", val("correoP"), { wide: true, icon: "mail" })}
+      ${field("Direccion", val("direccionP"), { wide: true, icon: "pin" })}
+      ${field("Encargado", val("encargadoP"), { icon: "users" })}${field("Recomendado por", selText("recomendadoP"), { icon: "tag" })}
+      ${field("Tipo de tratamiento", selText("tipoTratamientoP"), { icon: "tooth", pill: tratClass(selText("tipoTratamientoP")) })}${field("Estado", selText("estadoP"), { icon: "check" })}
+      ${field("Fecha de registro", fecha(val("fechaRegistroP")), { icon: "clip" })}
+      ${field("Firma paciente / encargado", firma ? "Registrada" : "", { icon: "pen", extra: firma ? firmaExtra : "" })}
     </dl>`);
-    set("historia", `<dl class="pe-fields">
-      ${field("Motivo de consulta", val("motivoConsultaP"), { wide: true })}${field("Ultima visita al dentista", fecha(val("ultimaVisitaP")))}
-      ${field("Historia medica", val("historiaMedicaP"))}${field("Historia odontologica", val("historiaOdontologicaP"))}
-      ${field("Examen clinico", val("examenClinicoP"), { wide: true })}
-      ${field("Examen radiologico", val("examenRadiologicoP"))}${field("Examenes complementarios", val("examenComplementarioP"))}
+    set("historia", `<dl class="pe-fields pe-ficha pe-ficha-his">
+      ${field("Motivo de consulta", val("motivoConsultaP"), { wide: true, icon: "clip", cls: "h-motivo" })}${field("Ultima visita al dentista", fecha(val("ultimaVisitaP")), { icon: "cal" })}
+      ${field("Historia medica", val("historiaMedicaP"), { icon: "note", cls: "h-hist" })}${field("Historia odontologica", val("historiaOdontologicaP"), { icon: "tooth", cls: "h-hist" })}
+      ${field("Examen clinico", val("examenClinicoP"), { wide: true, icon: "check" })}
+      ${field("Examen radiologico", val("examenRadiologicoP"), { icon: "photo" })}${field("Examenes complementarios", val("examenComplementarioP"), { icon: "clip" })}
     </dl>`);
     const endo = ["endodonciaP", "dienteP", "vitalidadP", "percusionP", "medProvisional", "medTrabajoP"];
     set("endodoncia", endo.some(val) ? `<dl class="pe-fields">

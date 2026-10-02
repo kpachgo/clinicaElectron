@@ -1543,17 +1543,18 @@ function renderPaciente(container) {
       <div class="paciente-card card">
         <h5 class="paciente-titulo">Datos Personales</h5>
 
-        <!-- Fila 1 -->
-        <div class="p-row p-row-datos-top">
-          <div class="p-col p-col-nombre">
+        <!-- Cuadricula de 12 columnas: cada fila suma 12 -->
+        <div class="p-grid-datos">
+          <!-- Fila 1 -->
+          <div class="p-col g-8 t-6 m-full">
             <label class="form-label">Nombre</label>
             <input type="text" class="form-control" id="NombreP">
           </div>
-          <div class="p-col p-col-fecha">
+          <div class="p-col g-2 t-3">
             <label class="form-label">Fecha</label>
             <input type="date" class="form-control" id="fechaRegistroP">
           </div>
-          <div class="p-col p-col-estado">
+          <div class="p-col g-2 t-3">
             <label class="form-label">Estado</label>
             <select class="form-control" id="estadoP">
               <option value=""></option>
@@ -1561,59 +1562,17 @@ function renderPaciente(container) {
               <option value="0">Inactivo</option>
             </select>
           </div>
-        </div>
 
-        <!-- Fila 2 -->
-        <div class="p-row">
-          <div class="p-col p-35">
-            <label class="form-label">Direccion</label>
-            <input type="text" class="form-control" id="direccionP">
-          </div>
-          <div class="p-col p-20">
-            <label class="form-label">Tel</label>
-            <input type="text" class="form-control" id="telefonoP">
-          </div>
-          <div class="p-col p-15">
-            <label class="form-label">Edad</label>
-            <input type="text" class="form-control" id="edadP" disabled>
-          </div>
-          <div class="p-col p-20">
-            <label class="form-label">Recomendado por</label>
-            <select class="form-control" id="recomendadoP">
-              <option>Redes</option>
-              <option>Paciente</option>
-              <option>De camino</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Fila 3 -->
-        <div class="p-row">
-          <div class="p-col p-30">
-            <label class="form-label">Nombre encargado</label>
-            <input type="text" class="form-control" id="encargadoP">
-          </div>
-          <div class="p-col p-25">
-            <label class="form-label">Motivo de consulta</label>
-            <input type="text" class="form-control" id="motivoConsultaP">
-          </div>
-          <div class="p-col p-20">
-            <label class="form-label">Ultima visita dentista</label>
-            <input type="date" class="form-control" id="ultimaVisitaP">
-          </div>
-          <div class="p-col p-20">
-            <label class="form-label">Correo</label>
-            <input type="email" class="form-control" id="correoP" maxlength="40">
-          </div>
-        </div>
-
-        <!-- Fila 4 -->
-        <div class="p-row">
-          <div class="p-col p-15">
+          <!-- Fila 2 -->
+          <div class="p-col g-2 t-2">
             <label class="form-label">Fecha nacimiento</label>
             <input type="date" class="form-control" id="fechaNacimientoP">
           </div>
-          <div class="p-col p-15">
+          <div class="p-col g-2 t-1">
+            <label class="form-label">Edad</label>
+            <input type="text" class="form-control" id="edadP" disabled>
+          </div>
+          <div class="p-col g-2 t-3">
             <label class="form-label">Sexo</label>
             <select class="form-control" id="sexoP">
               <option value="">Sin especificar</option>
@@ -1621,20 +1580,48 @@ function renderPaciente(container) {
               <option value="M">Masculino</option>
             </select>
           </div>
-          <div class="p-col p-15">
-            <label class="form-label">Firma Paciente / Encargado</label>
-            <input type="hidden" id="firmaP">
-            <div id="firmaEstadoP" class="form-control firma-status firma-status-empty">Sin Firma</div>
+          <div class="p-col g-2 t-2">
+            <label class="form-label">Tel</label>
+            <input type="text" class="form-control" id="telefonoP">
           </div>
-          <div class="p-col p-10 d-flex-center">
-            <button class="btn btn-primary btn-firma" id="btn-ver-firma-paciente">Ver Firma</button>
+          <div class="p-col g-4 t-4 m-full">
+            <label class="form-label">Correo</label>
+            <input type="email" class="form-control" id="correoP" maxlength="40">
           </div>
-          <div class="p-col p-20">
+
+          <!-- Fila 3 -->
+          <div class="p-col g-6 t-6 m-full">
+            <label class="form-label">Direccion</label>
+            <input type="text" class="form-control" id="direccionP">
+          </div>
+          <div class="p-col g-4 t-4">
+            <label class="form-label">Nombre encargado</label>
+            <input type="text" class="form-control" id="encargadoP">
+          </div>
+          <div class="p-col g-2 t-2">
             <label class="form-label">Dui</label>
             <input type="text" class="form-control" id="duiP">
           </div>
-           <div class="p-col p-20">
-            <label class="form-label" >Tipo de Tratamiento</label>
+
+          <!-- Fila 4 -->
+          <div class="p-col g-4 t-6 m-full">
+            <label class="form-label">Firma Paciente / Encargado</label>
+            <input type="hidden" id="firmaP">
+            <div class="p-firma-group">
+              <div id="firmaEstadoP" class="form-control firma-status firma-status-empty">Sin Firma</div>
+              <button class="btn btn-primary btn-firma" id="btn-ver-firma-paciente">Ver Firma</button>
+            </div>
+          </div>
+          <div class="p-col g-4 t-3">
+            <label class="form-label">Recomendado por</label>
+            <select class="form-control" id="recomendadoP">
+              <option>Redes</option>
+              <option>Paciente</option>
+              <option>De camino</option>
+            </select>
+          </div>
+          <div class="p-col g-4 t-3">
+            <label class="form-label">Tipo de Tratamiento</label>
             <select class="form-control" id="tipoTratamientoP">
               <option>Sin registrar</option>
               <option>Odontologia</option>
@@ -1648,6 +1635,17 @@ function renderPaciente(container) {
       <!--  Datos Clinicos -->
       <div class="paciente-card card">
         <h5 class="paciente-titulo">Datos Clinicos</h5>
+
+        <div class="p-row">
+          <div class="p-col p-25">
+            <label class="form-label">Motivo de consulta</label>
+            <input type="text" class="form-control" id="motivoConsultaP">
+          </div>
+          <div class="p-col p-20">
+            <label class="form-label">Ultima visita dentista</label>
+            <input type="date" class="form-control" id="ultimaVisitaP">
+          </div>
+        </div>
 
         <div class="p-row">
           <div class="p-col p-50">
