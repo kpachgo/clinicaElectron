@@ -90,7 +90,7 @@
   }
 
   // ---------- Auto-ocultar al hacer scroll ----------
-  // Bajar oculta el topbar y .content gana su alto; subir, volver arriba, cambiar de vista,
+  // Bajar oculta el topbar y .content gana su alto; subir (scroll o rueda), volver arriba, cambiar de vista,
   // llevar el mouse al borde superior o enfocarlo con teclado lo muestran de nuevo.
   // Escucha en captura para cubrir tambien listas con scroll propio dentro de la vista (ej. .pe-evo).
   const HIDE_AFTER = 28;    // px seguidos hacia abajo para ocultar
@@ -153,6 +153,16 @@
       } else if (hidden && travel <= -SHOW_AFTER) {
         show();
       }
+    }, { capture: true, passive: true });
+
+    // Rueda hacia arriba sobre algo que ya no puede subir (chat vacio, lista al inicio, cabecera):
+    // no hay evento scroll, asi que sin esto el topbar se quedaba oculto (ej. vista Mensajes).
+    let wheelUp = 0;
+    document.addEventListener("wheel", (e) => {
+      if (!hidden || !content.contains(e.target)) { wheelUp = 0; return; }
+      if (e.deltaY >= 0) { wheelUp = 0; return; }
+      wheelUp += e.deltaY;
+      if (wheelUp <= -SHOW_AFTER) { wheelUp = 0; show(); }
     }, { capture: true, passive: true });
 
     // Mouse en el borde superior (escritorio): aparece sin tener que subir el scroll.
