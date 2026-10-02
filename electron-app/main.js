@@ -999,6 +999,16 @@ process.on("unhandledRejection", (reason) => {
   logLine("[ELECTRON:FATAL]", reason && reason.stack ? reason.stack : String(reason));
 });
 
+// Ctrl+C en la terminal (npm run electron): sin esto Electron muere al instante sin pasar por
+// before-quit, y el backend (consola oculta por windowsHide, no recibe el Ctrl+C) queda corriendo
+// huerfano; el siguiente arranque en desarrollo lo reutiliza con el codigo viejo.
+for (const signal of ["SIGINT", "SIGTERM", "SIGBREAK"]) {
+  process.on(signal, () => {
+    logLine("[ELECTRON]", `Senal ${signal} recibida; cerrando.`);
+    app.quit();
+  });
+}
+
 if (!gotSingleInstanceLock) {
   appendLog("[ELECTRON] Instancia secundaria detectada; se cierra.");
   app.quit();
