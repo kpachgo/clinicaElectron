@@ -27,6 +27,28 @@ function whatsappDestinationPhone(phone) {
   return digits.length === 8 ? `503${digits}` : digits;
 }
 
+// El instalador no incluye el Chrome que Puppeteer descarga en ~/.cache/puppeteer
+// al hacer npm install (solo existe en la PC de desarrollo). En otra PC se usa
+// el Chrome o Edge instalado en el sistema.
+function resolveBrowserExecutable() {
+  const candidates = [process.env.PUPPETEER_EXECUTABLE_PATH];
+  try { candidates.push(require("puppeteer").executablePath()); } catch (_) { /* sin Chrome propio */ }
+  if (process.platform === "win32") {
+    const roots = [process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"], process.env.LOCALAPPDATA].filter(Boolean);
+    for (const root of roots) candidates.push(path.join(root, "Google", "Chrome", "Application", "chrome.exe"));
+    for (const root of roots) candidates.push(path.join(root, "Microsoft", "Edge", "Application", "msedge.exe"));
+  } else if (process.platform === "darwin") {
+    candidates.push(
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium"
+    );
+  } else {
+    candidates.push("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/microsoft-edge");
+  }
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || undefined;
+}
+
 function persistedPhone(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   return digits.startsWith("503") && digits.length === 11 ? digits.slice(3) : digits;
@@ -135,9 +157,12 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
 
   async initializeClient() {
     fs.mkdirSync(this.authPath, { recursive: true });
+    const executablePath = resolveBrowserExecutable();
+    console.log(`[whatsapp] navegador: ${executablePath || "predeterminado de Puppeteer"}`);
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: this.clientId, dataPath: this.authPath }),
       puppeteer: {
+        executablePath,
         headless: this.headless,
         args: ["--no-sandbox", "--disable-setuid-sandbox"]
       }
