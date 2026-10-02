@@ -490,7 +490,7 @@
       ${field("Firma paciente / encargado", firma ? "Registrada" : "", { icon: "pen", extra: firma ? firmaExtra : "" })}
     </dl>`);
     set("historia", `<dl class="pe-fields pe-ficha pe-ficha-his">
-      ${field("Motivo de consulta", val("motivoConsultaP"), { wide: true, icon: "clip", cls: "h-motivo" })}${field("Ultima visita al dentista", fecha(val("ultimaVisitaP")), { icon: "cal" })}
+      ${field("Motivo de consulta", val("motivoConsultaP"), { wide: true, icon: "clip", cls: "h-motivo", pill: "motivo" })}${field("Ultima visita al dentista", fecha(val("ultimaVisitaP")), { icon: "cal" })}
       ${field("Historia medica", val("historiaMedicaP"), { icon: "note", cls: "h-hist" })}${field("Historia odontologica", val("historiaOdontologicaP"), { icon: "tooth", cls: "h-hist" })}
       ${field("Examen clinico", val("examenClinicoP"), { wide: true, icon: "check" })}
       ${field("Examen radiologico", val("examenRadiologicoP"), { icon: "photo" })}${field("Examenes complementarios", val("examenComplementarioP"), { icon: "clip" })}

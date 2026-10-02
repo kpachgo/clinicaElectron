@@ -225,6 +225,9 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
 .pe-tag.trat-orto, .pe-tag.trat-odonto { border-width: 1px; border-style: solid; }
 body.dark-mode .pe-pill.trat-orto, body.dark-mode .pe-tag.trat-orto { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
 body.dark-mode .pe-pill.trat-odonto, body.dark-mode .pe-tag.trat-odonto { background: rgba(236, 72, 153, 0.18); color: #f9a8d4; }
+/* Motivo de consulta: mismo ambar que el campo del formulario (paciente.css #motivoConsultaP). */
+.pe-pill.motivo { background: #fff4d6; border-color: #f4c45a; color: #7a4b00; white-space: pre-wrap; }
+body.dark-mode .pe-pill.motivo { background: rgba(245, 180, 40, 0.16); border-color: rgba(245, 180, 40, 0.5); color: #fcd581; }
 /* PC: 3 columnas y texto mas grande. */
 @media (min-width: 1200px) {
   .pe-ficha { column-gap: 28px; }
