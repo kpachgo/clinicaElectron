@@ -2061,6 +2061,35 @@ body.foto-modal-open {
 }
 
 /* =======================================================
+   MOTIVO DE CONSULTA DESTACADO
+   Pildora de color para ubicarlo rapido; se mantiene igual aunque el campo este bloqueado.
+======================================================= */
+.paciente-container #motivoConsultaP,
+.paciente-container #motivoConsultaP:disabled {
+    background: #fff4d6;
+    border: 1px solid #f4c45a;
+    color: #7a4b00;
+    -webkit-text-fill-color: #7a4b00;
+    font-weight: 600;
+    border-radius: 999px;
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+.paciente-container #motivoConsultaP:focus {
+    border-color: #e0a100;
+    box-shadow: 0 0 0 2px rgba(224, 161, 0, 0.2);
+}
+
+.dark-mode .paciente-container #motivoConsultaP,
+.dark-mode .paciente-container #motivoConsultaP:disabled {
+    background: rgba(245, 180, 40, 0.16);
+    border-color: rgba(245, 180, 40, 0.5);
+    color: #fcd581;
+    -webkit-text-fill-color: #fcd581;
+}
+
+/* =======================================================
    NOTAS PARA LA PROXIMA CITA (Registro de Citas)
    Se usa #notas-proxima para ganarle a la regla generica de botones de .paciente-card.
 ======================================================= */
