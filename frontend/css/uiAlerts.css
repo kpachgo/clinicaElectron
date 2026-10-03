@@ -5,7 +5,9 @@
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 5200;
+  /* Por encima de todo: Ajustes de Mensajes (6000), overlay de operación (99990) y
+     modales del odontograma (~100071). Debajo quedaba invisible y se quedaba el foco. */
+  z-index: 200000;
   padding: 16px;
 }
 
