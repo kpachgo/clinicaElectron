@@ -11,7 +11,7 @@
     let simulatingIncoming = false;
     // --- Lista de conversaciones: datos crudos + filtro/búsqueda + metadatos ---
     let allConversations = [];
-    let convListFilter = "all";        // "all" | "review" | "ai"
+    let convListFilter = "all";        // "all" | "review" | "awaiting" | "ai"
     let convSearchTerm = "";
     let patientNameByChat = new Map(); // waChatId -> { name, treatment } (vinculaciones activas)
     let patientNamesFetchedAt = 0;
@@ -57,6 +57,15 @@
         const h24 = (h % 12) + (p === "PM" ? 12 : 0);
         return `${String(h24).padStart(2, "0")}:${mm}`;
     }
+    // Confirmaciones con el diálogo propio de la app (uiAlerts.js), nunca con el
+    // confirm() nativo: en Electron/Windows el diálogo nativo deja la ventana sin
+    // foco de teclado al cerrarse y los inputs (chat, simulador, Ajustes) no
+    // aceptan escritura hasta cambiar de ventana. Mismo patrón que el resto de vistas.
+    function askConfirm(message, options = {}) {
+        return typeof window.showSystemConfirm === "function"
+            ? window.showSystemConfirm(message, { type: "warning", ...options })
+            : Promise.resolve(window.confirm(message));
+    }
     async function api(url, options) {
         // Sin timeout, un fetch que nunca resuelve (glitch de red/IPC) deja colgado para
         // siempre cualquier await api(...) — y con eso el overlay de "operación en curso"
@@ -88,7 +97,7 @@
             <div class="sim-group" id="mensajes-ai-group"><span class="sim-group-label">IA</span></div>
           </form>
           <div class="mensajes-layout">
-            <aside class="mensajes-conversations"><div class="mensajes-section-title"><span class="mensajes-section-heading">Conversaciones<button id="mensajes-toggle-tools" type="button" class="mensajes-icon-btn" title="Mostrar u ocultar herramientas" aria-label="Mostrar u ocultar herramientas"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></button></span><button id="mensajes-refresh" class="ui-toolbar-btn">Actualizar</button></div><div class="mensajes-list-toolbar"><input id="mensajes-search" type="search" autocomplete="off" placeholder="Buscar por nombre o número"><div id="mensajes-filters" class="mensajes-filters"><button type="button" data-filter="all" class="is-active">Todas</button><button type="button" data-filter="review">⚠ Necesitan revisión<span class="chip-count"></span></button><button type="button" data-filter="ai">🤖 IA</button></div></div><div id="mensajes-list" class="mensajes-list"></div></aside>
+            <aside class="mensajes-conversations"><div class="mensajes-section-title"><span class="mensajes-section-heading">Conversaciones<button id="mensajes-toggle-tools" type="button" class="mensajes-icon-btn" title="Mostrar u ocultar herramientas" aria-label="Mostrar u ocultar herramientas"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></button></span><button id="mensajes-refresh" class="ui-toolbar-btn">Actualizar</button></div><div class="mensajes-list-toolbar"><input id="mensajes-search" type="search" autocomplete="off" placeholder="Buscar por nombre o número"><div id="mensajes-filters" class="mensajes-filters"><button type="button" data-filter="all" class="is-active">Todas</button><button type="button" data-filter="review">⚠ Necesitan revisión<span class="chip-count"></span></button><button type="button" data-filter="awaiting" title="El último mensaje del paciente lleva 10 minutos o más sin respuesta (de la IA o de recepción)">⏳ Sin responder<span class="chip-count"></span></button><button type="button" data-filter="ai">🤖 IA</button></div></div><div id="mensajes-list" class="mensajes-list"></div></aside>
             <main class="mensajes-chat"><div id="mensajes-chat-head" class="mensajes-chat-head"><span>Selecciona una conversación</span></div><div id="mensajes-chat-body" class="mensajes-chat-body"><div class="mensajes-empty">Selecciona una conversación para ver el historial.</div></div><form id="mensajes-compose" class="mensajes-compose"><input id="mensajes-input" maxlength="2000" autocomplete="off" placeholder="Escribe una respuesta..."><button type="submit">Enviar</button></form></main>
           </div>
         </section>`;
@@ -119,7 +128,7 @@
     async function refreshWhatsappStatus() { try { const data = await api("/api/mensajes-view/whatsapp/status"); paintWhatsappStatus(data.status); } catch (error) { paintWhatsappStatus({ status: "error", error: error.message }); } }
     async function startWhatsapp() { paintWhatsappStatus({ status: "initializing" }); try { const data = await api("/api/mensajes-view/whatsapp/start", { method: "POST" }); paintWhatsappStatus(data.status); } catch (error) { await refreshWhatsappStatus(); alert(error.message); } }
     async function stopWhatsapp() { try { const data = await api("/api/mensajes-view/whatsapp/stop", { method: "POST" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
-    async function clearWhatsappSession() { if (!confirm("Se cerrará WhatsApp y se borrará la sesión guardada. El siguiente inicio pedirá un QR nuevo. ¿Continuar?")) return; try { const data = await api("/api/mensajes-view/whatsapp/session", { method: "DELETE" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
+    async function clearWhatsappSession() { if (!await askConfirm("Se cerrará WhatsApp y se borrará la sesión guardada. El siguiente inicio pedirá un QR nuevo. ¿Continuar?")) return; try { const data = await api("/api/mensajes-view/whatsapp/session", { method: "DELETE" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
     async function setGlobalAiMode(mode) { await api("/api/mensajes-view/global-ai-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) }); await refreshGlobalAiStatus(); await loadConversations(); if (selectedId) await loadConversation(selectedId); }
     async function restoreActiveReminder() { const active = await api("/api/mensajes-view/reminders-active"); if (!active.batch) return; const modal = document.getElementById("mensajes-reminder-modal"); if (!modal) return; modal.dataset.batchId = active.batch.id; modal.querySelector("#reminder-send").disabled = true; modal.querySelector("#reminder-cancel").disabled = false; pollReminder(); }
     // --- Conversaciones ---
@@ -176,38 +185,91 @@
         allConversations = data.conversations || [];
         renderConversationList();
     }
+    // "Sin responder": el último mensaje del paciente no tiene respuesta (de la IA ni de
+    // recepción) ni fue marcado como atendido, y lleva AWAITING_MINUTES o más. Lo calcula
+    // el backend por estado (awaitingSince); acá solo se aplica el umbral y se excluye
+    // el chat si la IA está preparando la respuesta en este momento.
+    const AWAITING_MINUTES = 10;
+    function awaitingMinutes(c, aiWorking) {
+        if (!c?.awaitingSince || aiWorking) return null;
+        const minutes = Math.floor((Date.now() - new Date(c.awaitingSince).getTime()) / 60000);
+        return Number.isFinite(minutes) && minutes >= AWAITING_MINUTES ? minutes : null;
+    }
+    function formatWait(minutes) {
+        if (minutes < 60) return `${minutes} min`;
+        if (minutes < 1440) return `${Math.floor(minutes / 60)} h`;
+        return `${Math.floor(minutes / 1440)} d`;
+    }
+    // Botón de la cabecera del chat abierto. "Atendido" no es "Tomar": no cambia el
+    // modo de atención, solo quita la etiqueta; si el paciente vuelve a escribir,
+    // el chat vuelve a quedar sin responder y la IA (si está en modo IA) responde
+    // con el contexto completo, como siempre.
+    function paintAttendedButton() {
+        const actions = document.querySelector("#mensajes-chat-head .mensajes-chat-actions");
+        if (!actions) return;
+        const conversation = allConversations.find((c) => c.id === selectedId);
+        const wait = conversation ? awaitingMinutes(conversation, aiWorkingConvIds.has(conversation.id)) : null;
+        let button = actions.querySelector("[data-mark-attended]");
+        if (wait === null) { button?.remove(); return; }
+        if (!button) {
+            button = document.createElement("button");
+            button.type = "button";
+            button.className = "chat-attended-btn";
+            button.dataset.markAttended = "1";
+            button.textContent = "✓ Atendido";
+            button.addEventListener("click", async () => {
+                const id = selectedId;
+                button.disabled = true;
+                try { await api(`/api/mensajes-view/conversations/${id}/attended`, { method: "POST" }); await loadConversations(); }
+                catch (error) { button.disabled = false; alert(error.message); }
+            });
+            actions.insertBefore(button, actions.firstChild);
+        }
+        button.title = `Sin responder hace ${formatWait(wait)}. Quita la etiqueta sin responderle al paciente (por ejemplo, un "gracias 👍"). No cambia el modo: si vuelve a escribir, la etiqueta vuelve y la IA o recepción siguen como estaban.`;
+    }
     function renderConversationList() {
         const list = document.getElementById("mensajes-list");
         if (!list) return;
         const term = normSearch(convSearchTerm);
         const decorated = allConversations.map((c) => {
             const linked = c.waChatId ? patientNameByChat.get(c.waChatId) : null;
-            const realName = linked?.name || c.waDisplayName || "";
+            // linkedPatientName viene del backend y sigue fusiones (alias / patient_id);
+            // el mapa por waChatId queda de respaldo.
+            const patientName = c.linkedPatientName || linked?.name || "";
+            const realName = patientName || c.waDisplayName || "";
+            const aiWorking = aiWorkingConvIds.has(c.id);
             return {
                 c,
                 realName,
+                patientName,
                 displayName: realName || c.phone || "Sin número",
-                aiWorking: aiWorkingConvIds.has(c.id)
+                aiWorking,
+                waitMinutes: awaitingMinutes(c, aiWorking)
             };
         });
         const reviewCount = decorated.filter((x) => x.c.attentionMode === "review_required").length;
+        const awaitingCount = decorated.filter((x) => x.waitMinutes !== null).length;
 
         const filtersEl = document.getElementById("mensajes-filters");
         if (filtersEl) {
             const countEl = filtersEl.querySelector('[data-filter="review"] .chip-count');
             if (countEl) countEl.textContent = reviewCount ? ` ${reviewCount}` : "";
+            const awaitingEl = filtersEl.querySelector('[data-filter="awaiting"] .chip-count');
+            if (awaitingEl) awaitingEl.textContent = awaitingCount ? ` ${awaitingCount}` : "";
             filtersEl.querySelectorAll("[data-filter]").forEach((b) => b.classList.toggle("is-active", b.dataset.filter === convListFilter));
         }
 
         let rows = decorated;
         if (convListFilter === "review") rows = rows.filter((x) => x.c.attentionMode === "review_required");
+        else if (convListFilter === "awaiting") rows = rows.filter((x) => x.waitMinutes !== null).sort((a, b) => b.waitMinutes - a.waitMinutes);
         else if (convListFilter === "ai") rows = rows.filter((x) => x.c.attentionMode === "assistant");
-        if (term) rows = rows.filter((x) => normSearch(x.displayName).includes(term) || normSearch(x.c.phone).includes(term) || normSearch(x.c.waDisplayName).includes(term));
+        if (term) rows = rows.filter((x) => [x.displayName, x.patientName, x.c.phone, x.c.waDisplayName].some((value) => normSearch(value).includes(term)));
+        paintAttendedButton();
 
         const sig = JSON.stringify({
             f: convListFilter,
             s: term,
-            rows: rows.map((x) => [x.c.id, x.c.attentionMode, x.c.unreadCount, x.c.lastMessageAt, x.c.updatedAt, x.displayName, x.aiWorking, x.c.id === selectedId, x.c.humanReviewReason || 0, x.c.aiExcluded ? 1 : 0])
+            rows: rows.map((x) => [x.c.id, x.c.attentionMode, x.c.unreadCount, x.c.lastMessageAt, x.c.updatedAt, x.displayName, x.aiWorking, x.c.id === selectedId, x.c.humanReviewReason || 0, x.c.aiExcluded ? 1 : 0, x.waitMinutes === null ? -1 : formatWait(x.waitMinutes)])
         });
         if (sig === lastListSig && list.querySelector("[data-id], .mensajes-empty")) return;
         lastListSig = sig;
@@ -216,7 +278,7 @@
             list.innerHTML = `<div class="mensajes-empty">${allConversations.length ? "Sin resultados." : "No hay conversaciones."}</div>`;
             return;
         }
-        list.innerHTML = rows.map(({ c, displayName, aiWorking }) => {
+        list.innerHTML = rows.map(({ c, displayName, aiWorking, waitMinutes }) => {
             const state = CONV_STATE[c.attentionMode] || { label: c.attentionMode || "", cls: "", icon: "" };
             const unread = c.unreadCount || 0;
             const isReview = c.attentionMode === "review_required";
@@ -228,6 +290,7 @@
                     <span class="conv-top"><span class="conv-name">${esc(displayName)}</span><span class="conv-time">${esc(convShortTime(c.lastMessageAt || c.updatedAt))}</span></span>
                     <span class="conv-sub">
                         <span class="conv-chip ${state.cls}">${state.icon ? state.icon + " " : ""}${esc(state.label)}</span>
+                        ${waitMinutes !== null ? `<span class="conv-chip is-awaiting" title="El último mensaje del paciente no tiene respuesta">⏳ ${esc(formatWait(waitMinutes))}</span>` : ""}
                         ${c.aiExcluded ? '<span class="conv-chip is-excluded" title="La IA no responde a este chat (lista de no responder)">🚫 Excluido</span>' : ""}
                         ${secondLine ? `<span class="conv-preview${typing ? " is-typing" : ""}">${typing ? '<span class="typing-dot"></span>' : ""}${esc(secondLine)}</span>` : ""}
                         ${unread ? `<span class="conv-badge">${unread > 99 ? "99+" : unread}</span>` : ""}
@@ -283,7 +346,7 @@
         if (link) {
             panel.innerHTML = `<div class="patient-identity-main"><span class="patient-identity-status is-linked">Paciente identificado</span><strong>${esc(link.patientName)}</strong><span>${esc(link.phone || "Teléfono no disponible")} · ${esc(link.treatmentType || "Tratamiento no especificado")}</span></div><div class="patient-identity-actions"><button type="button" data-patient-change>Cambiar</button><button type="button" data-patient-unlink>Desvincular</button></div>`;
             panel.querySelector("[data-patient-change]").addEventListener("click", () => openPatientSearchModal(conversation));
-            panel.querySelector("[data-patient-unlink]").addEventListener("click", async () => { if (!confirm("¿Desvincular este paciente de la conversación?")) return; await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "DELETE" }); await refreshConversationMeta({ force: true }); await loadConversation(conversation.id, { markRead: false, force: true }); });
+            panel.querySelector("[data-patient-unlink]").addEventListener("click", async () => { if (!await askConfirm("¿Desvincular este paciente de la conversación?")) return; await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "DELETE" }); await refreshConversationMeta({ force: true }); await loadConversation(conversation.id, { markRead: false, force: true }); });
         } else {
             panel.innerHTML = `<div class="patient-identity-main"><span class="patient-identity-status">Paciente no identificado</span><span>${esc(conversation.waDisplayName || (conversation.phoneResolved ? conversation.phone : "Chat sin teléfono real"))}</span></div><button type="button" data-patient-identify>Identificar paciente</button>`;
             panel.querySelector("[data-patient-identify]").addEventListener("click", () => openPatientSearchModal(conversation));
@@ -309,22 +372,6 @@
             } catch (error) { results.innerHTML = `<div class="patient-search-empty">${esc(error.message)}</div>`; }
         };
         modal.querySelector("#patient-search-submit").onclick = search; queryInput.onkeydown = (event) => { if (event.key === "Enter") { event.preventDefault(); void search(); } }; queryInput.value = ""; results.innerHTML = `<div class="patient-search-empty">Escribe un nombre o teléfono.</div>`; modal.hidden = false; queryInput.focus();
-    }
-    async function openPatientSearch(conversation) {
-        const query = prompt("Escribe el nombre o teléfono del paciente:");
-        if (query === null || query.trim().length < 2) return;
-        try {
-            const data = await api(`/api/mensajes-view/patients/search?q=${encodeURIComponent(query.trim())}`);
-            if (!data.patients.length) return alert("No se encontraron pacientes. Puedes registrarlo desde Pacientes y luego vincularlo.");
-            const choices = data.patients.map((p, index) => `${index + 1}. ${p.name} · ${p.phone || "sin teléfono"} · ${p.treatment || "sin tratamiento"}${p.active ? "" : " · INACTIVO"}`).join("\n");
-            const answer = prompt(`Selecciona el número del paciente correcto:\n\n${choices}`);
-            const selected = data.patients[Number(answer) - 1];
-            if (!selected) return;
-            if (!selected.active) return alert("No se puede vincular un paciente inactivo.");
-            await api(`/api/mensajes-view/conversations/${conversation.id}/identify-patient`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patientId: selected.id }) });
-            await refreshConversationMeta({ force: true });
-            await loadConversation(conversation.id, { markRead: false, force: true });
-        } catch (error) { alert(error.message); }
     }
     async function loadConversation(id, options = {}) {
         const loadSeq = ++conversationLoadSeq;
@@ -373,6 +420,7 @@
             deleteSelected.dataset.deleteSelected = "1";
             actions.insertBefore(deleteSelected, actions.firstChild);
         }
+        paintAttendedButton();
         chatBody.querySelectorAll(".mensaje-bubble").forEach((bubble, index) => {
             const message = renderedMessages[index];
             if (!message) return;
@@ -457,15 +505,15 @@
         menu.style.top = `${Math.min(event.clientY, window.innerHeight - 90)}px`;
         document.body.appendChild(menu);
         menu.querySelector("[data-context-select]").addEventListener("click", () => { setMessageSelectionMode(true); const input = document.querySelector(`[data-message-select="${CSS.escape(String(messageId))}"]`); if (input) input.checked = true; menu.remove(); });
-        menu.querySelector("[data-context-delete]").addEventListener("click", async () => { menu.remove(); if (!confirm("¿Eliminar este mensaje del historial?")) return; try { await api(`/api/mensajes-view/conversations/${selectedId}/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }); await loadConversation(selectedId, { markRead: false }); } catch (error) { alert(error.message); } });
+        menu.querySelector("[data-context-delete]").addEventListener("click", async () => { menu.remove(); if (!await askConfirm("¿Eliminar este mensaje del historial?")) return; try { await api(`/api/mensajes-view/conversations/${selectedId}/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }); await loadConversation(selectedId, { markRead: false }); } catch (error) { alert(error.message); } });
         const close = () => { menu.remove(); document.removeEventListener("click", close); };
         setTimeout(() => document.addEventListener("click", close), 0);
     }
     document.addEventListener("keydown", (event) => { if (event.key === "Escape") { document.querySelector(".mensaje-context-menu")?.remove(); setMessageSelectionMode(false); } });
-    async function deleteSelectedMessages() { const ids = [...document.querySelectorAll("[data-message-select]:checked")].map((input) => input.dataset.messageSelect); if (!ids.length || !confirm(`¿Eliminar ${ids.length} mensaje(s) del chat?`)) return; try { await Promise.all(ids.map((messageId) => api(`/api/mensajes-view/conversations/${selectedId}/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }))); await loadConversation(selectedId, { markRead: false }); } catch (error) { alert(error.message); } }
+    async function deleteSelectedMessages() { const ids = [...document.querySelectorAll("[data-message-select]:checked")].map((input) => input.dataset.messageSelect); if (!ids.length || !await askConfirm(`¿Eliminar ${ids.length} mensaje(s) del chat?`)) return; try { await Promise.all(ids.map((messageId) => api(`/api/mensajes-view/conversations/${selectedId}/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }))); await loadConversation(selectedId, { markRead: false }); } catch (error) { alert(error.message); } }
     async function conversationAction(action) {
         if (!selectedId) return;
-        if (action === "delete") { if (!confirm("¿Borrar esta conversación y su historial?")) return; const target = selectedId; conversationLoadSeq++; selectedId = null; const startedAt = Date.now(); showBusyOverlay("Borrando conversación…", "Un momento."); try { await api(`/api/mensajes-view/conversations/${target}`, { method: "DELETE" }); } catch (error) { if (!/no encontrada/i.test(error.message || "")) alert(error.message); } finally { await hideBusyOverlay(startedAt, 500); } const compose = document.getElementById("mensajes-compose"); if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; const input = compose.querySelector("#mensajes-input"); const button = compose.querySelector('button[type="submit"]'); if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; } if (button) button.disabled = true; } document.getElementById("mensajes-chat-head").innerHTML = "<span>Selecciona una conversación</span>"; document.getElementById("mensajes-chat-body").innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>"; return loadConversations().catch(() => {}); }
+        if (action === "delete") { if (!await askConfirm("¿Borrar esta conversación y su historial?")) return; const target = selectedId; conversationLoadSeq++; selectedId = null; const startedAt = Date.now(); showBusyOverlay("Borrando conversación…", "Un momento."); try { await api(`/api/mensajes-view/conversations/${target}`, { method: "DELETE" }); } catch (error) { if (!/no encontrada/i.test(error.message || "")) alert(error.message); } finally { await hideBusyOverlay(startedAt, 500); } const compose = document.getElementById("mensajes-compose"); if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; const input = compose.querySelector("#mensajes-input"); const button = compose.querySelector('button[type="submit"]'); if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; } if (button) button.disabled = true; } document.getElementById("mensajes-chat-head").innerHTML = "<span>Selecciona una conversación</span>"; document.getElementById("mensajes-chat-body").innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>"; return loadConversations().catch(() => {}); }
         if (action === "ignore") return ignoreConversationPhone(selectedId);
         const endpoint = action === "take" ? "take" : "release";
         await api(`/api/mensajes-view/conversations/${selectedId}/${endpoint}`, { method: "POST" });
@@ -488,7 +536,7 @@
             .map((value) => String(value || "").replace(/\D/g, ""))
             .filter((value) => /^\d{7,20}$/.test(value)))];
         if (!identifiers.length) return alert("Esta conversación no tiene un teléfono válido para ignorar.");
-        if (!confirm(`¿Dejar de responder automáticamente a este chat?\n\nLa IA no volverá a contestarle hasta que lo quites de la lista de ignorados en Ajustes.`)) return;
+        if (!await askConfirm(`¿Dejar de responder automáticamente a este chat?\n\nLa IA no volverá a contestarle hasta que lo quites de la lista de ignorados en Ajustes.`)) return;
         try {
             const { settings } = await api("/api/mensajes-view/settings");
             let numbers = settings.automationPhoneNumbers || [];
@@ -551,15 +599,34 @@
         if (minMs && elapsed < minMs) await new Promise((resolve) => setTimeout(resolve, minMs - elapsed));
         document.getElementById("mensajes-busy-overlay")?.remove();
     }
+    // Deja el panel del chat en "Selecciona una conversación" (sin cabecera, panel de
+    // paciente ni compose activo de una conversación que ya no existe).
+    function resetChatPanel() {
+        conversationLoadSeq++;
+        selectedId = null;
+        lastChatSig = "";
+        const head = document.getElementById("mensajes-chat-head");
+        const body = document.getElementById("mensajes-chat-body");
+        if (head) head.innerHTML = "<span>Selecciona una conversación</span>";
+        if (body) body.innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>";
+        document.getElementById("mensajes-patient-panel")?.remove();
+        const input = document.getElementById("mensajes-input");
+        if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; }
+        const submit = document.querySelector('#mensajes-compose button[type="submit"]');
+        if (submit) submit.disabled = true;
+    }
     async function deleteAllConversations() {
-        if (deletingAll || !confirm("Borrar TODAS las conversaciones, mensajes y pendientes de la vista Mensajes?\n\nLas vinculaciones de pacientes se conservan. Esta acción no se puede deshacer.")) return;
+        if (deletingAll) return;
+        // La guarda se toma antes de preguntar: un segundo clic mientras el diálogo está
+        // abierto no encola otra confirmación, y el poll no re-renderiza a mitad de camino.
         deletingAll = true;
+        if (!await askConfirm("¿Borrar TODAS las conversaciones, mensajes y pendientes de la vista Mensajes?\n\nLas vinculaciones de pacientes se conservan. Esta acción no se puede deshacer.")) { deletingAll = false; return; }
         const startedAt = Date.now();
         showBusyOverlay("Borrando conversaciones…", "Puede tardar unos segundos. No cierres ni cambies de vista.");
         try {
             await api("/api/mensajes-view/conversations", { method: "DELETE" });
-            selectedId = null;
-            lastChatSig = ""; lastListSig = "";
+            resetChatPanel();
+            lastListSig = "";
             await loadConversations();
         } catch (error) {
             alert(error.message);
@@ -587,7 +654,7 @@
         nav.insertAdjacentHTML("beforeend", `<button data-settings-section="patient-identities">Vinculaciones</button>`);
         content.insertAdjacentHTML("beforeend", `<section data-settings-content="patient-identities" hidden><h3>Vinculaciones de pacientes</h3><p>Estas relaciones son manuales y no se eliminan al borrar conversaciones.</p><div class="identity-settings-toolbar"><strong id="patient-identities-count">0 vinculaciones activas</strong><button type="button" id="patient-identities-refresh">Actualizar</button></div><div class="identity-settings-search"><input id="patient-identities-search" placeholder="Buscar por nombre, teléfono o chatId"><button type="button" id="patient-identities-search-btn">Buscar</button></div><div id="patient-identities-list" class="patient-identities-list"></div><button type="button" id="patient-identities-clear-all" class="identity-danger-button">Desvincular todas</button></section>`);
         const list = modal.querySelector("#patient-identities-list"); const count = modal.querySelector("#patient-identities-count"); const searchInput = modal.querySelector("#patient-identities-search");
-        const load = async () => { const data = await api(`/api/mensajes-view/patient-identities?search=${encodeURIComponent(searchInput.value.trim())}`); count.textContent = `${data.identities.length} vinculaciones encontradas`; list.innerHTML = data.identities.length ? data.identities.map((item) => `<div class="identity-settings-item"><div><strong>${esc(item.patientName)}</strong><span>${esc(item.phone || "Sin teléfono")} · ${esc(item.treatmentType || "Sin tratamiento")}</span><small>${esc(item.waChatId)}</small></div><button type="button" data-identity-remove="${item.id}">Desvincular</button></div>`).join("") : `<div class="patient-search-empty">No hay vinculaciones activas.</div>`; list.querySelectorAll("[data-identity-remove]").forEach((button) => button.addEventListener("click", async () => { if (!confirm("¿Desvincular este paciente?")) return; await api(`/api/mensajes-view/patient-identities/${button.dataset.identityRemove}`, { method: "DELETE" }); await load(); })); };
+        const load = async () => { const data = await api(`/api/mensajes-view/patient-identities?search=${encodeURIComponent(searchInput.value.trim())}`); count.textContent = `${data.identities.length} vinculaciones encontradas`; list.innerHTML = data.identities.length ? data.identities.map((item) => `<div class="identity-settings-item"><div><strong>${esc(item.patientName)}</strong><span>${esc(item.phone || "Sin teléfono")} · ${esc(item.treatmentType || "Sin tratamiento")}</span><small>${esc(item.waChatId)}</small></div><button type="button" data-identity-remove="${item.id}">Desvincular</button></div>`).join("") : `<div class="patient-search-empty">No hay vinculaciones activas.</div>`; list.querySelectorAll("[data-identity-remove]").forEach((button) => button.addEventListener("click", async () => { if (!await askConfirm("¿Desvincular este paciente?")) return; await api(`/api/mensajes-view/patient-identities/${button.dataset.identityRemove}`, { method: "DELETE" }); await load(); })); };
         modal.querySelector("#patient-identities-refresh").addEventListener("click", load); modal.querySelector("#patient-identities-search-btn").addEventListener("click", load); searchInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); void load(); } }); const clearAllButton = modal.querySelector("#patient-identities-clear-all"); clearAllButton.addEventListener("click", async () => { if (clearAllButton.dataset.confirming !== "1") { clearAllButton.dataset.confirming = "1"; clearAllButton.textContent = "Confirmar desvinculación total"; clearAllButton.classList.add("is-confirming"); setTimeout(() => { clearAllButton.dataset.confirming = "0"; clearAllButton.textContent = "Desvincular todas"; clearAllButton.classList.remove("is-confirming"); }, 5000); return; } clearAllButton.disabled = true; try { const result = await api("/api/mensajes-view/patient-identities", { method: "DELETE" }); clearAllButton.textContent = `${result.cleared} desvinculadas`; await load(); } catch (error) { clearAllButton.disabled = false; clearAllButton.textContent = error.message; } });
         await load(); const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); }; nav.querySelector('[data-settings-section="patient-identities"]').addEventListener("click", (event) => activate(event.currentTarget));
     }
@@ -892,6 +959,16 @@
         const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); };
         nav.querySelector('[data-settings-section="ai-agenda"]').addEventListener("click", (event) => activate(event.currentTarget));
     }
+    // Mismos módulos que MODULES en configTransfer.service.js (= pestañas de Ajustes).
+    // `keys` sirve para reconocer qué trae un archivo exportado por la versión anterior.
+    const CONFIG_MODULES = [
+        { id: "automation", label: "Respuestas automáticas", keys: ["messageSettings", "automationSettings"], detail: "tiempos de respuesta, activar automatizaciones, control de teléfonos, mensajes ignorados y plantilla de recordatorios" },
+        { id: "assistant", label: "Asistente IA", keys: ["knowledge", "humanReviewRules", "administrativeSettings"], detail: "conocimiento de la clínica y revisión humana" },
+        { id: "identities", label: "Vinculaciones", keys: ["patientIdentities"], detail: "vinculaciones paciente-chat activas" },
+        { id: "provider", label: "Configuración IA", keys: ["providerSettings"], detail: "proveedor, modelo y clave" },
+        { id: "services", label: "Servicios IA", keys: ["serviceSettings", "serviceAliases"], detail: "servicios habilitados, precios, horario propio, alias, horario general y pausas" },
+        { id: "agenda", label: "Agenda IA", keys: ["blockedDates"], detail: "días bloqueados y topes diario y por hora" }
+    ];
     async function enrichConfigTransfer() {
         const modal = document.getElementById("mensajes-settings-modal");
         const nav = modal?.querySelector(".mensajes-settings-nav");
@@ -900,20 +977,41 @@
         nav.insertAdjacentHTML("beforeend", '<button data-settings-section="config-transfer">Copia de configuración</button>');
         content.insertAdjacentHTML("beforeend", `<section data-settings-content="config-transfer" hidden>
             <h3>Copia de configuración</h3>
-            <p>Exportá la configuración de la IA de este equipo a un archivo y cargala en otro. Incluye: texto de conocimiento, servicios IA y alias, horario general, pausas, días bloqueados, topes diario y por hora, configuración del proveedor IA (con su clave), revisión humana, automatizaciones, recordatorios, reglas de teléfonos y las vinculaciones paciente-chat activas (para reusarlas hace falta el mismo número de WhatsApp). <strong>No</strong> incluye conversaciones ni mensajes.</p>
-            <p class="ai-help" style="color:var(--msg-warn-text,#b45309)">El archivo contiene la clave del proveedor IA. Guardalo en un lugar seguro y no lo subas a repositorios ni lo compartas.</p>
-            <button id="config-export-btn" type="button">Exportar configuración</button>
+            <p>Exportá la configuración de la IA de este equipo a un archivo y cargala en otro. <strong>No</strong> incluye conversaciones ni mensajes.</p>
+            <p>Módulos para exportar y borrar:</p>
+            <div class="ai-weekday-checks" id="config-modules">${CONFIG_MODULES.map((m) => `<label title="${esc(m.detail)}"><input type="checkbox" value="${m.id}" checked> ${esc(m.label)}</label>`).join("")}</div>
+            <p class="ai-help">${CONFIG_MODULES.map((m) => `<strong>${esc(m.label)}:</strong> ${esc(m.detail)}`).join("<br>")}</p>
+            <p class="ai-help" style="color:var(--msg-warn-text,#b45309)">Con "Configuración IA" el archivo contiene la clave del proveedor IA. Guardalo en un lugar seguro y no lo subas a repositorios ni lo compartas.</p>
+            <button id="config-export-btn" type="button">Exportar seleccionados</button>
             <hr>
-            <p>Importar reemplaza la configuración de este equipo con la del archivo. Las citas ya agendadas no se tocan.</p>
+            <h3>Importar</h3>
+            <p>Elegí el archivo y después marcá qué módulos aplicar. Cada módulo importado reemplaza el de este equipo (Vinculaciones se suman a las existentes); los que no se importan no se tocan. Las citas ya agendadas no se tocan.</p>
             <input id="config-import-file" type="file" accept="application/json,.json" hidden>
-            <button id="config-import-btn" type="button">Importar configuración…</button>
+            <button id="config-import-btn" type="button">Elegir archivo…</button>
+            <div id="config-import-preview" hidden>
+                <p><strong id="config-import-name"></strong></p>
+                <div class="ai-weekday-checks" id="config-import-modules"></div>
+                <div class="ai-settings-actions">
+                    <button id="config-import-apply" type="button">Aplicar importación</button>
+                    <button id="config-import-cancel" type="button" class="ai-secondary-btn">Cancelar</button>
+                </div>
+            </div>
+            <hr>
+            <h3>Borrar configuración</h3>
+            <p>Vuelve a valores de fábrica los módulos seleccionados (los servicios quedan todos deshabilitados para la IA y la automatización queda apagada). Las conversaciones, mensajes y citas no se tocan. <strong>No se puede deshacer:</strong> exportá antes si querés conservarla.</p>
+            <label>Para habilitar el botón, escribí BORRAR<input id="config-reset-confirm" type="text" autocomplete="off" placeholder="BORRAR"></label>
+            <button id="config-reset-btn" type="button" class="identity-danger-button" disabled>Borrar configuración seleccionada</button>
             <div id="config-transfer-result" class="settings-state-card"></div>
         </section>`);
+        const selectedModules = () => [...modal.querySelectorAll("#config-modules input:checked")].map((input) => input.value);
+        const moduleLabels = (ids) => ids.map((id) => CONFIG_MODULES.find((m) => m.id === id)?.label || id).join(", ");
         modal.querySelector("#config-export-btn").addEventListener("click", async () => {
             const result = modal.querySelector("#config-transfer-result");
+            const modules = selectedModules();
+            if (!modules.length) { result.textContent = "Elegí al menos un módulo."; return; }
             result.textContent = "Generando archivo…";
             try {
-                const cfg = await api("/api/mensajes-view/config-export");
+                const cfg = await api(`/api/mensajes-view/config-export?modules=${encodeURIComponent(modules.join(","))}`);
                 const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: "application/json" });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement("a");
@@ -921,26 +1019,71 @@
                 link.download = `clinica-config-${String(cfg.exportedAt || "").slice(0, 10) || "export"}.json`;
                 document.body.appendChild(link); link.click(); link.remove();
                 URL.revokeObjectURL(url);
-                result.textContent = `Configuración exportada (${cfg.serviceSettings?.length || 0} servicios, ${cfg.blockedDates?.length || 0} días bloqueados, ${cfg.patientIdentities?.length || 0} vinculaciones).`;
+                result.textContent = `Configuración exportada: ${moduleLabels(cfg.modules || modules)}.`;
             } catch (error) { result.textContent = error.message || "No se pudo exportar."; }
         });
+        // Importar en dos pasos: elegir el archivo muestra qué módulos trae (los que no
+        // trae quedan apagados), y recién "Aplicar importación" escribe.
         const fileInput = modal.querySelector("#config-import-file");
+        const preview = modal.querySelector("#config-import-preview");
+        const importChecks = modal.querySelector("#config-import-modules");
+        let pendingPayload = null;
+        const closePreview = () => { pendingPayload = null; preview.hidden = true; importChecks.innerHTML = ""; };
         modal.querySelector("#config-import-btn").addEventListener("click", () => fileInput.click());
+        modal.querySelector("#config-import-cancel").addEventListener("click", closePreview);
         fileInput.addEventListener("change", async () => {
             const result = modal.querySelector("#config-transfer-result");
             const file = fileInput.files && fileInput.files[0];
             fileInput.value = "";
             if (!file) return;
+            closePreview();
             let payload;
             try { payload = JSON.parse(await file.text()); }
             catch { result.textContent = "El archivo no es un JSON válido."; return; }
-            if (!confirm("Importar esta configuración reemplaza el texto de conocimiento, los servicios IA, el horario, las pausas, los días bloqueados, los topes diario y por hora y la configuración del proveedor IA de este equipo. También agrega o actualiza las vinculaciones paciente-chat exportadas (solo funciona si es el mismo número de WhatsApp). ¿Continuar?")) return;
+            if (payload?.format !== "clinica-mensajes-config") { result.textContent = "El archivo no es una configuración de mensajes válida."; return; }
+            // Archivos viejos no traen `modules`: se deduce por las claves presentes.
+            const inFile = CONFIG_MODULES.filter((m) => (payload.modules || []).includes(m.id) || m.keys.some((key) => payload[key] !== undefined)).map((m) => m.id);
+            if (!inFile.length) { result.textContent = "El archivo no trae ningún módulo de configuración."; return; }
+            pendingPayload = payload;
+            modal.querySelector("#config-import-name").textContent = `${file.name} — trae: ${moduleLabels(inFile)}`;
+            importChecks.innerHTML = CONFIG_MODULES.map((m) => inFile.includes(m.id)
+                ? `<label title="${esc(m.detail)}"><input type="checkbox" value="${m.id}" checked> ${esc(m.label)}</label>`
+                : `<label title="No viene en el archivo" style="opacity:.45"><input type="checkbox" value="${m.id}" disabled> ${esc(m.label)} (no viene en el archivo)</label>`).join("");
+            preview.hidden = false;
+            result.textContent = "";
+        });
+        modal.querySelector("#config-import-apply").addEventListener("click", async () => {
+            const result = modal.querySelector("#config-transfer-result");
+            if (!pendingPayload) return;
+            const toImport = [...importChecks.querySelectorAll("input:checked:not(:disabled)")].map((input) => input.value);
+            if (!toImport.length) { result.textContent = "Marcá al menos un módulo para importar."; return; }
+            if (!await askConfirm(`Se va a reemplazar la configuración de este equipo en: ${moduleLabels(toImport)}.${toImport.includes("identities") ? "\n\nLas vinculaciones solo sirven si es el mismo número de WhatsApp." : ""}\n\n¿Continuar?`)) return;
+            const payload = pendingPayload;
             result.textContent = "Importando…";
             try {
-                const data = await api("/api/mensajes-view/config-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-                result.textContent = `Configuración importada: ${data.summary.services} servicios, ${data.summary.aliases} alias, ${data.summary.blockedDates} días bloqueados, ${data.summary.patientIdentities} vinculaciones. Recargando la vista…`;
+                const data = await api("/api/mensajes-view/config-import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payload, modules: toImport }) });
+                const s = data.summary;
+                result.textContent = `Configuración importada: ${moduleLabels(s.modules)} (${s.services} servicios, ${s.aliases} alias, ${s.blockedDates} días bloqueados, ${s.patientIdentities} vinculaciones). Recargando la vista…`;
                 setTimeout(() => window.location.reload(), 1600);
             } catch (error) { result.textContent = error.message || "No se pudo importar."; }
+        });
+        // Doble confirmación: escribir BORRAR habilita el botón, y además askConfirm().
+        const resetInput = modal.querySelector("#config-reset-confirm");
+        const resetButton = modal.querySelector("#config-reset-btn");
+        resetInput.addEventListener("input", () => { resetButton.disabled = resetInput.value.trim() !== "BORRAR"; });
+        resetButton.addEventListener("click", async () => {
+            const result = modal.querySelector("#config-transfer-result");
+            const modules = selectedModules();
+            if (!modules.length) { result.textContent = "Elegí al menos un módulo."; return; }
+            if (resetInput.value.trim() !== "BORRAR") return;
+            if (!await askConfirm(`¿Borrar definitivamente la configuración de: ${moduleLabels(modules)}?\n\nVuelve a valores de fábrica y no se puede deshacer.`)) return;
+            result.textContent = "Borrando…";
+            try {
+                const data = await api("/api/mensajes-view/config-reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ modules, confirm: "BORRAR" }) });
+                resetInput.value = ""; resetButton.disabled = true;
+                result.textContent = `Configuración borrada: ${moduleLabels(data.summary.modules)}. Recargando la vista…`;
+                setTimeout(() => window.location.reload(), 1600);
+            } catch (error) { result.textContent = error.message || "No se pudo borrar."; }
         });
         const activate = (button) => { modal.querySelectorAll("[data-settings-section]").forEach((item) => item.classList.toggle("is-active", item === button)); modal.querySelectorAll("[data-settings-content]").forEach((item) => { item.hidden = item.dataset.settingsContent !== button.dataset.settingsSection; }); };
         nav.querySelector('[data-settings-section="config-transfer"]').addEventListener("click", (event) => activate(event.currentTarget));

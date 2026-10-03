@@ -73,28 +73,39 @@ function formatGapDate(value) {
   return new Intl.DateTimeFormat("es-SV", { timeZone: TIMEZONE, day: "numeric", month: "long", year: "numeric" }).format(date);
 }
 
+// Corte duro por vacío: si entre dos mensajes pasaron HISTORY_GAP_HOURS o más, a
+// la IA solo le llega lo posterior al último vacío. Antes se mandaba todo con una
+// nota "lo de arriba ya está cerrado", y el modelo a veces la ignoraba: un saludo
+// 5 días después de pedir una reprogramación se respondía retomando la
+// reprogramación. La cita ya gestionada no se pierde: viaja en la memoria del
+// agente (describeAssistantMemory), no en el historial.
 function mapHistory(messages) {
   const valid = (messages || []).filter((message) => message && typeof message.content === "string" && message.content.trim());
-  const result = [];
+  // messageAt (fecha real del mensaje, la del teléfono) y no createdAt: en
+  // chats con historial importado createdAt queda igual para todos los
+  // mensajes (hora de la importación), lo que anularía la detección del gap.
+  const timeOf = (message) => { const rawAt = message.messageAt || message.createdAt; return rawAt ? new Date(rawAt).getTime() : NaN; };
+  let start = 0;
+  let gap = null;
   let previousAt = null;
-  for (const message of valid) {
-    // messageAt (fecha real del mensaje, la del teléfono) y no createdAt: en
-    // chats con historial importado createdAt queda igual para todos los
-    // mensajes (hora de la importación), lo que anularía la detección del gap.
-    const rawAt = message.messageAt || message.createdAt;
-    const at = rawAt ? new Date(rawAt).getTime() : NaN;
-    if (previousAt !== null && !Number.isNaN(at)) {
-      const gapHours = (at - previousAt) / 3600000;
-      if (gapHours >= HISTORY_GAP_HOURS) {
-        const dateLabel = formatGapDate(rawAt);
-        const dias = Math.floor(gapHours / 24);
-        result.push({
-          role: "system",
-          content: `--- Pasaron ${dias} días desde el mensaje anterior${dateLabel ? ` (retomado el ${dateLabel})` : ""}. Lo de arriba fue una conversación distinta, ya cerrada: no la continúes ni asumas que sigue vigente (ej. un cambio de cita ya resuelto ahí no aplica de nuevo ahora). Tratá lo que sigue como el inicio de un contacto nuevo, salvo que el paciente mismo retome ese tema explícitamente. ---`
-        });
-      }
+  valid.forEach((message, index) => {
+    const at = timeOf(message);
+    if (Number.isNaN(at)) return;
+    if (previousAt !== null && (at - previousAt) / 3600000 >= HISTORY_GAP_HOURS) {
+      start = index;
+      gap = { hours: (at - previousAt) / 3600000, at: message.messageAt || message.createdAt };
     }
-    if (!Number.isNaN(at)) previousAt = at;
+    previousAt = at;
+  });
+  const result = [];
+  if (gap) {
+    const dateLabel = formatGapDate(gap.at);
+    result.push({
+      role: "system",
+      content: `--- Este paciente ya había escrito antes, pero su último contacto fue hace ${Math.floor(gap.hours / 24)} días; ese historial no se incluye porque era otra conversación, ya cerrada. Lo que sigue${dateLabel ? ` (desde el ${dateLabel})` : ""} es un contacto nuevo: respondé solo a lo que el paciente dice ahora. ---`
+    });
+  }
+  for (const message of valid.slice(start)) {
     // Un saliente con author "human" lo escribió recepción a mano, no la IA: si no se
     // distingue, un compromiso del staff (ej. "sí hay espacio hoy a las 3pm") se lee como
     // si la IA misma lo hubiera dicho, y no hay forma de detectar luego que lo está contradiciendo.

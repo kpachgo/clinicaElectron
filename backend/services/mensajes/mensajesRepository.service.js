@@ -297,7 +297,41 @@ class MensajesRepository {
 
   listConversations(options = {}) {
     const limit = Math.min(Math.max(Number(options.limit) || 50, 1), 200);
-    return this.db.prepare("SELECT c.*, (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.author='patient' AND m.read_at IS NULL) AS unread_count FROM conversations c WHERE NOT (c.wa_chat_id LIKE '%@lid' AND NOT EXISTS (SELECT 1 FROM messages incoming WHERE incoming.conversation_id=c.id AND incoming.direction='incoming')) ORDER BY c.updated_at DESC LIMIT ?").all(limit).map((row) => ({ ...toConversation(row), unreadCount: row.unread_count }));
+    // awaiting_since: el último mensaje del paciente (sin contar reacciones) no tiene
+    // ningún saliente después (IA o recepción) ni fue marcado como atendido. Todo
+    // por id (orden de inserción), nunca por message_at. La hora de espera es la
+    // menor entre la del teléfono y la del servidor: un mensaje importado al
+    // reconectar conserva su fecha real, y un reloj adelantado no la corre.
+    // linked_patient_name: el nombre del paciente vinculado, con las mismas caídas
+    // que getPatientLink (chat id, alias tras una fusión, patient_id).
+    return this.db.prepare(`SELECT c.*,
+        (SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id AND m.author='patient' AND m.read_at IS NULL) AS unread_count,
+        lp.id AS last_patient_message_id,
+        CASE WHEN lp.id IS NOT NULL AND c.status <> 'closed'
+              AND lp.id > IFNULL(c.attended_message_id, 0)
+              AND NOT EXISTS (SELECT 1 FROM messages o WHERE o.conversation_id=c.id AND o.direction='outgoing' AND o.id > lp.id)
+          THEN strftime('%Y-%m-%dT%H:%M:%SZ', MIN(julianday(COALESCE(lp.message_at, lp.created_at)), julianday(lp.created_at)))
+        END AS awaiting_since,
+        (SELECT pci.patient_name FROM patient_chat_identities pci
+          WHERE pci.active=1 AND (pci.wa_chat_id=c.wa_chat_id
+            OR pci.wa_chat_id IN (SELECT a.wa_chat_id FROM wa_chat_aliases a WHERE a.conversation_id=c.id)
+            OR (c.patient_id IS NOT NULL AND pci.patient_id=c.patient_id))
+          ORDER BY (pci.wa_chat_id=c.wa_chat_id) DESC, pci.verified_at DESC LIMIT 1) AS linked_patient_name
+      FROM conversations c
+      LEFT JOIN messages lp ON lp.id = (
+        SELECT id FROM messages WHERE conversation_id=c.id AND direction='incoming' AND author='patient'
+          AND reaction_target_id IS NULL AND content NOT LIKE 'Reacción:%'
+        ORDER BY id DESC LIMIT 1)
+      WHERE NOT (c.wa_chat_id LIKE '%@lid' AND NOT EXISTS (SELECT 1 FROM messages incoming WHERE incoming.conversation_id=c.id AND incoming.direction='incoming'))
+      ORDER BY c.updated_at DESC LIMIT ?`).all(limit).map((row) => ({ ...toConversation(row), unreadCount: row.unread_count, awaitingSince: row.awaiting_since || null, linkedPatientName: row.linked_patient_name || null }));
+  }
+
+  // "Marcar como atendido": da por atendido el último mensaje del paciente sin
+  // responderlo. No toca el modo de atención (eso es "Tomar").
+  markAttended(conversationId) {
+    const last = this.db.prepare("SELECT MAX(id) AS id FROM messages WHERE conversation_id=? AND direction='incoming' AND author='patient'").get(conversationId);
+    this.db.prepare("UPDATE conversations SET attended_message_id=? WHERE id=?").run(last?.id || null, conversationId);
+    return last?.id || null;
   }
 
   saveMessage({ conversationId, externalId, direction, author, text, messageAt, rawType = "text", reactionTargetId = null, source = "live" }) {
@@ -467,11 +501,11 @@ class MensajesRepository {
   setAssistantMemory(conversationId, patch) {
     const state = this.getConversationState(conversationId);
     const collected = { ...(state.collected || {}), _assistant: { ...(state.collected?._assistant || {}), ...patch } };
-    return this.updateConversationState(conversationId, { intent: state.intent, collected, missing: state.missing || [], offeredSlots: state.offeredSlots || [], pendingAction: state.pendingAction || null });
+    return this.updateConversationState(conversationId, { collected, missing: state.missing || [], offeredSlots: state.offeredSlots || [], pendingAction: state.pendingAction || null });
   }
 
-  getConversationState(conversationId) { const row = this.db.prepare("SELECT conversation_id AS conversationId, intent, collected_json AS collected, missing_json AS missing, offered_slots_json AS offeredSlots, pending_action_json AS pendingAction, version, updated_at AS updatedAt FROM conversation_state WHERE conversation_id=?").get(conversationId); if (!row) return { conversationId, intent: null, collected: {}, missing: [], offeredSlots: [], pendingAction: null, version: 1, updatedAt: null }; return { ...row, collected: JSON.parse(row.collected || "{}"), missing: JSON.parse(row.missing || "[]"), offeredSlots: JSON.parse(row.offeredSlots || "[]"), pendingAction: row.pendingAction ? JSON.parse(row.pendingAction) : null }; }
-  updateConversationState(conversationId, state) { this.db.prepare("INSERT INTO conversation_state (conversation_id, intent, collected_json, missing_json, offered_slots_json, pending_action_json, clinical_workflow_json, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, 1, datetime('now')) ON CONFLICT(conversation_id) DO UPDATE SET intent=excluded.intent, collected_json=excluded.collected_json, missing_json=excluded.missing_json, offered_slots_json=excluded.offered_slots_json, pending_action_json=excluded.pending_action_json, clinical_workflow_json=NULL, version=conversation_state.version+1, updated_at=datetime('now')").run(conversationId, state.intent || null, JSON.stringify(state.collected || {}), JSON.stringify(state.missing || []), JSON.stringify(state.offeredSlots || []), state.pendingAction ? JSON.stringify(state.pendingAction) : null); if (state.humanTransition === true) { this.updateConversation(conversationId, { attentionMode: "review_required" }); this.db.prepare("UPDATE conversations SET human_review_reason=COALESCE(?,human_review_reason), lifecycle_state='human_review' WHERE id=?").run(state.collected?._humanReviewReason || null, conversationId); } return this.getConversationState(conversationId); }
+  getConversationState(conversationId) { const row = this.db.prepare("SELECT conversation_id AS conversationId, collected_json AS collected, missing_json AS missing, offered_slots_json AS offeredSlots, pending_action_json AS pendingAction, version, updated_at AS updatedAt FROM conversation_state WHERE conversation_id=?").get(conversationId); if (!row) return { conversationId, collected: {}, missing: [], offeredSlots: [], pendingAction: null, version: 1, updatedAt: null }; return { ...row, collected: JSON.parse(row.collected || "{}"), missing: JSON.parse(row.missing || "[]"), offeredSlots: JSON.parse(row.offeredSlots || "[]"), pendingAction: row.pendingAction ? JSON.parse(row.pendingAction) : null }; }
+  updateConversationState(conversationId, state) { this.db.prepare("INSERT INTO conversation_state (conversation_id, collected_json, missing_json, offered_slots_json, pending_action_json, clinical_workflow_json, version, updated_at) VALUES (?, ?, ?, ?, ?, NULL, 1, datetime('now')) ON CONFLICT(conversation_id) DO UPDATE SET collected_json=excluded.collected_json, missing_json=excluded.missing_json, offered_slots_json=excluded.offered_slots_json, pending_action_json=excluded.pending_action_json, clinical_workflow_json=NULL, version=conversation_state.version+1, updated_at=datetime('now')").run(conversationId, JSON.stringify(state.collected || {}), JSON.stringify(state.missing || []), JSON.stringify(state.offeredSlots || []), state.pendingAction ? JSON.stringify(state.pendingAction) : null); if (state.humanTransition === true) { this.updateConversation(conversationId, { attentionMode: "review_required" }); this.db.prepare("UPDATE conversations SET human_review_reason=COALESCE(?,human_review_reason), lifecycle_state='human_review' WHERE id=?").run(state.collected?._humanReviewReason || null, conversationId); } return this.getConversationState(conversationId); }
   markFollowUpSent(conversationId) { this.db.prepare("UPDATE conversations SET follow_up_sent=1, updated_at=datetime('now') WHERE id=?").run(conversationId); return this.getConversation(conversationId); }
   setConversationLifecycle(conversationId, lifecycleState, humanReviewReason = null) { this.db.prepare("UPDATE conversations SET lifecycle_state=?, human_review_reason=COALESCE(?,human_review_reason), updated_at=datetime('now') WHERE id=?").run(lifecycleState, humanReviewReason, conversationId); return this.getConversation(conversationId); }
   getHumanReviewInstructions() { const row = this.db.prepare("SELECT instructions, updated_at AS updatedAt FROM human_review_rules WHERE id=1").get(); return { instructions: row?.instructions || "", updatedAt: row?.updatedAt || null }; }

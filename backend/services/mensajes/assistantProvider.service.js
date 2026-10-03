@@ -128,6 +128,14 @@ async function requestTurn({ messages, toolSpecs, cfg, strategy, signal }) {
   return { replyText: reply, toolCalls: [], assistantEcho: { role: "assistant", content: message.content || "" } };
 }
 
+// Consulta corta de juicio (sin herramientas): el modelo devuelve un objeto JSON.
+// La usa el agente para revisar su propia respuesta antes de enviarla.
+async function requestJudgement({ cfg, system, user, signal }) {
+  const payload = { model: cfg.model, temperature: 0, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content: user }] };
+  const body = await callProvider({ cfg, payload, signal });
+  return extractJsonObject(body.choices?.[0]?.message?.content) || {};
+}
+
 function appendToolResults(messages, assistantEcho, results, strategy) {
   const mode = strategy || "json";
   if (mode === "native") {
@@ -145,4 +153,4 @@ function appendToolResults(messages, assistantEcho, results, strategy) {
   ];
 }
 
-module.exports = { strategyFor, buildInitialMessages, requestTurn, appendToolResults, extractJsonObject };
+module.exports = { strategyFor, buildInitialMessages, requestTurn, requestJudgement, appendToolResults, extractJsonObject };

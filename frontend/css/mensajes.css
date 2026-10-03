@@ -194,3 +194,7 @@ body:is([data-theme="dark"],[data-theme="vampire"],[data-theme="princess"]) :is(
 body:is([data-theme="dark"],[data-theme="vampire"],[data-theme="princess"]) .mensajes-compose input:disabled{background-color:var(--msg-surface-soft);color:var(--msg-subtle)}
 body:is([data-theme="dark"],[data-theme="vampire"],[data-theme="princess"]) :is(.mensajes-view,.mensajes-settings-overlay,.mensajes-reminder-card,.patient-search-card) ::placeholder{color:var(--msg-subtle)}
 body:is([data-theme="dark"],[data-theme="vampire"],[data-theme="princess"]) :is(.mensajes-chat-actions button,.mensajes-reminder-card>button[data-close]){color:var(--msg-text-2)}
+/* Etiqueta "Sin responder": último mensaje del paciente sin respuesta hace 10 min o más. */
+.mensajes-conversation .conv-chip.is-awaiting{background:var(--msg-accent-soft,#dbeafe);color:var(--msg-accent-strong,#1d4ed8)}
+.mensajes-chat-head .chat-attended-btn{flex:0 0 auto;padding:6px 12px;border-radius:999px;border:1px solid var(--msg-border,#dbeafe);background:var(--msg-accent-softer,#eff6ff);color:var(--msg-accent-text,#2563eb);font-size:12px;font-weight:700;cursor:pointer}
+.mensajes-chat-head .chat-attended-btn:hover{background:var(--msg-accent-soft,#dbeafe)}

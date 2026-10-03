@@ -1,3 +1,8 @@
+// Normaliza los ARGUMENTOS de fecha/hora que el modelo pasa a las herramientas
+// (consultar_disponibilidad, crear_cita, reprogramar_cita): a veces manda
+// "el lunes" o "10:00 AM" en vez de "2026-10-05" / "10:00". NO interpreta los
+// mensajes del paciente ni decide intenciones: eso lo hace la IA. No agregar acá
+// vocabulario para "entender" al paciente.
 const TIMEZONE = "America/El_Salvador";
 
 function normalize(value) { return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim(); }
@@ -48,8 +53,6 @@ function timeFromText(text) {
   if (!meridiem && /\b(mediodia|medio dia)\b/.test(normalized)) hour = 12;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
-function sameTimeRequested(text) { return /\b(a\s+la\s+)?misma\s+hora\b/i.test(normalize(text)); }
-function timeToMinutes(value) { const [hour, minute] = String(value || "00:00").slice(0, 5).split(":").map(Number); return hour * 60 + minute; }
 function formatDate(date) { return new Intl.DateTimeFormat("es-SV", { timeZone: TIMEZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${date}T12:00:00`)); }
 
-module.exports = { TIMEZONE, resolveDatePreference, timeFromText, sameTimeRequested, timeToMinutes, formatDate };
+module.exports = { TIMEZONE, resolveDatePreference, timeFromText, formatDate };

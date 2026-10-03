@@ -5,7 +5,7 @@
 
 const { buildAssistantContext } = require("./assistantContext.service");
 const { TOOL_SPECS, SALE_TOOL_SPECS, runTool } = require("./assistantTools.service");
-const { strategyFor, buildInitialMessages, requestTurn, appendToolResults } = require("./assistantProvider.service");
+const { strategyFor, buildInitialMessages, requestTurn, requestJudgement, appendToolResults } = require("./assistantProvider.service");
 const { isModoVentaEnabled } = require("../appMode.service");
 
 const MAX_STEPS = 6;
@@ -40,9 +40,63 @@ function memoryUpdateFromTrace(trace) {
   return null;
 }
 
+// Red de seguridad: el modelo a veces le dice al paciente que su cita quedó hecha
+// sin haber llamado crear_cita (la regla 7 de la política lo prohíbe, pero es solo
+// prompt). Criterio por estado, no por frases:
+//   1. Estado: solo se revisa si en esta conversación NO hay ninguna acción de
+//      agenda respaldada (herramienta exitosa en este turno o cita en memoria).
+//   2. Contexto: en ese caso un juicio corto del modelo decide si la respuesta, en
+//      el contexto de la charla, le da a entender al paciente que la cita ya está
+//      hecha, la diga como la diga ("¡Listo! A la orden, lo esperamos el lunes").
+const MUTATING_TOOLS = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia", "cancelar_cita_recordatorio"]);
+const ACTION_DONE_STATES = new Set(["ok", "ya_registrada"]);
+const CLAIM_JUDGE_SYSTEM = [
+  "Revisás un mensaje que el asistente de WhatsApp de una clínica dental está por enviarle a un paciente.",
+  "Dato del sistema: en esta conversación NO se registró, reprogramó ni canceló ninguna cita en la agenda.",
+  "Decidí si el mensaje, en el contexto de la conversación, le da a entender al paciente que una cita YA quedó registrada, agendada, reprogramada, cancelada o confirmada, aunque lo diga con otras palabras o de forma implícita.",
+  "NO cuenta como cita hecha: ofrecer horarios, preguntar si confirma, pedir datos, explicar cómo agendar, ni hablar de una cita que el paciente ya tenía de antes.",
+  'Respondé solo con JSON: {"afirma_cita_hecha": true o false, "motivo": "<una frase>"}'
+].join("\n");
+
+function hasBackedAction(trace, memory) {
+  if (trace.some((t) => t.type === "tool" && MUTATING_TOOLS.has(t.name) && ACTION_DONE_STATES.has(t.result?.estado))) return true;
+  // Una cita gestionada en un turno anterior de esta conversación respalda que el
+  // modelo la vuelva a mencionar ("gracias" → "lo esperamos el lunes").
+  return Boolean(memory?.lastAppointment?.appointmentId);
+}
+
+function recentDialogue(history, limit = 6) {
+  return (history || [])
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .slice(-limit)
+    .map((m) => `${m.role === "user" ? "Paciente" : "Clínica"}: ${String(m.content || "").slice(0, 400)}`)
+    .join("\n");
+}
+
+// Ante un error del juicio (red, timeout) se deja pasar la respuesta: la red de
+// seguridad no debe dejar al paciente sin contestar.
+async function claimsUnbackedAction({ replyText, trace, memory, history, judge, cfg, signal }) {
+  if (!replyText || hasBackedAction(trace, memory)) return { claims: false };
+  try {
+    const verdict = await judge({ cfg, signal, system: CLAIM_JUDGE_SYSTEM, user: `Conversación reciente:\n${recentDialogue(history) || "(sin mensajes previos)"}\n\nMensaje a revisar (todavía no enviado):\n${replyText}` });
+    return { claims: verdict?.afirma_cita_hecha === true, reason: verdict?.motivo || null };
+  } catch (error) {
+    console.warn("[Mensajes][IA] No se pudo revisar la respuesta; se envía igual", { error: error?.message });
+    return { claims: false };
+  }
+}
+
+function unbackedClaimCorrection(strategy) {
+  const content = "[Control interno del sistema, no lo escribió el paciente] Tu respuesta afirma que una cita quedó registrada, reprogramada o cancelada, pero en esta conversación ninguna herramienta lo hizo: la agenda NO tiene ese cambio. Si el paciente ya confirmó servicio, fecha y hora, llamá ahora la herramienta correspondiente con confirmado=true. Si todavía falta que confirme algo, reescribí la respuesta sin decir que la cita está hecha (por ejemplo, preguntale si confirma).";
+  return (strategy || "json") === "native"
+    ? { role: "system", content }
+    : { role: "user", content: `${content}\n\nRespondé usando el mismo formato JSON.` };
+}
+
 async function runAssistant({ conversation, linkedPatient = null, cfg, signal, transport = {}, history = null, assistantMemory = null }) {
   const doTurn = transport.requestTurn || requestTurn;
   const doTool = transport.runTool || runTool;
+  const doJudge = transport.requestJudgement || requestJudgement;
   const strategy = strategyFor(cfg);
   const saleMode = isModoVentaEnabled();
   const toolSpecs = saleMode ? SALE_TOOL_SPECS : TOOL_SPECS;
@@ -56,11 +110,34 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
 
   const trace = [];
   let transfer = null;
+  let claimCorrected = false;
 
   for (let step = 1; step <= MAX_STEPS; step += 1) {
     const turn = await doTurn({ messages, toolSpecs, cfg, strategy, signal });
 
     if (!turn.toolCalls || !turn.toolCalls.length) {
+      const replyText = (turn.replyText || "").trim();
+      const check = saleMode ? { claims: false } : await claimsUnbackedAction({ replyText, trace, memory, history, judge: doJudge, cfg, signal });
+      if (check.claims) {
+        if (!claimCorrected && step < MAX_STEPS) {
+          // Primera vez: se le devuelve al modelo para que llame la herramienta o corrija.
+          claimCorrected = true;
+          trace.push({ step, type: "guard", name: "afirmacion_sin_accion", text: replyText, reason: check.reason });
+          console.warn("[Mensajes][IA] Respuesta afirmaba una cita sin registrarla; se pide corrección", { conversationId: conversation?.id, motivo: check.reason, text: replyText.slice(0, 160) });
+          messages = [...messages, { role: "assistant", content: turn.assistantEcho?.content || replyText }, unbackedClaimCorrection(strategy)];
+          continue;
+        }
+        // Insistió (o no quedan pasos): no se envía la afirmación falsa.
+        trace.push({ step, type: "guard", name: "afirmacion_sin_accion_repetida", text: replyText, reason: check.reason });
+        console.warn("[Mensajes][IA] La IA insistió en afirmar una cita sin registrarla; pasa a recepción", { conversationId: conversation?.id, motivo: check.reason, text: replyText.slice(0, 160) });
+        return {
+          text: "Permíteme confirmar ese dato con recepción y te escribo en un momento.",
+          transfer: "La IA afirmó una cita sin haberla registrado en la agenda",
+          steps: step,
+          trace,
+          memoryUpdate: memoryUpdateFromTrace(trace)
+        };
+      }
       trace.push({ step, type: "reply", text: turn.replyText || "" });
       return { text: saleCancelled(trace) ? SALE_CANCEL_REPLY : (turn.replyText || "").trim(), transfer, steps: step, trace, memoryUpdate: memoryUpdateFromTrace(trace) };
     }

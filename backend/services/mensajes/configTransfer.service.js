@@ -4,7 +4,7 @@
 // mismo consultorio (comparten la base de pacientes de MySQL). Cubre la
 // configuración y también las vinculaciones paciente-chat (no conversaciones
 // ni mensajes). Incluye la clave del proveedor IA: el archivo resultante
-// contiene un secreto.
+// contiene un secreto. Se puede exportar, importar o borrar por módulo (MODULES).
 
 const { getDb } = require("../mensajesDatabase.service");
 const pool = require("../../config/db");
@@ -44,6 +44,55 @@ const SERVICE_COLUMNS = [
   "enabled", "share_price", "requires_identified_patient", "weekly_hours_json"
 ];
 
+// Módulos = las pestañas de Ajustes. Cada uno dice qué claves del archivo le
+// pertenecen. ai_clinic_schedule se reparte entre dos pestañas (el horario y las
+// pausas están en Servicios IA; los topes, en Agenda IA), por eso va por columnas.
+const MODULES = {
+  automation: { label: "Respuestas automáticas", keys: ["messageSettings", "automationSettings"] },
+  assistant: { label: "Asistente IA", keys: ["knowledge", "humanReviewRules", "administrativeSettings"] },
+  identities: { label: "Vinculaciones", keys: ["patientIdentities"] },
+  provider: { label: "Configuración IA", keys: ["providerSettings"] },
+  services: { label: "Servicios IA", keys: ["serviceSettings", "serviceAliases"], scheduleColumns: ["timezone", "slot_interval_minutes", "schedule_json", "breaks_json"] },
+  agenda: { label: "Agenda IA", keys: ["blockedDates"], scheduleColumns: ["daily_cap", "hourly_cap"] }
+};
+const MODULE_IDS = Object.keys(MODULES);
+
+// Valores de fábrica de ai_clinic_schedule (los mismos DEFAULT del esquema).
+const SCHEDULE_DEFAULTS = {
+  timezone: "America/El_Salvador",
+  slot_interval_minutes: 30,
+  schedule_json: '{"0":[],"1":[{"start":"08:00","end":"18:00"}],"2":[{"start":"08:00","end":"18:00"}],"3":[{"start":"08:00","end":"18:00"}],"4":[{"start":"08:00","end":"18:00"}],"5":[{"start":"08:00","end":"18:00"}],"6":[]}',
+  breaks_json: "[]",
+  daily_cap: null,
+  hourly_cap: null
+};
+
+// Sin lista (o lista vacía/ inválida) = todos los módulos, como antes.
+function normalizeModules(modules) {
+  const list = Array.isArray(modules) ? modules.filter((m) => MODULE_IDS.includes(m)) : [];
+  return list.length ? [...new Set(list)] : MODULE_IDS;
+}
+
+// Qué módulos trae de verdad un archivo (los viejos no traen la lista `modules`).
+function modulesInPayload(payload) {
+  return MODULE_IDS.filter((id) => {
+    const mod = MODULES[id];
+    if (mod.keys.some((key) => payload[key] !== undefined)) return true;
+    const schedule = payload.clinicSchedule;
+    return Boolean(mod.scheduleColumns && schedule && mod.scheduleColumns.some((col) => col in schedule));
+  });
+}
+
+function scheduleColumnsFor(modules) {
+  return modules.flatMap((id) => MODULES[id].scheduleColumns || []);
+}
+
+function pickColumns(obj, cols) {
+  const out = {};
+  for (const col of cols) if (obj && col in obj) out[col] = obj[col];
+  return out;
+}
+
 function todayIso() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
 }
@@ -56,24 +105,30 @@ function pickSingleton(db, table) {
   return out;
 }
 
-function exportConfig(db = getDb()) {
-  return {
-    format: FORMAT,
-    version: VERSION,
-    exportedAt: new Date().toISOString(),
-    knowledge: db.prepare("SELECT knowledge FROM ai_assistant_knowledge WHERE id=1").get()?.knowledge || "",
-    clinicSchedule: pickSingleton(db, "ai_clinic_schedule"),
-    providerSettings: pickSingleton(db, "ai_provider_settings"),
-    humanReviewRules: pickSingleton(db, "human_review_rules"),
-    messageSettings: pickSingleton(db, "message_settings"),
-    automationSettings: pickSingleton(db, "automation_settings"),
-    administrativeSettings: pickSingleton(db, "administrative_settings"),
-    serviceSettings: db.prepare(`SELECT ${SERVICE_COLUMNS.join(", ")} FROM ai_service_settings`).all(),
-    serviceAliases: db.prepare("SELECT service_id, alias, normalized_alias FROM ai_service_aliases").all(),
-    blockedDates: db.prepare("SELECT date, reason, blocked_hours_json FROM ai_blocked_dates").all(),
-    // Solo la identidad activa por chat; el historial de cambios de número no viaja.
-    patientIdentities: db.prepare("SELECT wa_chat_id, patient_id, phone, patient_name, treatment_type FROM patient_chat_identities WHERE active=1").all()
-  };
+function exportConfig(modules, db = getDb()) {
+  const selected = normalizeModules(modules);
+  const has = (id) => selected.includes(id);
+  const out = { format: FORMAT, version: VERSION, exportedAt: new Date().toISOString(), modules: selected };
+  if (has("automation")) {
+    out.messageSettings = pickSingleton(db, "message_settings");
+    out.automationSettings = pickSingleton(db, "automation_settings");
+  }
+  if (has("assistant")) {
+    out.knowledge = db.prepare("SELECT knowledge FROM ai_assistant_knowledge WHERE id=1").get()?.knowledge || "";
+    out.humanReviewRules = pickSingleton(db, "human_review_rules");
+    out.administrativeSettings = pickSingleton(db, "administrative_settings");
+  }
+  // Solo la identidad activa por chat; el historial de cambios de número no viaja.
+  if (has("identities")) out.patientIdentities = db.prepare("SELECT wa_chat_id, patient_id, phone, patient_name, treatment_type FROM patient_chat_identities WHERE active=1").all();
+  if (has("provider")) out.providerSettings = pickSingleton(db, "ai_provider_settings");
+  if (has("services")) {
+    out.serviceSettings = db.prepare(`SELECT ${SERVICE_COLUMNS.join(", ")} FROM ai_service_settings`).all();
+    out.serviceAliases = db.prepare("SELECT service_id, alias, normalized_alias FROM ai_service_aliases").all();
+  }
+  if (has("agenda")) out.blockedDates = db.prepare("SELECT date, reason, blocked_hours_json FROM ai_blocked_dates").all();
+  const scheduleCols = scheduleColumnsFor(selected);
+  if (scheduleCols.length) out.clinicSchedule = pickColumns(pickSingleton(db, "ai_clinic_schedule"), scheduleCols);
+  return out;
 }
 
 function updateSingleton(db, table, incoming, { skipEmpty = [] } = {}) {
@@ -108,38 +163,62 @@ function normalizeHumanReview(incoming) {
 // importarla: si el id ya no existe o el nombre cambió, se descarta en vez de
 // enlazar a ciegas un paciente equivocado. Va antes de la transacción de
 // SQLite porque better-sqlite3 no admite callbacks async dentro de ella.
+// Una sola consulta para todos los pacientes: una por vinculación (~150 ms c/u
+// contra un MySQL remoto) hacía que importar ~200 vinculaciones pasara de los
+// 20 s del frontend y la pantalla mostrara "tardó demasiado" aunque el import
+// terminara en el servidor.
 async function resolveImportableIdentities(patientIdentities) {
-  const resolved = [];
+  const candidates = [];
   for (const identity of Array.isArray(patientIdentities) ? patientIdentities : []) {
     const patientId = Number(identity?.patient_id);
     const waChatId = stripDeviceSuffix(typeof identity?.wa_chat_id === "string" ? identity.wa_chat_id.trim() : "");
-    if (!Number.isInteger(patientId) || patientId < 1 || !waChatId) continue;
-    try {
-      const [rows] = await pool.query("SELECT idPaciente, NombreP, telefonoP, estadoP FROM paciente WHERE idPaciente=? LIMIT 1", [patientId]);
-      const patient = rows[0];
-      if (!patient || Number(patient.estadoP ?? 1) !== 1) continue;
-      const importedName = String(identity.patient_name || "").trim().toLowerCase();
-      const currentName = String(patient.NombreP || "").trim().toLowerCase();
-      if (importedName && currentName && importedName !== currentName) continue;
-      resolved.push({
-        waChatId,
-        patientId: patient.idPaciente,
-        phone: identity.phone || patient.telefonoP || null,
-        patientName: patient.NombreP,
-        treatmentType: identity.treatment_type || null
-      });
-    } catch {
-      // Sin conexión a MySQL o paciente inválido: se omite esta vinculación puntual.
+    if (Number.isInteger(patientId) && patientId > 0 && waChatId) candidates.push({ identity, patientId, waChatId });
+  }
+  if (!candidates.length) return [];
+  const patients = new Map();
+  try {
+    const ids = [...new Set(candidates.map((c) => c.patientId))];
+    for (let i = 0; i < ids.length; i += 500) {
+      const [rows] = await pool.query("SELECT idPaciente, NombreP, telefonoP, estadoP FROM paciente WHERE idPaciente IN (?)", [ids.slice(i, i + 500)]);
+      for (const row of rows) patients.set(Number(row.idPaciente), row);
     }
+  } catch {
+    // Sin conexión a MySQL: no se importa ninguna vinculación (no se enlaza a ciegas).
+    return [];
+  }
+  const resolved = [];
+  for (const { identity, patientId, waChatId } of candidates) {
+    const patient = patients.get(patientId);
+    if (!patient || Number(patient.estadoP ?? 1) !== 1) continue;
+    const importedName = String(identity.patient_name || "").trim().toLowerCase();
+    const currentName = String(patient.NombreP || "").trim().toLowerCase();
+    if (importedName && currentName && importedName !== currentName) continue;
+    resolved.push({
+      waChatId,
+      patientId: patient.idPaciente,
+      phone: identity.phone || patient.telefonoP || null,
+      patientName: patient.NombreP,
+      treatmentType: identity.treatment_type || null
+    });
   }
   return resolved;
 }
 
-async function importConfig(payload, db = getDb()) {
-  if (!payload || payload.format !== FORMAT) throw new Error("El archivo no es una configuración de mensajes válida");
-  if (Number(payload.version) !== VERSION) throw new Error(`Versión de configuración no soportada (${payload.version})`);
+// Importa solo los módulos pedidos que el archivo realmente trae. Un módulo que
+// no se importa no se toca en este equipo.
+async function importConfig(rawPayload, modules, db = getDb()) {
+  if (!rawPayload || rawPayload.format !== FORMAT) throw new Error("El archivo no es una configuración de mensajes válida");
+  if (Number(rawPayload.version) !== VERSION) throw new Error(`Versión de configuración no soportada (${rawPayload.version})`);
 
-  const summary = { services: 0, aliases: 0, blockedDates: 0, patientIdentities: 0 };
+  const available = modulesInPayload(rawPayload);
+  const selected = normalizeModules(modules).filter((id) => available.includes(id));
+  if (!selected.length) throw new Error("El archivo no trae ninguno de los módulos seleccionados");
+  const payload = {};
+  for (const id of selected) for (const key of MODULES[id].keys) if (rawPayload[key] !== undefined) payload[key] = rawPayload[key];
+  const scheduleCols = scheduleColumnsFor(selected);
+  if (scheduleCols.length && rawPayload.clinicSchedule) payload.clinicSchedule = pickColumns(rawPayload.clinicSchedule, scheduleCols);
+
+  const summary = { modules: selected, services: 0, aliases: 0, blockedDates: 0, patientIdentities: 0 };
   const today = todayIso();
   const importableIdentities = await resolveImportableIdentities(payload.patientIdentities);
 
@@ -157,6 +236,10 @@ async function importConfig(payload, db = getDb()) {
     updateSingleton(db, "administrative_settings", payload.administrativeSettings);
 
     if (Array.isArray(payload.serviceSettings)) {
+      // Reemplaza, no suma: un servicio que no viene en el archivo queda sin fila
+      // (= deshabilitado para la IA) en vez de conservar lo que tenía este equipo.
+      db.prepare("DELETE FROM ai_service_aliases").run();
+      db.prepare("DELETE FROM ai_service_settings").run();
       const upsert = db.prepare(`
         INSERT INTO ai_service_settings
           (service_id, duration_minutes, capacity_per_hour, required_questions_json, blocked_weekdays_json, blocked_hours_json, available_hours_json, weekly_hours_json, minimum_advance_minutes, enabled, share_price, requires_identified_patient, updated_at)
@@ -229,4 +312,44 @@ async function importConfig(payload, db = getDb()) {
   return summary;
 }
 
-module.exports = { exportConfig, importConfig, FORMAT, VERSION };
+// Vuelve a valores de fábrica los módulos pedidos. Las conversaciones, mensajes y
+// citas no se tocan. Las filas únicas (id=1) se borran y se recrean para que tomen
+// los DEFAULT del esquema; ai_clinic_schedule se reparte entre Servicios IA y
+// Agenda IA, así que se resetea por columnas.
+function resetConfig(modules, db = getDb()) {
+  const selected = normalizeModules(modules);
+  const has = (id) => selected.includes(id);
+  const recreate = (table) => {
+    db.prepare(`DELETE FROM ${table} WHERE id=1`).run();
+    db.prepare(`INSERT OR IGNORE INTO ${table}(id) VALUES (1)`).run();
+  };
+  db.transaction(() => {
+    if (has("automation")) { recreate("message_settings"); recreate("automation_settings"); }
+    if (has("assistant")) {
+      db.prepare("UPDATE ai_assistant_knowledge SET knowledge='', updated_at=datetime('now') WHERE id=1").run();
+      db.prepare("UPDATE human_review_rules SET instructions='', updated_at=datetime('now') WHERE id=1").run();
+      recreate("administrative_settings");
+    }
+    if (has("identities")) {
+      // Igual que "Desvincular todo" de la pestaña Vinculaciones, pero borrando
+      // también el historial: la configuración queda limpia de verdad.
+      db.prepare("DELETE FROM patient_chat_identities").run();
+      db.prepare("UPDATE conversations SET patient_id=NULL WHERE patient_id IS NOT NULL").run();
+      db.prepare("UPDATE conversation_patient_links SET active=0 WHERE active=1").run();
+    }
+    if (has("provider")) recreate("ai_provider_settings");
+    if (has("services")) {
+      db.prepare("DELETE FROM ai_service_aliases").run();
+      db.prepare("DELETE FROM ai_service_settings").run();
+    }
+    if (has("agenda")) db.prepare("DELETE FROM ai_blocked_dates").run();
+    const scheduleCols = scheduleColumnsFor(selected);
+    if (scheduleCols.length) {
+      db.prepare(`UPDATE ai_clinic_schedule SET ${scheduleCols.map((col) => `${col}=?`).join(", ")}, updated_at=datetime('now') WHERE id=1`)
+        .run(...scheduleCols.map((col) => SCHEDULE_DEFAULTS[col]));
+    }
+  })();
+  return { modules: selected };
+}
+
+module.exports = { exportConfig, importConfig, resetConfig, MODULES, FORMAT, VERSION };

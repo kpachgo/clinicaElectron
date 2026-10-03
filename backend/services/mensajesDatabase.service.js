@@ -319,6 +319,18 @@ const migrations = [
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_lid_phone_map_phone ON lid_phone_map(phone);`
+  // Versiones 51 y 52: reservadas. Eran media_path/media_mime_type e
+  // image_triage_enabled (descarga de adjuntos, probada y descartada en eeaa207);
+  // se quitaron del código después de aplicarse en un equipo de desarrollo. Como
+  // la versión es la posición en este arreglo, quitarlas corría la numeración y
+  // una migración nueva en la 51 se saltaba en esa base. No borrar estos huecos.
+  ,`SELECT 1;`
+  ,`SELECT 1;`
+  // "Marcar como atendido" (etiqueta Sin responder): id del último mensaje del
+  // paciente que recepción dio por atendido sin responderlo (un "gracias 👍").
+  // No cambia el modo de atención: si el paciente vuelve a escribir, ese mensaje
+  // nuevo tiene un id mayor y el chat vuelve a quedar "Sin responder".
+  ,`ALTER TABLE conversations ADD COLUMN attended_message_id INTEGER NULL;`
 ];
 
 function getDb() {

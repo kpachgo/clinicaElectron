@@ -12,6 +12,21 @@ SQLite (`mensajes.sqlite`) guarda el estado operativo local: conversaciones, men
 
 El motor de intenciones por regex, las máquinas de estado de agenda hechas a mano y los flujos clínicos configurables **fueron eliminados**. El agente hace ese trabajo.
 
+## Regla: no hay interpretador de mensajes — no agregar listas de palabras
+
+**La IA es la única que interpreta lo que escribe el paciente** (qué quiere, si confirma, si cancela, si es un saludo). En el código **no** se agregan listas de palabras, frases ni regex de vocabulario para "entender" al paciente ni para revisar lo que la IA va a enviar. Ya se probó dos veces y falló por las variantes que siempre quedan afuera ("Si primero Dios", "¡Listo! A la orden, cita agendada").
+
+Cuando algo falla:
+- **Si la IA entendió mal** → se corrige en el conocimiento de la clínica (Ajustes → Asistente IA) o en `config/assistant-policy.md`, reforzando el razonamiento (ver bloque RECORDÁ más abajo).
+- **Si hay que impedir una acción equivocada** → se gatea por **estado** (qué herramientas corrieron, memoria del agente, ids de mensajes, modo de la conversación), nunca por el texto.
+- **Si hace falta juzgar un texto** → un juicio corto de la propia IA en contexto (`requestJudgement` en `assistantProvider.service.js`), como la red de seguridad de "cita afirmada sin registrar".
+
+Lo que **sí** queda en código y **no** es un interpretador (no confundir):
+- `dateTimeResolver.service.js`: normaliza los **argumentos** de fecha/hora que el modelo pasa a las herramientas ("el lunes" → `2026-10-05`).
+- `resolveService` en `aiAvailability.service.js`: empareja el **argumento** `servicio` que manda el modelo con el catálogo (nombre + alias configurados en Servicios IA).
+- `messageTriage.service.js`: manda a recepción audio/imagen/documento **por tipo de mensaje**, no por texto.
+- `conversationEngine.service.js`: decide si un **evento** dispara la IA (reacción, reconexión, chat en revisión), no lee el texto.
+
 ## Arquitectura del flujo de respuesta
 
 ```
@@ -138,6 +153,7 @@ Probado con DeepSeek (`cloud` / native). El path `json` (modelos locales) aún n
 - `clinicalWorkflow.service.js`, `conversation-engine-console.js`, `confirmationIntent.service.js`.
 - `clinical_rules` (UI, rutas, controller, repo). La tabla queda huérfana e inofensiva.
 - Frontend: `enrichIaSettings`, `enrichAiServicesSettings`, `enrichAiServicesSettingsV2`, `enrichClinicalWorkflowsSettings`; pestaña "General" fantasma y controles Identidad/Tono/Transferir sin uso.
+- 2026-10-03, restos del interpretador que seguían en el código sin uso: `AGENDA_TERMS` / `shouldConsultAgenda` / `getAgendaContextForConversation` / `queryAgenda` / `formatAgendaContext` / `formatPatientAppointments` (`agendaAiQuery.service.js`, queda solo `queryPatientAppointments`), `sameTimeRequested` y `timeToMinutes` (`dateTimeResolver.service.js`), y el campo `intent` del estado de conversación (la columna `conversation_state.intent` queda en la tabla, siempre NULL; ya no se lee ni se escribe).
 - Flag `MENSAJES_AGENTE_NUEVO`. Los frenos globales son "Pausar IA" / "Reanudar IA" / "Pasar todo a IA" (ver "Controles globales de la IA").
 
 ## Probado
@@ -223,8 +239,27 @@ Fix: `saveMessage`, para `direction='outgoing'`, además del match por `external
 - **Verificado offline:** replay del caso sobre una copia de la BD con el `aiObserver` real (LLM y envío stubbeados): resuelve al 2º intento → la IA ve [recordatorio, "Si primero Dios"] con el teléfono real y responde una sola vez; nunca resuelve → `review_required` sin respuesta; espera acotada dentro del plazo; un resolver colgado no traba la cola; chat resuelto o con saliente propio → sin cambios. **Pendiente: confirmar en vivo** con la próxima tanda de recordatorios (logs `Respuesta en espera: chat @lid…`, `LID resuelto antes de responder`, `Revisión humana: LID sin resolver tras la espera`).
 - Riesgo asumido: un paciente nuevo cuyo `@lid` nunca resuelve (contacto sin teléfono visible) ahora pasa a recepción a los 60 s en vez de recibir respuesta de la IA.
 
+## Cambios 2026-10-03
+
+- **Copia de configuración por módulos** (`configTransfer.service.js`, `MODULES`): los 6 módulos son las pestañas de Ajustes (Respuestas automáticas, Asistente IA, Vinculaciones, Configuración IA, Servicios IA, Agenda IA). Exportar y borrar usan las casillas de arriba; importar es en dos pasos (elegir archivo → se marcan solo los módulos que trae → "Aplicar importación"). Importar reemplaza cada módulo (Servicios IA reemplaza la lista completa: lo que no viene queda deshabilitado), salvo Vinculaciones, que suma. **Borrar configuración** (`POST /config-reset`, doble confirmación: escribir BORRAR + confirm) vuelve a valores de fábrica; no toca conversaciones, mensajes ni citas.
+- **Import lento**: la revalidación de vinculaciones hacía una consulta MySQL por vinculación (~28 s con 197 contra MySQL remoto > 20 s del timeout del frontend; el import terminaba en el servidor pero la pantalla decía "tardó demasiado"). Ahora es una sola consulta `IN (...)`.
+- **Corte duro de historial a 48 h** (`mapHistory`): si hubo un vacío ≥ 48 h, a la IA solo le llega lo posterior al último vacío (más una línea "contacto nuevo"). Antes se mandaba todo con una nota y el modelo a veces retomaba un pedido viejo sin responder (1 de 3 corridas en la prueba). La cita ya gestionada sigue en la memoria del agente.
+- **Red de seguridad "cita afirmada sin registrar"** (`assistantAgent.service.js`): por estado + contexto, no por frases. Si en la conversación no hay acción de agenda respaldada (herramienta exitosa en el turno o `lastAppointment` en memoria), un juicio corto del modelo (`requestJudgement`) decide si la respuesta le da a entender al paciente que la cita ya quedó hecha. Si sí: se le devuelve al modelo una vez para que llame la herramienta o corrija; si insiste, no se envía, va "Permíteme confirmar ese dato con recepción…" y pasa a revisión. Si el juicio falla, la respuesta sale igual.
+- **Etiqueta "Sin responder"** (filtro ⏳ en la lista): el último mensaje del paciente (sin reacciones) no tiene ningún saliente después, no fue marcado como atendido y lleva ≥ 10 min (`awaitingSince` en `listConversations`, por id de mensaje). Vale para todos los modos y abrir el chat no la quita. Botón **"✓ Atendido"** (`POST /conversations/:id/attended`, columna `conversations.attended_message_id`): quita la etiqueta sin cambiar el modo (≠ "Tomar"); si el paciente vuelve a escribir, la etiqueta vuelve. No dispara la IA: respeta Pausar / Reanudar.
+- **Nombre del paciente vinculado en la lista** (`linkedPatientName`): lo calcula el backend con las mismas caídas que `getPatientLink` (chat id, alias tras fusión, `patient_id`). Antes salía de cruzar `waChatId` con `/patient-identities`, que tiene tope de 200 y no seguía fusiones. La búsqueda también busca por ese nombre.
+- **Diálogos: nunca `confirm()` / `prompt()` nativos en Mensajes.** Se usa `askConfirm()` (envuelve `showSystemConfirm` de `uiAlerts.js`, mismo patrón que Agenda/Paciente/Cobro). En Electron/Windows el diálogo nativo deja la ventana sin foco de teclado al cerrarse: todo se ve terminado pero los inputs (chat, simulador, Ajustes) no aceptan escritura hasta cambiar de ventana — era el síntoma de "Borrar todo". `prompt()` además no está soportado en Electron (se quitó `openPatientSearch`, código muerto que lo usaba).
+- **"Borrar todo"** ahora deja el panel del chat en "Selecciona una conversación" (`resetChatPanel`); antes quedaba la conversación borrada en pantalla con el compose activo, y escribir ahí no hacía nada (`selectedId` era null). La guarda `deletingAll` se toma antes de preguntar (sin doble confirmación encolada ni poll a mitad del borrado).
+- **`.sys-alert-overlay` con `z-index: 200000`** (`uiAlerts.css`, afecta a toda la app): con 5200 quedaba detrás de Ajustes de Mensajes (6000) y de los modales del odontograma (~100071) — el aviso era invisible pero tomaba el foco y capturaba Enter/Escape.
+- **Migraciones 51 y 52 reservadas** (`SELECT 1;`): eran `media_path` e `image_triage_enabled` (descartadas en eeaa207) y se quitaron del código después de aplicarse en el equipo de desarrollo; como la versión es la posición en el arreglo, una migración nueva en la 51 se saltaba ahí. No borrar esos huecos.
+
 ## Pendiente
 
+Plan acordado el 2026-10-03 (1 y 2 hechos, ver "Cambios 2026-10-03"):
+- **3. Conector caído al enviar.** Hoy `processBatch` corre el turno completo (a veces con `crear_cita`), falla en `sendAiMessage` por "Conector no conectado", reintenta a los 3 s **regenerando con la IA** y al 3er intento queda `failed` en silencio; si la cita se creó, el paciente nunca recibe la confirmación (~290 lotes así en el log entre ago y oct). Propuesta: mirar el estado del conector antes de llamar a la IA (si está reconectando, diferir sin gastar intentos, como el hold de `@lid`); si la respuesta ya estaba generada, reenviar ese mismo texto sin regenerar; antes de enviar, no mandar nada si recepción ya escribió en el chat; plazo (propuesto 5 min) y luego `review_required` con motivo "No se pudo enviar: WhatsApp desconectado" + "cita creada, falta confirmarle" si aplica. Respeta Pausar/Reanudar. Pendiente de definir con el usuario: plazo y si la confirmación de una cita creada se envía sola al reconectar aunque pase el plazo.
+- **4. Pasadas extra de recuperación de no leídos.** `startInboundRecovery` solo pasa a los 0/5/15/30 s de conectar; WhatsApp Web sigue sincronizando después (log 2026-10-02: 2 → 3 → 4 chats entre pasadas) y lo que aparece tarde no se importa hasta reiniciar. Propuesta: pasadas a 1/2/5/10 min o al cambiar el conteo de no leídos (dedup por `externalId`, no dispara IA). Toca el conector: confirmar en vivo antes de aplicar.
+- "Marcar respuesta como incorrecta" + nota (tabla que no se borre con las conversaciones) para armar un set de regresión con casos reales; `ai_runs` existe pero nunca se escribe (0 filas).
+- Soportar modelos "thinking" (devolver `reasoning_content` en el historial): con uno configurado, cada turno con herramientas falla con HTTP 400 (222 lotes el 11–14 sep).
+- Búsqueda de chats: hoy filtra solo las 100 conversaciones cargadas; pasarla al backend si hace falta encontrar chats viejos.
 - Probar el path `json` con un modelo local real (hoy solo se probó `cloud`/native con DeepSeek).
 - Consola `assistant-console.js`: la llamada real a `createAppointmentForAssistant` se hace vía objeto de módulo (`appointmentActions.x`) para poder mockearla; al probar SIEMPRE mockear o usar datos descartables (ya se crearon citas reales de prueba por error dos veces).
 - Suite de pruebas automatizada de extremo a extremo.
