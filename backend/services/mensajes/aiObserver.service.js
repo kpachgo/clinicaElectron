@@ -51,11 +51,11 @@ async function resolveUnlinkedLid(conversation) {
 }
 
 // Misma correlación teléfono -> recordatorio que usan confirmar_asistencia y
-// cancelar_cita_recordatorio (ventana de 18 h).
+// cancelar_cita_recordatorio (cita de hoy en adelante).
 function hasRecentReminder(conversation) {
   const phone = String(conversation?.waContactNumber || conversation?.phone || "").replace(/\D/g, "");
   if (phone.length < 7) return false;
-  return Boolean(repo.getRecentSentReminderForPhone(phone, 18)?.appointmentId);
+  return Boolean(repo.getRecentSentReminderForPhone(phone)?.appointmentId);
 }
 
 function enqueueIncomingResponse(conversationId, messageId, text) {

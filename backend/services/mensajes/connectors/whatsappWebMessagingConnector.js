@@ -457,14 +457,21 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     let contactNumber = String(contact?.number || "").replace(/\D/g, "");
     const contactIsSelf = Boolean(ownNumber) && persistedPhone(contactNumber) === ownNumber;
     if (contactIsSelf) contactNumber = "";
-    if (!contactNumber && chatId.endsWith("@lid") && String(message?.__recoveryLidPhone || "").endsWith("@c.us")) {
+    // En un @lid, contact.number trae los dígitos del propio LID (no vacío): con un
+    // guard por "vacío" el lookup local nunca corría y el mensaje entraba sin teléfono
+    // (2026-10-07: 866 de 866 mensajes @lid con phone null), así la respuesta a un
+    // recordatorio abría un chat nuevo hasta la reconciliación de 60 s.
+    if (!isRealPhone(contactNumber) && chatId.endsWith("@lid") && String(message?.__recoveryLidPhone || "").endsWith("@c.us")) {
       contactNumber = String(message.__recoveryLidPhone).replace(/\D/g, "");
     }
-    if (!contactNumber && chatId.endsWith("@lid")) {
+    if (!isRealPhone(contactNumber) && chatId.endsWith("@lid")) {
       // Primero el lookup local sincrónico (instantáneo si WhatsApp ya tiene el
-      // mapeo); solo si falla, la consulta de red, que puede tardar minutos.
-      contactNumber = String((await this.resolveLidPhoneLocal(chatId)) || "").replace(/\D/g, "");
-      if (!contactNumber && typeof this.client?.getContactLidAndPhone === "function") {
+      // mapeo); solo si falla, la consulta de red, que puede tardar minutos. La de
+      // red sigue solo para el contacto sin número: con los dígitos del LID nunca
+      // corrió y trabaría la entrada del mensaje (la cubre refreshLidConversations).
+      const local = String((await this.resolveLidPhoneLocal(chatId)) || "").replace(/\D/g, "");
+      if (local) contactNumber = local;
+      else if (!contactNumber && typeof this.client?.getContactLidAndPhone === "function") {
         try {
           const resolved = await this.client.getContactLidAndPhone([chatId]);
           contactNumber = String(resolved?.[0]?.pn || "").replace(/\D/g, "");

@@ -350,6 +350,14 @@ const migrations = [
   // Vigencia de la promoción (YYYY-MM-DD, opcional): hasta ese día la IA la tiene en cuenta en los chats
   // que la recibieron. Sin fecha, 15 días desde el envío (assistantContext).
   ,`ALTER TABLE promo_campaigns ADD COLUMN valid_until TEXT NULL;`
+  // Historial que la recuperación importa a un chat que ya tenía mensajes más nuevos (tras "Borrar todo" o en un
+  // chat creado hoy): queda con id mayor que mensajes más nuevos y "último mensaje", "sin responder" y "¿ya
+  // respondimos?" (todo por id) lo tomaban como lo último (2026-10-07: Jennifer y Jaquelin parecían respondidas).
+  // backfill=1 lo saca de esas consultas. Se marcan también los ya importados: importados tarde (created_at
+  // > message_at + 30 min) y con un mensaje anterior (por id) más nuevo por más de 30 min.
+  ,`ALTER TABLE messages ADD COLUMN backfill INTEGER NOT NULL DEFAULT 0;
+    UPDATE messages SET backfill=1 WHERE strftime('%s', created_at) - strftime('%s', message_at) > 1800
+      AND EXISTS (SELECT 1 FROM messages n WHERE n.conversation_id=messages.conversation_id AND n.id < messages.id AND strftime('%s', n.message_at) - strftime('%s', messages.message_at) > 1800);`
 ];
 
 function getDb() {

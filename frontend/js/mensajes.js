@@ -142,14 +142,16 @@
     // Mismo reemplazo que hace el servidor al crear el lote (fecha tal cual, hora en 12h), con el primer paciente cargado.
     function renderReminderPreview() {
         const modal = document.getElementById("mensajes-reminder-modal"); if (!modal) return;
-        let first = null; try { first = JSON.parse(modal.dataset.items || "[]")[0] || null; } catch { /* sin lista cargada */ }
-        const values = { nombre: first?.patientName || "María López", fecha: modal.querySelector("#reminder-date").value || "2026-10-07", hora: first?.time ? fmtHora12(first.time) : "9:00 AM", tratamiento: first?.treatment || "Limpieza" };
+        // Si hay familiares con el mismo número se previsualiza su mensaje agrupado (los valores los arma el backend).
+        let first = null; try { const items = JSON.parse(modal.dataset.items || "[]"); first = items.find((x) => x.groupValues) || items[0] || null; } catch { /* sin lista cargada */ }
+        const fecha = modal.querySelector("#reminder-date").value || "2026-10-07";
+        const values = first?.groupValues ? { ...first.groupValues, fecha } : { nombre: first?.patientName || "María López", fecha, hora: first?.time ? fmtHora12(first.time) : "9:00 AM", tratamiento: first?.treatment || "Limpieza" };
         const text = modal.querySelector("#reminder-template").value.trim();
         const bubble = modal.querySelector("#reminder-preview");
         bubble.textContent = text ? text.replace(/{{\s*([^}]+)\s*}}/g, (_, key) => values[key.trim()] ?? "") : "Escriba la plantilla del recordatorio";
         bubble.classList.toggle("is-empty", !text);
     }
-    async function loadReminderCandidates() { const modal = document.getElementById("mensajes-reminder-modal"); const data = await api(`/api/mensajes-view/reminders/candidates?date=${encodeURIComponent(modal.querySelector("#reminder-date").value)}`); modal.dataset.items = JSON.stringify(data.candidates); renderReminderPreview(); const labels = { pending: "Pendiente", sent: "Enviado", failed: "Error", cancelled: "Cancelado", sending: "Enviando", queued: "En cola" }; modal.querySelector("#reminder-items").innerHTML = data.candidates.length ? data.candidates.map((x) => `<div class="reminder-item"><strong>${esc(x.patientName)}</strong><span>${esc(x.phone)} · ${esc(fmtHora12(x.time))} · ${esc(x.status || "")}</span><small>${esc(x.treatment || "")}</small><em data-item-status="${x.appointmentId}">${labels[x.reminderStatus] || "Pendiente"}</em></div>`).join("") : `<div class="mensajes-empty">No hay pacientes elegibles para esta fecha.</div>`; const summary = data.summary || {}; modal.querySelector("#reminder-progress").textContent = `${data.candidates.length} elegibles · ${summary.sent || 0} enviados · ${summary.failed || 0} errores · ${summary.cancelled || 0} cancelados · ${summary.pending || 0} pendientes`; }
+    async function loadReminderCandidates() { const modal = document.getElementById("mensajes-reminder-modal"); const data = await api(`/api/mensajes-view/reminders/candidates?date=${encodeURIComponent(modal.querySelector("#reminder-date").value)}`); modal.dataset.items = JSON.stringify(data.candidates); renderReminderPreview(); const labels = { pending: "Pendiente", sent: "Enviado", failed: "Error", cancelled: "Cancelado", sending: "Enviando", queued: "En cola" }; modal.querySelector("#reminder-items").innerHTML = data.candidates.length ? data.candidates.map((x) => `<div class="reminder-item"><strong>${esc(x.patientName)}</strong><span>${esc(x.phone)}${x.groupSize > 1 ? ` · un solo mensaje para ${x.groupSize}` : ""} · ${esc(fmtHora12(x.time))} · ${esc(x.status || "")}</span><small>${esc(x.treatment || "")}</small><em data-item-status="${x.appointmentId}">${labels[x.reminderStatus] || "Pendiente"}</em></div>`).join("") : `<div class="mensajes-empty">No hay pacientes elegibles para esta fecha.</div>`; const summary = data.summary || {}; modal.querySelector("#reminder-progress").textContent = `${data.candidates.length} elegibles · ${summary.sent || 0} enviados · ${summary.failed || 0} errores · ${summary.cancelled || 0} cancelados · ${summary.pending || 0} pendientes`; }
     async function startReminder(event) { event.preventDefault(); const modal = document.getElementById("mensajes-reminder-modal"); const sendButton = modal.querySelector("#reminder-send"); const cancelButton = modal.querySelector("#reminder-cancel"); const items = JSON.parse(modal.dataset.items || "[]"); if (!items.length) return alert("Carga primero los pacientes"); sendButton.disabled = true; try { const reminderSettings = await api("/api/mensajes-view/reminder-settings"); const data = await api("/api/mensajes-view/reminders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: modal.querySelector("#reminder-date").value, template: modal.querySelector("#reminder-template").value, items, minDelaySeconds: reminderSettings.settings.minDelaySeconds, maxDelaySeconds: reminderSettings.settings.maxDelaySeconds, forceResend: modal.querySelector("#reminder-force-resend").checked }) }); modal.dataset.batchId = data.batch.id; const started = await api(`/api/mensajes-view/reminders/${data.batch.id}/start`, { method: "POST" }); modal.querySelector("#reminder-progress").textContent = started.connectionError ? "No enviado: conecta WhatsApp y vuelve a intentarlo" : "Lote iniciado"; cancelButton.disabled = Boolean(started.connectionError); if (!started.connectionError) cancelButton.disabled = false; await pollReminder(); } catch (error) { sendButton.disabled = false; cancelButton.disabled = true; modal.querySelector("#reminder-progress").textContent = error.message || "No se pudo iniciar el lote"; }
     }
     async function pollReminder() { const modal = document.getElementById("mensajes-reminder-modal"); const batchId = modal?.dataset.batchId; if (!batchId || modal.hidden) return; try { const batch = (await api(`/api/mensajes-view/reminders/${batchId}`)).batch; modal.querySelector("#reminder-progress").textContent = `${batch.sentCount} enviados · ${batch.failedCount} errores · ${batch.cancelledCount} cancelados de ${batch.totalCount} · ${batch.status}`; batch.items.forEach((item) => { const el = modal.querySelector(`[data-item-status="${item.appointment_id}"]`); if (el) el.textContent = item.status === "sent" ? "Enviado" : item.status === "failed" ? "Error" : item.status === "cancelled" ? "Cancelado" : item.status === "queued" || item.status === "sending" ? "En cola / trabajando" : "Pendiente"; }); if (["queued", "processing"].includes(batch.status)) { modal.querySelector("#reminder-send").disabled = true; modal.querySelector("#reminder-cancel").disabled = false; setTimeout(pollReminder, 3000); } else { modal.querySelector("#reminder-send").disabled = false; modal.querySelector("#reminder-cancel").disabled = true; } } catch (error) { modal.querySelector("#reminder-send").disabled = false; modal.querySelector("#reminder-cancel").disabled = true; modal.querySelector("#reminder-progress").textContent = error.message || "No se pudo consultar el lote"; } }
@@ -563,6 +565,9 @@ ${preview}
         }
         button.title = `Sin responder hace ${formatWait(wait)}. Quita la etiqueta sin responderle al paciente (por ejemplo, un "gracias 👍"). No cambia el modo: si vuelve a escribir, la etiqueta vuelve y la IA o recepción siguen como estaban.`;
     }
+    // Como WhatsApp con un contacto no guardado: sin paciente vinculado se muestra el número, no el nombre que la
+    // persona puso en su WhatsApp ("." o emojis); así se relaciona y se busca igual que en el teléfono.
+    const waPhoneLabel = (c) => (c?.phoneResolved && /^\d{8}$/.test(String(c.phone || "")) ? `+503 ${c.phone.slice(0, 4)} ${c.phone.slice(4)}` : "");
     function renderConversationList() {
         const list = document.getElementById("mensajes-list");
         if (!list) return;
@@ -572,13 +577,11 @@ ${preview}
             // linkedPatientName viene del backend y sigue fusiones (alias / patient_id);
             // el mapa por waChatId queda de respaldo.
             const patientName = c.linkedPatientName || linked?.name || "";
-            const realName = patientName || c.waDisplayName || "";
             const aiWorking = aiWorkingConvIds.has(c.id);
             return {
                 c,
-                realName,
                 patientName,
-                displayName: realName || c.phone || "Sin número",
+                displayName: patientName || waPhoneLabel(c) || c.waDisplayName || c.phone || "Sin número",
                 aiWorking,
                 waitMinutes: awaitingMinutes(c, aiWorking)
             };
@@ -736,7 +739,7 @@ ${preview}
         const wasSelectingMessages = document.querySelector(".mensajes-chat")?.classList.contains("is-selecting");
         const selectedMessageIds = new Set([...document.querySelectorAll("[data-message-select]:checked")].map((input) => input.dataset.messageSelect));
         const wasNearBottom = !chatBody || chatBody.scrollHeight - chatBody.scrollTop - chatBody.clientHeight < 80;
-        const headName = data.patientLink?.patientName || data.conversation.waDisplayName || data.conversation.phone || "Sin número";
+        const headName = data.patientLink?.patientName || waPhoneLabel(data.conversation) || data.conversation.waDisplayName || data.conversation.phone || "Sin número";
         const headState = CONV_STATE[data.conversation.attentionMode] || { label: data.conversation.attentionMode || "", icon: "" };
         const headSub = data.conversation.attentionMode === "review_required" && data.conversation.humanReviewReason
             ? `${headState.icon} ${esc(data.conversation.humanReviewReason)}`

@@ -169,6 +169,29 @@ function describeRecentPromos(promos) {
   ].join("\n");
 }
 
+// Recordatorio vigente para este número, desde reminder_batch_items (no se borra con
+// "Borrar todo" ni depende de que el chat @lid ya esté fusionado con el del recordatorio).
+// Caso real 2026-10-07 (conv 1481): tras "Borrar todo" la paciente contestó "Si" en un
+// chat nuevo sin el recordatorio arriba y la IA le preguntó a qué se refería.
+function describeReminder(reminder) {
+  if (!reminder?.appointmentId) return null;
+  const sent = formatGapDate(String(reminder.sentAt).replace(" ", "T") + "Z");
+  const citas = reminder.appointments || [];
+  if (citas.length > 1) {
+    return [
+      `RECORDATORIO DE CITAS QUE LA CLÍNICA ENVIÓ A ESTE NÚMERO${sent ? ` el ${sent}` : ""}: un solo mensaje para varias personas que comparten el número (familiares):`,
+      ...citas.map((c) => `- id_cita ${c.appointmentId}: ${c.patientName}, ${c.appointmentDate} a las ${to12h(c.appointmentTime)}${c.treatment ? `, ${c.treatment}` : ""}`),
+      reminder.content ? `«${String(reminder.content).trim()}»` : null,
+      "Puede no aparecer en el historial del chat, pero lo recibieron. Si responden confirmando en general (\"si\", \"ahí estaremos\"), se refiere a todas: llamá confirmar_asistencia con todos los ids_cita. Si nombran solo a algunas personas, solo esas. Si dicen que alguna no podrá ir, no la confirmes y pasá eso a recepción."
+    ].filter(Boolean).join("\n");
+  }
+  return [
+    `RECORDATORIO DE CITA QUE LA CLÍNICA LE ENVIÓ A ESTE PACIENTE${sent ? ` el ${sent}` : ""} (cita del ${reminder.appointmentDate} a las ${to12h(reminder.appointmentTime)}):`,
+    reminder.content ? `«${String(reminder.content).trim()}»` : null,
+    "Puede no aparecer en el historial del chat, pero el paciente sí lo recibió. Si lo que escribe es la respuesta a ese recordatorio (un \"si\" o cualquier afirmación de que asistirá), se refiere a esa cita: llamá confirmar_asistencia sin preguntarle a qué se refiere."
+  ].filter(Boolean).join("\n");
+}
+
 function describeAssistantMemory(memory) {
   const last = memory?.lastAppointment;
   if (!last || !last.appointmentId) return null;
@@ -206,12 +229,13 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
     `SERVICIOS QUE PODÉS AGENDAR (no menciones ni agendes ningún otro):\n${describeCatalog(services)}`,
     `HORARIO GENERAL DE LA CLÍNICA:\n${describeSchedule(clinic)}`,
     humanReview
-      ? `CUÁNDO PASAR A RECEPCIÓN: si se cumple alguna de estas situaciones, NO le respondas al paciente y llamá la herramienta transferir_a_recepcion con un motivo breve.\n${humanReview}`
+      ? `CUÁNDO PASAR A RECEPCIÓN: si se cumple alguna de estas situaciones, NO le respondas al paciente y llamá la herramienta transferir_a_recepcion con un motivo breve. Si recepción ya atendió ese motivo en este chat (hay mensajes suyos después) y te devolvió la conversación, ese motivo ya está resuelto: no vuelvas a transferir por lo mismo, seguí con lo que recepción acordó.\n${humanReview}`
       : null,
     [
       "NUNCA CONTRADIGAS A RECEPCIÓN (regla obligatoria #11 de tu política):",
       "En el historial, un mensaje que empieza con \"[Mensaje enviado por el personal de recepción (un humano), no por vos]:\" es algo que un humano de la clínica ya le dijo al paciente. Si eso que le prometieron, confirmaron o acordaron (una hora, un cupo, un descuento, una excepción) choca con lo que te devuelve una herramienta ahora, NO se lo comuniques al paciente ni lo corrijas en seco: llamá transferir_a_recepcion con un motivo que diga exactamente qué prometió recepción vs qué dice el sistema, para que un humano lo resuelva. Igual si recepción le ofreció una hora u opción DISTINTA a la que el paciente había pedido (ej. pidió las 9 y recepción ofreció las 10): esa oferta reemplaza el pedido original, no le vuelvas a ofrecer lo que pidió antes aunque una herramienta diga que sigue libre. Si el paciente no acepta la oferta de recepción y insiste en la original o pide una tercera, tampoco lo decidas vos: transferí.",
-      "Ejemplo concreto: el historial trae \"[Mensaje enviado por el personal de recepción...]: sí, tenemos espacio hoy a las 3pm\" y ahora la herramienta de disponibilidad te dice que las 3pm ya no está libre. Respuesta INCORRECTA: decirle al paciente que a las 3pm ya no hay espacio. Respuesta CORRECTA: no decirle nada sobre disponibilidad, llamar transferir_a_recepcion con motivo \"recepción le confirmó al paciente las 3pm pero el sistema ya no la tiene libre\"."
+      "Citas que ofreció recepción: si recepción le ofreció o confirmó una fecha y hora y el paciente la acepta, registrala con crear_cita (esa fecha y hora, confirmado=true, acordado_por_recepcion=true y en nota lo que incluye si el servicio no lo dice, ej. \"2 extracciones\") sin consultar disponibilidad: el sistema verifica el acuerdo y la marca para que recepción la revise. En servicio poné lo que se acordó tal cual (ej. \"extracción\"): no elijas vos un tipo más específico del catálogo (simple, complicada, cordal…) que nadie dijo; si hay varios, el sistema deja el tipo a confirmar por recepción. Solo si crear_cita igual la rechaza, transferí con el motivo.",
+      "Ejemplo concreto: el historial trae \"[Mensaje enviado por el personal de recepción...]: sí, tenemos espacio el sábado a las 8:30 am, ¿le parece?\" y el paciente responde \"sí\". Respuesta CORRECTA: crear_cita para el sábado a las 8:30 AM con acordado_por_recepcion=true y confirmarle la cita. Respuesta INCORRECTA: consultar disponibilidad y decirle que a esa hora no hay espacio. Si crear_cita la rechaza, no le digas nada sobre disponibilidad: transferí con motivo \"recepción ofreció sábado 8:30 AM y el sistema no la registró\"."
     ].join("\n"),
     [
       "RECORDÁ:",
@@ -235,6 +259,7 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
       ? `El paciente escribe desde el número ${conversation.phone}. Pedile el teléfono de forma normal (junto con el nombre). NO le preguntes si es el mismo número del chat. Solo si el paciente dice por su cuenta que su teléfono es el mismo del chat, llamá crear_cita con usar_telefono_del_chat=true en vez de telefono.`
       : null,
     describeRecentPromos(promos),
+    describeReminder(conversation.id > 0 ? repo.getRecentSentReminderForPhone(conversation.waContactNumber || conversation.phone) : null),
     // --- Cambia en cada llamada: va al final para no cortar el prefijo cacheable de arriba ---
     `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}. Resolvé "hoy", "mañana", "el lunes" con base en esto.`
   ];

@@ -33,7 +33,11 @@ async function createAppointmentForAssistant({ patientId, serviceId, date, time,
   return { ok: true, idAgendaAP };
 }
 
-async function createAppointmentForAssistantWithCapacity({ patientId, patientName, serviceId, date, time, contact, comment, idempotencyKey }) {
+// skipAvailability: cita que recepción ya acordó con el paciente en el chat (verificado en crear_cita). No se
+// valida el cupo porque recepción puede ofrecer lo que la agenda automática no muestra (varios procedimientos,
+// un hueco que ella maneja); la cita va marcada "— verificar" para que recepción la revise. Lock e idempotencia
+// siguen igual.
+async function createAppointmentForAssistantWithCapacity({ patientId, patientName, serviceId, date, time, contact, comment, idempotencyKey, skipAvailability = false }) {
   await ensureAuditTable();
   const [existing] = await pool.query("SELECT detalle FROM mensajes_auditoria WHERE operacion='create_appointment' AND idempotencyKey=? LIMIT 1", [idempotencyKey]);
   if (existing[0]?.detalle) return { ok: true, duplicate: true, idAgendaAP: Number(existing[0].detalle) };
@@ -48,10 +52,15 @@ async function createAppointmentForAssistantWithCapacity({ patientId, patientNam
     // llave pasaron el chequeo previo antes de que ninguna escribiera, aca se detecta.
     const [lockedExisting] = await connection.query("SELECT detalle FROM mensajes_auditoria WHERE operacion='create_appointment' AND idempotencyKey=? LIMIT 1", [idempotencyKey]);
     if (lockedExisting[0]?.detalle) return { ok: true, duplicate: true, idAgendaAP: Number(lockedExisting[0].detalle) };
-    const availability = await searchAvailability({ serviceId, date }, getDb(), connection);
-    if (availability.dayUnavailable) { const error = new Error("Ese día no está disponible para agendar"); error.status = 409; throw error; }
-    const requested = availability.slots.find((slot) => slot.time === String(time).slice(0, 5));
-    if (!requested) { const error = new Error("El horario ya no esta disponible"); error.status = 409; throw error; }
+    if (skipAvailability) {
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
+      if (String(date) < today) { const error = new Error("No se puede agendar en una fecha pasada"); error.status = 400; throw error; }
+    } else {
+      const availability = await searchAvailability({ serviceId, date }, getDb(), connection);
+      if (availability.dayUnavailable) { const error = new Error("Ese día no está disponible para agendar"); error.status = 409; throw error; }
+      const requested = availability.slots.find((slot) => slot.time === String(time).slice(0, 5));
+      if (!requested) { const error = new Error("El horario ya no esta disponible"); error.status = 409; throw error; }
+    }
     const [services] = await connection.query("SELECT nombreS FROM servicio WHERE idServicio=? LIMIT 1", [Number(serviceId)]);
     const [patients] = patientId
       ? await connection.query("SELECT NombreP, telefonoP, estadoP FROM paciente WHERE idPaciente=? LIMIT 1", [Number(patientId)])

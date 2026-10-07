@@ -99,7 +99,9 @@ const TOOL_SPECS = [
         telefono: { type: "string", description: "Solo para pacientes NO identificados que dictaron un número. Si el paciente está identificado o dijo que usa el mismo número del chat, omití este campo." },
         usar_telefono_del_chat: { type: "boolean", description: "true si el paciente NO identificado confirmó que su teléfono es el mismo número de WhatsApp desde el que escribe." },
         telefono_confirmado: { type: "boolean", description: "Ponelo en true SOLO cuando la herramienta ya devolvió 'verificar_cambio_telefono' y el paciente confirmó que cambió de número. En esa re-llamada seguí pasando también nombre y telefono (el número nuevo)." },
-        confirmado: { type: "boolean", description: "true solo tras la aceptación explícita del paciente." }
+        confirmado: { type: "boolean", description: "true solo tras la aceptación explícita del paciente." },
+        acordado_por_recepcion: { type: "boolean", description: "true SOLO si en el historial un mensaje del personal de recepción le ofreció o confirmó al paciente esta misma fecha y hora, y el paciente la aceptó. El sistema lo verifica; si se confirma, la cita se registra aunque la agenda automática no muestre ese cupo y queda marcada para revisión de recepción." },
+        nota: { type: "string", description: "Solo con acordado_por_recepcion: detalle breve para recepción que el servicio no dice, por ejemplo '2 extracciones'." }
       },
       required: ["servicio", "fecha", "hora", "confirmado"]
     }
@@ -132,8 +134,8 @@ const TOOL_SPECS = [
   },
   {
     name: "confirmar_asistencia",
-    description: "Marca que el paciente CONFIRMÓ que asistirá a su cita. Úsala solo cuando en el historial hay un recordatorio de cita y el paciente responde dando a entender que sí va a asistir (con las palabras que sea). NO la uses si pide cambiar la fecha/hora o cancelar (eso es reprogramar/cancelar), ni si no queda claro. No necesita que el paciente esté identificado por recepción.",
-    parameters: { type: "object", properties: {} }
+    description: "Marca que el paciente CONFIRMÓ que asistirá a su cita. Úsala solo cuando hay un recordatorio de cita (en el historial o en el bloque RECORDATORIO DE CITA) y el paciente responde dando a entender que sí va a asistir (con las palabras que sea). NO la uses si pide cambiar la fecha/hora o cancelar (eso es reprogramar/cancelar), ni si no queda claro. No necesita que el paciente esté identificado por recepción.",
+    parameters: { type: "object", properties: { ids_cita: { type: "array", items: { type: "integer" }, description: "Solo si el recordatorio fue por varias citas (familiares con el mismo número): ids de las citas a las que se refiere el paciente." } } }
   },
   {
     name: "transferir_a_recepcion",
@@ -155,7 +157,7 @@ const SALE_TOOL_SPECS = [
     description: "Cancela la cita del recordatorio que se le envió al paciente. Úsala solo cuando el paciente responde al recordatorio diciendo que NO podrá asistir o que quiere cancelar. Si el paciente ya fue claro en que cancela, llamala directo con confirmado=true; si queda en duda, preguntale primero si desea cancelar la cita. NO la uses si pide cambiar fecha u hora (eso va a recepción).",
     parameters: {
       type: "object",
-      properties: { confirmado: { type: "boolean", description: "true solo cuando el paciente dejó claro que quiere cancelar." } },
+      properties: { confirmado: { type: "boolean", description: "true solo cuando el paciente dejó claro que quiere cancelar." }, ids_cita: { type: "array", items: { type: "integer" }, description: "Solo si el recordatorio fue por varias citas (familiares con el mismo número): ids de las citas a las que se refiere el paciente." } },
       required: ["confirmado"]
     }
   },
@@ -275,18 +277,59 @@ async function consultarCitasPaciente(args, ctx) {
   };
 }
 
+// Cita que recepción ya acordó en el chat (pedido del usuario 2026-10-07, caso Jennifer: 2 extracciones,
+// recepción ofreció el sábado 17 a las 8:30 y liberó el chat). Se agenda aunque la agenda automática no
+// muestre el cupo, marcada para revisión. Nunca por frases: por estado (recepción escribió en este chat en
+// las últimas 48 h) y un juicio corto de la IA sobre la conversación. Ante cualquier duda o error, false:
+// sigue la validación normal de la agenda.
+const RECEPTION_JUDGE_SYSTEM = [
+  "Sos un control interno de una clínica dental. Te paso una conversación de WhatsApp y una cita que el asistente quiere registrar.",
+  "Decidí si RECEPCIÓN (los mensajes marcados \"Recepción\", no los del asistente) le ofreció o le confirmó al paciente una cita en ESA MISMA fecha y hora, y el paciente la aceptó (puede estar aceptándola en sus últimos mensajes).",
+  "Es false si recepción ofreció otra fecha u hora, si dijo que no hay espacio, si no habló de horarios, si la fecha o la hora solo las propuso el paciente o el asistente, o si el paciente no aceptó.",
+  "Respondé solo JSON: {\"acordado\": true o false, \"motivo\": \"frase breve\"}"
+].join("\n");
+const WEEKDAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+async function receptionAgreed(ctx, { date, time, service }) {
+  const conversationId = ctx?.conversation?.id;
+  if (!conversationId || typeof ctx?.judge !== "function" || !ctx?.cfg) return { ok: false };
+  const messages = reminderRepo.listMessages(conversationId, { limit: 60 });
+  const since = Date.now() - 48 * 3600 * 1000;
+  if (!messages.some((m) => m.direction === "outgoing" && m.author === "human" && Date.parse(m.messageAt || m.createdAt) >= since)) return { ok: false };
+  const who = (m) => (m.direction === "incoming" ? "Paciente" : m.author === "human" ? "Recepción" : "Asistente");
+  const dialogue = messages.slice(-20).map((m) => `${who(m)}: ${String(m.content || "").trim()}`).join("\n");
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
+  const weekday = (iso) => WEEKDAYS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
+  try {
+    const verdict = await ctx.judge({ cfg: ctx.cfg, signal: ctx.signal, system: RECEPTION_JUDGE_SYSTEM, user: `Hoy es ${weekday(today)} ${today}.\n\nConversación:\n${dialogue}\n\nCita a registrar: ${service} el ${weekday(date)} ${date} a las ${to12h(time)}.` });
+    return { ok: verdict?.acordado === true, reason: verdict?.motivo || null };
+  } catch (error) {
+    console.warn("[Mensajes][IA] No se pudo verificar el acuerdo de recepción", { error: error?.message });
+    return { ok: false };
+  }
+}
+
 async function crearCita(args, ctx) {
   if (args?.confirmado !== true) {
     return { estado: "falta_confirmacion", mensaje: "Confirmá explícitamente servicio, fecha y hora con el paciente y volvé a llamar con confirmado=true." };
   }
-  const resolved = await resolveService(args?.servicio || "");
+  const date = toIsoDate(args?.fecha);
+  const time = toHhmm(args?.hora);
+  if (!date || !time) return { estado: "datos_invalidos", mensaje: "Fecha u hora no válidas." };
+  let resolved = await resolveService(args?.servicio || "");
+  const agreed = args?.acordado_por_recepcion === true ? await receptionAgreed(ctx, { date, time, service: args?.servicio || "" }) : null;
+  if (agreed) console.log("[Mensajes][IA] Cita acordada por recepción", { conversationId: ctx?.conversation?.id, fecha: date, hora: time, verificada: agreed.ok, motivo: agreed.reason });
+  // Recepción acordó un servicio genérico ("2 extracciones") que coincide con varios del catálogo: ni ella lo
+  // especificó ni el paciente suele saberlo. Con el acuerdo verificado se registra con el primero y el comentario
+  // deja el tipo a confirmar (antes la IA transfería o elegía uno por su cuenta).
+  let tipoAConfirmar = "";
+  if (resolved.status === "ambiguous" && agreed?.ok && resolved.candidates?.length) {
+    tipoAConfirmar = resolved.candidates.slice(0, 3).map((c) => c.serviceName).join(" / ");
+    resolved = { status: "matched", service: resolved.candidates[0] };
+  }
   if (resolved.status === "ambiguous") return { estado: "servicio_ambiguo", opciones: resolved.candidates.map((c) => c.serviceName) };
   if (resolved.status !== "matched" || !resolved.service) return { estado: "servicio_no_encontrado" };
   const restricted = identityGuard(resolved.service, ctx);
   if (restricted) return restricted;
-  const date = toIsoDate(args?.fecha);
-  const time = toHhmm(args?.hora);
-  if (!date || !time) return { estado: "datos_invalidos", mensaje: "Fecha u hora no válidas." };
   const already = ctx?.memory?.lastAppointment;
   if (already?.appointmentId && already.date === date && toHhmm(already.time) === time) {
     return { estado: "ya_registrada", id_cita: already.appointmentId, servicio: already.service, fecha: date, hora: to12h(time), mensaje: "Esta cita ya fue registrada en esta conversación. No la crees de nuevo." };
@@ -341,6 +384,7 @@ async function crearCita(args, ctx) {
       : isEmergencyService
         ? `${resolved.service.serviceName} — emergencia`
         : resolved.service.serviceName;
+  const nota = [String(args?.nota || "").trim().slice(0, 80), tipoAConfirmar ? `tipo a confirmar: ${tipoAConfirmar}` : "", phoneChanged ? "teléfono nuevo" : ""].filter(Boolean).join("; ");
   try {
     const result = await appointmentActions.createAppointmentForAssistant({
       patientId,
@@ -349,7 +393,10 @@ async function crearCita(args, ctx) {
       date,
       time,
       contact,
-      comment,
+      // Con el tipo a confirmar, el comentario empieza con lo acordado ("extracción"), no con el candidato que
+      // se usó para servicioIdAP (podía quedar "Extraccion pieza de leche" para un adulto).
+      comment: agreed?.ok ? `${(tipoAConfirmar && String(args?.servicio || "").trim()) || resolved.service.serviceName} — verificar (acordado por recepción${nota ? `: ${nota}` : ""})`.slice(0, 255) : comment,
+      skipAvailability: Boolean(agreed?.ok),
       // El paciente entra en la llave: sin esto, una reserva grupal (misma conversación,
       // mismo día/hora/servicio, distinta persona) colisiona y las llamadas 2ª en
       // adelante se leen como duplicado de la 1ª, reportando "ok" sin crear la cita.
@@ -398,22 +445,41 @@ async function cancelarCita(args, ctx) {
   }
 }
 
+// Citas que cubre el recordatorio. Si son varias (un solo mensaje para familiares con el mismo número) el
+// modelo dice cuáles con ids_cita: un "sí" general son todas, "solo Daniela" es una. Sin ids no se adivina:
+// se devuelve la lista para que elija o pregunte.
+function reminderCitas(reminder, args) {
+  const citas = reminder.appointments?.length ? reminder.appointments : [reminder];
+  if (citas.length === 1) return { citas };
+  const ids = Array.isArray(args?.ids_cita) ? args.ids_cita.map(Number) : [];
+  const elegidas = citas.filter((c) => ids.includes(Number(c.appointmentId)));
+  if (elegidas.length) return { citas: elegidas };
+  return { pendiente: { estado: "varias_citas", citas: citas.map((c) => ({ id_cita: c.appointmentId, paciente: c.patientName, hora: to12h(c.appointmentTime) })), mensaje: "El recordatorio fue un solo mensaje por varias citas de este número (familiares). Volvé a llamar con ids_cita: todas si el paciente respondió por todos en general, solo las de las personas que nombró si distinguió. Si no queda claro, preguntale." } };
+}
+
 async function confirmarAsistencia(args, ctx) {
   const conv = ctx?.conversation || {};
   const phone = String(conv.waContactNumber || conv.phone || "").replace(/\D/g, "");
   const sinRecordatorio = { estado: "sin_recordatorio_reciente", mensaje: "No hay un recordatorio de cita reciente para este número. Agradecé la respuesta sin afirmar que la cita quedó confirmada." };
   if (phone.length < 7) return sinRecordatorio;
-  const reminder = reminderRepo.getRecentSentReminderForPhone(phone, 18);
+  const reminder = reminderRepo.getRecentSentReminderForPhone(phone);
   if (!reminder?.appointmentId) return sinRecordatorio;
-  let result;
-  try {
-    result = await appointmentActions.confirmAppointmentAttendance({ appointmentId: reminder.appointmentId });
-  } catch (error) {
-    return { estado: "error", mensaje: error.message || "No se pudo confirmar la asistencia." };
+  const { citas, pendiente } = reminderCitas(reminder, args);
+  if (pendiente) return pendiente;
+  const resultados = [];
+  for (const c of citas) {
+    try { resultados.push({ c, result: await appointmentActions.confirmAppointmentAttendance({ appointmentId: c.appointmentId }) }); }
+    catch (error) { resultados.push({ c, error }); }
   }
-  if (result.status === "confirmed") return { estado: "ok", fecha: result.date, hora: to12h(result.time), mensaje: "Asistencia confirmada. Agradecé de forma breve y natural." };
-  if (result.status === "already_confirmed") return { estado: "ya_confirmada", fecha: result.date, hora: to12h(result.time), mensaje: "La cita ya figuraba confirmada. Agradecé igual, sin volver a anunciarlo como novedad." };
-  return { estado: "cita_no_confirmable", mensaje: "Esa cita ya no se puede confirmar (fue cancelada, reprogramada o ya pasó). Si el paciente necesita algo más, derivá a recepción." };
+  if (resultados.length === 1) {
+    const { result, error } = resultados[0];
+    if (error) return { estado: "error", mensaje: error.message || "No se pudo confirmar la asistencia." };
+    if (result.status === "confirmed") return { estado: "ok", fecha: result.date, hora: to12h(result.time), mensaje: "Asistencia confirmada. Agradecé de forma breve y natural." };
+    if (result.status === "already_confirmed") return { estado: "ya_confirmada", fecha: result.date, hora: to12h(result.time), mensaje: "La cita ya figuraba confirmada. Agradecé igual, sin volver a anunciarlo como novedad." };
+    return { estado: "cita_no_confirmable", mensaje: "Esa cita ya no se puede confirmar (fue cancelada, reprogramada o ya pasó). Si el paciente necesita algo más, derivá a recepción." };
+  }
+  const resultado = { confirmed: "confirmada", already_confirmed: "ya_confirmada" };
+  return { estado: "ok", citas: resultados.map(({ c, result, error }) => ({ id_cita: c.appointmentId, paciente: c.patientName, hora: to12h(c.appointmentTime), resultado: error ? "error" : resultado[result.status] || "no_confirmable" })), mensaje: "Agradecé de forma breve. Si alguna no quedó confirmada, no la des por confirmada y derivala a recepción." };
 }
 
 async function cancelarCitaRecordatorio(args, ctx) {
@@ -422,17 +488,24 @@ async function cancelarCitaRecordatorio(args, ctx) {
   const phone = String(conv.waContactNumber || conv.phone || "").replace(/\D/g, "");
   const sinRecordatorio = { estado: "sin_recordatorio_reciente", mensaje: "No hay un recordatorio de cita reciente para este número. No afirmes que se canceló nada; transferí a recepción." };
   if (phone.length < 7) return sinRecordatorio;
-  const reminder = reminderRepo.getRecentSentReminderForPhone(phone, 18);
+  const reminder = reminderRepo.getRecentSentReminderForPhone(phone);
   if (!reminder?.appointmentId) return sinRecordatorio;
+  const { citas, pendiente } = reminderCitas(reminder, args);
+  if (pendiente) return pendiente;
   if (args?.confirmado !== true) return { estado: "falta_confirmacion", mensaje: "Preguntale al paciente si desea cancelar la cita y volvé a llamar con confirmado=true." };
-  let result;
-  try {
-    result = await appointmentActions.cancelAppointmentFromReminder({ appointmentId: reminder.appointmentId });
-  } catch (error) {
-    return { estado: "error", mensaje: error.message || "No se pudo cancelar la cita." };
+  const resultados = [];
+  for (const c of citas) {
+    try { resultados.push({ c, result: await appointmentActions.cancelAppointmentFromReminder({ appointmentId: c.appointmentId }) }); }
+    catch (error) { resultados.push({ c, error }); }
   }
-  if (result.status === "cancelled" || result.status === "already_cancelled") return { estado: "ok", id_cita: reminder.appointmentId, fecha: result.date, hora: to12h(result.time), mensaje: "Cita cancelada." };
-  return { estado: "cita_no_cancelable", mensaje: "Esa cita ya no se puede cancelar desde aquí (fue reprogramada o ya pasó). Transferí a recepción." };
+  const cancelada = (r) => r.result && (r.result.status === "cancelled" || r.result.status === "already_cancelled");
+  if (resultados.length === 1) {
+    const r = resultados[0];
+    if (r.error) return { estado: "error", mensaje: r.error.message || "No se pudo cancelar la cita." };
+    if (cancelada(r)) return { estado: "ok", id_cita: r.c.appointmentId, fecha: r.result.date, hora: to12h(r.result.time), mensaje: "Cita cancelada." };
+    return { estado: "cita_no_cancelable", mensaje: "Esa cita ya no se puede cancelar desde aquí (fue reprogramada o ya pasó). Transferí a recepción." };
+  }
+  return { estado: "ok", citas: resultados.map((r) => ({ id_cita: r.c.appointmentId, paciente: r.c.patientName, hora: to12h(r.c.appointmentTime), resultado: r.error ? "error" : cancelada(r) ? "cancelada" : "no_cancelable" })), mensaje: "Si alguna no quedó cancelada, no la des por cancelada y transferí a recepción." };
 }
 
 async function transferirARecepcion(args) {

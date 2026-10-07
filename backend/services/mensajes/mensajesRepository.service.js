@@ -276,8 +276,17 @@ class MensajesRepository {
       if (sc !== sb) return sc > sb ? c : best;
       return c.id < best.id ? c : best;
     });
-    for (const c of all) if (c.id !== survivor.id) this.mergeConversation(c.id, survivor.id);
+    // Compartir paciente no alcanza: dos chats con teléfonos reales DISTINTOS son dos chats de WhatsApp (la
+    // paciente y su mamá, o una vinculación equivocada) y fusionarlos mezcla los mensajes y deja las respuestas
+    // saliendo a uno solo. Caso 2026-10-07: Jennifer vinculada al chat de Eduardo → conversaciones 1517 y 1518
+    // fusionadas. Solo se juntan el mismo número o un chat todavía sin teléfono (el split @c.us/@lid).
+    const realPhone = (c) => (c.phoneResolved ? persistedPhone(c.waContactNumber || c.phone) : "");
+    const samePhone = (c) => !realPhone(c) || !realPhone(survivor) || realPhone(c) === realPhone(survivor);
+    const absorbed = all.filter((c) => c.id !== survivor.id && samePhone(c));
+    for (const c of absorbed) this.mergeConversation(c.id, survivor.id);
     this.db.prepare("UPDATE conversations SET patient_id=COALESCE(patient_id,?) WHERE id=?").run(patientId, survivor.id);
+    // Si la conversación del mensaje no se fusionó (otro número), el mensaje es de ella, no del superviviente.
+    if (currentId && currentId !== survivor.id && !absorbed.some((c) => c.id === currentId)) return this.getConversation(currentId);
     return this.getConversation(survivor.id);
   }
 
@@ -328,7 +337,7 @@ class MensajesRepository {
         lp.id AS last_patient_message_id,
         CASE WHEN lp.id IS NOT NULL AND c.status <> 'closed'
               AND lp.id > IFNULL(c.attended_message_id, 0)
-              AND NOT EXISTS (SELECT 1 FROM messages o WHERE o.conversation_id=c.id AND o.direction='outgoing' AND o.id > lp.id)
+              AND NOT EXISTS (SELECT 1 FROM messages o WHERE o.conversation_id=c.id AND o.direction='outgoing' AND o.backfill=0 AND o.id > lp.id)
           THEN strftime('%Y-%m-%dT%H:%M:%SZ', MIN(julianday(COALESCE(lp.message_at, lp.created_at)), julianday(lp.created_at)))
         END AS awaiting_since,
         (SELECT pci.patient_name FROM patient_chat_identities pci
@@ -338,7 +347,7 @@ class MensajesRepository {
           ORDER BY (pci.wa_chat_id=c.wa_chat_id) DESC, pci.verified_at DESC LIMIT 1) AS linked_patient_name
       FROM conversations c
       LEFT JOIN messages lp ON lp.id = (
-        SELECT id FROM messages WHERE conversation_id=c.id AND direction='incoming' AND author='patient'
+        SELECT id FROM messages WHERE conversation_id=c.id AND direction='incoming' AND author='patient' AND backfill=0
           AND reaction_target_id IS NULL AND content NOT LIKE 'Reacción:%'
         ORDER BY id DESC LIMIT 1)
       WHERE NOT (c.wa_chat_id LIKE '%@lid' AND NOT EXISTS (SELECT 1 FROM messages incoming WHERE incoming.conversation_id=c.id AND incoming.direction='incoming'))
@@ -348,7 +357,7 @@ class MensajesRepository {
   // "Marcar como atendido": da por atendido el último mensaje del paciente sin
   // responderlo. No toca el modo de atención (eso es "Tomar").
   markAttended(conversationId) {
-    const last = this.db.prepare("SELECT MAX(id) AS id FROM messages WHERE conversation_id=? AND direction='incoming' AND author='patient'").get(conversationId);
+    const last = this.db.prepare("SELECT MAX(id) AS id FROM messages WHERE conversation_id=? AND direction='incoming' AND author='patient' AND backfill=0").get(conversationId);
     this.db.prepare("UPDATE conversations SET attended_message_id=? WHERE id=?").run(last?.id || null, conversationId);
     return last?.id || null;
   }
@@ -379,21 +388,26 @@ class MensajesRepository {
     // de 3 min + mismo turno (ningún entrante después) = es el mismo mensaje.
     // Sin la condición del turno, una respuesta nueva igual a la anterior ("¡Con
     // gusto!") se descartaba, el paciente quedaba "sin responder" y la IA
-    // reenviaba en bucle.
+    // reenviaba en bucle. La recuperación importa historial viejo: ahí ya hay entrantes
+    // posteriores y nunca es una respuesta nueva, así que no aplica la condición del
+    // turno (2026-10-07: "si tenemos espacio a las 8:30 am" quedó dos veces en la 1517).
     if (direction === "outgoing") {
       const at = messageAt || new Date().toISOString();
-      const dup = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? AND direction='outgoing' AND content=? AND ABS(strftime('%s', message_at) - strftime('%s', ?)) <= 180 AND id > IFNULL((SELECT MAX(id) FROM messages WHERE conversation_id=? AND direction='incoming'), 0) LIMIT 1").get(conversationId, text.trim(), at, conversationId);
+      const dup = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? AND direction='outgoing' AND content=? AND ABS(strftime('%s', message_at) - strftime('%s', ?)) <= 180 AND (? = 'recovery' OR id > IFNULL((SELECT MAX(id) FROM messages WHERE conversation_id=? AND direction='incoming' AND backfill=0), 0)) LIMIT 1").get(conversationId, text.trim(), at, source, conversationId);
       if (dup) {
         if (author && dup.author !== author && author === "ai") this.db.prepare("UPDATE messages SET author=? WHERE id=?").run(author, dup.id);
         return { message: toMessage(this.db.prepare("SELECT * FROM messages WHERE id=?").get(dup.id)), duplicate: true };
       }
     }
-    const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at, reaction_target_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at, reaction_target_id, backfill) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     const update = this.db.prepare(`UPDATE conversations SET updated_at=datetime('now'), lifecycle_state=CASE WHEN ?='incoming' THEN 'active' ELSE lifecycle_state END, last_message_direction=?, last_message_at=?, last_message_type=?, last_message_source=?, last_inbound_at=CASE WHEN ?='incoming' THEN ? ELSE last_inbound_at END, last_outbound_at=CASE WHEN ?='outgoing' THEN ? ELSE last_outbound_at END WHERE id=?`);
     const transaction = this.db.transaction(() => {
-      const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", messageAt || new Date().toISOString(), reactionTargetId || null);
       const effectiveMessageAt = messageAt || new Date().toISOString();
-      update.run(direction, direction, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
+      // Historial importado por la recuperación a un chat que ya tiene mensajes más nuevos (ver migración backfill):
+      // se guarda para dar contexto, pero no cuenta como último mensaje ni actualiza el resumen de la conversación.
+      const backfill = source === "recovery" && Boolean(this.db.prepare("SELECT 1 FROM messages WHERE conversation_id=? AND strftime('%s', message_at) - strftime('%s', ?) > 1800 LIMIT 1").get(conversationId, effectiveMessageAt));
+      const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", effectiveMessageAt, reactionTargetId || null, backfill ? 1 : 0);
+      if (!backfill) update.run(direction, direction, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
       return this.db.prepare("SELECT * FROM messages WHERE id=?").get(result.lastInsertRowid);
     });
     return { message: toMessage(transaction()), duplicate: false };
@@ -482,18 +496,25 @@ class MensajesRepository {
   finishPromoBatch(id) { this.db.prepare("UPDATE promo_batches SET status=CASE WHEN failed_count>0 THEN 'completed_with_errors' ELSE 'completed' END, finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); }
   // Al cancelar también se retira de la cola de salida lo que aún no salió, para que no se envíe sin registro.
   cancelPromoBatch(id) { this.db.prepare("UPDATE outgoing_queue SET status='cancelled', last_error='Bloque cancelado', updated_at=datetime('now') WHERE idempotency_key LIKE ? AND status='pending'").run(`promo-${id}-%`); this.db.prepare("UPDATE promo_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending','queued') AND NOT EXISTS (SELECT 1 FROM outgoing_queue q WHERE q.idempotency_key='promo-' || promo_batch_items.batch_id || '-' || promo_batch_items.id AND q.status IN ('sent','sending'))").run(id); this.db.prepare("UPDATE promo_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.refreshPromoBatch(id); }
-  // Recordatorio 'sent' más reciente para ese teléfono dentro de una ventana horaria.
-  // Sirve para correlacionar la respuesta del paciente ("sí, ahí estaré") con la cita
-  // concreta sin que el recordatorio lleve el id en el texto. sent_at se guarda con
-  // datetime('now') (UTC), por eso la ventana se calcula también en SQL.
-  getRecentSentReminderForPhone(phone, withinHours = 18) {
+  // Recordatorio 'sent' vigente para ese teléfono: su cita es de hoy en adelante (hora de
+  // El Salvador). Sirve para correlacionar la respuesta del paciente ("sí, ahí estaré")
+  // con la cita concreta sin que el recordatorio lleve el id en el texto. Antes era una
+  // ventana fija de 18 h desde el envío, pero el recordatorio sale la tarde anterior y
+  // el paciente contesta a la mañana siguiente: 2026-10-07 dos "sí" llegaron a las 18 h
+  // 14 min y 18 h 19 min y no encontraron su cita. sent_at (UTC) solo acota a 3 días
+  // (recordatorio del sábado para el lunes).
+  getRecentSentReminderForPhone(phone) {
     const base = phoneRuleVariants(phone);
     // reminder_batch_items.phone viene de contactoAP; puede estar con o sin el prefijo 503.
     const variants = [...new Set(base.concat(base.filter((v) => v.length === 8).map((v) => "503" + v)))];
     if (!variants.length) return null;
-    const hours = Number.isInteger(withinHours) && withinHours > 0 ? withinHours : 18;
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
     const placeholders = variants.map(() => "?").join(",");
-    return this.db.prepare(`SELECT appointment_id AS appointmentId, appointment_date AS appointmentDate, appointment_time AS appointmentTime, phone, sent_at AS sentAt FROM reminder_batch_items WHERE status='sent' AND sent_at >= datetime('now', ?) AND phone IN (${placeholders}) ORDER BY sent_at DESC, id DESC LIMIT 1`).get(`-${hours} hours`, ...variants) || null;
+    const latest = this.db.prepare(`SELECT batch_id AS batchId, appointment_id AS appointmentId, patient_name AS patientName, appointment_date AS appointmentDate, appointment_time AS appointmentTime, treatment, phone, content, sent_at AS sentAt FROM reminder_batch_items WHERE status='sent' AND appointment_date >= ? AND sent_at >= datetime('now', '-3 days') AND phone IN (${placeholders}) ORDER BY sent_at DESC, id DESC LIMIT 1`).get(today, ...variants);
+    if (!latest) return null;
+    // Un recordatorio agrupado (familiares con el mismo número) cubre varias citas: mismo lote, teléfono y texto.
+    latest.appointments = this.db.prepare("SELECT appointment_id AS appointmentId, patient_name AS patientName, appointment_date AS appointmentDate, appointment_time AS appointmentTime, treatment FROM reminder_batch_items WHERE batch_id=? AND phone=? AND content=? AND status='sent' ORDER BY id").all(latest.batchId, latest.phone, latest.content);
+    return latest;
   }
   retryOutgoing(id, phone) { return this.db.prepare("UPDATE outgoing_queue SET status='pending', attempts=0, last_error=NULL, updated_at=datetime('now') WHERE id=? AND phone=? AND status='failed'").run(id, phone).changes > 0; }
   getGlobalSettings() { const row = this.db.prepare("SELECT response_delay_min AS responseDelayMin, response_delay_max AS responseDelayMax, response_group_delay_seconds AS responseGroupDelaySeconds, automation_phone_mode AS automationPhoneMode, automation_phone_numbers AS automationPhoneNumbers, ignored_outgoing_texts_json AS ignoredOutgoingTexts, updated_at AS updatedAt FROM message_settings WHERE id=1").get(); return { ...row, automationPhoneNumbers: JSON.parse(row?.automationPhoneNumbers || "[]"), ignoredOutgoingTexts: JSON.parse(row?.ignoredOutgoingTexts || "[]") }; }
@@ -597,7 +618,7 @@ class MensajesRepository {
       FROM conversations c
       JOIN messages m ON m.id = (
         SELECT id FROM messages
-        WHERE conversation_id=c.id AND direction='incoming' AND author='patient'
+        WHERE conversation_id=c.id AND direction='incoming' AND author='patient' AND backfill=0
         ORDER BY id DESC LIMIT 1
       )
       WHERE c.status <> 'closed'
@@ -610,7 +631,7 @@ class MensajesRepository {
         AND (? IS NULL OR c.id=?)
         AND NOT EXISTS (
           SELECT 1 FROM messages o
-          WHERE o.conversation_id=c.id AND o.direction='outgoing' AND o.id > m.id
+          WHERE o.conversation_id=c.id AND o.direction='outgoing' AND o.backfill=0 AND o.id > m.id
         )
         AND NOT EXISTS (
           SELECT 1 FROM response_queue rq
@@ -656,7 +677,7 @@ class MensajesRepository {
     // Por id (orden de inserción), no por message_at: el timestamp de los
     // entrantes lo pone el teléfono del paciente y puede venir adelantado, lo que
     // haría que un mensaje viejo tape a la respuesta recién enviada por la IA.
-    const row = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 1").get(conversationId);
+    const row = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? AND backfill=0 ORDER BY id DESC LIMIT 1").get(conversationId);
     return toMessage(row);
   }
 
@@ -729,10 +750,16 @@ class MensajesRepository {
       // mismo paciente, o un teléfono huérfano de una vinculación anterior). conversations.phone
       // es UNIQUE: si lo pisáramos, la transacción entera aborta y la vinculación no se guarda.
       // La vinculación real vive en conversation_patient_links; si hay choque, no tocamos el teléfono.
-      let phoneForConv = patient.phone || null;
+      // telefonoP es texto libre ("6448 4667", a veces dos números): a la conversación solo va un teléfono real
+      // normalizado, como lo guarda el chat. Caso 2026-10-07 conv 1510: quedó "6448 4667" y la fusión y el
+      // recordatorio, que buscan "64484667", ya no la encontraban.
+      // Y solo si el chat todavía no tiene su teléfono real: el número de WhatsApp manda sobre el del expediente
+      // (paciente vinculado al chat de la mamá, o vinculación equivocada). Caso 2026-10-07 conv 1517: el teléfono
+      // de Jennifer quedó pisado por el del expediente de Eduardo.
+      const filePhone = persistedPhone(patient.phone);
+      let phoneForConv = !this.getConversation(conversationId)?.phoneResolved && isRealPhone(filePhone) ? normalizePhone(filePhone) : null;
       if (phoneForConv) {
-        const digits = String(phoneForConv).replace(/\D/g, "");
-        const clash = digits && this.db.prepare("SELECT id FROM conversations WHERE id<>? AND status <> 'closed' AND REPLACE(REPLACE(REPLACE(IFNULL(phone,''),' ',''),'-',''),'+','')=? LIMIT 1").get(conversationId, digits);
+        const clash = this.db.prepare("SELECT id FROM conversations WHERE id<>? AND status <> 'closed' AND REPLACE(REPLACE(REPLACE(IFNULL(phone,''),' ',''),'-',''),'+','')=? LIMIT 1").get(conversationId, phoneForConv);
         if (clash) phoneForConv = null;
       }
       this.db.prepare("UPDATE conversations SET patient_id=?, phone=COALESCE(?,phone), wa_contact_number=COALESCE(?,wa_contact_number) WHERE id=?").run(patient.id, phoneForConv, phoneForConv, conversationId);

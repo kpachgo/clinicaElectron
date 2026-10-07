@@ -50,16 +50,32 @@ async function start() {
   }
   return { connector, repository };
 }
+// Respaldo para los @lid que no se resolvieron al llegar el mensaje (getIndividualMeta ya lo hace en el
+// primer mensaje). El lookup local es instantáneo y sin red: va en cada pasada. La consulta de red a
+// WhatsApp, una vez cada 30 min por chat: del 2026-09-30 al 10-07 hizo 106 y ninguna resolvió (vacío o
+// número extranjero), y repetirla cada minuto es tráfico automático contra la cuenta de la clínica.
+// Una pasada a la vez: setInterval no espera, y una consulta de red puede tardar minutos.
+const LID_NETWORK_RETRY_MS = 30 * 60 * 1000;
+const lidNetworkTriedAt = new Map();
+let refreshingLids = false;
 async function refreshLidConversations() {
-  if (typeof connector.resolvePhoneForChatId !== "function") return;
-  for (const conversation of repository.listConversations({ limit: 200 })) {
-    if (!conversation.waChatId?.endsWith("@lid") || conversation.phoneResolved) continue;
-    try {
-      const phone = await connector.resolvePhoneForChatId(conversation.waChatId);
-      if (phone && phone !== conversation.phone) repository.updateWhatsAppContact(conversation.id, phone);
-    } catch (error) {
-      console.warn("[Mensajes][WhatsApp] No se pudo actualizar contacto LID", { conversationId: conversation.id, error: error?.message || String(error) });
+  if (refreshingLids || typeof connector.resolvePhoneForChatId !== "function") return;
+  refreshingLids = true;
+  try {
+    for (const conversation of repository.listConversations({ limit: 200 })) {
+      const chatId = conversation.waChatId;
+      if (!chatId?.endsWith("@lid") || conversation.phoneResolved) continue;
+      try {
+        const network = Date.now() - (lidNetworkTriedAt.get(chatId) || 0) >= LID_NETWORK_RETRY_MS;
+        if (network) lidNetworkTriedAt.set(chatId, Date.now());
+        const phone = network ? await connector.resolvePhoneForChatId(chatId) : await connector.resolveLidPhoneLocal?.(chatId);
+        if (phone && phone !== conversation.phone) { repository.updateWhatsAppContact(conversation.id, phone); lidNetworkTriedAt.delete(chatId); }
+      } catch (error) {
+        console.warn("[Mensajes][WhatsApp] No se pudo actualizar contacto LID", { conversationId: conversation.id, error: error?.message || String(error) });
+      }
     }
+  } finally {
+    refreshingLids = false;
   }
 }
 async function connectConnector() { if (!started) await start(); return connector.connect(); }
@@ -129,7 +145,7 @@ async function sendAiMessage(conversation, text, batch) {
   console.log("[Mensajes][IA] Respuesta guardada en SQLite", { batchId: batch.id, conversationId: saved.conversation.id, messageId: saved.message?.id, externalId: sent.externalId });
   return sent;
 }
-async function processReminder(batchId) { const batch = repository.getReminderBatch(batchId); if (!batch || ["cancelled", "completed", "completed_with_errors"].includes(batch.status)) return; if (connector.getStatus().status !== "connected") return; const item = repository.claimReminderItem(batchId); if (!item) { const final = repository.refreshReminderBatch(batchId); if (final && !final.items.some((x) => ["pending", "sending", "queued"].includes(x.status))) repository.db.prepare("UPDATE reminder_batches SET status=CASE WHEN failed_count>0 THEN 'completed_with_errors' ELSE 'completed' END, finished_at=datetime('now') WHERE id=?").run(batchId); reminderTimers.delete(batchId); return; } repository.db.prepare("UPDATE reminder_batches SET status='processing', started_at=COALESCE(started_at,datetime('now')), updated_at=datetime('now') WHERE id=?").run(batchId); try { const queued = repository.enqueueOutgoing(item.phone, item.content, `reminder-${batchId}-${item.id}`); repository.updateReminderItem(item.id, "queued", { queueId: queued?.id }); await flushOutgoingQueue(); const sent = queued && repository.db.prepare("SELECT status,last_error FROM outgoing_queue WHERE id=?").get(queued.id); if (sent?.status === "sent") repository.updateReminderItem(item.id, "sent"); else if (sent?.status === "failed") repository.updateReminderItem(item.id, "failed", { error: sent.last_error || "Error de envío" }); else repository.updateReminderItem(item.id, "failed", { error: "No se pudo confirmar el envío" }); } catch (error) { repository.updateReminderItem(item.id, "failed", { error: error.message }); } repository.refreshReminderBatch(batchId); const next = repository.getReminderBatch(batchId); const remaining = next?.items.some((x) => x.status === "pending"); if (remaining && next.status !== "cancelled") { const delay = (next.min_delay_seconds + Math.random() * (next.max_delay_seconds - next.min_delay_seconds)) * 1000; const timer = setTimeout(() => void processReminder(batchId), delay); timer.unref?.(); reminderTimers.set(batchId, timer); } else { repository.db.prepare("UPDATE reminder_batches SET status=CASE WHEN failed_count>0 THEN 'completed_with_errors' ELSE 'completed' END, finished_at=datetime('now') WHERE id=?").run(batchId); reminderTimers.delete(batchId); } }
+async function processReminder(batchId) { const batch = repository.getReminderBatch(batchId); if (!batch || ["cancelled", "completed", "completed_with_errors"].includes(batch.status)) return; if (connector.getStatus().status !== "connected") return; const item = repository.claimReminderItem(batchId); if (!item) { const final = repository.refreshReminderBatch(batchId); if (final && !final.items.some((x) => ["pending", "sending", "queued"].includes(x.status))) repository.db.prepare("UPDATE reminder_batches SET status=CASE WHEN failed_count>0 THEN 'completed_with_errors' ELSE 'completed' END, finished_at=datetime('now') WHERE id=?").run(batchId); reminderTimers.delete(batchId); return; } repository.db.prepare("UPDATE reminder_batches SET status='processing', started_at=COALESCE(started_at,datetime('now')), updated_at=datetime('now') WHERE id=?").run(batchId); try { const queued = repository.enqueueOutgoing(item.phone, item.content, `reminder-${batchId}-${item.id}`); repository.updateReminderItem(item.id, "queued", { queueId: queued?.id }); await flushOutgoingQueue(); const sent = queued && repository.db.prepare("SELECT status,last_error FROM outgoing_queue WHERE id=?").get(queued.id); if (sent?.status === "sent") { repository.updateReminderItem(item.id, "sent"); /* Recordatorio agrupado (familiares con el mismo número): el resto de las citas del grupo ya va en este mensaje. */ repository.db.prepare("UPDATE reminder_batch_items SET status='sent', sent_at=datetime('now'), updated_at=datetime('now') WHERE batch_id=? AND id<>? AND phone=? AND content=? AND status='pending'").run(batchId, item.id, item.phone, item.content); } else if (sent?.status === "failed") repository.updateReminderItem(item.id, "failed", { error: sent.last_error || "Error de envío" }); else repository.updateReminderItem(item.id, "failed", { error: "No se pudo confirmar el envío" }); } catch (error) { repository.updateReminderItem(item.id, "failed", { error: error.message }); } repository.refreshReminderBatch(batchId); const next = repository.getReminderBatch(batchId); const remaining = next?.items.some((x) => x.status === "pending"); if (remaining && next.status !== "cancelled") { const delay = (next.min_delay_seconds + Math.random() * (next.max_delay_seconds - next.min_delay_seconds)) * 1000; const timer = setTimeout(() => void processReminder(batchId), delay); timer.unref?.(); reminderTimers.set(batchId, timer); } else { repository.db.prepare("UPDATE reminder_batches SET status=CASE WHEN failed_count>0 THEN 'completed_with_errors' ELSE 'completed' END, finished_at=datetime('now') WHERE id=?").run(batchId); reminderTimers.delete(batchId); } }
 // Estado real de un envío de promoción según su fila en outgoing_queue (clave promo-<lote>-<item>).
 function promoQueueRow(batchId, itemId) { return repository.db.prepare("SELECT id, status, last_error FROM outgoing_queue WHERE idempotency_key=?").get(`promo-${batchId}-${itemId}`); }
 // Items que quedaron en 'sending'/'queued' (app reiniciada a mitad, o cola ocupada): se ajustan a lo que pasó

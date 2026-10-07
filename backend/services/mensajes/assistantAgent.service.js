@@ -150,7 +150,7 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
       // se ejecuta una sola vez (evita crear/cancelar/reprogramar por duplicado).
       const result = seenCalls.has(key)
         ? seenCalls.get(key)
-        : await doTool(call.name, call.args, { conversation, linkedPatient, memory });
+        : await doTool(call.name, call.args, { conversation, linkedPatient, memory, cfg, signal, judge: doJudge });
       seenCalls.set(key, result);
       trace.push({ step, type: "tool", name: call.name, args: call.args, result });
       if (call.name === "transferir_a_recepcion" && result?.estado === "transferido") {
