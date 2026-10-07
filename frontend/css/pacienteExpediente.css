@@ -213,7 +213,7 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
 .pe-blank { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--pe-muted); font-style: italic; font-size: 13px; }
 .pe-blank .pe-edit-btn { font-style: normal; }
 
-/* Ficha (Informacion / Historia clinica): icono pequeño junto al titulo y linea divisoria bajo cada dato. */
+/* Ficha (Informacion / Historia clinica / Endodoncia / Diagnostico): icono pequeño junto al titulo y linea divisoria bajo cada dato. */
 .pe-fields.pe-ficha { row-gap: 0; }
 .pe-ficha .pe-f { padding: 12px 2px; border-bottom: 1px solid var(--pe-line); }
 .pe-ficha .pe-f dt { display: flex; align-items: center; gap: 7px; }
@@ -223,6 +223,11 @@ body.dark-mode .pe-mini.allergy:not(.none) { background: rgba(239, 68, 68, 0.12)
 .pe-pill.trat-orto, .pe-tag.trat-orto { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; }
 .pe-pill.trat-odonto, .pe-tag.trat-odonto { background: #fce7f3; border-color: #ec4899; color: #9d174d; }
 .pe-tag.trat-orto, .pe-tag.trat-odonto { border-width: 1px; border-style: solid; }
+/* Estado: mismos colores que el select del formulario (paciente.css .estado-*). */
+.pe-pill.est-activo { background: #dcfce7; border-color: #22c55e; color: #166534; }
+.pe-pill.est-inactivo { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+body.dark-mode .pe-pill.est-activo { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+body.dark-mode .pe-pill.est-inactivo { background: rgba(239, 68, 68, 0.18); color: #fca5a5; }
 body.dark-mode .pe-pill.trat-orto, body.dark-mode .pe-tag.trat-orto { background: rgba(59, 130, 246, 0.18); color: #93c5fd; }
 body.dark-mode .pe-pill.trat-odonto, body.dark-mode .pe-tag.trat-odonto { background: rgba(236, 72, 153, 0.18); color: #f9a8d4; }
 /* Motivo de consulta: mismo ambar que el campo del formulario (paciente.css #motivoConsultaP). */
@@ -236,12 +241,11 @@ body.dark-mode .pe-pill.motivo { background: rgba(245, 180, 40, 0.16); border-co
   .pe-ficha .pe-f dd { font-size: 16px; line-height: 1.55; }
   .pe-ficha .pe-f.empty dd { font-size: 14px; }
   .pe-ficha .pe-link { font-size: 13px; }
-  .pe-ficha-fil { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pe-ficha-fil, .pe-ficha-endo { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pe-ficha-fil .pe-f.wide { grid-column: auto; }
-  /* Historia: motivo (4/6) + ultima visita; las dos historias lado a lado; examenes en 3. */
+  /* Historia: motivo + ultima visita + alergias; las dos historias lado a lado; examenes en 3. */
   .pe-ficha-his { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .pe-ficha-his .pe-f, .pe-ficha-his .pe-f.wide { grid-column: span 2; }
-  .pe-ficha-his .pe-f.h-motivo { grid-column: span 4; }
   .pe-ficha-his .pe-f.h-hist { grid-column: span 3; }
 }
 
@@ -257,6 +261,16 @@ body.dark-mode .pe-pill.motivo { background: rgba(245, 180, 40, 0.16); border-co
 .pe-edit { display: none; }
 .pe-panel.is-editing .pe-read { display: none; }
 .pe-panel.is-editing .pe-edit { display: block; }
+/* Paso suave entre lectura y edicion (al cambiar display se reinicia la animacion). "backwards" por
+   lo mismo que .pe-panel: no dejar transform aplicado que encierre los modales fixed. */
+.pe.is-exp .pe-panel.is-editing .pe-edit,
+.pe.is-exp .pe-panel:not(.is-editing) .pe-read { animation: pe-swap 0.32s var(--pe-ease) backwards; }
+.pe.is-exp .pe-panel.is-editing .pe-ficha .p-col { animation: pe-swap-f 0.4s var(--pe-ease) backwards; }
+@keyframes pe-swap { from { opacity: 0; transform: translateY(4px); } }
+@keyframes pe-swap-f { from { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .pe.is-exp .pe-panel .pe-edit, .pe.is-exp .pe-panel .pe-read, .pe.is-exp .pe-panel .pe-ficha .p-col { animation: none; }
+}
 .pe-editbar { position: sticky; top: 8px; z-index: 5; display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 10px 14px;
               border-radius: 12px; background: var(--pe-nav-active); color: #fff; font-size: 13px; box-shadow: 0 8px 18px var(--pe-accent-shadow); }
 .pe-bar-btn { font-weight: 600; font-size: 13px; font-family: inherit; padding: 7px 14px; border-radius: 9px; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.4);
@@ -264,6 +278,59 @@ body.dark-mode .pe-pill.motivo { background: rgba(245, 180, 40, 0.16); border-co
 .pe-bar-btn.pri { background: #22a45d; border-color: #22a45d; }
 .pe-bar-btn:disabled { opacity: 0.6; cursor: progress; }
 .pe-edit > .paciente-card { margin-bottom: 0; }
+
+/* Edicion con el diseño de la ficha (pacienteExpediente.js dressEdit): misma cuadricula, orden,
+   titulos e iconos; los controles van "en blanco" (estilo UIkit form-blank / Windows Fluent): el
+   texto queda donde estaba en la lectura, con un fondo suave y la linea divisoria como subrayado,
+   que toma el color de acento al escribir. */
+.pe-lbl-x { display: none; }
+.pe-edit > .paciente-card.pe-ficha { padding: 16px 18px; }
+.pe-edit .pe-ficha > .paciente-titulo { display: none; }
+.pe-edit .pe-ficha .p-grid-datos, .pe-edit .pe-ficha .p-row { display: contents; }
+.pe-edit .pe-ficha .p-col { grid-column: auto; }
+.pe-edit .pe-ficha .p-col.wide { grid-column: 1 / -1; }
+.pe-edit .pe-ficha .p-col.pe-f { transition: border-color 0.2s; }
+.pe-edit .pe-ficha .p-col.pe-f:focus-within { border-bottom-color: var(--pe-accent); box-shadow: 0 1px 0 var(--pe-accent); }
+.pe-edit .pe-ficha .form-label { margin: 0 0 3px; padding: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--pe-muted); }
+.pe-edit .pe-ficha .pe-lbl-o { display: none; }
+.pe-edit .pe-ficha .pe-lbl-x { display: flex; align-items: center; gap: 7px; }
+.pe-edit .pe-ficha .pe-lbl-x svg { width: 15px; height: 15px; flex: none; color: var(--pe-accent); }
+.pe .pe-edit .pe-ficha .form-control, .pe .pe-edit .pe-ficha .p-textarea {
+  width: calc(100% + 16px); margin: 0 -8px; padding: 3px 8px; min-height: 0; height: auto;
+  font: inherit; font-size: 14px; line-height: 1.5; color: var(--pe-text);
+  background: color-mix(in srgb, var(--pe-accent) 5%, transparent); border: 0; border-radius: 6px; box-shadow: none; }
+.pe .pe-edit .pe-ficha .form-control:hover, .pe .pe-edit .pe-ficha .p-textarea:hover { background: color-mix(in srgb, var(--pe-accent) 9%, transparent); }
+.pe .pe-edit .pe-ficha .form-control:focus, .pe .pe-edit .pe-ficha .p-textarea:focus { background: color-mix(in srgb, var(--pe-accent) 9%, transparent); outline: none; }
+.pe .pe-edit .pe-ficha .p-textarea { field-sizing: content; min-height: 3lh; max-height: 40vh; resize: none; white-space: pre-wrap; }
+/* Edad se calcula sola: se ve como texto, igual que en la lectura. */
+.pe .pe-edit .pe-ficha #edadP { background: none; padding-left: 0; padding-right: 0; margin: 0; width: 100%; }
+/* Estado y tipo de tratamiento conservan su color (paciente.css) como pastilla. */
+.pe .pe-edit .pe-ficha #estadoP.estado-activo,
+.pe .pe-edit .pe-ficha #estadoP.estado-inactivo,
+.pe .pe-edit .pe-ficha #tipoTratamientoP.tratamiento-ortodoncia,
+.pe .pe-edit .pe-ficha #tipoTratamientoP.tratamiento-odontologia { width: auto; margin: 0; padding: 3px 12px; border: 1px solid; border-radius: 999px; font-weight: 600; }
+.pe .pe-edit .pe-ficha #estadoP.estado-activo { background: #dcfce7; border-color: #22c55e; color: #166534; }
+.pe .pe-edit .pe-ficha #estadoP.estado-inactivo { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+.pe .pe-edit .pe-ficha #tipoTratamientoP.tratamiento-ortodoncia { background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; }
+.pe .pe-edit .pe-ficha #tipoTratamientoP.tratamiento-odontologia { background: #fce7f3; border-color: #ec4899; color: #9d174d; }
+/* Firma: estado como texto y "Ver firma" como enlace, igual que la lectura. */
+.pe-edit .pe-ficha .p-firma-group { align-items: center; gap: 12px; }
+.pe .pe-edit .pe-ficha .firma-status { flex: 0 1 auto; min-height: 0; padding: 0; margin: 0; width: auto; justify-content: flex-start;
+  background: none; border: 0; color: var(--pe-text); font-size: 14px; font-weight: 400; }
+.pe .pe-edit .pe-ficha .firma-status-empty { color: var(--pe-muted); font-style: italic; }
+.pe .pe-edit .pe-ficha #btn-ver-firma-paciente { padding: 2px 8px; background: none; border: 1px solid transparent; border-radius: 6px;
+  color: var(--pe-accent); font-size: 13px; font-weight: 600; }
+.pe .pe-edit .pe-ficha #btn-ver-firma-paciente:hover:not(:disabled) { background: var(--pe-accent-soft); }
+/* Motivo de consulta: conserva su pastilla ambar (paciente.css), como en la lectura. */
+.pe .pe-edit .pe-ficha #motivoConsultaP { width: 100%; margin: 0; padding: 3px 12px; }
+/* PC: mismas columnas y tamaños que la ficha (ver @media 1200px de .pe-ficha arriba). */
+@media (min-width: 1200px) {
+  .pe-edit .pe-ficha .form-label { font-size: 12px; margin-bottom: 5px; }
+  .pe .pe-edit .pe-ficha .form-control, .pe .pe-edit .pe-ficha .p-textarea, .pe .pe-edit .pe-ficha .firma-status { font-size: 16px; line-height: 1.55; }
+  .pe-edit .pe-ficha-fil .p-col.wide { grid-column: auto; }
+  .pe-edit .pe-ficha-his .p-col, .pe-edit .pe-ficha-his .p-col.wide { grid-column: span 2; }
+  .pe-edit .pe-ficha-his .p-col.h-hist { grid-column: span 3; }
+}
 /* En el expediente se guarda desde la barra de cada seccion. */
 .pe.is-exp #btn-guardar-paciente { display: none; }
 

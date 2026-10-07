@@ -8,7 +8,7 @@
   window.pacienteFotoPrincipalId = null;
   const PACIENTE_EDITABLE_IDS = [
     "NombreP", "direccionP", "telefonoP", "fechaRegistroP", "estadoP", "fechaNacimientoP", "sexoP",
-    "recomendadoP", "encargadoP", "motivoConsultaP", "ultimaVisitaP", "duiP", "correoP",
+    "recomendadoP", "encargadoP", "motivoConsultaP", "ultimaVisitaP", "alergiasP", "duiP", "correoP",
     "tipoMordidaP", "tipoTratamientoP", "historiaMedicaP", "historiaOdontologicaP",
     "examenClinicoP", "examenRadiologicoP", "examenComplementarioP", "endodonciaP",
     "dienteP", "vitalidadP", "percusionP", "medProvisional", "medTrabajoP",
@@ -1644,6 +1644,10 @@ function renderPaciente(container) {
           <div class="p-col p-20">
             <label class="form-label">Ultima visita dentista</label>
             <input type="date" class="form-control" id="ultimaVisitaP">
+          </div>
+          <div class="p-col p-50">
+            <label class="form-label">Alergias</label>
+            <input type="text" class="form-control" id="alergiasP" maxlength="255" placeholder="Ej: Penicilina, latex">
           </div>
         </div>
 
@@ -3412,6 +3416,7 @@ async function cargarPaciente(idPaciente) {
       encargadoP.value       = p.encargadoP || "";
       motivoConsultaP.value  = p.motivoConsultaP || "";
       ultimaVisitaP.value    = toInputDate(p.ultimaVisitaP) || "";
+      alergiasP.value        = p.alergiasP || "";
       const rutaFirma = String(p.firmaP || "").trim();
       firmaP.value           = rutaFirma;
       actualizarEstadoFirmaPaciente(rutaFirma);
@@ -5427,6 +5432,18 @@ function cleanupOdontoInlinePrintHost() {
   }
   odontoPrintInlineHost = null;
 }
+// En tablet/app standalone window.print() no bloquea: el dialogo re-renderiza la pagina
+// mientras sigue abierto y afterprint llega antes de tiempo. Si quitamos el host ahi, se
+// imprime la pantalla entera. Se deja el host (solo visible en @media print) hasta que el
+// usuario vuelva a tocar la app.
+function deferOdontoInlinePrintHostCleanup() {
+  document.body.classList.remove("odonto-print-inline-force");
+  const host = odontoPrintInlineHost;
+  if (!host) return;
+  window.addEventListener("pointerdown", () => {
+    if (odontoPrintInlineHost === host) cleanupOdontoInlinePrintHost();
+  }, { once: true, capture: true });
+}
 function closeOdontoPrintModal() {
   const refs = getOdontoPrintRefs();
   if (!refs.modal) return;
@@ -6348,6 +6365,7 @@ function buildPacienteExpedienteBodyHtml() {
       buildPacienteExpFieldHtml("Encargado", getPacientePrintControlText("encargadoP")),
       buildPacienteExpFieldHtml("Motivo consulta", getPacientePrintControlText("motivoConsultaP"), { wide: true }),
       buildPacienteExpFieldHtml("Ultima visita dentista", getPacientePrintDateText("ultimaVisitaP")),
+      buildPacienteExpFieldHtml("Alergias", getPacientePrintControlText("alergiasP"), { wide: true }),
       buildPacienteExpFieldHtml("Fecha nacimiento", getPacientePrintDateText("fechaNacimientoP")),
       buildPacienteExpFieldHtml("DUI", getPacientePrintControlText("duiP")),
       buildPacienteExpFieldHtml("Tipo tratamiento", getPacientePrintControlText("tipoTratamientoP"))
@@ -6422,7 +6440,7 @@ function openPacienteExpedientePrintPopupWindow(html) {
     setTimeout(() => {
       void (async () => {
         try {
-          await waitForPacienteExpPrintImages(popup.document);
+          await waitForPrintResources(popup.document);
           popup.focus();
           popup.print();
         } catch {
@@ -6440,17 +6458,22 @@ function openPacienteExpedientePrintPopupWindow(html) {
     return false;
   }
 }
-function waitForPacienteExpPrintImages(doc, timeoutMs = 1800) {
-  const images = Array.from(doc?.images || doc?.querySelectorAll?.("img") || []);
-  const pending = images.filter((img) => !img.complete);
+// Espera logo/marca de agua/firmas y la hoja de estilos antes de imprimir: en tablet o red
+// lenta, imprimir antes sale sin logo o sin formato.
+function waitForPrintResources(doc, timeoutMs = 3000) {
+  const images = Array.from(doc?.images || doc?.querySelectorAll?.("img") || [])
+    .filter((img) => !img.complete);
+  const sheets = Array.from(doc?.querySelectorAll?.('link[rel="stylesheet"]') || [])
+    .filter((link) => !link.sheet);
+  const pending = [...images, ...sheets];
   if (!pending.length) return Promise.resolve();
 
-  const imagePromises = pending.map((img) => new Promise((resolve) => {
-    img.addEventListener("load", resolve, { once: true });
-    img.addEventListener("error", resolve, { once: true });
+  const promises = pending.map((el) => new Promise((resolve) => {
+    el.addEventListener("load", resolve, { once: true });
+    el.addEventListener("error", resolve, { once: true });
   }));
   return Promise.race([
-    Promise.all(imagePromises),
+    Promise.all(promises),
     new Promise((resolve) => setTimeout(resolve, timeoutMs))
   ]);
 }
@@ -6492,7 +6515,8 @@ async function runPacienteExpedientePrintJob() {
     if (released) return;
     released = true;
     cleanupOdontoPrintFrame();
-    cleanupOdontoInlinePrintHost();
+    if (useMainWindowPrint) deferOdontoInlinePrintHostCleanup();
+    else cleanupOdontoInlinePrintHost();
     odontoPrintIsPrinting = false;
     const latestRefs = getOdontoPrintRefs();
     if (latestRefs.expBtn) latestRefs.expBtn.disabled = false;
@@ -6515,7 +6539,7 @@ async function runPacienteExpedientePrintJob() {
     ensurePacienteExpedienteInlinePrintHost(html);
     document.body.classList.add("odonto-print-inline-force");
     try {
-      await waitForPacienteExpPrintImages(odontoPrintInlineHost);
+      await waitForPrintResources(odontoPrintInlineHost);
       window.focus();
       window.print();
     } catch {
@@ -6555,7 +6579,7 @@ async function runPacienteExpedientePrintJob() {
     setTimeout(() => {
       void (async () => {
         try {
-          await waitForPacienteExpPrintImages(iframe.contentDocument);
+          await waitForPrintResources(iframe.contentDocument);
           targetWindow.focus();
           targetWindow.print();
         } catch {
@@ -6712,12 +6736,15 @@ function openOdontoPrintPopupWindow(draft) {
     popup.document.close();
 
     setTimeout(() => {
-      try {
-        popup.focus();
-        popup.print();
-      } catch {
-        // User can still print manually from browser menu
-      }
+      void (async () => {
+        try {
+          await waitForPrintResources(popup.document);
+          popup.focus();
+          popup.print();
+        } catch {
+          // User can still print manually from browser menu
+        }
+      })();
     }, 180);
     return true;
   } catch {
@@ -6755,7 +6782,8 @@ function runOdontoPrintJob() {
     if (released) return;
     released = true;
     cleanupOdontoPrintFrame();
-    cleanupOdontoInlinePrintHost();
+    if (useMainWindowPrint) deferOdontoInlinePrintHostCleanup();
+    else cleanupOdontoInlinePrintHost();
     odontoPrintIsPrinting = false;
     const latestRefs = getOdontoPrintRefs();
     if (latestRefs.runBtn) latestRefs.runBtn.disabled = false;
@@ -6777,12 +6805,15 @@ function runOdontoPrintJob() {
     }
     ensureInlinePrintHost(draftSnapshot);
     document.body.classList.add("odonto-print-inline-force");
-    try {
-      window.focus();
-      window.print();
-    } catch {
-      finishPrintFlow();
-    }
+    void (async () => {
+      try {
+        await waitForPrintResources(odontoPrintInlineHost);
+        window.focus();
+        window.print();
+      } catch {
+        finishPrintFlow();
+      }
+    })();
     return;
   }
 
@@ -6815,12 +6846,15 @@ function runOdontoPrintJob() {
     }, { once: true });
 
     setTimeout(() => {
-      try {
-        targetWindow.focus();
-        targetWindow.print();
-      } catch {
-        finishPrintFlow();
-      }
+      void (async () => {
+        try {
+          await waitForPrintResources(iframe.contentDocument);
+          targetWindow.focus();
+          targetWindow.print();
+        } catch {
+          finishPrintFlow();
+        }
+      })();
     }, 160);
   };
 
@@ -6920,6 +6954,63 @@ function buildOdontoMultiPreviewUrl(rawUrl) {
   const withoutHash = base.split("#")[0];
   return `${withoutHash}#view=FitH&zoom=page-width&navpanes=0&pagemode=none`;
 }
+// Chrome de Android no muestra PDFs dentro de la pagina (pide descargarlos), asi que en
+// tablet se dibujan las paginas como imagenes con pdf.js y eso se previsualiza e imprime.
+let odontoPdfJsPromise = null;
+let odontoPdfImagesCache = { url: "", promise: null };
+function loadOdontoPdfJs() {
+  if (!odontoPdfJsPromise) {
+    odontoPdfJsPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/js/vendor/pdf.min.js";
+      script.onload = () => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/js/vendor/pdf.worker.min.js";
+        resolve(window.pdfjsLib);
+      };
+      script.onerror = () => {
+        odontoPdfJsPromise = null;
+        reject(new Error("No se pudo cargar el visor PDF."));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return odontoPdfJsPromise;
+}
+function renderOdontoPdfToImages(url) {
+  if (odontoPdfImagesCache.url === url && odontoPdfImagesCache.promise) {
+    return odontoPdfImagesCache.promise;
+  }
+  const promise = (async () => {
+    const pdfjsLib = await loadOdontoPdfJs();
+    const pdf = await pdfjsLib.getDocument(url).promise;
+    const images = [];
+    for (let i = 1; i <= pdf.numPages; i += 1) {
+      const page = await pdf.getPage(i);
+      // ~150 dpi: suficiente para imprimir sin pesar demasiado en la tablet.
+      const viewport = page.getViewport({ scale: 150 / 72 });
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      images.push(canvas.toDataURL("image/jpeg", 0.92));
+    }
+    pdf.destroy();
+    return images;
+  })();
+  odontoPdfImagesCache = { url, promise };
+  promise.catch(() => {
+    if (odontoPdfImagesCache.promise === promise) odontoPdfImagesCache = { url: "", promise: null };
+  });
+  return promise;
+}
+function buildOdontoPdfImagesHtml(images) {
+  return images
+    .map((src) => `<img src="${src}" alt="" style="display:block;width:100%;height:auto;break-after:page;page-break-after:always">`)
+    .join("");
+}
 function renderOdontoMultiPreview() {
   const refs = getOdontoPrintRefs();
   const selected = getSelectedOdontoMultiDoc();
@@ -6938,9 +7029,26 @@ function renderOdontoMultiPreview() {
     return;
   }
 
-  refs.multiPreviewFrame.src = buildOdontoMultiPreviewUrl(selected.url);
   refs.multiPreviewFrame.hidden = false;
   refs.multiPreviewEmpty.hidden = true;
+  if (!shouldUseMainWindowPrintMode()) {
+    refs.multiPreviewFrame.src = buildOdontoMultiPreviewUrl(selected.url);
+    return;
+  }
+  const frame = refs.multiPreviewFrame;
+  const url = selected.url;
+  const wrap = (body) => `<!doctype html><html><body style="margin:0;padding:8px;background:#e5e7eb;font-family:sans-serif">${body}</body></html>`;
+  frame.removeAttribute("src");
+  frame.srcdoc = wrap('<p style="text-align:center;color:#475569">Cargando documento...</p>');
+  renderOdontoPdfToImages(url)
+    .then((images) => {
+      if (getSelectedOdontoMultiDoc()?.url !== url) return;
+      frame.srcdoc = wrap(images.map((src) => `<img src="${src}" alt="" style="display:block;width:100%;margin:0 auto 8px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.2)">`).join(""));
+    })
+    .catch((err) => {
+      if (getSelectedOdontoMultiDoc()?.url !== url) return;
+      frame.srcdoc = wrap(`<p style="text-align:center;color:#b91c1c">${escapeHtml(err?.message || "No se pudo mostrar el PDF.")}</p>`);
+    });
 }
 function renderOdontoMultiDocList() {
   const refs = getOdontoPrintRefs();
@@ -7051,32 +7159,6 @@ async function openOdontoMultiPrintModal() {
     alert(err?.message || "No se pudo cargar la biblioteca PDF.");
   }
 }
-function openPdfPrintPopup(url, title = "Imprimir documento PDF") {
-  let popup = null;
-  try {
-    popup = window.open("", "_blank");
-  } catch {
-    popup = null;
-  }
-  if (!popup) return false;
-  try {
-    popup.document.open();
-    popup.document.write(`<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><title>${title}</title></head>
-<body style="margin:0;padding:0">
-  <iframe src="${url}" style="width:100vw;height:100vh;border:0" onload="setTimeout(function(){try{window.focus();window.print();}catch(e){}},220)"></iframe>
-</body></html>`);
-    popup.document.close();
-    return true;
-  } catch {
-    try {
-      popup.close();
-    } catch {
-      // ignore
-    }
-    return false;
-  }
-}
 function runOdontoMultiPrintJob() {
   if (odontoMultiPrintIsPrinting) return;
   const selected = getSelectedOdontoMultiDoc();
@@ -7096,6 +7178,7 @@ function runOdontoMultiPrintJob() {
     released = true;
     odontoMultiPrintIsPrinting = false;
     cleanupOdontoMultiPrintFrame();
+    deferOdontoInlinePrintHostCleanup();
     const nextRefs = getOdontoPrintRefs();
     if (nextRefs.multiRunBtn) nextRefs.multiRunBtn.disabled = false;
   };
@@ -7107,19 +7190,29 @@ function runOdontoMultiPrintJob() {
   window.addEventListener("afterprint", finish, { once: true });
 
   if (shouldUseMainWindowPrintMode()) {
-    if (openPdfPrintPopup(selected.url, selected.name || selected.fileName)) {
-      setTimeout(finish, 1200);
-      return;
-    }
-    try {
-      const opened = window.open(selected.url, "_blank");
-      if (!opened) throw new Error("popup-bloqueado");
-      setTimeout(finish, 1200);
-      return;
-    } catch {
-      finish();
-      return;
-    }
+    // afterprint ya registrado arriba; release() deja el host hasta el siguiente toque.
+    void (async () => {
+      try {
+        const images = await renderOdontoPdfToImages(selected.url);
+        cleanupOdontoInlinePrintHost();
+        const host = document.createElement("div");
+        host.id = "odonto-print-inline-host";
+        host.className = "odonto-print-inline-host";
+        host.setAttribute("aria-hidden", "true");
+        host.innerHTML = buildOdontoPdfImagesHtml(images);
+        document.body.appendChild(host);
+        odontoPrintInlineHost = host;
+        document.body.classList.add("odonto-print-inline-mode", "odonto-print-inline-force");
+        await Promise.all([...host.querySelectorAll("img")].map((img) => img.decode().catch(() => {})));
+        window.focus();
+        window.print();
+      } catch (err) {
+        cleanupOdontoInlinePrintHost();
+        finish();
+        alert(err?.message || "No se pudo imprimir el documento.");
+      }
+    })();
+    return;
   }
 
   const iframe = document.createElement("iframe");
@@ -8060,6 +8153,7 @@ async function guardarPaciente() {
     encargadoP: encargadoP.value,
     motivoConsultaP: motivoConsultaP.value,
     ultimaVisitaP: ultimaVisitaP.value || null,
+    alergiasP: alergiasP.value.trim(),
     firmaP: firmaP.value || null,
     duiP: duiP.value,
     correoP: correoP.value.trim(),

@@ -305,7 +305,7 @@ async function consultarMonitorConFiltroProxima({
       WHERE (? = '' OR LOWER(IFNULL(b.NombreP, '')) LIKE CONCAT('%', ?, '%') OR b.telefonoNorm LIKE CONCAT('%', ?, '%'))
         AND (? = 'all' OR b.estadoKey = ?)
         AND (? = 'all' OR b.tratamientoKey = ?)
-        AND b.tieneProxima = ?
+        AND (? = 'all' OR b.tieneProxima = ?)
     )
   `;
   const cteParams = [
@@ -314,7 +314,7 @@ async function consultarMonitorConFiltroProxima({
     qNorm, qNorm, qNorm,
     estado, estado,
     tratamientoEfectivo, tratamientoEfectivo,
-    proximaFiltro === "con" ? 1 : 0
+    proximaFiltro, proximaFiltro === "con" ? 1 : 0
   ];
 
   const [dataRows] = await queryReadWithRetry(
@@ -351,6 +351,25 @@ async function consultarMonitorConFiltroProxima({
       m3: Number(totales.m3 || 0)
     }
   };
+}
+
+// Mensajes > Promociones: todos los pacientes (sin paginar) con los filtros del Seguimiento.
+// segmento incluye "al_dia" (aqui si se puede elegir); "cancelados" no aplica.
+const PROMO_SEGMENT_VALUES = new Set(["all", "al_dia", "retrasado", "m2", "m3"]);
+async function listarPacientesSeguimiento(filters = {}) {
+  const segmento = normalizeMonitorEnum(filters.segmento, PROMO_SEGMENT_VALUES, "all");
+  const estado = normalizeMonitorEnum(filters.estado, MONITOR_ESTADO_VALUES, "all");
+  const tratamiento = normalizeMonitorEnum(filters.tratamiento, MONITOR_TRATAMIENTO_VALUES, "all");
+  const proximaFiltro = normalizeMonitorEnum(filters.proximaFiltro, MONITOR_PROXIMA_FILTRO_VALUES, "all");
+  if ([segmento, estado, tratamiento, proximaFiltro].includes("__INVALID__")) {
+    const error = new Error("Filtros invalidos");
+    error.status = 400;
+    throw error;
+  }
+  const { dataRows } = await consultarMonitorConFiltroProxima({
+    fechaCorte: getTodayLocalISO(), segmento, estado, tratamiento, q: "", page: 1, pageSize: 100000, proximaFiltro
+  });
+  return dataRows;
 }
 
 function buildMonitorContactoData(vigente) {
@@ -786,8 +805,8 @@ const obtenerPorId = async (req, res) => {
     }
 
     const [rows] = await queryReadWithRetry(
-      // _v2 = sp_paciente_get_by_id + sexoP (sql/2026-09-25_paciente_sexo.sql); el original queda para versiones anteriores.
-      "CALL sp_paciente_get_by_id_v2(?)",
+      // _v3 = _v2 + alergiasP (sql/2026-10-06_paciente_alergias.sql); _v2 y el original quedan para versiones anteriores.
+      "CALL sp_paciente_get_by_id_v3(?)",
       [id]
     );
 
@@ -1373,9 +1392,14 @@ const guardarPaciente = async (req, res) => {
       return badRequest(res, "sexoP invalido (F, M o vacio)");
     }
 
-    // _v3 = _v2 + sexoP (sql/2026-09-25_paciente_sexo.sql); _v2 y el original quedan para versiones anteriores.
+    const alergiasP = String(p?.alergiasP || "").trim();
+    if (alergiasP.length > 255) {
+      return badRequest(res, "alergiasP permite maximo 255 caracteres");
+    }
+
+    // _v4 = _v3 + alergiasP (sql/2026-10-06_paciente_alergias.sql); _v3, _v2 y el original quedan para versiones anteriores.
     const [rows] = await pool.query(
-      "CALL sp_paciente_guardar_v3(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      "CALL sp_paciente_guardar_v4(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       [
         idPacienteNum,
         nombre,
@@ -1389,6 +1413,7 @@ const guardarPaciente = async (req, res) => {
         p.encargadoP,
         p.motivoConsultaP,
         p.ultimaVisitaP,
+        alergiasP || null,
         p.duiP,
         p.firmaP || null,
         correoP || null,
@@ -2001,6 +2026,7 @@ const eliminarNotaProximaCita = async (req, res) => {
 };
 
 module.exports = {
+  listarPacientesSeguimiento,
   listarNotasProximaCita,
   crearNotaProximaCita,
   actualizarNotaProximaCita,

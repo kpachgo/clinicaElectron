@@ -390,7 +390,11 @@ body {
     background: var(--bg-gray);
     color: var(--text-color);
     height: 100vh;
+    /* En tablet/movil: alto visible real, asi la barra del navegador no se
+       oculta al hacer scroll y no hay "tiron" al reacomodar la vista */
+    height: 100dvh;
     overflow: hidden;
+    overscroll-behavior: none;
 }
 
 /* Contenedor principal */
@@ -407,6 +411,7 @@ body {
     padding: 24px;
     background: var(--bg-gray);
     overflow-y: auto;
+    overscroll-behavior: contain;
     /* Reserva el mismo espacio a ambos lados que ocupa la barra de scroll,
        para que las vistas queden centradas respecto al navbar */
     scrollbar-gutter: stable both-edges;

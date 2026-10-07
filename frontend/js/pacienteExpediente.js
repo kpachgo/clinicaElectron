@@ -87,7 +87,9 @@
     const v = String(value || "").trim();
     const cls = `pe-f${v ? "" : " empty"}${opts.wide ? " wide" : ""}${opts.cls ? ` ${opts.cls}` : ""}`;
     const shown = v && opts.pill ? `<span class="pe-pill ${opts.pill}">${esc(v)}</span>` : esc(v);
-    return `<div class="${cls}"><dt>${opts.icon ? ico(opts.icon) : ""}${label}</dt><dd>${v ? shown : EMPTY}</dd>${opts.extra || ""}</div>`;
+    // data-pe-for: id del control del formulario; startEdit() lo usa para acomodar la edicion igual.
+    const forId = opts.id ? ` data-pe-for="${opts.id}"` : "";
+    return `<div class="${cls}"${forId}><dt>${opts.icon ? ico(opts.icon) : ""}${label}</dt><dd>${v ? shown : EMPTY}</dd>${opts.extra || ""}</div>`;
   }
   // Color del tipo de tratamiento: el mismo que toma el select en el formulario (paciente.css .tratamiento-*).
   const tratClass = (t) => ({ Ortodoncia: "trat-orto", Odontologia: "trat-odonto" })[t] || "";
@@ -307,10 +309,49 @@
   const controlsOf = (panel) => Array.from(panel.querySelectorAll(".pe-edit input, .pe-edit select, .pe-edit textarea"))
     .filter((c) => c.id && c.type !== "hidden" && !c.classList.contains("autofill-trap"));
 
+  // Edicion con el mismo diseño que la lectura: el formulario toma la cuadricula, el orden, los
+  // titulos con icono y la linea de la ficha (CSS .pe-edit .pe-ficha). Todo sale de la ficha de
+  // lectura (data-pe-for), asi no hay una segunda lista de campos. Al salir se devuelve tal cual,
+  // porque el mismo formulario se usa apilado para "nuevo paciente".
+  function dressEdit(panel) {
+    const card = panel.querySelector(".pe-edit > .paciente-card");
+    const ficha = panel.querySelector(".pe-read .pe-ficha");
+    if (!card || !ficha || card.dataset.peDressed) return;
+    const cardCls = [...ficha.classList];
+    card.classList.add(...cardCls);
+    card.dataset.peDressed = cardCls.join(" ");
+    ficha.querySelectorAll(".pe-f[data-pe-for]").forEach((f, i) => {
+      const col = el(f.dataset.peFor)?.closest(".p-col");
+      if (!col) return;
+      const extra = ["wide", "h-hist", "h-motivo"].filter((c) => f.classList.contains(c));
+      col.classList.add("pe-f", ...extra);
+      col.dataset.peCls = ["pe-f", ...extra].join(" ");
+      col.style.order = String(i);
+      const label = col.querySelector(":scope > .form-label");
+      if (!label) return;
+      if (!label.querySelector(".pe-lbl-o")) {
+        label.innerHTML = `<span class="pe-lbl-o">${label.innerHTML}</span><span class="pe-lbl-x"></span>`;
+      }
+      label.querySelector(".pe-lbl-x").innerHTML = f.querySelector("dt")?.innerHTML || "";
+    });
+  }
+  function undressEdit(panel) {
+    const card = panel?.querySelector(".pe-edit > .paciente-card");
+    if (!card?.dataset.peDressed) return;
+    card.classList.remove(...card.dataset.peDressed.split(" "));
+    delete card.dataset.peDressed;
+    card.querySelectorAll(".p-col[data-pe-cls]").forEach((col) => {
+      col.classList.remove(...col.dataset.peCls.split(" "));
+      delete col.dataset.peCls;
+      col.style.order = "";
+    });
+  }
+
   function startEdit(id) {
     const panel = panelOf(id);
     if (!panel || panel.classList.contains("pe-raw")) return;
     editSnapshots.set(id, controlsOf(panel).map((c) => [c, c.value]));
+    dressEdit(panel);
     panel.classList.add("is-editing");
     const first = controlsOf(panel).find((c) => !c.disabled);
     setTimeout(() => first?.focus(), 0);
@@ -330,6 +371,7 @@
       window.__pacienteSetCambiosPendientes?.(false);
     }
     panel.classList.remove("is-editing");
+    undressEdit(panel);
     refresh();
   }
 
@@ -343,6 +385,7 @@
       if (ok) {
         editSnapshots.delete(id);
         panelOf(id)?.classList.remove("is-editing");
+        undressEdit(panelOf(id));
         refresh();
       }
     } finally {
@@ -353,7 +396,10 @@
 
   function exitAllEdits() {
     editSnapshots.clear();
-    root?.querySelectorAll(".pe-panel.is-editing").forEach((p) => p.classList.remove("is-editing"));
+    root?.querySelectorAll(".pe-panel.is-editing").forEach((p) => {
+      p.classList.remove("is-editing");
+      undressEdit(p);
+    });
   }
 
   // ---------- secciones y disposicion ----------
@@ -466,12 +512,11 @@
       : '<span class="muted">Sin etiquetas</span>';
     const notas = val("notasObservacionP");
     refreshNotas();
-    const alergiasDe = (t) => String(t || "").split("\n").map((l) => l.trim()).filter((l) => /alergi/i.test(l));
-    const alergias = alergiasDe(val("historiaMedicaP")).length ? alergiasDe(val("historiaMedicaP")) : alergiasDe(notas);
+    const alergias = val("alergiasP").trim();
     const allergyEl = root.querySelector(".pe-allergies");
-    allergyEl.textContent = alergias.length ? alergias.join("\n") : "Sin alergias registradas";
-    allergyEl.classList.toggle("muted", !alergias.length);
-    allergyEl.closest(".pe-mini").classList.toggle("none", !alergias.length);
+    allergyEl.textContent = alergias || "Sin alergias registradas";
+    allergyEl.classList.toggle("muted", !alergias);
+    allergyEl.closest(".pe-mini").classList.toggle("none", !alergias);
 
     // Lecturas por seccion
     const body = (id) => panelOf(id)?.querySelector(".pe-read-b");
@@ -479,31 +524,33 @@
     const set = (id, html) => { const b = body(id); if (b) b.innerHTML = html; };
     // Ficha: icono pequeño + linea divisoria; en PC 3 columnas (ver .pe-ficha en pacienteExpediente.css).
     set("filiacion", `<dl class="pe-fields pe-ficha pe-ficha-fil">
-      ${field("Nombre", nombre, { icon: "user" })}${field("Fecha de nacimiento", fecha(val("fechaNacimientoP")), { icon: "cal" })}
-      ${field("Edad", edad ? `${edad} años` : "", { icon: "cal" })}${field("Sexo", selText("sexoP"), { icon: "user" })}
-      ${field("DUI", val("duiP"), { icon: "id" })}${field("Telefono", val("telefonoP"), { icon: "phone" })}
-      ${field("Correo", val("correoP"), { wide: true, icon: "mail" })}
-      ${field("Direccion", val("direccionP"), { wide: true, icon: "pin" })}
-      ${field("Encargado", val("encargadoP"), { icon: "users" })}${field("Recomendado por", selText("recomendadoP"), { icon: "tag" })}
-      ${field("Tipo de tratamiento", selText("tipoTratamientoP"), { icon: "tooth", pill: tratClass(selText("tipoTratamientoP")) })}${field("Estado", selText("estadoP"), { icon: "check" })}
-      ${field("Fecha de registro", fecha(val("fechaRegistroP")), { icon: "clip" })}
-      ${field("Firma paciente / encargado", firma ? "Registrada" : "", { icon: "pen", extra: firma ? firmaExtra : "" })}
+      ${field("Nombre", nombre, { id: "NombreP", icon: "user" })}${field("Fecha de nacimiento", fecha(val("fechaNacimientoP")), { id: "fechaNacimientoP", icon: "cal" })}
+      ${field("Edad", edad ? `${edad} años` : "", { id: "edadP", icon: "cal" })}${field("Sexo", selText("sexoP"), { id: "sexoP", icon: "user" })}
+      ${field("DUI", val("duiP"), { id: "duiP", icon: "id" })}${field("Telefono", val("telefonoP"), { id: "telefonoP", icon: "phone" })}
+      ${field("Correo", val("correoP"), { id: "correoP", wide: true, icon: "mail" })}
+      ${field("Direccion", val("direccionP"), { id: "direccionP", wide: true, icon: "pin" })}
+      ${field("Encargado", val("encargadoP"), { id: "encargadoP", icon: "users" })}${field("Recomendado por", selText("recomendadoP"), { id: "recomendadoP", icon: "tag" })}
+      ${field("Tipo de tratamiento", selText("tipoTratamientoP"), { id: "tipoTratamientoP", icon: "tooth", pill: tratClass(selText("tipoTratamientoP")) })}${field("Estado", selText("estadoP"), { id: "estadoP", icon: "check", pill: val("estadoP") === "1" ? "est-activo" : "est-inactivo" })}
+      ${field("Fecha de registro", fecha(val("fechaRegistroP")), { id: "fechaRegistroP", icon: "clip" })}
+      ${field("Firma paciente / encargado", firma ? "Registrada" : "", { id: "firmaP", icon: "pen", extra: firma ? firmaExtra : "" })}
     </dl>`);
     set("historia", `<dl class="pe-fields pe-ficha pe-ficha-his">
-      ${field("Motivo de consulta", val("motivoConsultaP"), { wide: true, icon: "clip", cls: "h-motivo", pill: "motivo" })}${field("Ultima visita al dentista", fecha(val("ultimaVisitaP")), { icon: "cal" })}
-      ${field("Historia medica", val("historiaMedicaP"), { icon: "note", cls: "h-hist" })}${field("Historia odontologica", val("historiaOdontologicaP"), { icon: "tooth", cls: "h-hist" })}
-      ${field("Examen clinico", val("examenClinicoP"), { wide: true, icon: "check" })}
-      ${field("Examen radiologico", val("examenRadiologicoP"), { icon: "photo" })}${field("Examenes complementarios", val("examenComplementarioP"), { icon: "clip" })}
+      ${field("Motivo de consulta", val("motivoConsultaP"), { id: "motivoConsultaP", wide: true, icon: "clip", cls: "h-motivo", pill: "motivo" })}${field("Ultima visita al dentista", fecha(val("ultimaVisitaP")), { id: "ultimaVisitaP", icon: "cal" })}${field("Alergias", val("alergiasP"), { id: "alergiasP", icon: "warn" })}
+      ${field("Historia medica", val("historiaMedicaP"), { id: "historiaMedicaP", icon: "note", cls: "h-hist" })}${field("Historia odontologica", val("historiaOdontologicaP"), { id: "historiaOdontologicaP", icon: "tooth", cls: "h-hist" })}
+      ${field("Examen clinico", val("examenClinicoP"), { id: "examenClinicoP", wide: true, icon: "check" })}
+      ${field("Examen radiologico", val("examenRadiologicoP"), { id: "examenRadiologicoP", icon: "photo" })}${field("Examenes complementarios", val("examenComplementarioP"), { id: "examenComplementarioP", icon: "clip" })}
     </dl>`);
+    // Sin datos se muestra "Agregar", pero la ficha va oculta igual: startEdit() la usa para acomodar el formulario.
+    const orBlank = (secId, has, dl) => (has ? dl : `${blank(secId)}<div hidden>${dl}</div>`);
     const endo = ["endodonciaP", "dienteP", "vitalidadP", "percusionP", "medProvisional", "medTrabajoP"];
-    set("endodoncia", endo.some(val) ? `<dl class="pe-fields">
-      ${field("Endodoncia", val("endodonciaP"))}${field("Diente", val("dienteP"))}
-      ${field("Vitalidad", val("vitalidadP"))}${field("Percusion", val("percusionP"))}
-      ${field("Med. provisional", val("medProvisional"))}${field("Med. de trabajo", val("medTrabajoP"))}
-    </dl>` : blank("endodoncia"));
-    set("diagnostico", val("tratamientoP") || notas ? `<dl class="pe-fields">
-      ${field("Diagnostico final", val("tratamientoP"), { wide: true })}${field("Notas / observaciones", notas, { wide: true })}
-    </dl>` : blank("diagnostico"));
+    set("endodoncia", orBlank("endodoncia", endo.some(val), `<dl class="pe-fields pe-ficha pe-ficha-endo">
+      ${field("Endodoncia", val("endodonciaP"), { id: "endodonciaP", icon: "bolt" })}${field("Diente", val("dienteP"), { id: "dienteP", icon: "tooth" })}
+      ${field("Vitalidad", val("vitalidadP"), { id: "vitalidadP", icon: "check" })}${field("Percusion", val("percusionP"), { id: "percusionP", icon: "check" })}
+      ${field("Med. provisional", val("medProvisional"), { id: "medProvisional", icon: "note" })}${field("Med. de trabajo", val("medTrabajoP"), { id: "medTrabajoP", icon: "note" })}
+    </dl>`));
+    set("diagnostico", orBlank("diagnostico", !!(val("tratamientoP") || notas), `<dl class="pe-fields pe-ficha">
+      ${field("Diagnostico final", val("tratamientoP"), { id: "tratamientoP", wide: true, icon: "check" })}${field("Notas / observaciones", notas, { id: "notasObservacionP", wide: true, icon: "note" })}
+    </dl>`));
     // Sin datos: la seccion no muestra "Editar" arriba (ya esta el boton Agregar).
     ["endodoncia", "diagnostico"].forEach((id) => {
       const p = panelOf(id);
