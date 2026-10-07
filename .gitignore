@@ -30,7 +30,7 @@ build/icons/*
 backend/cloud/
 
 # Pagina de pruebas de diseño (local, no es parte de la app).
-frontend/prueba.html
+frontend/prueba*.html
 frontend/prueba-assets/
 
 # Exportaciones de configuración de Mensajes: contienen la API key del proveedor IA.
