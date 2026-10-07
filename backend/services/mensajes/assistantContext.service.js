@@ -79,7 +79,7 @@ function formatGapDate(value) {
 // 5 días después de pedir una reprogramación se respondía retomando la
 // reprogramación. La cita ya gestionada no se pierde: viaja en la memoria del
 // agente (describeAssistantMemory), no en el historial.
-function mapHistory(messages) {
+function mapHistory(messages, { promoTexts = new Set() } = {}) {
   const valid = (messages || []).filter((message) => message && typeof message.content === "string" && message.content.trim());
   // messageAt (fecha real del mensaje, la del teléfono) y no createdAt: en
   // chats con historial importado createdAt queda igual para todos los
@@ -110,11 +110,16 @@ function mapHistory(messages) {
     // distingue, un compromiso del staff (ej. "sí hay espacio hoy a las 3pm") se lee como
     // si la IA misma lo hubiera dicho, y no hay forma de detectar luego que lo está contradiciendo.
     const isHumanOutgoing = message.direction === "outgoing" && message.author === "human";
+    // Una promoción la mandó la clínica por su cuenta (envío a varios pacientes): sin marca se lee como
+    // si la IA hubiera iniciado la charla, y no se entiende que el paciente está respondiendo a una oferta.
+    const isPromo = message.direction === "outgoing" && message.author === "system" && promoTexts.has(message.content.trim());
     result.push({
       role: message.direction === "incoming" ? "user" : "assistant",
       content: isHumanOutgoing
         ? `[Mensaje enviado por el personal de recepción (un humano), no por vos]: ${message.content.trim()}`
-        : message.content.trim()
+        : isPromo
+          ? `[Promoción enviada por la clínica a varios pacientes; no respondía a algo que pidió el paciente]: ${message.content.trim()}`
+          : message.content.trim()
     });
   }
   return result;
@@ -146,6 +151,24 @@ function buildReminderToolContext({ conversation, historyLimit, history }) {
  * @param {{ conversation: any, linkedPatient?: any, historyLimit?: number }} input
  * @returns {Promise<{ systemBlocks: string[], history: Array<{role:string,content:string}> }>}
  */
+// Promoción reciente enviada a este paciente: la intención de la clínica como contexto, no como guion.
+// Va como bloque aparte (no solo en el historial) porque el corte de 48h la saca del historial si el
+// paciente vuelve a escribir días después; así la IA sigue sabiendo qué se le ofreció.
+const PROMO_CONTEXT_DAYS = 15;
+function describeRecentPromos(promos) {
+  if (!promos.length) return null;
+  return [
+    "PROMOCIÓN QUE LA CLÍNICA LE ENVIÓ A ESTE PACIENTE (por iniciativa de la clínica, en un envío a varios pacientes; el paciente no la pidió):",
+    ...promos.map((p) => `- Enviada el ${formatGapDate(String(p.sentAt).replace(" ", "T") + "Z") || "hace poco"}${p.validUntil ? `, válida hasta el ${formatGapDate(`${p.validUntil}T12:00:00Z`)}` : ""}: «${p.content.trim()}»`),
+    "La intención es que el paciente la aproveche y agende. Respondé con normalidad:",
+    "- Si pregunta o responde sobre la promoción, resolvé sus dudas con lo que dice ese mensaje y la INFORMACIÓN DE LA CLÍNICA, y ofrecé agendar cuando muestre interés. Si no le interesa, agradecé sin insistir.",
+    "- Si escribe por otro motivo, atendé ese motivo y no saques la promoción salvo que venga al caso.",
+    "- No supongas por qué la recibió: las promociones pueden ir a pacientes activos, inactivos o nuevos.",
+    "- Para lo que ofrece la promoción, el precio y las condiciones del mensaje son los válidos para este paciente, aunque en la INFORMACIÓN DE LA CLÍNICA o en el catálogo no aparezca o aparezca con otro precio. Para cualquier otro servicio, usá los precios de siempre.",
+    "- No extiendas la promoción a otros servicios ni le agregues condiciones que el mensaje no dice. Si pregunta un detalle que el mensaje no aclara (qué incluye exactamente, si aplica a otra persona, etc.), no lo inventes: decile que recepción se lo confirma y transferí."
+  ].join("\n");
+}
+
 function describeAssistantMemory(memory) {
   const last = memory?.lastAppointment;
   if (!last || !last.appointmentId) return null;
@@ -163,6 +186,11 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
   const services = await listAiServices("");
   const clinic = getClinicSchedule();
   const { fecha, hora, iso } = nowParts();
+  const rawMessages = Array.isArray(history) ? [] : repo.listMessages(conversation.id, { limit: historyLimit });
+  const promos = conversation.id > 0 ? repo.getRecentSentPromos({
+    phones: [conversation.phone, conversation.waContactNumber].filter(Boolean),
+    contents: rawMessages.filter((m) => m.direction === "outgoing" && m.author === "system").map((m) => m.content)
+  }, PROMO_CONTEXT_DAYS) : [];
 
   // Orden pensado para el context caching por prefijo de DeepSeek (y de cualquier proveedor
   // similar): lo que es igual en TODAS las conversaciones va primero (se cachea entre
@@ -206,6 +234,7 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
     !linkedPatient?.patientId && conversation.phoneResolved && /^\d{8}$/.test(String(conversation.phone || ""))
       ? `El paciente escribe desde el número ${conversation.phone}. Pedile el teléfono de forma normal (junto con el nombre). NO le preguntes si es el mismo número del chat. Solo si el paciente dice por su cuenta que su teléfono es el mismo del chat, llamá crear_cita con usar_telefono_del_chat=true en vez de telefono.`
       : null,
+    describeRecentPromos(promos),
     // --- Cambia en cada llamada: va al final para no cortar el prefijo cacheable de arriba ---
     `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}. Resolvé "hoy", "mañana", "el lunes" con base en esto.`
   ];
@@ -216,7 +245,7 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
 
   const resolvedHistory = Array.isArray(history)
     ? history
-    : mapHistory(repo.listMessages(conversation.id, { limit: historyLimit }));
+    : mapHistory(rawMessages, { promoTexts: new Set(promos.map((p) => p.content.trim())) });
   return { systemBlocks: systemBlocks.filter(Boolean), history: resolvedHistory };
 }
 

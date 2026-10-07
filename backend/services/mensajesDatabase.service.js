@@ -331,6 +331,25 @@ const migrations = [
   // No cambia el modo de atención: si el paciente vuelve a escribir, ese mensaje
   // nuevo tiene un id mayor y el chat vuelve a quedar "Sin responder".
   ,`ALTER TABLE conversations ADD COLUMN attended_message_id INTEGER NULL;`
+  // Promociones (Mensajes > Promociones): una campaña = un texto; se envía por bloques
+  // (lotes) a pacientes del Seguimiento. promo_batch_items es el registro de a quién se le
+  // mandó: un paciente/teléfono con la campaña ya 'sent' no entra en los bloques siguientes.
+  ,`CREATE TABLE IF NOT EXISTS promo_campaigns (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, template TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS promo_batches (id INTEGER PRIMARY KEY AUTOINCREMENT, campaign_id INTEGER NOT NULL REFERENCES promo_campaigns(id), template TEXT NOT NULL, filters_json TEXT NOT NULL DEFAULT '{}', min_delay_seconds REAL NOT NULL, max_delay_seconds REAL NOT NULL, status TEXT NOT NULL DEFAULT 'queued', total_count INTEGER NOT NULL DEFAULT 0, sent_count INTEGER NOT NULL DEFAULT 0, failed_count INTEGER NOT NULL DEFAULT 0, cancelled_count INTEGER NOT NULL DEFAULT 0, last_error TEXT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), started_at TEXT NULL, finished_at TEXT NULL, updated_at TEXT NOT NULL DEFAULT (datetime('now')));
+    CREATE TABLE IF NOT EXISTS promo_batch_items (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NOT NULL REFERENCES promo_batches(id) ON DELETE CASCADE, campaign_id INTEGER NOT NULL, patient_id INTEGER NOT NULL, patient_name TEXT NOT NULL, phone TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', queue_id INTEGER NULL, error TEXT NULL, sent_at TEXT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(batch_id, patient_id));
+    CREATE INDEX IF NOT EXISTS idx_promo_batches_status ON promo_batches(status);
+    CREATE INDEX IF NOT EXISTS idx_promo_items_batch_status ON promo_batch_items(batch_id, status);
+    CREATE INDEX IF NOT EXISTS idx_promo_items_campaign_status ON promo_batch_items(campaign_id, status);`
+  // La campaña recuerda sus filtros: al retomarla otro día se restauran y se ve cuántos faltan.
+  ,`ALTER TABLE promo_campaigns ADD COLUMN filters_json TEXT NOT NULL DEFAULT '{}';`
+  // Origen de la campaña: 'seguimiento' (pacientes del sistema con filtros) o 'lista' (contactos
+  // importados de Excel/CSV, que pueden no existir en el sistema). En una campaña 'lista',
+  // promo_batch_items.patient_id guarda el id de promo_campaign_contacts.
+  ,`ALTER TABLE promo_campaigns ADD COLUMN source TEXT NOT NULL DEFAULT 'seguimiento';
+    CREATE TABLE IF NOT EXISTS promo_campaign_contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, campaign_id INTEGER NOT NULL REFERENCES promo_campaigns(id) ON DELETE CASCADE, name TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(campaign_id, phone));`
+  // Vigencia de la promoción (YYYY-MM-DD, opcional): hasta ese día la IA la tiene en cuenta en los chats
+  // que la recibieron. Sin fecha, 15 días desde el envío (assistantContext).
+  ,`ALTER TABLE promo_campaigns ADD COLUMN valid_until TEXT NULL;`
 ];
 
 function getDb() {

@@ -116,12 +116,348 @@
         try { localStorage.setItem(TOOLS_KEY, collapsed ? "1" : "0"); } catch (_) {}
     }
     // --- Recordatorios ---
-    async function openReminderModal() { let modal = document.getElementById("mensajes-reminder-modal"); if (!modal) { modal = document.createElement("div"); modal.id = "mensajes-reminder-modal"; modal.className = "mensajes-settings-overlay"; modal.innerHTML = `<form class="mensajes-reminder-card"><button type="button" data-close>×</button><h2>Enviar recordatorios</h2><label>Fecha<input id="reminder-date" type="date" required></label><label>Plantilla<textarea id="reminder-template" rows="4">Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.</textarea></label><label class="ai-enabled"><input id="reminder-force-resend" type="checkbox"> Permitir reenviar recordatorios ya enviados</label><div class="reminder-toolbar"><button type="button" id="reminder-load">Cargar pacientes</button><span id="reminder-progress">Aún no cargados</span></div><div id="reminder-items" class="reminder-items"></div><div class="reminder-actions"><button type="submit" id="reminder-send">Enviar recordatorios</button><button type="button" id="reminder-cancel" disabled>Cancelar lote</button></div></form>`; document.body.appendChild(modal); modal.querySelector("[data-close]").addEventListener("click", () => { modal.hidden = true; }); modal.querySelector("#reminder-load").addEventListener("click", loadReminderCandidates); modal.querySelector("form").addEventListener("submit", startReminder); modal.querySelector("#reminder-cancel").addEventListener("click", cancelReminder); } modal.querySelector("#reminder-date").value = new Date().toISOString().slice(0,10); try { const rs = await api("/api/mensajes-view/reminder-settings"); if (rs?.settings?.template) modal.querySelector("#reminder-template").value = rs.settings.template; } catch { /* si falla, queda la plantilla por defecto del textarea */ } modal.hidden = false; await loadReminderCandidates(); }
-    async function loadReminderCandidates() { const modal = document.getElementById("mensajes-reminder-modal"); const data = await api(`/api/mensajes-view/reminders/candidates?date=${encodeURIComponent(modal.querySelector("#reminder-date").value)}`); modal.dataset.items = JSON.stringify(data.candidates); const labels = { pending: "Pendiente", sent: "Enviado", failed: "Error", cancelled: "Cancelado", sending: "Enviando", queued: "En cola" }; modal.querySelector("#reminder-items").innerHTML = data.candidates.length ? data.candidates.map((x) => `<div class="reminder-item"><strong>${esc(x.patientName)}</strong><span>${esc(x.phone)} · ${esc(fmtHora12(x.time))} · ${esc(x.status || "")}</span><small>${esc(x.treatment || "")}</small><em data-item-status="${x.appointmentId}">${labels[x.reminderStatus] || "Pendiente"}</em></div>`).join("") : `<div class="mensajes-empty">No hay pacientes elegibles para esta fecha.</div>`; const summary = data.summary || {}; modal.querySelector("#reminder-progress").textContent = `${data.candidates.length} elegibles · ${summary.sent || 0} enviados · ${summary.failed || 0} errores · ${summary.cancelled || 0} cancelados · ${summary.pending || 0} pendientes`; }
+    async function openReminderModal() { let modal = document.getElementById("mensajes-reminder-modal"); if (!modal) { modal = document.createElement("div"); modal.id = "mensajes-reminder-modal"; modal.className = "mensajes-settings-overlay"; modal.innerHTML = `<form class="mensajes-reminder-card promo-card is-narrow">
+                <header class="promo-head"><div><h2>Recordatorios</h2><p>Recuerde las citas de un día; a quien ya se le envió no se le repite.</p></div><button type="button" data-close aria-label="Cerrar">×</button></header>
+                <div class="promo-body">
+                    <div class="promo-top">
+                        <section class="promo-section">
+                            <h3><span class="promo-step">1</span>Mensaje</h3>
+                            <label><span>Plantilla <small>· {{nombre}}, {{fecha}}, {{hora}}, {{tratamiento}}</small></span><textarea id="reminder-template" rows="4">Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.</textarea></label>
+                            <div class="promo-preview" aria-label="Vista previa"><span>Así se verá</span><div class="promo-bubble" id="reminder-preview"></div></div>
+                        </section>
+                        <section class="promo-section">
+                            <h3><span class="promo-step">2</span>Citas del día</h3>
+                            <label>Fecha<input id="reminder-date" type="date" required></label>
+                            <label class="promo-inline promo-check"><input id="reminder-force-resend" type="checkbox">Permitir reenviar recordatorios ya enviados</label>
+                            <div class="promo-row"><span class="promo-spacer"></span><button type="button" id="reminder-load" class="promo-btn">Cargar pacientes</button></div>
+                        </section>
+                    </div>
+                    <section class="promo-section">
+                        <h3><span class="promo-step">3</span>Pacientes</h3>
+                        <div id="reminder-progress" class="promo-status">Aún no cargados</div>
+                        <div id="reminder-items" class="reminder-items"></div>
+                    </section>
+                </div>
+                <footer class="promo-foot"><button type="button" id="reminder-cancel" class="promo-btn is-danger-ghost" disabled>Cancelar lote</button><button type="submit" id="reminder-send" class="promo-btn is-primary">Enviar recordatorios</button></footer></form>`; document.body.appendChild(modal); modal.querySelector("[data-close]").addEventListener("click", () => { modal.hidden = true; }); modal.querySelector("#reminder-load").addEventListener("click", loadReminderCandidates); modal.querySelector("form").addEventListener("submit", startReminder); modal.querySelector("#reminder-cancel").addEventListener("click", cancelReminder); modal.querySelector("#reminder-template").addEventListener("input", renderReminderPreview); modal.querySelector("#reminder-date").addEventListener("change", renderReminderPreview); } modal.querySelector("#reminder-date").value = new Date().toISOString().slice(0,10); try { const rs = await api("/api/mensajes-view/reminder-settings"); if (rs?.settings?.template) modal.querySelector("#reminder-template").value = rs.settings.template; } catch { /* si falla, queda la plantilla por defecto del textarea */ } modal.hidden = false; renderReminderPreview(); await loadReminderCandidates(); }
+    // Mismo reemplazo que hace el servidor al crear el lote (fecha tal cual, hora en 12h), con el primer paciente cargado.
+    function renderReminderPreview() {
+        const modal = document.getElementById("mensajes-reminder-modal"); if (!modal) return;
+        let first = null; try { first = JSON.parse(modal.dataset.items || "[]")[0] || null; } catch { /* sin lista cargada */ }
+        const values = { nombre: first?.patientName || "María López", fecha: modal.querySelector("#reminder-date").value || "2026-10-07", hora: first?.time ? fmtHora12(first.time) : "9:00 AM", tratamiento: first?.treatment || "Limpieza" };
+        const text = modal.querySelector("#reminder-template").value.trim();
+        const bubble = modal.querySelector("#reminder-preview");
+        bubble.textContent = text ? text.replace(/{{\s*([^}]+)\s*}}/g, (_, key) => values[key.trim()] ?? "") : "Escriba la plantilla del recordatorio";
+        bubble.classList.toggle("is-empty", !text);
+    }
+    async function loadReminderCandidates() { const modal = document.getElementById("mensajes-reminder-modal"); const data = await api(`/api/mensajes-view/reminders/candidates?date=${encodeURIComponent(modal.querySelector("#reminder-date").value)}`); modal.dataset.items = JSON.stringify(data.candidates); renderReminderPreview(); const labels = { pending: "Pendiente", sent: "Enviado", failed: "Error", cancelled: "Cancelado", sending: "Enviando", queued: "En cola" }; modal.querySelector("#reminder-items").innerHTML = data.candidates.length ? data.candidates.map((x) => `<div class="reminder-item"><strong>${esc(x.patientName)}</strong><span>${esc(x.phone)} · ${esc(fmtHora12(x.time))} · ${esc(x.status || "")}</span><small>${esc(x.treatment || "")}</small><em data-item-status="${x.appointmentId}">${labels[x.reminderStatus] || "Pendiente"}</em></div>`).join("") : `<div class="mensajes-empty">No hay pacientes elegibles para esta fecha.</div>`; const summary = data.summary || {}; modal.querySelector("#reminder-progress").textContent = `${data.candidates.length} elegibles · ${summary.sent || 0} enviados · ${summary.failed || 0} errores · ${summary.cancelled || 0} cancelados · ${summary.pending || 0} pendientes`; }
     async function startReminder(event) { event.preventDefault(); const modal = document.getElementById("mensajes-reminder-modal"); const sendButton = modal.querySelector("#reminder-send"); const cancelButton = modal.querySelector("#reminder-cancel"); const items = JSON.parse(modal.dataset.items || "[]"); if (!items.length) return alert("Carga primero los pacientes"); sendButton.disabled = true; try { const reminderSettings = await api("/api/mensajes-view/reminder-settings"); const data = await api("/api/mensajes-view/reminders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date: modal.querySelector("#reminder-date").value, template: modal.querySelector("#reminder-template").value, items, minDelaySeconds: reminderSettings.settings.minDelaySeconds, maxDelaySeconds: reminderSettings.settings.maxDelaySeconds, forceResend: modal.querySelector("#reminder-force-resend").checked }) }); modal.dataset.batchId = data.batch.id; const started = await api(`/api/mensajes-view/reminders/${data.batch.id}/start`, { method: "POST" }); modal.querySelector("#reminder-progress").textContent = started.connectionError ? "No enviado: conecta WhatsApp y vuelve a intentarlo" : "Lote iniciado"; cancelButton.disabled = Boolean(started.connectionError); if (!started.connectionError) cancelButton.disabled = false; await pollReminder(); } catch (error) { sendButton.disabled = false; cancelButton.disabled = true; modal.querySelector("#reminder-progress").textContent = error.message || "No se pudo iniciar el lote"; }
     }
     async function pollReminder() { const modal = document.getElementById("mensajes-reminder-modal"); const batchId = modal?.dataset.batchId; if (!batchId || modal.hidden) return; try { const batch = (await api(`/api/mensajes-view/reminders/${batchId}`)).batch; modal.querySelector("#reminder-progress").textContent = `${batch.sentCount} enviados · ${batch.failedCount} errores · ${batch.cancelledCount} cancelados de ${batch.totalCount} · ${batch.status}`; batch.items.forEach((item) => { const el = modal.querySelector(`[data-item-status="${item.appointment_id}"]`); if (el) el.textContent = item.status === "sent" ? "Enviado" : item.status === "failed" ? "Error" : item.status === "cancelled" ? "Cancelado" : item.status === "queued" || item.status === "sending" ? "En cola / trabajando" : "Pendiente"; }); if (["queued", "processing"].includes(batch.status)) { modal.querySelector("#reminder-send").disabled = true; modal.querySelector("#reminder-cancel").disabled = false; setTimeout(pollReminder, 3000); } else { modal.querySelector("#reminder-send").disabled = false; modal.querySelector("#reminder-cancel").disabled = true; } } catch (error) { modal.querySelector("#reminder-send").disabled = false; modal.querySelector("#reminder-cancel").disabled = true; modal.querySelector("#reminder-progress").textContent = error.message || "No se pudo consultar el lote"; } }
     async function cancelReminder() { const modal = document.getElementById("mensajes-reminder-modal"); if (modal?.dataset.batchId) await api(`/api/mensajes-view/reminders/${modal.dataset.batchId}/cancel`, { method: "POST" }); await pollReminder(); }
+    // --- Promociones: campaña (texto) enviada por bloques a pacientes del Seguimiento ---
+    // El registro vive en SQLite (promo_*): quien ya recibió la campaña no entra en el próximo bloque.
+    const PROMO_STATUS = { pending: "Pendiente", sending: "Enviando", queued: "En cola", sent: "Enviado", failed: "Error", cancelled: "Cancelado" };
+    async function openPromoModal() {
+        let modal = document.getElementById("mensajes-promo-modal");
+        if (!modal) {
+            modal = document.createElement("div"); modal.id = "mensajes-promo-modal"; modal.className = "mensajes-settings-overlay";
+            // Tres pasos: 1 Campaña (texto + vista previa), 2 Destinatarios (Seguimiento o lista), 3 Envío por bloques.
+            modal.innerHTML = `<form class="mensajes-reminder-card promo-card">
+                <header class="promo-head"><div><h2>Promociones</h2><p>Envíe una campaña por bloques; el registro evita repetirle a quien ya la recibió.</p></div><button type="button" data-close aria-label="Cerrar">×</button></header>
+                <div class="promo-body">
+                    <div class="promo-top">
+                        <section class="promo-section">
+                            <h3><span class="promo-step">1</span>Campaña</h3>
+                            <label>Campaña<select id="promo-campaign"></select></label>
+                            <div class="promo-name-row"><label>Nombre<input id="promo-name" maxlength="80" placeholder="Ej: Limpieza octubre"></label><label title="Hasta ese día la IA tiene en cuenta la promoción al responder. Sin fecha: 15 días desde el envío."><span>Válida hasta <small>(opcional)</small></span><input id="promo-valid-until" type="date"></label></div>
+                            <label><span>Mensaje <small>· use {{nombre}} para el nombre del paciente</small></span><textarea id="promo-template" rows="5">Hola {{nombre}}, </textarea></label>
+                            <div class="promo-preview" aria-label="Vista previa"><span>Así se verá</span><div class="promo-bubble" id="promo-preview"></div></div>
+                            <div class="promo-row"><button type="button" id="promo-save" class="promo-btn">Guardar campaña</button><button type="button" id="promo-delete" class="promo-btn is-danger-ghost" hidden>Borrar campaña</button><span id="promo-campaign-info" class="promo-note"></span></div>
+                        </section>
+                        <section class="promo-section">
+                            <h3><span class="promo-step">2</span>Destinatarios</h3>
+                            <select id="promo-source" hidden><option value="seguimiento">Pacientes del sistema</option><option value="lista">Lista importada</option></select>
+                            <div class="promo-segmented" role="tablist"><button type="button" data-promo-source="seguimiento">Pacientes del sistema</button><button type="button" data-promo-source="lista">Lista de Excel / CSV</button></div>
+                            <div class="promo-filters">
+                                <label>Tratamiento<select id="promo-tratamiento"><option value="all">Todos</option><option value="odontologia">Odontologia</option><option value="ortodoncia">Ortodoncia</option><option value="sin_registrar">Sin registrar</option></select></label>
+                                <label>Estado<select id="promo-estado"><option value="all">Todos</option><option value="activo">Activos</option><option value="inactivo">Inactivos</option></select></label>
+                                <label>Ausencia<select id="promo-segmento"><option value="all">Todos</option><option value="al_dia">Al dia</option><option value="retrasado">Retrasado</option><option value="m2">+2 meses</option><option value="m3">+3 meses</option></select></label>
+                                <label>Próxima cita<select id="promo-proxima"><option value="all">Todos</option><option value="con">Con cita</option><option value="sin">Sin cita</option></select></label>
+                            </div>
+                            <div class="promo-list-box" hidden>
+                                <p class="promo-note">Una columna con el nombre (Nombre, Cliente, Paciente, Usuario…) y otra con el teléfono. Se lee la primera hoja; los números repetidos se ignoran.</p>
+                                <div class="promo-file"><input id="promo-file" type="file" accept=".xlsx,.csv"><button type="button" id="promo-import" class="promo-btn">Importar</button></div>
+                                <div class="promo-row"><span id="promo-list-info" class="promo-note"></span><button type="button" id="promo-clear-list" class="promo-btn is-danger-ghost">Vaciar lista</button></div>
+                            </div>
+                        </section>
+                    </div>
+                    <section class="promo-section">
+                        <h3><span class="promo-step">3</span>Envío</h3>
+                        <div class="promo-row promo-send-tools">
+                            <label class="promo-inline">Tamaño del bloque<input id="promo-block" type="number" min="1" max="500" value="50"></label>
+                            <label class="promo-inline promo-check" title="Los que fallaron casi siempre son números sin WhatsApp"><input id="promo-retry-failed" type="checkbox">Reintentar los que fallaron</label>
+                            <span class="promo-spacer"></span>
+                            <button type="button" id="promo-history" class="promo-btn is-ghost">Ver a quiénes se envió</button>
+                            <button type="button" id="promo-load" class="promo-btn">Cargar pacientes</button>
+                        </div>
+                        <div id="promo-progress" class="promo-status">Aún no cargados</div>
+                        <div id="promo-items" class="reminder-items"></div>
+                    </section>
+                </div>
+                <footer class="promo-foot"><button type="button" id="promo-cancel" class="promo-btn is-danger-ghost" disabled>Cancelar bloque</button><button type="button" id="promo-resume" class="promo-btn is-ghost" hidden>Reanudar bloque</button><button type="submit" id="promo-send" class="promo-btn is-primary">Enviar bloque</button></footer></form>`;
+            document.body.appendChild(modal);
+            const $ = (sel) => modal.querySelector(sel);
+            $("[data-close]").addEventListener("click", () => { modal.hidden = true; });
+            // Al elegir una campaña se carga sola: se ve enseguida cuántos ya la recibieron y cuántos faltan.
+            $("#promo-campaign").addEventListener("change", () => { fillPromoCampaign(); clearPromoBlock(); if ($("#promo-campaign").value) void loadPromoCandidates(); });
+            $("#promo-history").addEventListener("click", () => void showPromoHistory());
+            // La lista cargada es exactamente lo que se envía: si cambia un filtro hay que volver a cargar.
+            ["#promo-tratamiento", "#promo-estado", "#promo-segmento", "#promo-proxima", "#promo-block", "#promo-retry-failed"].forEach((sel) => $(sel).addEventListener("change", clearPromoBlock));
+            $("#promo-save").addEventListener("click", () => void savePromoCampaign());
+            $("#promo-delete").addEventListener("click", () => void deletePromoCampaign());
+            $("#promo-source").addEventListener("change", () => { syncPromoSource(); clearPromoBlock(); });
+            modal.querySelectorAll("[data-promo-source]").forEach((btn) => btn.addEventListener("click", () => { if ($("#promo-source").value === btn.dataset.promoSource) return; $("#promo-source").value = btn.dataset.promoSource; $("#promo-source").dispatchEvent(new Event("change")); }));
+            $("#promo-template").addEventListener("input", renderPromoPreview);
+            $("#promo-import").addEventListener("click", () => void importPromoList());
+            $("#promo-clear-list").addEventListener("click", () => void clearPromoList());
+            $("#promo-load").addEventListener("click", () => void loadPromoCandidates());
+            $("form").addEventListener("submit", (event) => { event.preventDefault(); void sendPromoBlock(); });
+            $("#promo-resume").addEventListener("click", () => void promoBatchAction("resume"));
+            $("#promo-cancel").addEventListener("click", () => void promoBatchAction("cancel"));
+        }
+        modal.hidden = false;
+        await loadPromoCampaigns();
+        clearPromoBlock();
+        const active = (await api("/api/mensajes-view/promo-batches-active")).batch;
+        if (active) { modal.dataset.batchId = active.id; modal.querySelector("#promo-campaign").value = String(active.campaign_id); fillPromoCampaign(); await pollPromo(); }
+        else if (modal.querySelector("#promo-campaign").value) await loadPromoCandidates();
+    }
+    async function loadPromoCampaigns(selectId, options = {}) {
+        const modal = document.getElementById("mensajes-promo-modal"); const select = modal.querySelector("#promo-campaign"); const current = selectId || select.value;
+        const data = await api("/api/mensajes-view/promos");
+        modal._promoCampaigns = data.campaigns;
+        select.innerHTML = `<option value="">— Nueva campaña —</option>` + data.campaigns.map((c) => `<option value="${c.id}">${esc(c.name)} (${c.sentCount} enviados)</option>`).join("");
+        if (current && data.campaigns.some((c) => String(c.id) === String(current))) select.value = String(current);
+        fillPromoCampaign(options);
+    }
+    function fillPromoCampaign({ keepFilters = false } = {}) {
+        const modal = document.getElementById("mensajes-promo-modal"); const campaign = (modal._promoCampaigns || []).find((c) => String(c.id) === modal.querySelector("#promo-campaign").value);
+        modal.querySelector("#promo-name").value = campaign?.name || "";
+        modal.querySelector("#promo-template").value = campaign?.template || "Hola {{nombre}}, ";
+        modal.querySelector("#promo-valid-until").value = campaign?.validUntil || "";
+        modal.querySelector("#promo-delete").hidden = !campaign;
+        if (!keepFilters) modal.querySelector("#promo-source").value = campaign?.source || "seguimiento";
+        syncPromoSource();
+        if (!keepFilters) { let filters = {}; try { filters = JSON.parse(campaign?.filtersJson || "{}"); } catch { /* filtros guardados ilegibles: quedan en Todos */ }
+        modal.querySelector("#promo-tratamiento").value = filters.tratamiento || "all"; modal.querySelector("#promo-estado").value = filters.estado || "all";
+        modal.querySelector("#promo-segmento").value = filters.segmento || "all"; modal.querySelector("#promo-proxima").value = filters.proximaFiltro || "all"; }
+        modal.querySelector("#promo-campaign-info").textContent = campaign ? `${campaign.sentCount} pacientes ya la recibieron${campaign.lastSentAt ? ` · último envío ${new Date(campaign.lastSentAt.replace(" ", "T") + "Z").toLocaleDateString("es")}` : ""}` : "Escriba el nombre y el mensaje, y guarde la campaña";
+    }
+    async function savePromoCampaign() {
+        const modal = document.getElementById("mensajes-promo-modal"); const campaignId = modal.querySelector("#promo-campaign").value; const info = modal.querySelector("#promo-campaign-info");
+        const body = JSON.stringify({ name: modal.querySelector("#promo-name").value, template: modal.querySelector("#promo-template").value, source: modal.querySelector("#promo-source").value, validUntil: modal.querySelector("#promo-valid-until").value });
+        try {
+            const data = campaignId
+                ? await api(`/api/mensajes-view/promos/${campaignId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body })
+                : await api("/api/mensajes-view/promos", { method: "POST", headers: { "Content-Type": "application/json" }, body });
+            await loadPromoCampaigns(data.campaign.id, { keepFilters: true });
+            return true;
+        } catch (error) { info.textContent = error.message || "No se pudo guardar la campaña"; return false; }
+    }
+    async function deletePromoCampaign() {
+        const modal = document.getElementById("mensajes-promo-modal"); const campaign = (modal._promoCampaigns || []).find((c) => String(c.id) === modal.querySelector("#promo-campaign").value); if (!campaign) return;
+        if (!await askConfirm(`Se borrará la campaña "${campaign.name}" y su registro de envíos (${campaign.sentCount} enviados). Los mensajes ya enviados no se borran de los chats. ¿Continuar?`)) return;
+        try { await api(`/api/mensajes-view/promos/${campaign.id}`, { method: "DELETE" }); modal.querySelector("#promo-campaign").value = ""; await loadPromoCampaigns(); clearPromoBlock(); }
+        catch (error) { modal.querySelector("#promo-campaign-info").textContent = error.message || "No se pudo borrar la campaña"; }
+    }
+    // Vista previa del mensaje: con el primer paciente del bloque cargado o un nombre de ejemplo.
+    function renderPromoPreview() {
+        const modal = document.getElementById("mensajes-promo-modal"); if (!modal) return;
+        const name = modal._promoBlock?.[0]?.patientName || "María López";
+        const text = modal.querySelector("#promo-template").value.trim();
+        modal.querySelector("#promo-preview").textContent = text ? text.replace(/{{\s*nombre\s*}}/g, name) : "Escriba el mensaje de la promoción";
+        modal.querySelector("#promo-preview").classList.toggle("is-empty", !text);
+    }
+    // Origen de la campaña: filtros del Seguimiento o lista importada (Excel/CSV).
+    function syncPromoSource() {
+        const modal = document.getElementById("mensajes-promo-modal"); const isList = modal.querySelector("#promo-source").value === "lista";
+        const campaign = (modal._promoCampaigns || []).find((c) => String(c.id) === modal.querySelector("#promo-campaign").value);
+        modal.querySelector(".promo-filters").hidden = isList; modal.querySelector(".promo-list-box").hidden = !isList;
+        modal.querySelectorAll("[data-promo-source]").forEach((btn) => btn.classList.toggle("is-active", btn.dataset.promoSource === modal.querySelector("#promo-source").value));
+        renderPromoPreview();
+        modal.querySelector("#promo-list-info").textContent = campaign?.source === "lista" ? `Lista guardada: ${campaign.contactCount} contactos. No hace falta volver a subir el archivo (solo para agregar más).` : "Guarde la campaña para poder importar la lista";
+    }
+    async function importPromoList() {
+        const modal = document.getElementById("mensajes-promo-modal"); const info = modal.querySelector("#promo-list-info"); const file = modal.querySelector("#promo-file").files[0];
+        if (!file) { info.textContent = "Elija un archivo .xlsx o .csv"; return; }
+        const saved = (modal._promoCampaigns || []).find((c) => String(c.id) === modal.querySelector("#promo-campaign").value);
+        if ((!saved || saved.source !== "lista") && !await savePromoCampaign()) return;
+        info.textContent = "Leyendo archivo…";
+        try {
+            const contacts = promoContactsFromRows(await readSpreadsheetRows(file));
+            const campaignId = modal.querySelector("#promo-campaign").value;
+            const data = await api(`/api/mensajes-view/promos/${campaignId}/contacts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts }) });
+            await loadPromoCampaigns(campaignId, { keepFilters: true }); clearPromoBlock();
+            modal.querySelector("#promo-file").value = "";
+            await loadPromoCandidates();
+            info.textContent = `${data.added} contactos nuevos · ${data.duplicates} repetidos · ${data.invalid} sin teléfono válido · ${data.total} en la lista`;
+        } catch (error) { info.textContent = error.message || "No se pudo importar la lista"; }
+    }
+    async function clearPromoList() {
+        const modal = document.getElementById("mensajes-promo-modal"); const campaignId = modal.querySelector("#promo-campaign").value; if (!campaignId) return;
+        if (!await askConfirm("Se quitarán todos los contactos importados de esta campaña. El registro de a quién ya se le envió se conserva. ¿Continuar?")) return;
+        try { await api(`/api/mensajes-view/promos/${campaignId}/contacts`, { method: "DELETE" }); await loadPromoCampaigns(campaignId, { keepFilters: true }); clearPromoBlock(); }
+        catch (error) { modal.querySelector("#promo-list-info").textContent = error.message || "No se pudo vaciar la lista"; }
+    }
+    // Filas -> [{ name, phone }]. Columna del teléfono: la que más celdas con 8-15 dígitos tiene.
+    // Columna del nombre: la que tenga encabezado tipo Nombre/Cliente/Paciente/Usuario; si no, la que más texto tenga.
+    function promoContactsFromRows(rows) {
+        const width = Math.max(0, ...rows.map((r) => r.length));
+        const isPhone = (v) => { const d = String(v || "").split(/[\/,;]/)[0].replace(/\D/g, ""); return d.length >= 8 && d.length <= 15; };
+        const count = (col, test) => rows.reduce((n, r) => n + (test(r[col]) ? 1 : 0), 0);
+        let phoneCol = -1, best = 0;
+        for (let c = 0; c < width; c++) { const n = count(c, isPhone); if (n > best) { best = n; phoneCol = c; } }
+        if (phoneCol < 0) throw new Error("No se encontró una columna con números de teléfono");
+        const header = (rows[0] || []).map((v) => String(v || "").toLowerCase());
+        let nameCol = header.findIndex((h, c) => c !== phoneCol && /nombre|cliente|paciente|usuario|contacto|name/.test(h));
+        if (nameCol < 0) { best = 0; for (let c = 0; c < width; c++) { if (c === phoneCol) continue; const n = count(c, (v) => /[a-záéíóúñ]/i.test(String(v || ""))); if (n > best) { best = n; nameCol = c; } } }
+        // Encabezados y filas vacías (sin ningún dígito en el teléfono) no se envían.
+        return rows.filter((r) => /\d/.test(String(r[phoneCol] || ""))).map((r) => ({ name: nameCol >= 0 ? String(r[nameCol] || "").trim() : "", phone: String(r[phoneCol] || "") }));
+    }
+    async function readSpreadsheetRows(file) {
+        const buffer = await file.arrayBuffer();
+        if (/\.csv$/i.test(file.name)) {
+            let text = new TextDecoder("utf-8").decode(buffer);
+            if (text.includes("�")) text = new TextDecoder("windows-1252").decode(buffer); // CSV guardado por Excel en español
+            return parseCsv(text.replace(/^﻿/, ""));
+        }
+        if (/\.xlsx$/i.test(file.name)) return readXlsxRows(buffer);
+        throw new Error("Formato no soportado: use .xlsx o .csv");
+    }
+    function parseCsv(text) {
+        const first = text.split(/\r?\n/)[0] || "";
+        const sep = first.includes("\t") ? "\t" : (first.split(";").length > first.split(",").length ? ";" : ",");
+        const rows = []; let row = [], cell = "", quoted = false;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (quoted) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') quoted = false; else cell += ch; }
+            else if (ch === '"') quoted = true;
+            else if (ch === sep) { row.push(cell); cell = ""; }
+            else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+            else cell += ch;
+        }
+        if (cell || row.length) { row.push(cell); rows.push(row); }
+        return rows;
+    }
+    // .xlsx = ZIP con XML. Se lee la primera hoja con APIs del navegador (DecompressionStream + DOMParser), sin librerías.
+    async function readXlsxRows(buffer) {
+        const bytes = new Uint8Array(buffer); const view = new DataView(buffer); const utf8 = new TextDecoder();
+        let end = -1; for (let i = bytes.length - 22; i >= 0; i--) if (view.getUint32(i, true) === 0x06054b50) { end = i; break; }
+        if (end < 0) throw new Error("El archivo no es un Excel .xlsx válido");
+        const files = {}; let p = view.getUint32(end + 16, true);
+        for (let n = view.getUint16(end + 10, true); n > 0; n--) {
+            const nameLen = view.getUint16(p + 28, true);
+            files[utf8.decode(bytes.subarray(p + 46, p + 46 + nameLen))] = { method: view.getUint16(p + 10, true), size: view.getUint32(p + 20, true), local: view.getUint32(p + 42, true) };
+            p += 46 + nameLen + view.getUint16(p + 30, true) + view.getUint16(p + 32, true);
+        }
+        const readXml = async (name) => {
+            const f = files[name]; if (!f) return null;
+            const start = f.local + 30 + view.getUint16(f.local + 26, true) + view.getUint16(f.local + 28, true);
+            const data = bytes.subarray(start, start + f.size);
+            const raw = f.method === 0 ? data : new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+            return new DOMParser().parseFromString(utf8.decode(raw), "application/xml");
+        };
+        const workbook = await readXml("xl/workbook.xml"); const rels = await readXml("xl/_rels/workbook.xml.rels");
+        const rid = workbook?.getElementsByTagName("sheet")[0]?.getAttribute("r:id");
+        const target = [...(rels?.getElementsByTagName("Relationship") || [])].find((r) => r.getAttribute("Id") === rid)?.getAttribute("Target") || "worksheets/sheet1.xml";
+        const sheet = await readXml(target.startsWith("/") ? target.slice(1) : `xl/${target}`);
+        if (!sheet) throw new Error("No se encontró la primera hoja del Excel");
+        const shared = [...((await readXml("xl/sharedStrings.xml"))?.getElementsByTagName("si") || [])].map((si) => [...si.getElementsByTagName("t")].map((t) => t.textContent).join(""));
+        const colIndex = (ref) => [...String(ref || "A").replace(/\d/g, "")].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+        return [...sheet.getElementsByTagName("row")].map((rowEl) => {
+            const row = [];
+            for (const c of rowEl.getElementsByTagName("c")) {
+                const type = c.getAttribute("t"); const v = c.getElementsByTagName("v")[0]?.textContent ?? "";
+                row[colIndex(c.getAttribute("r"))] = type === "s" ? (shared[Number(v)] ?? "") : type === "inlineStr" ? (c.getElementsByTagName("is")[0]?.textContent ?? "") : (/^-?\d+(\.\d+)?e\+?\d+$/i.test(v) ? BigInt(Math.round(Number(v))).toString() : v);
+            }
+            return row;
+        });
+    }
+    async function showPromoHistory() {
+        const modal = document.getElementById("mensajes-promo-modal"); const campaignId = modal.querySelector("#promo-campaign").value; const progress = modal.querySelector("#promo-progress");
+        if (!campaignId || modal.dataset.batchId) return;
+        try {
+            const items = (await api(`/api/mensajes-view/promos/${campaignId}/history`)).items;
+            clearPromoBlock();
+            const sent = items.filter((x) => x.status === "sent").length;
+            progress.textContent = `Historial: ${sent} enviados · ${items.length - sent} con error o en cola`;
+            modal.querySelector("#promo-items").innerHTML = items.length
+                ? items.map((x) => `<div class="reminder-item"><strong>${esc(x.name || x.phone)}</strong><span>${esc(x.phone)} · ${esc(new Date(String(x.at).replace(" ", "T") + "Z").toLocaleString("es"))}${x.error ? ` · ${esc(String(x.error).split("\n")[0])}` : ""}</span><em>${PROMO_STATUS[x.status] || x.status}</em></div>`).join("")
+                : `<div class="mensajes-empty">Todavía no se ha enviado esta campaña.</div>`;
+        } catch (error) { progress.textContent = error.message || "No se pudo cargar el historial"; }
+    }
+    function clearPromoBlock() {
+        const modal = document.getElementById("mensajes-promo-modal"); if (!modal || modal.dataset.batchId) return;
+        modal._promoBlock = []; renderPromoPreview(); modal.querySelector("#promo-items").innerHTML = ""; modal.querySelector("#promo-progress").textContent = "Aún no cargados";
+        modal.querySelector("#promo-send").textContent = "Enviar bloque"; modal.querySelector("#promo-send").disabled = true;
+    }
+    function promoFiltersFromModal(modal) { return { tratamiento: modal.querySelector("#promo-tratamiento").value, estado: modal.querySelector("#promo-estado").value, segmento: modal.querySelector("#promo-segmento").value, proximaFiltro: modal.querySelector("#promo-proxima").value }; }
+    async function loadPromoCandidates() {
+        const modal = document.getElementById("mensajes-promo-modal"); const campaignId = modal.querySelector("#promo-campaign").value; const progress = modal.querySelector("#promo-progress");
+        if (!campaignId) { progress.textContent = "Primero guarde la campaña"; return; }
+        const blockSize = Math.max(1, Number(modal.querySelector("#promo-block").value) || 50);
+        progress.textContent = "Cargando…";
+        try {
+            const data = await api(`/api/mensajes-view/promos/${campaignId}/candidates?${new URLSearchParams({ ...promoFiltersFromModal(modal), retryFailed: modal.querySelector("#promo-retry-failed").checked ? "1" : "0" })}`);
+            const block = data.pending.slice(0, blockSize);
+            modal._promoBlock = block; modal.querySelector("#promo-send").disabled = !block.length; renderPromoPreview();
+            progress.textContent = `${data.total} en ${modal.querySelector("#promo-source").value === "lista" ? "la lista" : "el filtro"} · ${data.alreadySent} ya la recibieron · ${data.pending.length} pendientes${data.noPhone ? ` · ${data.noPhone} sin teléfono válido` : ""}${data.failedBefore ? ` · ${data.failedBefore} fallaron antes (no se reintentan)` : ""}`;
+            modal.querySelector("#promo-send").textContent = block.length ? `Enviar bloque de ${block.length}` : "Enviar bloque";
+            modal.querySelector("#promo-items").innerHTML = block.length
+                ? block.map((x) => `<div class="reminder-item"><strong>${esc(x.patientName)}</strong><span>${esc(x.phone)} · ${esc(x.treatment || "")}</span><em>En este bloque</em></div>`).join("") + (data.pending.length > block.length ? `<div class="mensajes-empty">Quedan ${data.pending.length - block.length} para los siguientes bloques.</div>` : "")
+                : `<div class="mensajes-empty">${data.alreadySent ? `Ya se les envió a todos (${data.alreadySent}). No queda nadie pendiente en ${modal.querySelector("#promo-source").value === "lista" ? "esta lista" : "estos filtros"}.` : "No hay destinatarios con estos datos."}</div>`;
+        } catch (error) { progress.textContent = error.message || "No se pudieron cargar los pacientes"; }
+    }
+    async function sendPromoBlock() {
+        const modal = document.getElementById("mensajes-promo-modal"); const campaignId = modal.querySelector("#promo-campaign").value; const progress = modal.querySelector("#promo-progress");
+        if (!campaignId) { progress.textContent = "Primero guarde la campaña"; return; }
+        const block = modal._promoBlock || [];
+        if (!block.length) { progress.textContent = "Primero cargue los pacientes"; return; }
+        // Se envía lo que está escrito: si el mensaje o el nombre cambiaron, se guarda la campaña primero.
+        const saved = (modal._promoCampaigns || []).find((c) => String(c.id) === campaignId);
+        if (!saved || saved.template !== modal.querySelector("#promo-template").value.trim() || saved.name !== modal.querySelector("#promo-name").value.trim() || saved.source !== modal.querySelector("#promo-source").value || (saved.validUntil || "") !== modal.querySelector("#promo-valid-until").value) {
+            if (!await savePromoCampaign()) return;
+        }
+        const template = modal.querySelector("#promo-template").value.trim();
+        const preview = block[0].patientName ? template.replace(/{{\s*nombre\s*}}/g, block[0].patientName) : template.replace(/\s*{{\s*nombre\s*}}/g, "");
+        if (!await askConfirm(`Se enviará a los ${block.length} pacientes de la lista cargada. Así le llegará a ${block[0].patientName || block[0].phone}:
+
+${preview}
+
+¿Continuar?`)) return;
+        modal.querySelector("#promo-send").disabled = true;
+        try {
+            const data = await api(`/api/mensajes-view/promos/${campaignId}/send-block`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ patientIds: block.map((x) => x.patientId), filters: promoFiltersFromModal(modal), retryFailed: modal.querySelector("#promo-retry-failed").checked }) });
+            modal.dataset.batchId = data.batch.id;
+            await pollPromo();
+        } catch (error) { modal.querySelector("#promo-send").disabled = false; progress.textContent = error.message || "No se pudo enviar el bloque"; }
+    }
+    async function pollPromo() {
+        const modal = document.getElementById("mensajes-promo-modal"); const batchId = modal?.dataset.batchId; if (!batchId || modal.hidden) return;
+        try {
+            const batch = (await api(`/api/mensajes-view/promo-batches/${batchId}`)).batch; const running = ["queued", "processing"].includes(batch.status);
+            modal.querySelector("#promo-progress").textContent = `Bloque: ${batch.sentCount} enviados · ${batch.failedCount} errores · ${batch.cancelledCount} cancelados de ${batch.totalCount}${running ? "" : " · terminado"}`;
+            modal.querySelector("#promo-items").innerHTML = batch.items.map((x) => `<div class="reminder-item"><strong>${esc(x.patient_name)}</strong><span>${esc(x.phone)}${x.error ? ` · ${esc(x.error)}` : ""}</span><em>${PROMO_STATUS[x.status] || x.status}</em></div>`).join("");
+            modal.querySelector("#promo-send").disabled = running; modal.querySelector("#promo-cancel").disabled = !running; modal.querySelector("#promo-resume").hidden = !running;
+            clearTimeout(modal._promoPoll); if (running) modal._promoPoll = setTimeout(() => void pollPromo(), 3000);
+            else { delete modal.dataset.batchId; modal._promoBlock = []; await loadPromoCampaigns(modal.querySelector("#promo-campaign").value, { keepFilters: true }); }
+        } catch (error) { modal.querySelector("#promo-progress").textContent = error.message || "No se pudo consultar el bloque"; }
+    }
+    async function promoBatchAction(action) {
+        const modal = document.getElementById("mensajes-promo-modal"); if (!modal?.dataset.batchId) return;
+        try { await api(`/api/mensajes-view/promo-batches/${modal.dataset.batchId}/${action}`, { method: "POST" }); } catch (error) { modal.querySelector("#promo-progress").textContent = error.message; return; }
+        await pollPromo();
+    }
     async function refreshGlobalAiStatus() { const group = document.getElementById("mensajes-ai-group") || document.getElementById("mensajes-simulator"); if (!group) return; let indicator = document.getElementById("mensajes-ai-global-status"); if (!indicator) { indicator = document.createElement("span"); indicator.id = "mensajes-ai-global-status"; indicator.className = "mensajes-ai-global-status"; group.insertBefore(indicator, document.getElementById("mensajes-pause-ai") || null); } const data = await api("/api/mensajes-view/automation-settings"); const active = Boolean(data.settings.enabled); indicator.textContent = active ? "IA activa" : "IA pausada"; indicator.classList.toggle("is-active", active); indicator.classList.toggle("is-paused", !active); const pause = document.getElementById("mensajes-pause-ai"); const toAi = document.getElementById("mensajes-global-ai"); if (pause) { pause.textContent = active ? "Pausar IA" : "Reanudar IA"; pause.dataset.aiAction = active ? "paused" : "resume"; pause.title = active ? "Apaga la IA y cancela lo que esté respondiendo" : "Vuelve a encender la IA; no responde lo viejo, solo los mensajes que lleguen"; pause.disabled = false; } if (toAi) toAi.textContent = "Pasar todo a IA"; }
     function formatWhatsappStatus(status) { const labels = { disconnected: "Desconectado", initializing: "Iniciando...", connecting: "Conectando...", qr: "QR en ventana de WhatsApp", authenticated: "Autenticado...", syncing: "Sincronizando...", connected: "Conectado", reconnecting: "Reconectando...", auth_failure: "Fallo de autenticación", error: "Error" }; return labels[status] || status || "Desconectado"; }
     function paintWhatsappStatus(status) { const state = document.getElementById("mensajes-whatsapp-status"); const start = document.getElementById("mensajes-whatsapp-start"); const stop = document.getElementById("mensajes-whatsapp-stop"); if (!state) return; const statusName = status?.status || "disconnected"; state.textContent = formatWhatsappStatus(statusName) + (status?.error ? `: ${status.error}` : ""); state.dataset.status = statusName; state.className = `mensajes-wa-state is-${statusName}`; if (start) { start.textContent = ["initializing", "connecting", "authenticated", "syncing", "reconnecting"].includes(statusName) ? "Reintentando..." : "Iniciar / reintentar"; start.disabled = ["initializing", "connecting", "authenticated", "syncing"].includes(statusName); } if (stop) stop.disabled = ["disconnected", "error", "auth_failure"].includes(statusName); }
@@ -1160,6 +1496,7 @@
         const aiGroup = document.getElementById("mensajes-ai-group");
         const addSimButton = (group, id, label, cls, handler) => { const button = document.createElement("button"); button.id = id; button.type = "button"; button.className = `sim-btn ${cls || ""}`.trim(); button.textContent = label; group.appendChild(button); button.addEventListener("click", handler); return button; };
         addSimButton(actionsGroup, "mensajes-send-reminders", "🔔 Recordatorios", "", () => void openReminderModal());
+        addSimButton(actionsGroup, "mensajes-send-promos", "📣 Promociones", "", () => void openPromoModal().catch((error) => alert(error.message)));
         addSimButton(actionsGroup, "mensajes-delete-all", "🗑 Borrar todo", "sim-btn-danger", deleteAllConversations);
         addSimButton(aiGroup, "mensajes-pause-ai", "Pausar IA", "sim-btn-ai-pause", (event) => void setGlobalAiMode(event.currentTarget.dataset.aiAction || "paused"));
         addSimButton(aiGroup, "mensajes-global-ai", "Pasar todo a IA", "sim-btn-ai-resume", () => void setGlobalAiMode("assistant"));
@@ -1167,10 +1504,10 @@
          // La vista ya está montada y usable. Estas cargas no deben bloquear
          // la navegación ni la disponibilidad del simulador.
          void Promise.allSettled([loadConversations(), refreshConversationMeta({ force: true }), refreshGlobalAiStatus()]);
-         const anyModalOpen = () => { const s = document.getElementById("mensajes-settings-modal"); const r = document.getElementById("mensajes-reminder-modal"); return Boolean((s && !s.hidden) || (r && !r.hidden)); };
+         const anyModalOpen = () => { const s = document.getElementById("mensajes-settings-modal"); const r = document.getElementById("mensajes-reminder-modal"); const p = document.getElementById("mensajes-promo-modal"); return Boolean((s && !s.hidden) || (r && !r.hidden) || (p && !p.hidden)); };
         chatPoll = setInterval(() => { if (deletingAll || pollBusy || anyModalOpen()) return; pollBusy = true; Promise.allSettled([loadConversations(), refreshConversationMeta(), refreshWhatsappStatus(), refreshGlobalAiStatus(), selectedId ? loadConversation(selectedId, { markRead: false, skipListRefresh: true }) : null]).finally(() => { pollBusy = false; }); }, 2000);
         void refreshWhatsappStatus();
-        cleanup = () => { if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } conversationLoadSeq++; ["mensajes-settings-modal", "mensajes-reminder-modal", "mensajes-busy-overlay"].forEach((id) => document.getElementById(id)?.remove()); selectedId = null; lastListSig = ""; lastChatSig = ""; pollBusy = false; deletingAll = false; allConversations = []; convListFilter = "all"; convSearchTerm = ""; patientNameByChat = new Map(); patientNamesFetchedAt = 0; aiWorkingConvIds = new Set(); cleanup = null; };
+        cleanup = () => { if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } conversationLoadSeq++; ["mensajes-settings-modal", "mensajes-reminder-modal", "mensajes-promo-modal", "mensajes-busy-overlay"].forEach((id) => document.getElementById(id)?.remove()); selectedId = null; lastListSig = ""; lastChatSig = ""; pollBusy = false; deletingAll = false; allConversations = []; convListFilter = "all"; convSearchTerm = ""; patientNameByChat = new Map(); patientNamesFetchedAt = 0; aiWorkingConvIds = new Set(); cleanup = null; };
         window.__setViewCleanup(() => cleanup?.());
         window.__setViewLeaveGuard(() => !deletingAll);
     };

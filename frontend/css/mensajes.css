@@ -198,3 +198,59 @@ body:is([data-theme="dark"],[data-theme="vampire"],[data-theme="princess"]) :is(
 .mensajes-conversation .conv-chip.is-awaiting{background:var(--msg-accent-soft,#dbeafe);color:var(--msg-accent-strong,#1d4ed8)}
 .mensajes-chat-head .chat-attended-btn{flex:0 0 auto;padding:6px 12px;border-radius:999px;border:1px solid var(--msg-border,#dbeafe);background:var(--msg-accent-softer,#eff6ff);color:var(--msg-accent-text,#2563eb);font-size:12px;font-weight:700;cursor:pointer}
 .mensajes-chat-head .chat-attended-btn:hover{background:var(--msg-accent-soft,#dbeafe)}
+/* Promociones: tarjeta propia en 3 pasos (Campaña, Destinatarios, Envío) con pie fijo de acciones. */
+.mensajes-reminder-card select{box-sizing:border-box;width:100%;padding:9px;border:1px solid var(--msg-border-strong,#cbd5e1);border-radius:7px;font:inherit;font-weight:400}
+.mensajes-reminder-card.promo-card{width:min(1180px,calc(100% - 32px));max-height:calc(100vh - 40px);padding:0;display:flex;flex-direction:column;overflow:hidden;background:var(--msg-bg,#f1f5f9)}
+.promo-card .promo-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:18px 24px 14px;background:var(--msg-surface,#fff);border-bottom:1px solid var(--msg-border,#e2e8f0)}
+.promo-card .promo-head h2{margin:0;font-size:22px}
+.promo-card .promo-head p{margin:4px 0 0;color:var(--msg-muted,#64748b);font-size:13px}
+.promo-card .promo-head [data-close]{border:0;background:transparent;font-size:26px;line-height:1;cursor:pointer;color:var(--msg-text-2,#334155);padding:2px 6px;border-radius:8px}
+.promo-card .promo-head [data-close]:hover{background:var(--msg-neutral-bg,#f1f5f9)}
+.promo-card .promo-body{flex:1;overflow:auto;padding:16px 24px;display:grid;gap:14px}
+.promo-card .promo-top{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+.promo-card .promo-section{background:var(--msg-surface,#fff);border:1px solid var(--msg-border,#e2e8f0);border-radius:14px;padding:16px 18px}
+.promo-card .promo-section h3{display:flex;align-items:center;gap:10px;margin:0 0 6px;font-size:16px;color:var(--msg-heading,#172554)}
+.promo-card .promo-step{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--msg-accent,#2563eb);color:#fff;font-size:13px;font-weight:800}
+.promo-card label{margin:10px 0;font-size:13px}
+.promo-card label small{font-weight:400;color:var(--msg-muted,#64748b)}
+.promo-card textarea{min-height:110px}
+.promo-card .promo-name-row{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:0 12px}
+.promo-card .promo-note{color:var(--msg-muted,#64748b);font-size:13px;line-height:1.4}
+.promo-card .promo-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.promo-card .promo-spacer{flex:1}
+/* Vista previa estilo WhatsApp */
+.promo-card .promo-preview{margin:4px 0 0;padding:12px;border-radius:12px;background:var(--msg-surface-soft,#f8fafc);border:1px dashed var(--msg-border,#e2e8f0)}
+.promo-card .promo-preview>span{display:block;margin-bottom:6px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--msg-muted,#64748b)}
+.promo-card .promo-bubble{max-width:85%;margin-left:auto;padding:8px 12px;border-radius:12px 12px 2px 12px;background:#d9fdd3;color:#111b21;font-size:14px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 1px 1px rgba(0,0,0,.08)}
+.promo-card .promo-bubble.is-empty{color:#667781;font-style:italic}
+/* Botones */
+.promo-card .promo-btn{border:1px solid transparent;border-radius:9px;padding:9px 14px;font:inherit;font-weight:700;font-size:14px;cursor:pointer;background:var(--msg-accent,#2563eb);color:#fff}
+.promo-card .promo-btn:hover:not(:disabled){filter:brightness(.95)}
+.promo-card .promo-btn:disabled{opacity:.45;cursor:not-allowed}
+.promo-card .promo-btn.is-ghost{background:transparent;color:var(--msg-accent-text,#2563eb);border-color:var(--msg-accent-border,#bfdbfe)}
+.promo-card .promo-btn.is-danger-ghost{background:transparent;color:var(--msg-danger-text,#b91c1c);border-color:var(--msg-danger-border,#fecaca)}
+.promo-card .promo-btn.is-primary{padding:10px 22px}
+/* Destinatarios: selector segmentado */
+.promo-card .promo-segmented{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:10px 0 4px;padding:4px;border-radius:10px;background:var(--msg-neutral-bg,#f1f5f9)}
+.promo-card .promo-segmented button{border:0;border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;background:transparent;color:var(--msg-text-2,#334155)}
+.promo-card .promo-segmented button.is-active{background:var(--msg-surface,#fff);color:var(--msg-accent-text,#2563eb);box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.promo-card .promo-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+.promo-card .promo-filters[hidden],.promo-card .promo-list-box[hidden]{display:none}
+.promo-card .promo-file{display:flex;gap:8px;align-items:center;margin-top:10px;padding:10px;border:1px dashed var(--msg-border-strong,#cbd5e1);border-radius:10px;background:var(--msg-surface-soft,#f8fafc)}
+.promo-card .promo-file input[type=file]{flex:1;min-width:0;border:0;padding:0;background:transparent}
+/* Envío */
+.promo-card .promo-send-tools{margin-top:4px}
+.promo-card label.promo-inline{flex-direction:row;align-items:center;gap:8px;margin:0;font-weight:700}
+.promo-card label.promo-inline input[type=number]{width:80px}
+.promo-card label.promo-check{font-weight:600;color:var(--msg-text-2,#334155)}
+.promo-card label.promo-check input{width:auto}
+.promo-card .promo-status{margin:12px 0 10px;padding:10px 14px;border-radius:10px;background:var(--msg-accent-softer,#eff6ff);color:var(--msg-accent-strong,#1d4ed8);font-size:14px;font-weight:600}
+.promo-card .reminder-items{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));max-height:340px}
+.promo-card .reminder-items:empty{display:none}
+.promo-card .promo-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 24px;background:var(--msg-surface,#fff);border-top:1px solid var(--msg-border,#e2e8f0)}
+.promo-card .promo-foot [hidden]{display:none}
+@media(max-width:900px){.promo-card .promo-top{grid-template-columns:1fr}}
+@media(max-width:600px){.promo-card .promo-name-row,.promo-card .promo-filters{grid-template-columns:1fr}.promo-card .promo-body{padding:12px}.promo-card .promo-head,.promo-card .promo-foot{padding-left:14px;padding-right:14px}}
+body:is([data-theme="dark"],[data-theme="vampire"]) .promo-card .promo-bubble{background:#005c4b;color:#e9edef}
+.promo-card .reminder-item{font-size:13px;padding:8px 10px}.promo-card .reminder-item strong{font-size:14px}
+.mensajes-reminder-card.promo-card.is-narrow{width:min(980px,calc(100% - 32px))}

@@ -142,3 +142,85 @@ exports.testAiProviderConnection = async (req, res) => {
 exports.getConversationState = (req, res) => { if (!allowed(req, res)) return; const conversationId = Number(req.params.id); if (!id(conversationId)) return bad(res, "Conversacion invalida"); if (!repo.getConversation(conversationId)) return res.status(404).json({ ok: false, message: "Conversacion no encontrada" }); res.json({ ok: true, state: repo.getConversationState(conversationId) }); };
 exports.updateConversationState = (req, res) => { if (!allowed(req, res)) return; const conversationId = Number(req.params.id); const body = req.body || {}; if (!id(conversationId) || !repo.getConversation(conversationId)) return res.status(404).json({ ok: false, message: "Conversacion no encontrada" }); if (!body.collected || typeof body.collected !== "object" || Array.isArray(body.collected) || !Array.isArray(body.missing) || !Array.isArray(body.offeredSlots) || (body.pendingAction !== null && body.pendingAction !== undefined && typeof body.pendingAction !== "object")) return bad(res, "Estado de conversacion invalido"); res.json({ ok: true, state: repo.updateConversationState(conversationId, { collected: body.collected, missing: body.missing, offeredSlots: body.offeredSlots, pendingAction: body.pendingAction || null, humanTransition: body.humanTransition === true }) }); };
 const crypto = require("crypto");
+
+// --- Promociones (campañas por bloques a pacientes del Seguimiento) ---
+const { listarPacientesSeguimiento } = require("./paciente.controller");
+const PROMO_VARS = new Set(["nombre"]);
+const promoTemplateOk = (template) => text(template) && ![...String(template).matchAll(/{{\s*([^}]+)\s*}}/g)].some((m) => !PROMO_VARS.has(m[1].trim()));
+// telefonoP es texto libre ("7748 3940", "2451-0000 / 7748-3940"): se prefiere el primer celular (8 dígitos que
+// empiezan con 6 o 7; un fijo 2xxx no tiene WhatsApp) y si no hay, el primer número válido. "503" + 8 dígitos se
+// guarda como 8 dígitos (como persistedPhone) para que 77483940 y 50377483940 cuenten como el mismo número.
+const promoPhone = (value) => {
+  const nums = String(value || "").split(/[\/,;]|\by\b/i)
+    .map((part) => { const d = part.replace(/\D/g, ""); return d.length === 11 && d.startsWith("503") ? d.slice(3) : d; })
+    .filter((d) => d.length >= 8 && d.length <= 15);
+  return nums.find((d) => d.length === 8 && /^[67]/.test(d)) || nums[0] || "";
+};
+const promoFilters = (src = {}) => ({ segmento: String(src.segmento || "all"), estado: String(src.estado || "all"), tratamiento: String(src.tratamiento || "all"), proximaFiltro: String(src.proximaFiltro || "all") });
+const promoSource = (value) => (value === "lista" ? "lista" : "seguimiento");
+// "Válida hasta" (YYYY-MM-DD) opcional; vacío = sin fecha. undefined = no viene en el body.
+const promoValidUntil = (value) => { const v = String(value ?? "").trim(); if (!v) return null; return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined; };
+// Destinatarios que todavía no tienen la campaña (ni por id ni por teléfono), sin teléfonos repetidos.
+// Origen 'seguimiento': pacientes del sistema con los filtros; 'lista': contactos importados (Excel/CSV).
+async function promoPending(campaignId, filters, { retryFailed = false } = {}) {
+  const campaign = repo.getPromoCampaign(campaignId);
+  const rows = campaign?.source === "lista"
+    ? repo.listPromoContacts(campaignId).map((x) => ({ idPaciente: x.id, NombreP: x.name, telefonoP: x.phone, tipoTratamientoP: "Lista importada" }))
+    : await listarPacientesSeguimiento(filters);
+  const taken = repo.getPromoCampaignTaken(campaignId, { retryFailed });
+  const seen = new Set(); let alreadySent = 0; let noPhone = 0; let failedBefore = 0; const pending = [];
+  for (const row of rows) {
+    const phone = promoPhone(row.telefonoP);
+    if (!phone) { noPhone++; continue; }
+    if (!retryFailed && taken.failedPhones.has(phone)) { failedBefore++; continue; }
+    if (taken.patientIds.has(Number(row.idPaciente)) || taken.phones.has(phone)) { alreadySent++; continue; }
+    if (seen.has(phone)) continue;
+    seen.add(phone);
+    pending.push({ patientId: Number(row.idPaciente), patientName: String(row.NombreP || "").trim(), phone, treatment: row.tipoTratamientoP, segment: row.segmentoKey });
+  }
+  return { total: rows.length, alreadySent, noPhone, failedBefore, pending };
+}
+exports.listPromoCampaigns = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, campaigns: repo.listPromoCampaigns(), settings: repo.getReminderSettings() }); };
+exports.createPromoCampaign = (req, res) => { if (!allowed(req, res)) return; const name = String(req.body?.name || "").trim(); const template = String(req.body?.template || "").trim(); if (!name || name.length > 80) return bad(res, "Nombre de campaña invalido (maximo 80 caracteres)"); if (!promoTemplateOk(template)) return bad(res, "Mensaje vacio o con una variable no permitida (solo {{nombre}})"); const validUntil = promoValidUntil(req.body?.validUntil); if (validUntil === undefined) return bad(res, "Fecha de vigencia invalida"); res.status(201).json({ ok: true, campaign: repo.createPromoCampaign({ name, template, source: promoSource(req.body?.source), validUntil }) }); };
+exports.updatePromoCampaign = (req, res) => { if (!allowed(req, res)) return; const campaign = id(req.params.id) && repo.getPromoCampaign(Number(req.params.id)); if (!campaign) return res.status(404).json({ ok: false, message: "Campaña no encontrada" }); const name = String(req.body?.name ?? campaign.name).trim(); const template = String(req.body?.template ?? campaign.template).trim(); if (!name || name.length > 80) return bad(res, "Nombre de campaña invalido (maximo 80 caracteres)"); if (!promoTemplateOk(template)) return bad(res, "Mensaje vacio o con una variable no permitida (solo {{nombre}})"); const validUntil = req.body?.validUntil === undefined ? campaign.validUntil : promoValidUntil(req.body.validUntil); if (validUntil === undefined) return bad(res, "Fecha de vigencia invalida"); res.json({ ok: true, campaign: repo.updatePromoCampaign(campaign.id, { name, template, source: promoSource(req.body?.source ?? campaign.source), validUntil }) }); };
+exports.deletePromoCampaign = (req, res) => { if (!allowed(req, res)) return; const campaign = id(req.params.id) && repo.getPromoCampaign(Number(req.params.id)); if (!campaign) return res.status(404).json({ ok: false, message: "Campaña no encontrada" }); if (repo.getActivePromoBatch()?.campaign_id === campaign.id) return res.status(409).json({ ok: false, message: "La campaña tiene un bloque enviándose; cancélelo antes de borrarla" }); repo.deletePromoCampaign(campaign.id); res.json({ ok: true }); };
+// Importa contactos de una lista (el navegador ya leyó el Excel/CSV y manda [{ name, phone }]).
+exports.addPromoContacts = (req, res) => { if (!allowed(req, res)) return; const campaign = id(req.params.id) && repo.getPromoCampaign(Number(req.params.id)); if (!campaign) return res.status(404).json({ ok: false, message: "Campaña no encontrada" }); const raw = Array.isArray(req.body?.contacts) ? req.body.contacts : []; if (!raw.length || raw.length > 20000) return bad(res, "La lista esta vacia o tiene mas de 20000 filas"); const contacts = raw.map((x) => ({ name: String(x?.name || "").trim().slice(0, 120), phone: promoPhone(x?.phone) })); const valid = contacts.filter((x) => x.phone); const added = repo.addPromoContacts(campaign.id, valid); res.json({ ok: true, added, duplicates: valid.length - added, invalid: contacts.length - valid.length, total: repo.listPromoContacts(campaign.id).length }); };
+exports.clearPromoContacts = (req, res) => { if (!allowed(req, res)) return; const campaign = id(req.params.id) && repo.getPromoCampaign(Number(req.params.id)); if (!campaign) return res.status(404).json({ ok: false, message: "Campaña no encontrada" }); res.json({ ok: true, removed: repo.clearPromoContacts(campaign.id) }); };
+exports.promoHistory = (req, res) => { if (!allowed(req, res)) return; const campaign = id(req.params.id) && repo.getPromoCampaign(Number(req.params.id)); if (!campaign) return res.status(404).json({ ok: false, message: "Campaña no encontrada" }); res.json({ ok: true, items: repo.listPromoCampaignHistory(campaign.id) }); };
+exports.promoCandidates = async (req, res) => { if (!allowed(req, res)) return; const campaign = id(req.params.id) && repo.getPromoCampaign(Number(req.params.id)); if (!campaign) return res.status(404).json({ ok: false, message: "Campaña no encontrada" }); try { const filters = promoFilters(req.query); const result = await promoPending(campaign.id, filters, { retryFailed: req.query.retryFailed === "1" }); repo.setPromoCampaignFilters(campaign.id, filters); res.json({ ok: true, ...result }); } catch (error) { res.status(error.status || 500).json({ ok: false, message: error.status ? error.message : "No se pudieron consultar los pacientes" }); } };
+// Crea y arranca el bloque SOLO con los pacientes que el usuario vio en la lista cargada (patientIds),
+// y de esos solo los que siguen pendientes según el registro (no se repite a nadie). Nunca agrega otros.
+exports.sendPromoBlock = async (req, res) => {
+  if (!allowed(req, res)) return;
+  const campaign = id(req.params.id) && repo.getPromoCampaign(Number(req.params.id));
+  if (!campaign) return res.status(404).json({ ok: false, message: "Campaña no encontrada" });
+  const patientIds = new Set((Array.isArray(req.body?.patientIds) ? req.body.patientIds : []).map(Number).filter((x) => Number.isInteger(x) && x > 0));
+  if (!patientIds.size || patientIds.size > 500) return bad(res, "Cargue los pacientes antes de enviar (maximo 500 por bloque)");
+  if (repo.getActivePromoBatch()) return res.status(409).json({ ok: false, message: "Ya hay un bloque de promociones enviándose" });
+  const runtime = getRuntime();
+  if (runtime.connector.getStatus().status !== "connected") return res.status(409).json({ ok: false, message: "WhatsApp no está conectado" });
+  try {
+    const filters = promoFilters(req.body?.filters);
+    const retryFailed = req.body?.retryFailed === true;
+    const { pending } = await promoPending(campaign.id, filters, { retryFailed });
+    // Desde aquí hasta crear el bloque todo es síncrono: se vuelve a revisar con el registro actual para que
+    // dos envíos simultáneos (doble clic, otra computadora) no repitan pacientes ni creen dos bloques.
+    if (repo.getActivePromoBatch()) return res.status(409).json({ ok: false, message: "Ya hay un bloque de promociones enviándose" });
+    const fresh = repo.getPromoCampaignTaken(campaign.id, { retryFailed });
+    const chosen = pending.filter((x) => patientIds.has(x.patientId) && !fresh.patientIds.has(x.patientId) && !fresh.phones.has(x.phone));
+    if (!chosen.length) return res.status(409).json({ ok: false, message: "Ninguno de los pacientes cargados sigue pendiente; vuelva a cargar la lista" });
+    const settings = repo.getReminderSettings();
+    // Sin nombre (lista importada) no queda "Hola ,": se quita {{nombre}} junto con el espacio de antes.
+    const items = chosen.map((x) => ({ ...x, content: x.patientName ? campaign.template.replace(/{{\s*nombre\s*}}/g, x.patientName) : campaign.template.replace(/\s*{{\s*nombre\s*}}/g, "") }));
+    const batch = repo.createPromoBatch({ campaignId: campaign.id, template: campaign.template, filters, minDelay: settings.minDelaySeconds, maxDelay: settings.maxDelaySeconds, items });
+    repo.setPromoCampaignFilters(campaign.id, filters);
+    runtime.startPromoBatch(batch.id);
+    res.status(201).json({ ok: true, batch });
+  } catch (error) { res.status(error.status || 500).json({ ok: false, message: error.status ? error.message : "No se pudo crear el bloque" }); }
+};
+exports.getActivePromoBatch = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, batch: repo.getActivePromoBatch() }); };
+exports.getPromoBatch = (req, res) => { if (!allowed(req, res)) return; const batch = id(req.params.id) && repo.getPromoBatch(Number(req.params.id)); if (!batch) return res.status(404).json({ ok: false, message: "Bloque no encontrado" }); res.json({ ok: true, batch }); };
+// Reanuda un bloque que quedó a medias (WhatsApp se desconectó o se reinició la app).
+exports.resumePromoBatch = (req, res) => { if (!allowed(req, res)) return; const batch = id(req.params.id) && repo.getPromoBatch(Number(req.params.id)); if (!batch) return res.status(404).json({ ok: false, message: "Bloque no encontrado" }); const runtime = getRuntime(); if (runtime.connector.getStatus().status !== "connected") return res.status(409).json({ ok: false, message: "WhatsApp no está conectado" }); runtime.startPromoBatch(batch.id); res.json({ ok: true, batch: repo.getPromoBatch(batch.id) }); };
+exports.cancelPromoBatch = (req, res) => { if (!allowed(req, res)) return; if (!id(req.params.id)) return bad(res, "Bloque invalido"); res.json({ ok: true, batch: repo.cancelPromoBatch(Number(req.params.id)) }); };

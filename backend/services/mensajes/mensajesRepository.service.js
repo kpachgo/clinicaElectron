@@ -201,9 +201,28 @@ class MensajesRepository {
       // El chat absorbido puede traer un paciente vinculado que el destino todavia
       // no tiene (p. ej. el cascaron de un recordatorio ya vinculado por telefono).
       if (source?.patient_id) this.db.prepare("UPDATE conversations SET patient_id=COALESCE(patient_id,?) WHERE id=?").run(source.patient_id, targetId);
+      this.dedupeOutgoingMessages(targetId);
     });
     transaction();
     return this.getConversation(targetId);
+  }
+
+  // Al fusionar, el mismo saliente puede quedar dos veces: el que se guardó al enviarlo
+  // (external_id sintetizado "wa-…", autor ai/system) en un chat, y su eco o sincronización
+  // (id real de WhatsApp, autor "human") que cayó en el otro chat (@lid aún sin resolver).
+  // Caso real 2026-10-06 (conv 1452). Misma regla que el dedup de saveMessage: mismo texto,
+  // a menos de 3 min y ningún entrante entre ambos. Se conserva el primero con el id real.
+  dedupeOutgoingMessages(conversationId) {
+    const pairs = this.db.prepare(`SELECT a.id AS keepId, a.external_id AS keepExternalId, b.id AS dropId, b.external_id AS dropExternalId FROM messages a JOIN messages b ON b.conversation_id=a.conversation_id AND b.id>a.id AND b.direction='outgoing' AND b.content=a.content AND ABS(strftime('%s', a.message_at) - strftime('%s', b.message_at)) <= 180 WHERE a.conversation_id=? AND a.direction='outgoing' AND NOT EXISTS (SELECT 1 FROM messages i WHERE i.conversation_id=a.conversation_id AND i.direction='incoming' AND i.message_at > MIN(a.message_at, b.message_at) AND i.message_at < MAX(a.message_at, b.message_at)) ORDER BY a.id, b.id`).all(conversationId);
+    const dropped = new Set();
+    for (const p of pairs) {
+      if (dropped.has(p.keepId) || dropped.has(p.dropId)) continue;
+      dropped.add(p.dropId);
+      this.db.prepare("DELETE FROM messages WHERE id=?").run(p.dropId);
+      const synthetic = (v) => !v || /^(ai-)?wa-/.test(String(v));
+      if (synthetic(p.keepExternalId) && !synthetic(p.dropExternalId)) this.db.prepare("UPDATE messages SET external_id=? WHERE id=?").run(p.dropExternalId, p.keepId);
+    }
+    return dropped.size;
   }
 
   // Todos los teléfonos reales (8 dígitos) por los que se conoce a una
@@ -357,10 +376,13 @@ class MensajesRepository {
     // external_id distinto (el envío directo de la IA, el evento message_create, y
     // la recuperación de no leídos — para @lid el _serialized real viene null y se
     // sintetiza uno distinto en cada camino). Mismo chat + mismo texto + a menos
-    // de 3 min = es el mismo mensaje, no lo duplicamos.
+    // de 3 min + mismo turno (ningún entrante después) = es el mismo mensaje.
+    // Sin la condición del turno, una respuesta nueva igual a la anterior ("¡Con
+    // gusto!") se descartaba, el paciente quedaba "sin responder" y la IA
+    // reenviaba en bucle.
     if (direction === "outgoing") {
       const at = messageAt || new Date().toISOString();
-      const dup = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? AND direction='outgoing' AND content=? AND ABS(strftime('%s', message_at) - strftime('%s', ?)) <= 180 LIMIT 1").get(conversationId, text.trim(), at);
+      const dup = this.db.prepare("SELECT * FROM messages WHERE conversation_id=? AND direction='outgoing' AND content=? AND ABS(strftime('%s', message_at) - strftime('%s', ?)) <= 180 AND id > IFNULL((SELECT MAX(id) FROM messages WHERE conversation_id=? AND direction='incoming'), 0) LIMIT 1").get(conversationId, text.trim(), at, conversationId);
       if (dup) {
         if (author && dup.author !== author && author === "ai") this.db.prepare("UPDATE messages SET author=? WHERE id=?").run(author, dup.id);
         return { message: toMessage(this.db.prepare("SELECT * FROM messages WHERE id=?").get(dup.id)), duplicate: true };
@@ -425,6 +447,41 @@ class MensajesRepository {
   updateReminderItem(id, status, changes = {}) { this.db.prepare("UPDATE reminder_batch_items SET status=?, queue_id=COALESCE(?,queue_id), error=?, sent_at=CASE WHEN ?='sent' THEN datetime('now') ELSE sent_at END, updated_at=datetime('now') WHERE id=?").run(status, changes.queueId || null, changes.error || null, status, id); }
   refreshReminderBatch(id) { this.db.prepare("UPDATE reminder_batches SET sent_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='sent'), failed_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='failed'), cancelled_count=(SELECT COUNT(*) FROM reminder_batch_items WHERE batch_id=? AND status='cancelled'), updated_at=datetime('now') WHERE id=?").run(id,id,id,id); return this.getReminderBatch(id); }
   cancelReminderBatch(id) { this.db.prepare("UPDATE reminder_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending')").run(id); this.db.prepare("UPDATE reminder_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.getReminderBatch(id); }
+  // --- Promociones: campañas enviadas por bloques (ver promo_* en mensajesDatabase) ---
+  listPromoCampaigns() { return this.db.prepare("SELECT c.id, c.name, c.template, c.filters_json AS filtersJson, c.source, c.valid_until AS validUntil, (SELECT COUNT(*) FROM promo_campaign_contacts k WHERE k.campaign_id=c.id) AS contactCount, c.created_at AS createdAt, (SELECT COUNT(*) FROM promo_batch_items i WHERE i.campaign_id=c.id AND i.status='sent') AS sentCount, (SELECT MAX(sent_at) FROM promo_batch_items i WHERE i.campaign_id=c.id AND i.status='sent') AS lastSentAt FROM promo_campaigns c ORDER BY c.id DESC").all(); }
+  getPromoCampaign(id) { return this.db.prepare("SELECT id, name, template, filters_json AS filtersJson, source, valid_until AS validUntil FROM promo_campaigns WHERE id=?").get(id) || null; }
+  // Borra la campaña con su registro de envíos (los mensajes ya enviados siguen en las conversaciones).
+  deletePromoCampaign(id) { this.db.transaction(() => { this.db.prepare("DELETE FROM promo_batch_items WHERE campaign_id=?").run(id); this.db.prepare("DELETE FROM promo_campaign_contacts WHERE campaign_id=?").run(id); this.db.prepare("DELETE FROM promo_batches WHERE campaign_id=?").run(id); this.db.prepare("DELETE FROM promo_campaigns WHERE id=?").run(id); })(); }
+  // Promociones vigentes enviadas a este chat: hasta valid_until de la campaña, o `days` días desde el envío si no tiene (por teléfono o por el texto exacto de un
+  // saliente del chat: un @lid sin resolver no trae el teléfono). La IA las usa como contexto (assistantContext).
+  getRecentSentPromos({ phones = [], contents = [] } = {}, days = 15) {
+    const variants = [...new Set(phones.flatMap(phoneRuleVariants))];
+    const texts = [...new Set(contents.map((x) => String(x || "").trim()).filter(Boolean))];
+    if (!variants.length && !texts.length) return [];
+    const where = [variants.length ? `i.phone IN (${variants.map(() => "?").join(",")})` : null, texts.length ? `i.content IN (${texts.map(() => "?").join(",")})` : null].filter(Boolean).join(" OR ");
+    return this.db.prepare(`SELECT i.content, i.sent_at AS sentAt, c.valid_until AS validUntil FROM promo_batch_items i JOIN promo_campaigns c ON c.id=i.campaign_id WHERE i.status='sent' AND (CASE WHEN c.valid_until IS NOT NULL THEN date('now', 'localtime') <= c.valid_until ELSE i.sent_at >= datetime('now', ?) END) AND (${where}) ORDER BY i.sent_at DESC LIMIT 3`).all(`-${days} days`, ...variants, ...texts);
+  }
+  // Historial de la campaña: a quién se le envió (o falló), el más reciente primero.
+  listPromoCampaignHistory(campaignId) { return this.db.prepare("SELECT patient_name AS name, phone, status, error, COALESCE(sent_at, updated_at) AS at FROM promo_batch_items WHERE campaign_id=? AND status IN ('sent','failed','queued') ORDER BY COALESCE(sent_at, updated_at) DESC, id DESC").all(campaignId); }
+  setPromoCampaignFilters(id, filters) { this.db.prepare("UPDATE promo_campaigns SET filters_json=?, updated_at=datetime('now') WHERE id=?").run(JSON.stringify(filters || {}), id); }
+  createPromoCampaign({ name, template, source, validUntil = null }) { return this.getPromoCampaign(this.db.prepare("INSERT INTO promo_campaigns (name, template, source, valid_until) VALUES (?,?,?,?)").run(name, template, source, validUntil).lastInsertRowid); }
+  updatePromoCampaign(id, { name, template, source, validUntil = null }) { this.db.prepare("UPDATE promo_campaigns SET name=?, template=?, source=?, valid_until=?, updated_at=datetime('now') WHERE id=?").run(name, template, source, validUntil, id); return this.getPromoCampaign(id); }
+  // Contactos importados (Excel/CSV): se acumulan; un teléfono repetido en la campaña se ignora.
+  addPromoContacts(campaignId, contacts) { const insert = this.db.prepare("INSERT OR IGNORE INTO promo_campaign_contacts (campaign_id, name, phone) VALUES (?,?,?)"); return this.db.transaction(() => contacts.reduce((added, x) => added + insert.run(campaignId, x.name, x.phone).changes, 0))(); }
+  listPromoContacts(campaignId) { return this.db.prepare("SELECT id, name, phone FROM promo_campaign_contacts WHERE campaign_id=? ORDER BY id").all(campaignId); }
+  clearPromoContacts(campaignId) { return this.db.prepare("DELETE FROM promo_campaign_contacts WHERE campaign_id=?").run(campaignId).changes; }
+  // Quién ya tiene la campaña (enviada o en curso): no entra en el próximo bloque. Los 'cancelled' sí vuelven a entrar;
+  // los 'failed' (casi siempre números sin WhatsApp) solo si se pide reintentarlos, para no fallar en cada bloque.
+  getPromoCampaignTaken(campaignId, { retryFailed = false } = {}) { const rows = this.db.prepare("SELECT patient_id AS patientId, phone, status FROM promo_batch_items WHERE campaign_id=? AND status IN ('sent','pending','sending','queued','failed')").all(campaignId); const failed = rows.filter((x) => x.status === "failed"); const taken = rows.filter((x) => x.status !== "failed"); const okPhones = new Set(taken.map((x) => x.phone)); return { patientIds: new Set(taken.map((x) => Number(x.patientId))), phones: new Set(taken.map((x) => x.phone)), failedPhones: new Set(retryFailed ? [] : failed.map((x) => x.phone).filter((p) => !okPhones.has(p))) }; }
+  createPromoBatch({ campaignId, template, filters, minDelay, maxDelay, items }) { return this.db.transaction(() => { const b = this.db.prepare("INSERT INTO promo_batches (campaign_id,template,filters_json,min_delay_seconds,max_delay_seconds,total_count) VALUES (?,?,?,?,?,?)").run(campaignId, template, JSON.stringify(filters || {}), minDelay, maxDelay, items.length); const insert = this.db.prepare("INSERT INTO promo_batch_items (batch_id,campaign_id,patient_id,patient_name,phone,content) VALUES (?,?,?,?,?,?)"); for (const x of items) insert.run(b.lastInsertRowid, campaignId, x.patientId, x.patientName, x.phone, x.content); return this.getPromoBatch(b.lastInsertRowid); })(); }
+  getPromoBatch(id) { const batch = this.db.prepare("SELECT * FROM promo_batches WHERE id=?").get(id); if (!batch) return null; const items = this.db.prepare("SELECT * FROM promo_batch_items WHERE batch_id=? ORDER BY id").all(id); return { ...batch, items, totalCount: batch.total_count, sentCount: batch.sent_count, failedCount: batch.failed_count, cancelledCount: batch.cancelled_count }; }
+  getActivePromoBatch() { const row = this.db.prepare("SELECT id FROM promo_batches WHERE status IN ('queued','processing') ORDER BY id DESC LIMIT 1").get(); return row ? this.getPromoBatch(row.id) : null; }
+  claimPromoItem(batchId) { const item = this.db.prepare("SELECT * FROM promo_batch_items WHERE batch_id=? AND status='pending' ORDER BY id LIMIT 1").get(batchId); if (!item) return null; this.db.prepare("UPDATE promo_batch_items SET status='sending', updated_at=datetime('now') WHERE id=? AND status='pending'").run(item.id); return this.db.prepare("SELECT * FROM promo_batch_items WHERE id=?").get(item.id); }
+  updatePromoItem(id, status, changes = {}) { this.db.prepare("UPDATE promo_batch_items SET status=?, queue_id=COALESCE(?,queue_id), error=?, sent_at=CASE WHEN ?='sent' THEN datetime('now') ELSE sent_at END, updated_at=datetime('now') WHERE id=?").run(status, changes.queueId || null, changes.error || null, status, id); }
+  refreshPromoBatch(id) { this.db.prepare("UPDATE promo_batches SET sent_count=(SELECT COUNT(*) FROM promo_batch_items WHERE batch_id=? AND status='sent'), failed_count=(SELECT COUNT(*) FROM promo_batch_items WHERE batch_id=? AND status='failed'), cancelled_count=(SELECT COUNT(*) FROM promo_batch_items WHERE batch_id=? AND status='cancelled'), updated_at=datetime('now') WHERE id=?").run(id, id, id, id); return this.getPromoBatch(id); }
+  finishPromoBatch(id) { this.db.prepare("UPDATE promo_batches SET status=CASE WHEN failed_count>0 THEN 'completed_with_errors' ELSE 'completed' END, finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); }
+  // Al cancelar también se retira de la cola de salida lo que aún no salió, para que no se envíe sin registro.
+  cancelPromoBatch(id) { this.db.prepare("UPDATE outgoing_queue SET status='cancelled', last_error='Bloque cancelado', updated_at=datetime('now') WHERE idempotency_key LIKE ? AND status='pending'").run(`promo-${id}-%`); this.db.prepare("UPDATE promo_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending','queued') AND NOT EXISTS (SELECT 1 FROM outgoing_queue q WHERE q.idempotency_key='promo-' || promo_batch_items.batch_id || '-' || promo_batch_items.id AND q.status IN ('sent','sending'))").run(id); this.db.prepare("UPDATE promo_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.refreshPromoBatch(id); }
   // Recordatorio 'sent' más reciente para ese teléfono dentro de una ventana horaria.
   // Sirve para correlacionar la respuesta del paciente ("sí, ahí estaré") con la cita
   // concreta sin que el recordatorio lleve el id en el texto. sent_at se guarda con

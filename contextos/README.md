@@ -27,6 +27,8 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `22_whatsapp_acoplamiento_libreria.md`
 - `23_almacenamiento_nube.md`
 - `24_inventario.md`
+- `25_migracion_conexion_whatsapp.md`
+- `26_bug_bucle_salientes_duplicados.md`
 
 ## Nota
 - `01_general.md` incluye un resumen fechado de cambios recientes para reubicarse rapido entre sesiones.
@@ -43,3 +45,5 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `23_almacenamiento_nube.md` documenta los modos local / respaldo / solo nube (Cloudflare R2) para fotos, firmas y sellos, reglas de costo y pendientes.
 - `24_inventario.md` documenta la vista Inventario: catalogo (Odontologia / Ortodoncia / Instrumentos) y pedidos borrador -> generado, sin stock ni precios.
 - `22_whatsapp_acoplamiento_libreria.md` evalua que tan atada esta la Vista Mensajes a `whatsapp-web.js` de cara a una eventual migracion a la API oficial de Meta u otra libreria; nota de evaluacion, no un plan aprobado.
+- `25_migracion_conexion_whatsapp.md` complementa al 22 (2026-10-03): que se conserva al cambiar de conexion, la logica `@lid` que salio del conector, la recomendacion de mantener `waChatId` como `numero@c.us`, contrato que debe respetar un conector nuevo y lo no trivial de Meta (webhook publico, plantillas 24 h).
+- `26_bug_bucle_salientes_duplicados.md` bug PENDIENTE de reparar (2026-10-03, encontrado en WhatChat): el dedup de salientes por contenido descarta una respuesta de la IA igual a otra reciente y la IA contesta en bucle el mismo mensaje. Causa, arreglo exacto y cómo verificarlo.
