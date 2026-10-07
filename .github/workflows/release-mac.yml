@@ -174,19 +174,19 @@ jobs:
 
       - name: Validate runtime backend included in app bundle
         run: |
-          if ! find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/server.js" -print -quit | grep -q .; then
+          if ! find dist-electron -path "*/InsiSoft.app/Contents/Resources/runtime/backend/server.js" -print -quit | grep -q .; then
             echo "runtime/backend/server.js not found inside .app bundle"
             exit 1
           fi
-          find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/server.js" -print
+          find dist-electron -path "*/InsiSoft.app/Contents/Resources/runtime/backend/server.js" -print
 
       - name: Validate backend .env included in app bundle
         run: |
-          if ! find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/.env" -print -quit | grep -q .; then
+          if ! find dist-electron -path "*/InsiSoft.app/Contents/Resources/runtime/backend/.env" -print -quit | grep -q .; then
             echo "runtime/backend/.env not found inside .app bundle"
             exit 1
           fi
-          find dist-electron -path "*/ClinicaElectron.app/Contents/Resources/runtime/backend/.env" -print
+          find dist-electron -path "*/InsiSoft.app/Contents/Resources/runtime/backend/.env" -print
 
       - name: Upload macOS artifact (backup)
         uses: actions/upload-artifact@v4

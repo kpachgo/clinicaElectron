@@ -36,7 +36,7 @@
   },
   "build": {
     "appId": "com.clinica.electron",
-    "productName": "ClinicaElectron",
+    "productName": "InsiSoft",
     "afterPack": "build/afterPack.js",
     "afterAllArtifactBuild": "build/afterAllArtifactBuild.js",
     "asar": true,
