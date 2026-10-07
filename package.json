@@ -36,7 +36,7 @@
   },
   "build": {
     "appId": "com.clinica.electron",
-    "productName": "InsiSoft",
+    "productName": "ClinicaElectron",
     "afterPack": "build/afterPack.js",
     "afterAllArtifactBuild": "build/afterAllArtifactBuild.js",
     "asar": true,
@@ -93,7 +93,10 @@
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "extendInfo": {
+        "CFBundleDisplayName": "InsiSoft"
+      }
     },
     "linux": {
       "icon": "frontend/img/icon-512.png",
@@ -102,7 +105,12 @@
       "target": [
         "deb",
         "AppImage"
-      ]
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "InsiSoft"
+        }
+      }
     },
     "publish": [
       {
@@ -117,7 +125,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "installerIcon": "incisoft.ico",
-      "uninstallerIcon": "incisoft.ico"
+      "uninstallerIcon": "incisoft.ico",
+      "shortcutName": "InsiSoft",
+      "uninstallDisplayName": "InsiSoft"
     },
     "disableDefaultIgnoredFiles": true
   }
