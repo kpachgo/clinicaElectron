@@ -27,13 +27,13 @@ async function start() {
   connector.onIncomingMessage((message) => { const saved = repository.saveIncomingMessage(message); const eventDecision = evaluateConversationEvent({ conversationStatus: saved.conversation.status, eventDirection: "incoming", eventType: message.rawType || "text", humanReviewRequired: saved.conversation.attentionMode === "review_required", hasNewPatientMessage: message.source !== "recovery" && message.rawType !== "reaction", isReconnect: message.source === "recovery" }); const allowedByPhone = repository.shouldAllowAutomatedResponseForConversation(saved.conversation.id, message.waContactNumber || message.phone || ""); if (message.rawType === "audio" || message.rawType === "ptt") { const state = repository.getConversationState(saved.conversation.id); repository.updateConversationState(saved.conversation.id, { ...state, collected: { ...(state.collected || {}), _engineFacts: { ...(state.collected?._engineFacts || {}), unreviewedAudio: true } }, humanTransition: true }); } console.log("[Mensajes][SQLite] Mensaje entrante", { externalId: message.externalId, conversationId: saved.conversation.id, duplicate: Boolean(saved.duplicate), rawType: message.rawType || "text", source: message.source || "live", eventAction: eventDecision.action, automatedResponseAllowed: allowedByPhone }); if (saved.message?.id && !saved.duplicate && eventDecision.action === "analyze_incoming" && allowedByPhone) enqueueIncomingResponse(saved.conversation.id, saved.message.id, message.text); });
   if (typeof connector.onOutgoingMessage === "function") connector.onOutgoingMessage((message) => { repository.saveOutgoingMessage({ phone: message.phone, externalId: message.externalId, text: message.text, author: message.author || "human", messageAt: message.messageAt, waChatId: message.waChatId, waContactNumber: message.waContactNumber, waDisplayName: message.waDisplayName, rawType: message.rawType || "text", reactionTargetId: message.reactionTargetId || null, source: message.source || "live" }); });
   connector.onMessageStatus((status) => repository.updateMessageStatus(status.externalId, status.status, status.error));
-  if (typeof connector.onStatus === "function") connector.onStatus((status) => { if (status.status === "connected") { connectedAtMs = Date.now(); console.log("[Mensajes] Conexion restaurada; no se reanudan respuestas ni recordatorios automaticamente"); for (const ms of [3000, 15000, 40000, 90000]) setTimeout(() => void refreshLidConversations(), ms).unref?.(); } });
+  if (typeof connector.onStatus === "function") connector.onStatus((status) => { if (status.status === "connected") { connectedAtMs = Date.now(); console.log("[Mensajes] Conexion restaurada; no se reanudan respuestas ni recordatorios automaticamente"); for (const ms of [3000, 15000, 40000, 90000]) setTimeout(() => void refreshLidConversations(), ms).unref?.(); setTimeout(() => void refreshAvatars(), 20000).unref?.(); } });
   if (typeof connector.setTyping === "function") setTypingHandler((phone, enabled, options = {}) => connector.setTyping(phone, enabled, options));
   if (typeof connector.sendMessage === "function") setSendHandler(sendAiMessage);
   if (typeof connector.resolvePhoneForChatId === "function") setLidResolver((chatId) => connector.resolvePhoneForChatId(chatId));
   queueTimer = null;
   if (typeof connector.resolvePhoneForChatId === "function" && !lidRefreshTimer) {
-    lidRefreshTimer = setInterval(() => void refreshLidConversations(), 60 * 1000);
+    lidRefreshTimer = setInterval(() => { void refreshLidConversations(); void refreshAvatars(); }, 60 * 1000);
     lidRefreshTimer.unref?.();
   }
   started = true;
@@ -76,6 +76,50 @@ async function refreshLidConversations() {
     }
   } finally {
     refreshingLids = false;
+  }
+}
+// Fotos de perfil: 5 chats por pasada (cada 60 s), cada chat una vez cada 7 días. Si el tag de WhatsApp no
+// cambió no se descarga nada; si cambió, se baja y se guarda reducida (la URL de WhatsApp expira en ~10 días).
+const AVATARS_PER_PASS = 5;
+const fs = require("fs");
+const avatarDir = require("path").join(storagePaths.mensajesDir, "avatars");
+const avatarPath = (conversationId) => require("path").join(avatarDir, `${Number(conversationId)}.jpg`);
+let refreshingAvatars = false;
+// Revisa la foto de un chat ({ id, waChatId, avatarTag }) y devuelve "photo" | "none" | "unknown". Lanza si falla la descarga.
+async function syncAvatar(conversation) {
+  const info = await connector.getProfilePicInfo(conversation.waChatId);
+  if (!info) { repository.setConversationAvatar(conversation.id, conversation.avatarTag); return "unknown"; }
+  if (info.none) { fs.rmSync(avatarPath(conversation.id), { force: true }); repository.setConversationAvatar(conversation.id, "none"); return "none"; }
+  if (info.tag === conversation.avatarTag && fs.existsSync(avatarPath(conversation.id))) { repository.setConversationAvatar(conversation.id, info.tag); return "photo"; }
+  const response = await fetch(info.eurl, { signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const image = await require("sharp")(Buffer.from(await response.arrayBuffer())).resize(96, 96).jpeg({ quality: 80 }).toBuffer();
+  fs.mkdirSync(avatarDir, { recursive: true });
+  fs.writeFileSync(avatarPath(conversation.id), image);
+  repository.setConversationAvatar(conversation.id, info.tag);
+  return "photo";
+}
+// Botón "Foto" del chat abierto: la misma revisión, sin esperar los 7 días.
+async function refreshConversationAvatar(conversationId) {
+  if (typeof connector.getProfilePicInfo !== "function" || connector.getStatus().status !== "connected") throw Object.assign(new Error("WhatsApp no está conectado"), { status: 409 });
+  const conversation = repository.getConversation(conversationId);
+  if (!conversation?.waChatId) throw Object.assign(new Error("Conversación no encontrada"), { status: 404 });
+  return syncAvatar(conversation);
+}
+async function refreshAvatars() {
+  if (refreshingAvatars || typeof connector.getProfilePicInfo !== "function" || connector.getStatus().status !== "connected") return;
+  refreshingAvatars = true;
+  try {
+    for (const conversation of repository.listConversationsNeedingAvatar(AVATARS_PER_PASS)) {
+      try {
+        await syncAvatar(conversation);
+      } catch (error) {
+        repository.setConversationAvatar(conversation.id, conversation.avatarTag); // un chat que siempre falla no ocupa la pasada: reintenta en 7 días
+        console.warn("[Mensajes][WhatsApp] No se pudo guardar la foto de perfil", { conversationId: conversation.id, error: error?.message || String(error) });
+      }
+    }
+  } finally {
+    refreshingAvatars = false;
   }
 }
 async function connectConnector() { if (!started) await start(); return connector.connect(); }
@@ -203,4 +247,4 @@ function startPromoBatch(batchId) { if (promoTimers.has(batchId)) return; promoT
 function startReminderBatch(batchId) { if (reminderTimers.has(batchId)) return; void processReminder(batchId); }
 function getRuntime() { return { connector, repository, started }; }
 function getMetrics() { const memory = process.memoryUsage(); return { started, connector: connector.getStatus(), process: { uptimeSeconds: Math.round(process.uptime()), rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, heapTotalBytes: memory.heapTotal }, queue: { pending: repository.listPendingOutgoing(100).length } }; }
-module.exports = { start, stop, connectConnector, disconnectConnector, clearConnectorSession, getRuntime: () => ({ connector, repository, started, startReminderBatch, startPromoBatch }), getMetrics, sendQueuedMessage, flushOutgoingQueue, startReminderBatch, startPromoBatch };
+module.exports = { avatarPath, refreshConversationAvatar, start, stop, connectConnector, disconnectConnector, clearConnectorSession, getRuntime: () => ({ connector, repository, started, startReminderBatch, startPromoBatch }), getMetrics, sendQueuedMessage, flushOutgoingQueue, startReminderBatch, startPromoBatch };

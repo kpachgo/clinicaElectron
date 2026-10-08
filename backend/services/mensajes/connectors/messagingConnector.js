@@ -48,6 +48,8 @@ function normalizeIncomingMessage(event) {
     waChatId: source.waChatId ? assertNonEmptyString(source.waChatId, "waChatId") : null,
     waContactNumber: source.waContactNumber ? normalizePhone(source.waContactNumber) : null,
     waDisplayName: source.waDisplayName ? String(source.waDisplayName).trim() : null,
+    waArchived: typeof source.waArchived === "boolean" ? source.waArchived : null,
+    waPinned: typeof source.waPinned === "boolean" ? source.waPinned : null,
     author: source.author ? String(source.author).trim() : null,
     text: assertNonEmptyString(source.text, "text"),
     direction,

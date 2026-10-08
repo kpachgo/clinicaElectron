@@ -18,6 +18,8 @@ router.post("/conversations/:id/identify-patient", controller.identifyPatient);
 router.delete("/conversations/:id/identify-patient", controller.clearIdentifiedPatient);
 router.patch("/conversations/:id/state", controller.updateConversationState);
 router.get("/conversations", controller.listConversations);
+router.get("/conversations/:id/avatar", controller.getConversationAvatar);
+router.post("/conversations/:id/avatar/refresh", controller.refreshConversationAvatar);
 router.get("/metrics", controller.metrics);
 router.get("/whatsapp/status", controller.whatsappStatus);
 router.post("/whatsapp/start", controller.whatsappStart);

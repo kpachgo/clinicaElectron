@@ -124,15 +124,11 @@ label>.time12{margin-top:5px}
 .mensajes-filters button.is-active{background:var(--msg-accent,#2563eb);border-color:var(--msg-accent,#2563eb);color:#fff}
 .mensajes-filters .chip-count{font-weight:800}
 .mensajes-list .mensajes-conversation{display:flex;align-items:flex-start;gap:10px;grid-template-columns:none;padding:10px;border-left:3px solid transparent}
-.mensajes-conversation .conv-avatar{flex:0 0 auto;width:34px;height:34px;display:grid;place-items:center;background:none;color:var(--msg-muted,#64748b)}
-.mensajes-conversation .conv-avatar .conv-bubble{width:26px;height:26px;display:block}
-.mensajes-conversation.is-ai .conv-avatar{color:var(--msg-info-text,#0284c7)}
-.mensajes-conversation.is-review .conv-avatar{color:var(--msg-warn-text,#d97706)}
-.mensajes-conversation.is-manual .conv-avatar{color:var(--msg-success-text,#16a34a)}
-.mensajes-conversation.is-paused .conv-avatar{color:var(--msg-subtle,#94a3b8)}
-.conv-bubble.is-typing circle:nth-of-type(1){animation:mensajes-typing 1s ease-in-out infinite}
-.conv-bubble.is-typing circle:nth-of-type(2){animation:mensajes-typing 1s ease-in-out .15s infinite}
-.conv-bubble.is-typing circle:nth-of-type(3){animation:mensajes-typing 1s ease-in-out .3s infinite}
+.mensajes-conversation .conv-avatar{flex:0 0 auto;width:38px;height:38px;border-radius:50%;overflow:hidden;display:grid;place-items:end center;background:var(--msg-neutral-bg,#e2e8f0);color:var(--msg-subtle,#94a3b8)}
+.mensajes-conversation .conv-avatar .conv-photo{width:100%;height:100%;object-fit:cover;display:block}
+.mensajes-conversation .conv-avatar .conv-silhouette{width:30px;height:30px;display:block}
+.mensajes-conversation .conv-mode{margin-left:auto}
+.mensajes-conversation .conv-mode + .conv-badge{margin-left:0}
 .mensajes-conversation .conv-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
 .mensajes-conversation .conv-top{display:flex;align-items:baseline;gap:8px}
 .mensajes-conversation .conv-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;color:var(--msg-text,#172033)}
@@ -254,3 +250,4 @@ body:is([data-theme="dark"],[data-theme="vampire"],[data-theme="princess"]) :is(
 body:is([data-theme="dark"],[data-theme="vampire"]) .promo-card .promo-bubble{background:#005c4b;color:#e9edef}
 .promo-card .reminder-item{font-size:13px;padding:8px 10px}.promo-card .reminder-item strong{font-size:14px}
 .mensajes-reminder-card.promo-card.is-narrow{width:min(980px,calc(100% - 32px))}
+.mensajes-conversation .conv-pin{flex:0 0 auto;font-size:10px;line-height:1;opacity:.7}

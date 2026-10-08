@@ -11,7 +11,7 @@
     let simulatingIncoming = false;
     // --- Lista de conversaciones: datos crudos + filtro/búsqueda + metadatos ---
     let allConversations = [];
-    let convListFilter = "all";        // "all" | "review" | "awaiting" | "ai"
+    let convListFilter = "all";        // "all" | "review" | "awaiting" | "ai" | "archived"
     let convSearchTerm = "";
     let patientNameByChat = new Map(); // waChatId -> { name, treatment } (vinculaciones activas)
     let patientNamesFetchedAt = 0;
@@ -97,7 +97,7 @@
             <div class="sim-group" id="mensajes-ai-group"><span class="sim-group-label">IA</span></div>
           </form>
           <div class="mensajes-layout">
-            <aside class="mensajes-conversations"><div class="mensajes-section-title"><span class="mensajes-section-heading">Conversaciones<button id="mensajes-toggle-tools" type="button" class="mensajes-icon-btn" title="Mostrar u ocultar herramientas" aria-label="Mostrar u ocultar herramientas"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></button></span><button id="mensajes-refresh" class="ui-toolbar-btn">Actualizar</button></div><div class="mensajes-list-toolbar"><input id="mensajes-search" type="search" autocomplete="off" placeholder="Buscar por nombre o número"><div id="mensajes-filters" class="mensajes-filters"><button type="button" data-filter="all" class="is-active">Todas</button><button type="button" data-filter="review">⚠ Necesitan revisión<span class="chip-count"></span></button><button type="button" data-filter="awaiting" title="El último mensaje del paciente lleva 10 minutos o más sin respuesta (de la IA o de recepción)">⏳ Sin responder<span class="chip-count"></span></button><button type="button" data-filter="ai">🤖 IA</button></div></div><div id="mensajes-list" class="mensajes-list"></div></aside>
+            <aside class="mensajes-conversations"><div class="mensajes-section-title"><span class="mensajes-section-heading">Conversaciones<button id="mensajes-toggle-tools" type="button" class="mensajes-icon-btn" title="Mostrar u ocultar herramientas" aria-label="Mostrar u ocultar herramientas"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></button></span><button id="mensajes-refresh" class="ui-toolbar-btn">Actualizar</button></div><div class="mensajes-list-toolbar"><input id="mensajes-search" type="search" autocomplete="off" placeholder="Buscar por nombre o número"><div id="mensajes-filters" class="mensajes-filters"><button type="button" data-filter="all" class="is-active">Todas</button><button type="button" data-filter="review">⚠ Necesitan revisión<span class="chip-count"></span></button><button type="button" data-filter="awaiting" title="El último mensaje del paciente lleva 10 minutos o más sin respuesta (de la IA o de recepción)">⏳ Sin responder<span class="chip-count"></span></button><button type="button" data-filter="ai">🤖 IA</button><button type="button" data-filter="archived" title="Chats archivados en WhatsApp (se actualiza cuando escriben)">🗄 Archivados<span class="chip-count"></span></button></div></div><div id="mensajes-list" class="mensajes-list"></div></aside>
             <main class="mensajes-chat"><div id="mensajes-chat-head" class="mensajes-chat-head"><span>Selecciona una conversación</span></div><div id="mensajes-chat-body" class="mensajes-chat-body"><div class="mensajes-empty">Selecciona una conversación para ver el historial.</div></div><form id="mensajes-compose" class="mensajes-compose"><input id="mensajes-input" maxlength="2000" autocomplete="off" placeholder="Escribe una respuesta..."><button type="submit">Enviar</button></form></main>
           </div>
         </section>`;
@@ -479,17 +479,28 @@ ${preview}
     function normSearch(value) {
         return String(value ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
     }
-    // Avatar = burbuja de chat (contorno, fondo transparente). Varía según el caso:
-    // IA -> tres puntos · revisión -> signo de exclamación · resto -> burbuja simple.
-    function convAvatarSvg(attentionMode, typing) {
-        const bubble = '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>';
-        let inner = "";
-        if (attentionMode === "review_required") {
-            inner = '<line x1="12" y1="7.6" x2="12" y2="12.4"/><circle cx="12" cy="15.5" r="0.6" fill="currentColor" stroke="none"/>';
-        } else if (attentionMode === "assistant") {
-            inner = '<circle cx="8.4" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15.6" cy="12" r="1" fill="currentColor" stroke="none"/>';
+    // Avatar como en WhatsApp: la foto de perfil (la guarda el backend, ver refreshAvatars) o la silueta
+    // genérica. El estado ya no va en el avatar: el modo va a la derecha y "IA escribiendo…" en la 2.ª línea.
+    // La foto se pide con fetch (lleva el token; un <img src> directo no) y se guarda como object URL.
+    const avatarUrls = new Map(); // `${id}:${tag}` -> object URL (null = pedida o sin foto)
+    let avatarRenderTimer = null;
+    function convAvatarHtml(c) {
+        const key = `${c.id}:${c.avatarTag}`;
+        if (c.avatarTag && !avatarUrls.has(key)) {
+            avatarUrls.set(key, null);
+            fetch(`/api/mensajes-view/conversations/${c.id}/avatar?v=${encodeURIComponent(c.avatarTag)}`, { __skipConnectionErrorAlert: true })
+                .then((r) => (r.ok ? r.blob() : null))
+                .then((blob) => {
+                    if (!blob) return;
+                    avatarUrls.set(key, URL.createObjectURL(blob));
+                    avatarRenderTimer ??= setTimeout(() => { avatarRenderTimer = null; lastListSig = ""; renderConversationList(); }, 100);
+                })
+                .catch(() => {});
         }
-        return `<svg class="conv-bubble${typing ? " is-typing" : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${bubble}${inner}</svg>`;
+        const url = c.avatarTag ? avatarUrls.get(key) : null;
+        return url
+            ? `<img class="conv-photo" src="${url}" alt="">`
+            : '<svg class="conv-silhouette" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4.2" fill="currentColor"/><path d="M3.8 21.5c.9-4.2 4.2-6.6 8.2-6.6s7.3 2.4 8.2 6.6z" fill="currentColor"/></svg>';
     }
     function convShortTime(value) {
         if (!value) return "";
@@ -595,11 +606,16 @@ ${preview}
             if (countEl) countEl.textContent = reviewCount ? ` ${reviewCount}` : "";
             const awaitingEl = filtersEl.querySelector('[data-filter="awaiting"] .chip-count');
             if (awaitingEl) awaitingEl.textContent = awaitingCount ? ` ${awaitingCount}` : "";
+            const archivedEl = filtersEl.querySelector('[data-filter="archived"] .chip-count');
+            if (archivedEl) { const n = decorated.filter((x) => x.c.waArchived).length; archivedEl.textContent = n ? ` ${n}` : ""; }
             filtersEl.querySelectorAll("[data-filter]").forEach((b) => b.classList.toggle("is-active", b.dataset.filter === convListFilter));
         }
 
         let rows = decorated;
-        if (convListFilter === "review") rows = rows.filter((x) => x.c.attentionMode === "review_required");
+        // Como WhatsApp: los archivados no salen en "Todas". Sí en revisión / sin responder / IA, que son trabajo pendiente.
+        if (convListFilter === "all") rows = rows.filter((x) => !x.c.waArchived);
+        else if (convListFilter === "archived") rows = rows.filter((x) => x.c.waArchived);
+        else if (convListFilter === "review") rows = rows.filter((x) => x.c.attentionMode === "review_required");
         else if (convListFilter === "awaiting") rows = rows.filter((x) => x.waitMinutes !== null).sort((a, b) => b.waitMinutes - a.waitMinutes);
         else if (convListFilter === "ai") rows = rows.filter((x) => x.c.attentionMode === "assistant");
         if (term) rows = rows.filter((x) => [x.displayName, x.patientName, x.c.phone, x.c.waDisplayName].some((value) => normSearch(value).includes(term)));
@@ -608,7 +624,7 @@ ${preview}
         const sig = JSON.stringify({
             f: convListFilter,
             s: term,
-            rows: rows.map((x) => [x.c.id, x.c.attentionMode, x.c.unreadCount, x.c.lastMessageAt, x.c.updatedAt, x.displayName, x.aiWorking, x.c.id === selectedId, x.c.humanReviewReason || 0, x.c.aiExcluded ? 1 : 0, x.waitMinutes === null ? -1 : formatWait(x.waitMinutes)])
+            rows: rows.map((x) => [x.c.id, x.c.attentionMode, x.c.unreadCount, x.c.lastMessageAt, x.c.updatedAt, x.displayName, x.aiWorking, x.c.id === selectedId, x.c.humanReviewReason || 0, x.c.aiExcluded ? 1 : 0, x.c.avatarTag || "", x.c.waArchived ? 1 : 0, x.c.waPinned ? 1 : 0, x.waitMinutes === null ? -1 : formatWait(x.waitMinutes)])
         });
         if (sig === lastListSig && list.querySelector("[data-id], .mensajes-empty")) return;
         lastListSig = sig;
@@ -624,14 +640,15 @@ ${preview}
             const typing = aiWorking && !isReview;
             const secondLine = isReview ? (c.humanReviewReason || "Necesita revisión") : (typing ? "IA escribiendo…" : "");
             return `<button class="mensajes-conversation ${c.id === selectedId ? "is-selected" : ""} ${state.cls} ${unread ? "has-unread" : ""}" data-id="${c.id}">
-                <span class="conv-avatar">${convAvatarSvg(c.attentionMode, typing)}</span>
+                <span class="conv-avatar">${convAvatarHtml(c)}</span>
                 <span class="conv-main">
-                    <span class="conv-top"><span class="conv-name">${esc(displayName)}</span><span class="conv-time">${esc(convShortTime(c.lastMessageAt || c.updatedAt))}</span></span>
+                    <span class="conv-top"><span class="conv-name">${esc(displayName)}</span>${c.waPinned ? '<span class="conv-pin" title="Fijado en WhatsApp">📌</span>' : ""}<span class="conv-time">${esc(convShortTime(c.lastMessageAt || c.updatedAt))}</span></span>
                     <span class="conv-sub">
-                        <span class="conv-chip ${state.cls}">${state.icon ? state.icon + " " : ""}${esc(state.label)}</span>
+                        ${isReview ? `<span class="conv-chip ${state.cls}">${state.icon} ${esc(state.label)}</span>` : ""}
                         ${waitMinutes !== null ? `<span class="conv-chip is-awaiting" title="El último mensaje del paciente no tiene respuesta">⏳ ${esc(formatWait(waitMinutes))}</span>` : ""}
                         ${c.aiExcluded ? '<span class="conv-chip is-excluded" title="La IA no responde a este chat (lista de no responder)">🚫 Excluido</span>' : ""}
                         ${secondLine ? `<span class="conv-preview${typing ? " is-typing" : ""}">${typing ? '<span class="typing-dot"></span>' : ""}${esc(secondLine)}</span>` : ""}
+                        ${!isReview && state.label ? `<span class="conv-chip conv-mode ${state.cls}">${state.icon ? state.icon + " " : ""}${esc(state.label)}</span>` : ""}
                         ${unread ? `<span class="conv-badge">${unread > 99 ? "99+" : unread}</span>` : ""}
                     </span>
                 </span>
@@ -744,7 +761,7 @@ ${preview}
         const headSub = data.conversation.attentionMode === "review_required" && data.conversation.humanReviewReason
             ? `${headState.icon} ${esc(data.conversation.humanReviewReason)}`
             : `${headState.icon ? headState.icon + " " : ""}${esc(headState.label)}`;
-        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span>${data.conversation.aiExcluded ? '<span class="chat-head-state is-excluded" title="La IA no responde a este chat. Quitalo de la lista en Ajustes, Control de telefonos, para reactivarla.">🚫 Excluido de la IA</span>' : ""}</div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
+        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span>${data.conversation.aiExcluded ? '<span class="chat-head-state is-excluded" title="La IA no responde a este chat. Quitalo de la lista en Ajustes, Control de telefonos, para reactivarla.">🚫 Excluido de la IA</span>' : ""}</div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="avatar" title="Traer ahora la foto de perfil de WhatsApp de este chat">📷 Foto</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
         const renderedMessages = groupReactionsOntoTargets(data.messages);
         chatBody.innerHTML = renderedMessages.length ? renderedMessages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); const reactions = m.attachedReactions || []; return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}${reactions.length ? `<span class="mensaje-reactions">${reactions.map((r) => esc(r.content.slice(REACTION_PREFIX.length))).join(" ")}</span>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
         if (activeQueue) { const indicator = document.createElement("div"); indicator.className = "mensajes-ai-queue-status"; indicator.textContent = activeQueue.status === "sending" ? "Enviando respuesta…" : activeQueue.status === "ready_to_send" ? "Respuesta lista para enviar…" : "La IA está preparando una respuesta…"; document.getElementById("mensajes-chat-body").prepend(indicator); }
@@ -854,6 +871,14 @@ ${preview}
         if (!selectedId) return;
         if (action === "delete") { if (!await askConfirm("¿Borrar esta conversación y su historial?")) return; const target = selectedId; conversationLoadSeq++; selectedId = null; const startedAt = Date.now(); showBusyOverlay("Borrando conversación…", "Un momento."); try { await api(`/api/mensajes-view/conversations/${target}`, { method: "DELETE" }); } catch (error) { if (!/no encontrada/i.test(error.message || "")) alert(error.message); } finally { await hideBusyOverlay(startedAt, 500); } const compose = document.getElementById("mensajes-compose"); if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; const input = compose.querySelector("#mensajes-input"); const button = compose.querySelector('button[type="submit"]'); if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; } if (button) button.disabled = true; } document.getElementById("mensajes-chat-head").innerHTML = "<span>Selecciona una conversación</span>"; document.getElementById("mensajes-chat-body").innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>"; return loadConversations().catch(() => {}); }
         if (action === "ignore") return ignoreConversationPhone(selectedId);
+        if (action === "avatar") {
+            try {
+                const { result } = await api(`/api/mensajes-view/conversations/${selectedId}/avatar/refresh`, { method: "POST" });
+                if (result === "none") alert("Este contacto no tiene foto de perfil o la tiene oculta por privacidad.");
+                else if (result === "unknown") alert("WhatsApp todavía no tiene este chat cargado. Intenta de nuevo en un momento.");
+                return loadConversations().catch(() => {});
+            } catch (error) { return alert(error.message); }
+        }
         const endpoint = action === "take" ? "take" : "release";
         await api(`/api/mensajes-view/conversations/${selectedId}/${endpoint}`, { method: "POST" });
         await loadConversation(selectedId);

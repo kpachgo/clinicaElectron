@@ -276,7 +276,9 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
           const apiContact = (() => { try { return window.require("WAWebApiContact"); } catch (e) { return null; } })();
           for (const c of arr) {
             if (!c || c.isGroup || !c.id) continue;
-            const id = c.id._serialized;
+            // WhatsApp renombró _serialized -> $1 en los MsgKey (jul-2026); si llega al Wid, sin esto id.endsWith revienta la pasada entera.
+            const id = c.id._serialized || c.id.$1;
+            if (!id) continue;
             if (id === "status@broadcast" || /@(g\.us|newsletter|broadcast)$/.test(id)) continue;
             // WhatsApp usa unreadCount === -1 (o markedAsUnread) cuando el chat se
             // marca "no leido" a mano sin mensajes nuevos: tambien cuenta.
@@ -493,6 +495,9 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       phone: identity,
       waChatId: chatId,
       waContactNumber: identity,
+      // Archivado/fijado en WhatsApp: viene gratis en el chat que ya pedimos arriba (null = getChat falló, no se sabe).
+      waArchived: chat ? Boolean(chat.archived) : null,
+      waPinned: chat ? Boolean(chat.pinned) : null,
       waDisplayName: contactIsSelf
         ? (chat?.name || null)
         : (contact?.pushname || contact?.name || contact?.shortName || chat?.name || null)
@@ -669,6 +674,31 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       if (ok) console.log("[Mensajes][WhatsApp] LID -> telefono (local)", { chatId, pn });
       return ok ? normalizePhone(persistedPhone(pn)) : null;
     } catch { return null; }
+  }
+
+  // Foto de perfil: primero la que WhatsApp ya tiene en memoria (sin red); si no, se pide al servidor
+  // con el Chat crudo (client.getProfilePicUrl pasa por getChatModel, que falla con _serialized -> $1).
+  // { tag, eurl } = tiene foto · { none: true } = no tiene o la oculta · null = no se pudo saber (reintentar).
+  // eurl es temporal (expira en ~10 días): quien la use debe descargarla, no guardar el enlace.
+  async getProfilePicInfo(chatId) {
+    if (!this.client?.pupPage || this.status !== "connected" || typeof chatId !== "string") return null;
+    try {
+      return await this.client.pupPage.evaluate(async (id) => {
+        const C = window.require("WAWebCollections");
+        const wid = window.require("WAWebWidFactory").createWid(id);
+        const cached = C.ProfilePicThumb.get(wid);
+        if (cached?.eurl && cached?.tag) return { tag: String(cached.tag), eurl: cached.eurl };
+        const chat = C.Chat.get(wid);
+        if (!chat) return null;
+        let pic = null;
+        // ServerStatusCodeError = WhatsApp responde que no hay foto visible (privacidad): igual que la librería, "sin foto".
+        try { pic = await window.require("WAWebContactProfilePicThumbBridge").requestProfilePicFromServer(chat); } catch (e) { if (e?.name !== "ServerStatusCodeError") throw e; }
+        return pic?.eurl && pic?.tag ? { tag: String(pic.tag), eurl: pic.eurl } : { none: true };
+      }, chatId);
+    } catch (error) {
+      console.warn("[Mensajes][WhatsApp] No se pudo consultar la foto de perfil", { chatId, error: error?.message });
+      return null;
+    }
   }
 
   async resolvePhoneForChatId(chatId) {

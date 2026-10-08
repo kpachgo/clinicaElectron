@@ -13,7 +13,7 @@ function isRealPhone(value, waChatId = "") {
 }
 
 function toConversation(row) {
-  return row ? { ...row, patientId: row.patient_id, attentionMode: row.attention_mode, humanOwnerId: row.human_owner_id, responseDelayMin: row.response_delay_min, responseDelayMax: row.response_delay_max, waChatId: row.wa_chat_id, waContactNumber: row.wa_contact_number, waDisplayName: row.wa_display_name, lifecycleState: row.lifecycle_state, lastMessageDirection: row.last_message_direction, lastMessageAt: row.last_message_at, lastMessageType: row.last_message_type, lastMessageSource: row.last_message_source, lastInboundAt: row.last_inbound_at, lastOutboundAt: row.last_outbound_at, followUpSent: Boolean(row.follow_up_sent), humanReviewReason: row.human_review_reason, phoneResolved: isRealPhone(row.wa_contact_number, row.wa_chat_id) || isRealPhone(row.phone, row.wa_chat_id), createdAt: row.created_at, updatedAt: row.updated_at } : null;
+  return row ? { ...row, patientId: row.patient_id, attentionMode: row.attention_mode, humanOwnerId: row.human_owner_id, responseDelayMin: row.response_delay_min, responseDelayMax: row.response_delay_max, waChatId: row.wa_chat_id, waContactNumber: row.wa_contact_number, waDisplayName: row.wa_display_name, lifecycleState: row.lifecycle_state, lastMessageDirection: row.last_message_direction, lastMessageAt: row.last_message_at, lastMessageType: row.last_message_type, lastMessageSource: row.last_message_source, lastInboundAt: row.last_inbound_at, lastOutboundAt: row.last_outbound_at, followUpSent: Boolean(row.follow_up_sent), humanReviewReason: row.human_review_reason, waArchived: Boolean(row.wa_archived), waPinned: Boolean(row.wa_pinned), avatarTag: row.avatar_tag && row.avatar_tag !== "none" ? row.avatar_tag : null, phoneResolved: isRealPhone(row.wa_contact_number, row.wa_chat_id) || isRealPhone(row.phone, row.wa_chat_id), createdAt: row.created_at, updatedAt: row.updated_at } : null;
 }
 
 function toMessage(row) {
@@ -323,6 +323,18 @@ class MensajesRepository {
     return this.getConversation(target.id);
   }
 
+  // Chats cuya foto de perfil nunca se consultó o se consultó hace más de 7 días; los más recientes primero.
+  listConversationsNeedingAvatar(limit = 5) {
+    return this.db.prepare(`SELECT id, wa_chat_id AS waChatId, avatar_tag AS avatarTag FROM conversations
+      WHERE wa_chat_id IS NOT NULL AND wa_chat_id NOT LIKE '%@g.us' AND status <> 'closed'
+        AND (avatar_checked_at IS NULL OR avatar_checked_at < datetime('now', '-7 days'))
+      ORDER BY julianday(COALESCE(last_message_at, updated_at)) DESC LIMIT ?`).all(limit);
+  }
+
+  setConversationAvatar(conversationId, tag) {
+    this.db.prepare("UPDATE conversations SET avatar_tag=?, avatar_checked_at=datetime('now') WHERE id=?").run(tag, conversationId);
+  }
+
   listConversations(options = {}) {
     const limit = Math.min(Math.max(Number(options.limit) || 50, 1), 200);
     // awaiting_since: el último mensaje del paciente (sin contar reacciones) no tiene
@@ -351,7 +363,9 @@ class MensajesRepository {
           AND reaction_target_id IS NULL AND content NOT LIKE 'Reacción:%'
         ORDER BY id DESC LIMIT 1)
       WHERE NOT (c.wa_chat_id LIKE '%@lid' AND NOT EXISTS (SELECT 1 FROM messages incoming WHERE incoming.conversation_id=c.id AND incoming.direction='incoming'))
-      ORDER BY c.updated_at DESC LIMIT ?`).all(limit).map((row) => ({ ...toConversation(row), unreadCount: row.unread_count, awaitingSince: row.awaiting_since || null, linkedPatientName: row.linked_patient_name || null }));
+      -- Mismo orden que WhatsApp: fijados arriba y luego por último mensaje. updated_at cambia al liberar/vincular y movía el chat arriba.
+      -- julianday porque last_message_at es ISO ("T", "Z") y updated_at es datetime('now') (" "): como texto no comparan.
+      ORDER BY c.wa_pinned DESC, julianday(COALESCE(c.last_message_at, c.updated_at)) DESC, c.id DESC LIMIT ?`).all(limit).map((row) => ({ ...toConversation(row), unreadCount: row.unread_count, awaitingSince: row.awaiting_since || null, linkedPatientName: row.linked_patient_name || null }));
   }
 
   // "Marcar como atendido": da por atendido el último mensaje del paciente sin
@@ -400,14 +414,15 @@ class MensajesRepository {
       }
     }
     const insert = this.db.prepare("INSERT INTO messages (conversation_id, external_id, direction, author, content, delivery_status, message_at, reaction_target_id, backfill) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    const update = this.db.prepare(`UPDATE conversations SET updated_at=datetime('now'), lifecycle_state=CASE WHEN ?='incoming' THEN 'active' ELSE lifecycle_state END, last_message_direction=?, last_message_at=?, last_message_type=?, last_message_source=?, last_inbound_at=CASE WHEN ?='incoming' THEN ? ELSE last_inbound_at END, last_outbound_at=CASE WHEN ?='outgoing' THEN ? ELSE last_outbound_at END WHERE id=?`);
+    const update = this.db.prepare(`UPDATE conversations SET updated_at=datetime('now'), lifecycle_state=CASE WHEN ?='incoming' THEN 'active' ELSE lifecycle_state END, last_message_direction=?, last_message_at=CASE WHEN ?='reaction' THEN IFNULL(last_message_at, ?) ELSE ? END, last_message_type=?, last_message_source=?, last_inbound_at=CASE WHEN ?='incoming' THEN ? ELSE last_inbound_at END, last_outbound_at=CASE WHEN ?='outgoing' THEN ? ELSE last_outbound_at END WHERE id=?`);
     const transaction = this.db.transaction(() => {
       const effectiveMessageAt = messageAt || new Date().toISOString();
       // Historial importado por la recuperación a un chat que ya tiene mensajes más nuevos (ver migración backfill):
       // se guarda para dar contexto, pero no cuenta como último mensaje ni actualiza el resumen de la conversación.
       const backfill = source === "recovery" && Boolean(this.db.prepare("SELECT 1 FROM messages WHERE conversation_id=? AND strftime('%s', message_at) - strftime('%s', ?) > 1800 LIMIT 1").get(conversationId, effectiveMessageAt));
       const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", effectiveMessageAt, reactionTargetId || null, backfill ? 1 : 0);
-      if (!backfill) update.run(direction, direction, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
+      // Una reacción no mueve el chat ni cambia su hora (igual que WhatsApp): last_message_at queda en el último mensaje real.
+      if (!backfill) update.run(direction, direction, rawType, effectiveMessageAt, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
       return this.db.prepare("SELECT * FROM messages WHERE id=?").get(result.lastInsertRowid);
     });
     return { message: toMessage(transaction()), duplicate: false };
@@ -421,6 +436,8 @@ class MensajesRepository {
       conversation = this.getConversation(conversation.id);
     }
     conversation = this.mergeConversationsForSamePatient(conversation);
+    const flag = (value) => (typeof value === "boolean" ? Number(value) : null); // null = no se supo: se deja lo que había
+    this.db.prepare("UPDATE conversations SET wa_archived=COALESCE(?, wa_archived), wa_pinned=COALESCE(?, wa_pinned) WHERE id=?").run(flag(event.waArchived), flag(event.waPinned), conversation.id);
     const saved = this.saveMessage({ conversationId: conversation.id, externalId: event.externalId, direction: "incoming", author: "patient", text: event.text, messageAt: event.messageAt, rawType: event.rawType, reactionTargetId: event.reactionTargetId, source: event.source });
     return { conversation, ...saved };
   }

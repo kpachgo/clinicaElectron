@@ -358,6 +358,13 @@ const migrations = [
   ,`ALTER TABLE messages ADD COLUMN backfill INTEGER NOT NULL DEFAULT 0;
     UPDATE messages SET backfill=1 WHERE strftime('%s', created_at) - strftime('%s', message_at) > 1800
       AND EXISTS (SELECT 1 FROM messages n WHERE n.conversation_id=messages.conversation_id AND n.id < messages.id AND strftime('%s', n.message_at) - strftime('%s', messages.message_at) > 1800);`
+  // Foto de perfil de WhatsApp: avatar_tag = tag de WhatsApp de la foto guardada ('none' = no tiene o la oculta);
+  // avatar_checked_at = última consulta, para no volver a pedirla antes de 7 días.
+  ,`ALTER TABLE conversations ADD COLUMN avatar_tag TEXT NULL;
+    ALTER TABLE conversations ADD COLUMN avatar_checked_at TEXT NULL;`
+  // Archivado/fijado en WhatsApp, actualizado con cada mensaje entrante (solo visual: filtro "Archivados" y fijados arriba).
+  ,`ALTER TABLE conversations ADD COLUMN wa_archived INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE conversations ADD COLUMN wa_pinned INTEGER NOT NULL DEFAULT 0;`
 ];
 
 function getDb() {
