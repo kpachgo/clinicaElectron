@@ -11,6 +11,7 @@ const appointmentActions = require("./aiAppointmentAction.service");
 const { cancelAppointment, rescheduleAppointment } = appointmentActions;
 const { resolveDatePreference, timeFromText } = require("./dateTimeResolver.service");
 const { to12h } = require("./timeFormat.service");
+const { requestJudgement } = require("./assistantProvider.service");
 const { MensajesRepository } = require("./mensajesRepository.service");
 const { getDb } = require("../mensajesDatabase.service");
 const { isModoVentaEnabled } = require("../appMode.service");
@@ -308,6 +309,78 @@ async function receptionAgreed(ctx, { date, time, service }) {
   }
 }
 
+// Botón "Verificar cita" (pedido del usuario 2026-10-08, caso Anyely): recepción acuerda la cita en el chat y en
+// vez de agendarla a mano la verifica. La IA solo LEE la conversación y dice qué cita quedó acordada; el sistema la
+// busca en la agenda. Esto nunca crea nada: si falta, la vista ofrece "Crear cita" y decide recepción.
+const AGREED_JUDGE_SYSTEM = [
+  "Sos un control interno de una clínica dental. Te paso una conversación de WhatsApp entre la clínica (Recepción = personal humano, Asistente = asistente automático) y un paciente.",
+  "Decidí si en la conversación quedó ACORDADA una cita nueva o un cambio de fecha: la clínica ofreció o confirmó una fecha y hora y el paciente la aceptó, o el paciente eligió una de las opciones que le dio la clínica y nadie la contradijo después. Si hubo varias propuestas, vale el último acuerdo.",
+  "Es false si la última propuesta sigue sin respuesta, si la clínica y el paciente no coinciden en la hora, si solo se habló de horarios sin cerrar, o si el paciente solo confirmó asistencia a una cita que ya tenía.",
+  "Usá el calendario para convertir el día en fecha. Respondé solo JSON: {\"acordada\": true o false, \"fecha\": \"AAAA-MM-DD\", \"hora\": \"HH:MM\" en 24 h, \"servicio\": \"el servicio tal como se habló en el chat\", \"motivo\": \"frase breve\"}"
+].join("\n");
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+function agendaService(servicio) {
+  return resolveService(servicio || "").then((resolved) => {
+    if (resolved.status === "matched" && resolved.service) return { service: resolved.service, tipoAConfirmar: "" };
+    // Igual que crear_cita con acuerdo de recepción: genérico ("extracción") -> el primero, tipo a confirmar.
+    if (resolved.status === "ambiguous" && resolved.candidates?.length) return { service: resolved.candidates[0], tipoAConfirmar: resolved.candidates.slice(0, 3).map((c) => c.serviceName).join(" / ") };
+    return { service: null, tipoAConfirmar: "" };
+  });
+}
+async function verifyAgreedAppointment(conversationId) {
+  const linked = reminderRepo.getPatientLink(conversationId);
+  if (!linked?.patientId) return { estado: "paciente_no_identificado", motivo: "Primero identificá al paciente de este chat." };
+  const who = (m) => (m.direction === "incoming" ? "Paciente" : m.author === "human" ? "Recepción" : m.author === "system" ? "Recordatorio automático" : "Asistente");
+  const dialogue = reminderRepo.listMessages(conversationId, { limit: 60 })
+    .filter((m) => !m.queued && !String(m.content || "").startsWith("Reacción:"))
+    .slice(-20).map((m) => `${who(m)}: ${String(m.content || "").trim()}`).join("\n");
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
+  const weekday = (iso) => WEEKDAYS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
+  const calendar = Array.from({ length: 21 }, (_, i) => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + i); const iso = d.toISOString().slice(0, 10); return `${weekday(iso)} ${iso}`; }).join(", ");
+  // 15 s: por debajo del timeout de 20 s del frontend, para que llegue un error claro y no un corte.
+  const verdict = await requestJudgement({ cfg: reminderRepo.getAiProviderSecret(), signal: AbortSignal.timeout(15000), system: AGREED_JUDGE_SYSTEM, user: `Hoy es ${weekday(today)} ${today}.\nCalendario: ${calendar}\n\nConversación:\n${dialogue}` });
+  const date = ISO_DATE.test(String(verdict?.fecha || "")) ? verdict.fecha : null;
+  const time = HHMM.test(String(verdict?.hora || "")) ? verdict.hora : null;
+  if (verdict?.acordada !== true || !date || !time) return { estado: "sin_acuerdo", motivo: verdict?.motivo || "No encontré una fecha y hora acordadas en el chat." };
+  if (date < today) return { estado: "sin_acuerdo", motivo: `La fecha acordada (${weekday(date)} ${date}) ya pasó.` };
+  const cita = { fecha: date, hora: time, dia: weekday(date), hora12: to12h(time), servicio: String(verdict.servicio || "").trim() };
+  const found = await queryPatientAppointments({ patientId: linked.patientId, patientName: linked.patientName, phone: linked.phone, upcomingOnly: true });
+  const appointments = found.appointments || [];
+  const otrasCitas = appointments.filter((a) => !(a.date === date && a.time === time)).map((a) => ({ dia: weekday(a.date), fecha: a.date, hora12: to12h(a.time), servicio: a.treatment || "", estado: a.status }));
+  if (appointments.some((a) => a.date === date && a.time === time)) return { estado: "ya_agendada", cita, otrasCitas };
+  const { service, tipoAConfirmar } = await agendaService(cita.servicio);
+  let cupoLibre = null;
+  if (service) {
+    try { const availability = await searchAvailability({ serviceId: service.serviceId, date }); cupoLibre = !availability.dayUnavailable && availability.slots.some((slot) => slot.time === time); } catch { /* sin dato: no se avisa */ }
+  }
+  return { estado: "falta_agendar", cita, servicioAgenda: service?.serviceName || null, tipoAConfirmar, cupoLibre, otrasCitas };
+}
+// "Crear cita" tras la verificación: lo decide recepción, así que no se exige cupo (como cuando agenda a mano;
+// la verificación ya le avisó si la agenda no lo muestra libre). La memoria del chat evita que la IA la vuelva a
+// crear si después se libera la conversación.
+async function createAgreedAppointment(conversationId, { fecha, hora, servicio } = {}) {
+  const fail = (message) => Object.assign(new Error(message), { status: 400 });
+  const linked = reminderRepo.getPatientLink(conversationId);
+  if (!linked?.patientId) throw fail("Primero identificá al paciente de este chat.");
+  if (!ISO_DATE.test(String(fecha || "")) || !HHMM.test(String(hora || ""))) throw fail("Fecha u hora no válidas.");
+  const { service, tipoAConfirmar } = await agendaService(servicio);
+  if (!service) throw fail("No se pudo identificar el servicio. Agendala desde la Agenda.");
+  const result = await appointmentActions.createAppointmentForAssistant({
+    patientId: linked.patientId,
+    patientName: linked.patientName,
+    serviceId: service.serviceId,
+    date: fecha,
+    time: hora,
+    contact: linked.phone,
+    comment: (tipoAConfirmar ? `${String(servicio).trim()} — tipo a confirmar: ${tipoAConfirmar}` : service.serviceName).slice(0, 255),
+    skipAvailability: true,
+    idempotencyKey: `manual-create-${conversationId}-${fecha}-${hora}-${service.serviceId}-${linked.patientId}`
+  });
+  reminderRepo.setAssistantMemory(conversationId, { lastAppointment: { appointmentId: result.idAgendaAP, action: "creada por recepción", service: service.serviceName, date: fecha, time: to12h(hora) } });
+  return { id_cita: result.idAgendaAP, duplicada: Boolean(result.duplicate) };
+}
+
 async function crearCita(args, ctx) {
   if (args?.confirmado !== true) {
     return { estado: "falta_confirmacion", mensaje: "Confirmá explícitamente servicio, fecha y hora con el paciente y volvé a llamar con confirmado=true." };
@@ -534,4 +607,4 @@ async function runTool(name, args, ctx = {}) {
   }
 }
 
-module.exports = { TOOL_SPECS, SALE_TOOL_SPECS, runTool, findExistingPatient };
+module.exports = { TOOL_SPECS, SALE_TOOL_SPECS, runTool, findExistingPatient, verifyAgreedAppointment, createAgreedAppointment };

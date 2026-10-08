@@ -356,6 +356,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
         this.inboundRecoveryRunning = false;
       }
     };
+    this.runInboundRecoveryPass = runPass;
     for (const delay of [0, 5000, 15000, 30000]) {
       const timer = setTimeout(() => {
         this.inboundRecoveryTimers.delete(timer);
@@ -364,6 +365,17 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
       timer.unref?.();
       this.inboundRecoveryTimers.add(timer);
     }
+  }
+
+  // Misma pasada que al conectar, a pedido (botón "Traer no leídos"): marcar un chat como
+  // no leído en el teléfono no dispara nada confiable (el evento unread_count de la librería
+  // pasa por getChatById, que revienta con @lid). No se espera: con varios chats tarda más
+  // que el timeout del frontend; los chats aparecen con el refresco normal de la lista.
+  recoverUnreadNow() {
+    if (this.status !== "connected" || !this.runInboundRecoveryPass) throw Object.assign(new Error("WhatsApp no esta conectado"), { status: 409 });
+    if (this.inboundRecoveryRunning) return false;
+    void this.runInboundRecoveryPass();
+    return true;
   }
 
   stopInboundRecovery() {

@@ -91,7 +91,7 @@
         const content = document.querySelector(".content");
         content.innerHTML = `<section class="mensajes-view">
           <form id="mensajes-simulator" class="mensajes-simulator">
-            <div class="sim-group"><span class="sim-group-label">WhatsApp</span><span id="mensajes-whatsapp-status" class="mensajes-wa-state">Desconectado</span><button id="mensajes-whatsapp-start" type="button" class="sim-btn sim-btn-primary">Iniciar</button><button id="mensajes-whatsapp-stop" type="button" class="sim-btn" disabled>Cerrar</button><button id="mensajes-whatsapp-clear" type="button" class="sim-btn sim-btn-danger">Quitar sesión</button></div>
+            <div class="sim-group"><span class="sim-group-label">WhatsApp</span><span id="mensajes-whatsapp-status" class="mensajes-wa-state">Desconectado</span><button id="mensajes-whatsapp-start" type="button" class="sim-btn sim-btn-primary">Iniciar</button><button id="mensajes-whatsapp-stop" type="button" class="sim-btn" disabled>Cerrar</button><button id="mensajes-whatsapp-recover" type="button" class="sim-btn" disabled title="Trae los chats marcados como no leídos en WhatsApp sin cerrar la conexión">Traer no leídos</button><button id="mensajes-whatsapp-clear" type="button" class="sim-btn sim-btn-danger">Quitar sesión</button></div>
             <div class="sim-group"><span class="sim-group-label">Simular</span><input id="mensajes-sim-phone" placeholder="Teléfono" inputmode="tel"><input id="mensajes-sim-text" placeholder="Mensaje del paciente"><button id="mensajes-sim-submit" type="button" class="sim-btn sim-btn-primary">Enviar</button></div>
             <div class="sim-group" id="mensajes-actions-group"><span class="sim-group-label">Acciones</span><button id="mensajes-global-settings" type="button" class="sim-btn" title="Ajustes globales">⚙ Ajustes</button></div>
             <div class="sim-group" id="mensajes-ai-group"><span class="sim-group-label">IA</span></div>
@@ -462,9 +462,10 @@ ${preview}
     }
     async function refreshGlobalAiStatus() { const group = document.getElementById("mensajes-ai-group") || document.getElementById("mensajes-simulator"); if (!group) return; let indicator = document.getElementById("mensajes-ai-global-status"); if (!indicator) { indicator = document.createElement("span"); indicator.id = "mensajes-ai-global-status"; indicator.className = "mensajes-ai-global-status"; group.insertBefore(indicator, document.getElementById("mensajes-pause-ai") || null); } const data = await api("/api/mensajes-view/automation-settings"); const active = Boolean(data.settings.enabled); indicator.textContent = active ? "IA activa" : "IA pausada"; indicator.classList.toggle("is-active", active); indicator.classList.toggle("is-paused", !active); const pause = document.getElementById("mensajes-pause-ai"); const toAi = document.getElementById("mensajes-global-ai"); if (pause) { pause.textContent = active ? "Pausar IA" : "Reanudar IA"; pause.dataset.aiAction = active ? "paused" : "resume"; pause.title = active ? "Apaga la IA y cancela lo que esté respondiendo" : "Vuelve a encender la IA; no responde lo viejo, solo los mensajes que lleguen"; pause.disabled = false; } if (toAi) toAi.textContent = "Pasar todo a IA"; }
     function formatWhatsappStatus(status) { const labels = { disconnected: "Desconectado", initializing: "Iniciando...", connecting: "Conectando...", qr: "QR en ventana de WhatsApp", authenticated: "Autenticado...", syncing: "Sincronizando...", connected: "Conectado", reconnecting: "Reconectando...", auth_failure: "Fallo de autenticación", error: "Error" }; return labels[status] || status || "Desconectado"; }
-    function paintWhatsappStatus(status) { const state = document.getElementById("mensajes-whatsapp-status"); const start = document.getElementById("mensajes-whatsapp-start"); const stop = document.getElementById("mensajes-whatsapp-stop"); if (!state) return; const statusName = status?.status || "disconnected"; state.textContent = formatWhatsappStatus(statusName) + (status?.error ? `: ${status.error}` : ""); state.dataset.status = statusName; state.className = `mensajes-wa-state is-${statusName}`; if (start) { start.textContent = ["initializing", "connecting", "authenticated", "syncing", "reconnecting"].includes(statusName) ? "Reintentando..." : "Iniciar / reintentar"; start.disabled = ["initializing", "connecting", "authenticated", "syncing"].includes(statusName); } if (stop) stop.disabled = ["disconnected", "error", "auth_failure"].includes(statusName); }
+    function paintWhatsappStatus(status) { const state = document.getElementById("mensajes-whatsapp-status"); const start = document.getElementById("mensajes-whatsapp-start"); const stop = document.getElementById("mensajes-whatsapp-stop"); if (!state) return; const statusName = status?.status || "disconnected"; state.textContent = formatWhatsappStatus(statusName) + (status?.error ? `: ${status.error}` : ""); state.dataset.status = statusName; state.className = `mensajes-wa-state is-${statusName}`; if (start) { start.textContent = ["initializing", "connecting", "authenticated", "syncing", "reconnecting"].includes(statusName) ? "Reintentando..." : "Iniciar / reintentar"; start.disabled = ["initializing", "connecting", "authenticated", "syncing"].includes(statusName); } if (stop) stop.disabled = ["disconnected", "error", "auth_failure"].includes(statusName); const recover = document.getElementById("mensajes-whatsapp-recover"); if (recover && !recover.dataset.busy) recover.disabled = statusName !== "connected"; }
     async function refreshWhatsappStatus() { try { const data = await api("/api/mensajes-view/whatsapp/status"); paintWhatsappStatus(data.status); } catch (error) { paintWhatsappStatus({ status: "error", error: error.message }); } }
     async function startWhatsapp() { paintWhatsappStatus({ status: "initializing" }); try { const data = await api("/api/mensajes-view/whatsapp/start", { method: "POST" }); paintWhatsappStatus(data.status); } catch (error) { await refreshWhatsappStatus(); alert(error.message); } }
+    async function recoverUnread(event) { const btn = event.currentTarget; btn.disabled = true; btn.dataset.busy = "1"; btn.textContent = "Trayendo..."; try { const data = await api("/api/mensajes-view/whatsapp/recover-unread", { method: "POST" }); if (!data.started) alert("Ya hay una recuperación en curso. Intente en unos segundos."); } catch (error) { alert(error.message); } finally { delete btn.dataset.busy; btn.textContent = "Traer no leídos"; await refreshWhatsappStatus(); } }
     async function stopWhatsapp() { try { const data = await api("/api/mensajes-view/whatsapp/stop", { method: "POST" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
     async function clearWhatsappSession() { if (!await askConfirm("Se cerrará WhatsApp y se borrará la sesión guardada. El siguiente inicio pedirá un QR nuevo. ¿Continuar?")) return; try { const data = await api("/api/mensajes-view/whatsapp/session", { method: "DELETE" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
     async function setGlobalAiMode(mode) { await api("/api/mensajes-view/global-ai-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) }); await refreshGlobalAiStatus(); await loadConversations(); if (selectedId) await loadConversation(selectedId); }
@@ -656,40 +657,11 @@ ${preview}
         }).join("");
         list.querySelectorAll("[data-id]").forEach((button) => button.addEventListener("click", () => loadConversation(Number(button.dataset.id))));
     }
-    // Las reacciones (❤️, 👍…) llegan como mensajes propios con reactionTargetId
-    // apuntando al mensaje reaccionado. En vez de mostrarlas como burbuja aparte,
-    // las pegamos sobre esa burbuja (como hace WhatsApp). Si el mensaje original
-    // no está en la página cargada, se muestran como burbuja normal (fallback).
-    const REACTION_PREFIX = "Reacción: ";
-    // El id de WhatsApp a veces llega como clave compuesta ("false_<chat>_<id>")
-    // y otras como el id simple; comparamos también por el último segmento para
-    // no perder el enlace cuando el formato no coincide exactamente.
-    function lastIdSegment(value) {
-        const str = String(value || "");
-        const idx = str.lastIndexOf("_");
-        return idx === -1 ? str : str.slice(idx + 1);
-    }
-    function groupReactionsOntoTargets(messages) {
-        const byTarget = new Map();
-        const visible = [];
-        for (const m of messages) {
-            if (typeof m.content === "string" && m.content.startsWith(REACTION_PREFIX) && m.reactionTargetId) {
-                const list = byTarget.get(m.reactionTargetId) || [];
-                list.push(m);
-                byTarget.set(m.reactionTargetId, list);
-            } else {
-                visible.push(m);
-            }
-        }
-        const byExternalId = new Map(visible.filter((m) => m.externalId).map((m) => [m.externalId, m]));
-        const bySegment = new Map(visible.filter((m) => m.externalId).map((m) => [lastIdSegment(m.externalId), m]));
-        for (const [targetId, reactions] of byTarget) {
-            const target = byExternalId.get(targetId) || bySegment.get(lastIdSegment(targetId));
-            if (target) target.attachedReactions = reactions;
-            else visible.push(...reactions);
-        }
-        return visible;
-    }
+    // Las reacciones (❤️, 👍…) se guardan como mensajes "Reacción: ❤️" y el backend
+    // las sigue usando (la IA no responde a una reacción), pero no se muestran en el
+    // chat: no se pueden pegar al mensaje porque lo que envía la app queda con id
+    // interno (Utils.js:585 de whatsapp-web.js, _serialized -> $1).
+    const isReaction = (m) => typeof m.content === "string" && m.content.startsWith("Reacción:");
     function scrollChatToBottom(behavior = "smooth") {
         const body = document.getElementById("mensajes-chat-body");
         if (!body) return;
@@ -761,9 +733,9 @@ ${preview}
         const headSub = data.conversation.attentionMode === "review_required" && data.conversation.humanReviewReason
             ? `${headState.icon} ${esc(data.conversation.humanReviewReason)}`
             : `${headState.icon ? headState.icon + " " : ""}${esc(headState.label)}`;
-        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span>${data.conversation.aiExcluded ? '<span class="chat-head-state is-excluded" title="La IA no responde a este chat. Quitalo de la lista en Ajustes, Control de telefonos, para reactivarla.">🚫 Excluido de la IA</span>' : ""}</div><div class="mensajes-chat-actions"><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="avatar" title="Traer ahora la foto de perfil de WhatsApp de este chat">📷 Foto</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
-        const renderedMessages = groupReactionsOntoTargets(data.messages);
-        chatBody.innerHTML = renderedMessages.length ? renderedMessages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); const reactions = m.attachedReactions || []; return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}${reactions.length ? `<span class="mensaje-reactions">${reactions.map((r) => esc(r.content.slice(REACTION_PREFIX.length))).join(" ")}</span>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
+        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span>${data.conversation.aiExcluded ? '<span class="chat-head-state is-excluded" title="La IA no responde a este chat. Quitalo de la lista en Ajustes, Control de telefonos, para reactivarla.">🚫 Excluido de la IA</span>' : ""}</div><div class="mensajes-chat-actions"><button data-action="verify-appointment" title="Revisa si la cita acordada en este chat ya está en la agenda">📅 Verificar cita</button><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="avatar" title="Traer ahora la foto de perfil de WhatsApp de este chat">📷 Foto</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
+        const renderedMessages = data.messages.filter((m) => !isReaction(m));
+        chatBody.innerHTML = renderedMessages.length ? renderedMessages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
         if (activeQueue) { const indicator = document.createElement("div"); indicator.className = "mensajes-ai-queue-status"; indicator.textContent = activeQueue.status === "sending" ? "Enviando respuesta…" : activeQueue.status === "ready_to_send" ? "Respuesta lista para enviar…" : "La IA está preparando una respuesta…"; document.getElementById("mensajes-chat-body").prepend(indicator); }
         if (wasNearBottom) scrollChatToBottom("smooth");
         const compose = document.getElementById("mensajes-compose");
@@ -867,10 +839,35 @@ ${preview}
     }
     document.addEventListener("keydown", (event) => { if (event.key === "Escape") { document.querySelector(".mensaje-context-menu")?.remove(); setMessageSelectionMode(false); } });
     async function deleteSelectedMessages() { const ids = [...document.querySelectorAll("[data-message-select]:checked")].map((input) => input.dataset.messageSelect); if (!ids.length || !await askConfirm(`¿Eliminar ${ids.length} mensaje(s) del chat?`)) return; try { await Promise.all(ids.map((messageId) => api(`/api/mensajes-view/conversations/${selectedId}/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }))); await loadConversation(selectedId, { markRead: false }); } catch (error) { alert(error.message); } }
+    // Botón "Verificar cita": la IA lee el chat y dice qué cita quedó acordada; si no está en la agenda,
+    // recepción decide si crearla. Nunca crea nada sin ese clic.
+    async function verifyAgreedAppointment(conversationId) {
+        const btn = document.querySelector('[data-action="verify-appointment"]');
+        if (btn) { btn.disabled = true; btn.textContent = "Verificando..."; }
+        let data;
+        try { data = await api(`/api/mensajes-view/conversations/${conversationId}/verify-appointment`, { method: "POST" }); }
+        catch (error) { return alert(error.message); }
+        finally { if (btn) { btn.disabled = false; btn.textContent = "📅 Verificar cita"; } }
+        const c = data.cita;
+        const label = c ? `${c.dia} ${c.fecha} a las ${c.hora12}` : "";
+        const otras = (data.otrasCitas || []).map((o) => `• ${o.dia} ${o.fecha} ${o.hora12} — ${o.servicio || "sin servicio"} (${o.estado})`).join("\n");
+        const otrasText = otras ? `\n\nOtras citas próximas del paciente (si era un cambio de fecha, actualice la anterior):\n${otras}` : "";
+        if (data.estado === "ya_agendada") return alert(`✓ La cita ya está en la agenda: ${label}.${otrasText}`);
+        if (data.estado !== "falta_agendar") return alert(data.motivo || "No encontré una cita acordada en este chat.");
+        if (!data.servicioAgenda) return alert(`Se acordó cita el ${label}, pero no pude identificar el servicio ("${c.servicio || "sin servicio"}"). Agéndela desde la Agenda.${otrasText}`);
+        const warn = data.cupoLibre === false ? "\n\n⚠ La agenda automática no muestra ese horario libre: puede quedar sobrecupo." : "";
+        const create = await askConfirm(`Se acordó en el chat y NO está en la agenda:\n\n${data.servicioAgenda}${data.tipoAConfirmar ? ` (tipo a confirmar: ${data.tipoAConfirmar})` : ""}\n${label}${warn}${otrasText}`, { title: "Verificar cita", type: "info", okText: "Crear cita", cancelText: "Ignorar" });
+        if (!create) return;
+        try {
+            const created = await api(`/api/mensajes-view/conversations/${conversationId}/agreed-appointment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fecha: c.fecha, hora: c.hora, servicio: c.servicio }) });
+            alert(created.duplicada ? `Esa cita ya se había creado (#${created.id_cita}).` : `Cita creada en la agenda (#${created.id_cita}).`);
+        } catch (error) { alert(error.message); }
+    }
     async function conversationAction(action) {
         if (!selectedId) return;
         if (action === "delete") { if (!await askConfirm("¿Borrar esta conversación y su historial?")) return; const target = selectedId; conversationLoadSeq++; selectedId = null; const startedAt = Date.now(); showBusyOverlay("Borrando conversación…", "Un momento."); try { await api(`/api/mensajes-view/conversations/${target}`, { method: "DELETE" }); } catch (error) { if (!/no encontrada/i.test(error.message || "")) alert(error.message); } finally { await hideBusyOverlay(startedAt, 500); } const compose = document.getElementById("mensajes-compose"); if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; const input = compose.querySelector("#mensajes-input"); const button = compose.querySelector('button[type="submit"]'); if (input) { input.value = ""; input.disabled = true; input.placeholder = "Selecciona una conversación para responder"; } if (button) button.disabled = true; } document.getElementById("mensajes-chat-head").innerHTML = "<span>Selecciona una conversación</span>"; document.getElementById("mensajes-chat-body").innerHTML = "<div class=\"mensajes-empty\">Selecciona una conversación para ver el historial.</div>"; return loadConversations().catch(() => {}); }
         if (action === "ignore") return ignoreConversationPhone(selectedId);
+        if (action === "verify-appointment") return verifyAgreedAppointment(selectedId);
         if (action === "avatar") {
             try {
                 const { result } = await api(`/api/mensajes-view/conversations/${selectedId}/avatar/refresh`, { method: "POST" });
@@ -1496,6 +1493,7 @@ ${preview}
         simulator.querySelector("#mensajes-sim-text").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void simulateIncoming(event); } });
         document.getElementById("mensajes-whatsapp-start").addEventListener("click", () => void startWhatsapp());
         document.getElementById("mensajes-whatsapp-stop").addEventListener("click", () => void stopWhatsapp());
+        document.getElementById("mensajes-whatsapp-recover").addEventListener("click", (event) => void recoverUnread(event));
         document.getElementById("mensajes-whatsapp-clear").addEventListener("click", () => void clearWhatsappSession());
         document.getElementById("mensajes-global-settings").addEventListener("click", async (event) => {
             const btn = event.currentTarget;

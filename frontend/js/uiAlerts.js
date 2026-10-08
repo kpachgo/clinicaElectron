@@ -128,7 +128,8 @@
     inputEl.value = String(item?.defaultValue ?? "");
     inputWrapEl.classList.toggle("is-open", mode === "prompt");
     cancelBtnEl.style.display = mode === "alert" ? "none" : "inline-flex";
-    primaryBtnEl.textContent = mode === "prompt" ? "Aceptar" : "Aceptar";
+    primaryBtnEl.textContent = item?.okText || "Aceptar";
+    cancelBtnEl.textContent = item?.cancelText || "Cancelar";
 
     activeItem = item;
     isOpen = true;
@@ -192,6 +193,8 @@
         defaultValue: options.defaultValue ?? "",
         // silent: sin sonido (ej. exito tras un guardado, donde el fetch global ya sono).
         silent: options.silent === true,
+        okText: options.okText || "",
+        cancelText: options.cancelText || "",
         resolve
       });
       openNext();
