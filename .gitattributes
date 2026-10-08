@@ -1,0 +1,2 @@
+# patch-package necesita los parches con LF; con core.autocrlf=true Git los dejaría en CRLF al hacer checkout.
+*.patch text eol=lf
