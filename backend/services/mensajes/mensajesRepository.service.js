@@ -841,4 +841,4 @@ class MensajesRepository {
   }
 }
 
-module.exports = { MensajesRepository };
+module.exports = { MensajesRepository, persistedPhone };

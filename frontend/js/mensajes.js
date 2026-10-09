@@ -841,13 +841,20 @@ ${preview}
     async function deleteSelectedMessages() { const ids = [...document.querySelectorAll("[data-message-select]:checked")].map((input) => input.dataset.messageSelect); if (!ids.length || !await askConfirm(`¿Eliminar ${ids.length} mensaje(s) del chat?`)) return; try { await Promise.all(ids.map((messageId) => api(`/api/mensajes-view/conversations/${selectedId}/messages/${encodeURIComponent(messageId)}`, { method: "DELETE" }))); await loadConversation(selectedId, { markRead: false }); } catch (error) { alert(error.message); } }
     // Botón "Verificar cita": la IA lee el chat y dice qué cita quedó acordada; si no está en la agenda,
     // recepción decide si crearla. Nunca crea nada sin ese clic.
-    async function verifyAgreedAppointment(conversationId) {
+    async function verifyAgreedAppointment(conversationId, conIa = false) {
         const btn = document.querySelector('[data-action="verify-appointment"]');
-        if (btn) { btn.disabled = true; btn.textContent = "Verificando..."; }
+        if (btn) { btn.disabled = true; btn.textContent = conIa ? "Revisando chat..." : "Verificando..."; }
         let data;
-        try { data = await api(`/api/mensajes-view/conversations/${conversationId}/verify-appointment`, { method: "POST" }); }
+        try { data = await api(`/api/mensajes-view/conversations/${conversationId}/verify-appointment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conIa }) }); }
         catch (error) { return alert(error.message); }
         finally { if (btn) { btn.disabled = false; btn.textContent = "📅 Verificar cita"; } }
+        // Paciente identificado con citas: se ven al instante (sin IA). Un cambio o una cita extra acordados en el chat no
+        // aparecen en la agenda: para eso, "Revisar chat con IA".
+        if (data.estado === "tiene_citas") {
+            const lista = data.citas.map((o) => `• ${o.dia} ${o.fecha} ${o.hora12} — ${o.servicio || "sin servicio"} (${o.estado})`).join("\n");
+            const revisar = await askConfirm(`El paciente tiene en la agenda:\n\n${lista}\n\nSi en el chat se acordó un cambio de fecha u hora, o una cita adicional, revise el chat con IA.`, { title: "Verificar cita", type: "info", okText: "Revisar chat con IA", cancelText: "Listo" });
+            return revisar ? verifyAgreedAppointment(conversationId, true) : undefined;
+        }
         const c = data.cita;
         const label = c ? `${c.dia} ${c.fecha} a las ${c.hora12}` : "";
         const otras = (data.otrasCitas || []).map((o) => `• ${o.dia} ${o.fecha} ${o.hora12} — ${o.servicio || "sin servicio"} (${o.estado})`).join("\n");
@@ -856,10 +863,12 @@ ${preview}
         if (data.estado !== "falta_agendar") return alert(data.motivo || "No encontré una cita acordada en este chat.");
         if (!data.servicioAgenda) return alert(`Se acordó cita el ${label}, pero no pude identificar el servicio ("${c.servicio || "sin servicio"}"). Agéndela desde la Agenda.${otrasText}`);
         const warn = data.cupoLibre === false ? "\n\n⚠ La agenda automática no muestra ese horario libre: puede quedar sobrecupo." : "";
-        const create = await askConfirm(`Se acordó en el chat y NO está en la agenda:\n\n${data.servicioAgenda}${data.tipoAConfirmar ? ` (tipo a confirmar: ${data.tipoAConfirmar})` : ""}\n${label}${warn}${otrasText}`, { title: "Verificar cita", type: "info", okText: "Crear cita", cancelText: "Ignorar" });
+        const p = data.paciente || {};
+        const quien = p.vinculado ? "" : p.registrado ? `\nPaciente con expediente: ${p.nombre} (${p.telefono})` : `\nPaciente nuevo: ${p.nombre} (${p.telefono}) — queda provisional para completar su registro`;
+        const create = await askConfirm(`Se acordó en el chat y NO está en la agenda:\n\n${data.servicioAgenda}${data.tipoAConfirmar ? ` (tipo a confirmar: ${data.tipoAConfirmar})` : ""}\n${label}${quien}${warn}${otrasText}`, { title: "Verificar cita", type: "info", okText: "Crear cita", cancelText: "Ignorar" });
         if (!create) return;
         try {
-            const created = await api(`/api/mensajes-view/conversations/${conversationId}/agreed-appointment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fecha: c.fecha, hora: c.hora, servicio: c.servicio }) });
+            const created = await api(`/api/mensajes-view/conversations/${conversationId}/agreed-appointment`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fecha: c.fecha, hora: c.hora, servicio: c.servicio, nombre: p.nombre, telefono: p.telefono }) });
             alert(created.duplicada ? `Esa cita ya se había creado (#${created.id_cita}).` : `Cita creada en la agenda (#${created.id_cita}).`);
         } catch (error) { alert(error.message); }
     }

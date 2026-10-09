@@ -4,7 +4,7 @@
 // ya validan contra el backend. No mantienen estado de dialogo.
 
 const pool = require("../../config/db");
-const { listAiServices, resolveService, searchAvailability, normalizeText } = require("./aiAvailability.service");
+const { listAiServices, resolveService, searchAvailability, normalizeText, getClinicSchedule } = require("./aiAvailability.service");
 const { queryPatientAppointments } = require("./agendaAiQuery.service");
 // Se importa el módulo entero (no destructurado) para poder mockearlo en pruebas.
 const appointmentActions = require("./aiAppointmentAction.service");
@@ -12,7 +12,7 @@ const { cancelAppointment, rescheduleAppointment } = appointmentActions;
 const { resolveDatePreference, timeFromText } = require("./dateTimeResolver.service");
 const { to12h } = require("./timeFormat.service");
 const { requestJudgement } = require("./assistantProvider.service");
-const { MensajesRepository } = require("./mensajesRepository.service");
+const { MensajesRepository, persistedPhone } = require("./mensajesRepository.service");
 const { getDb } = require("../mensajesDatabase.service");
 const { isModoVentaEnabled } = require("../appMode.service");
 
@@ -172,10 +172,12 @@ function toIsoDate(value) {
   return preference?.dates?.[0] || null;
 }
 
-function toHhmm(value) {
+// date: con la fecha, una hora sin AM/PM se ubica dentro del horario de la clínica de ese día.
+function toHhmm(value, date) {
   const raw = String(value || "").trim();
   if (/^([01]\d|2[0-3]):[0-5]\d$/.test(raw)) return raw;
-  return timeFromText(raw);
+  const ranges = date ? getClinicSchedule().schedule?.[new Date(`${date}T12:00:00Z`).getUTCDay()] : null;
+  return timeFromText(raw, Array.isArray(ranges) ? ranges : []);
 }
 
 // Servicios marcados como "solo pacientes ya registrados" (control mensual de
@@ -287,9 +289,16 @@ const RECEPTION_JUDGE_SYSTEM = [
   "Sos un control interno de una clínica dental. Te paso una conversación de WhatsApp y una cita que el asistente quiere registrar.",
   "Decidí si RECEPCIÓN (los mensajes marcados \"Recepción\", no los del asistente) le ofreció o le confirmó al paciente una cita en ESA MISMA fecha y hora, y el paciente la aceptó (puede estar aceptándola en sus últimos mensajes).",
   "Es false si recepción ofreció otra fecha u hora, si dijo que no hay espacio, si no habló de horarios, si la fecha o la hora solo las propuso el paciente o el asistente, o si el paciente no aceptó.",
+  "Cada mensaje trae entre corchetes cuándo se envió: \"hoy\", \"mañana\" o \"el jueves\" se cuentan desde la fecha de ESE mensaje, no desde hoy.",
   "Respondé solo JSON: {\"acordado\": true o false, \"motivo\": \"frase breve\"}"
 ].join("\n");
 const WEEKDAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const LOCAL_STAMP = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/El_Salvador", dateStyle: "short", timeStyle: "short" });
+// Con fecha por mensaje: un chat de ayer que dice "mañana" es hoy, no mañana (caso Katherine Michelle, 2026-10-09).
+const dialogueLine = (m, who) => {
+  const stamp = LOCAL_STAMP.format(new Date(m.messageAt || m.createdAt || Date.now()));
+  return `[${WEEKDAYS[new Date(`${stamp.slice(0, 10)}T12:00:00Z`).getUTCDay()]} ${stamp}] ${who(m)}: ${String(m.content || "").trim()}`;
+};
 async function receptionAgreed(ctx, { date, time, service }) {
   const conversationId = ctx?.conversation?.id;
   if (!conversationId || typeof ctx?.judge !== "function" || !ctx?.cfg) return { ok: false };
@@ -297,7 +306,7 @@ async function receptionAgreed(ctx, { date, time, service }) {
   const since = Date.now() - 48 * 3600 * 1000;
   if (!messages.some((m) => m.direction === "outgoing" && m.author === "human" && Date.parse(m.messageAt || m.createdAt) >= since)) return { ok: false };
   const who = (m) => (m.direction === "incoming" ? "Paciente" : m.author === "human" ? "Recepción" : "Asistente");
-  const dialogue = messages.slice(-20).map((m) => `${who(m)}: ${String(m.content || "").trim()}`).join("\n");
+  const dialogue = messages.slice(-20).map((m) => dialogueLine(m, who)).join("\n");
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
   const weekday = (iso) => WEEKDAYS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
   try {
@@ -316,8 +325,24 @@ const AGREED_JUDGE_SYSTEM = [
   "Sos un control interno de una clínica dental. Te paso una conversación de WhatsApp entre la clínica (Recepción = personal humano, Asistente = asistente automático) y un paciente.",
   "Decidí si en la conversación quedó ACORDADA una cita nueva o un cambio de fecha: la clínica ofreció o confirmó una fecha y hora y el paciente la aceptó, o el paciente eligió una de las opciones que le dio la clínica y nadie la contradijo después. Si hubo varias propuestas, vale el último acuerdo.",
   "Es false si la última propuesta sigue sin respuesta, si la clínica y el paciente no coinciden en la hora, si solo se habló de horarios sin cerrar, o si el paciente solo confirmó asistencia a una cita que ya tenía.",
-  "Usá el calendario para convertir el día en fecha. Respondé solo JSON: {\"acordada\": true o false, \"fecha\": \"AAAA-MM-DD\", \"hora\": \"HH:MM\" en 24 h, \"servicio\": \"el servicio tal como se habló en el chat\", \"motivo\": \"frase breve\"}"
+  "Cada mensaje trae entre corchetes cuándo se envió: \"hoy\", \"mañana\" o \"el jueves\" se cuentan desde la fecha de ESE mensaje, no desde hoy.",
+  "Usá el calendario para convertir el día en fecha. Respondé solo JSON: {\"acordada\": true o false, \"fecha\": \"AAAA-MM-DD\", \"hora\": \"HH:MM\" en 24 h, \"servicio\": \"el servicio tal como se habló en el chat\", \"nombre\": \"nombre completo del paciente si lo escribió en el chat, si no null\", \"telefono\": \"número de contacto que dio el paciente en el chat, si no null\", \"motivo\": \"frase breve\"}"
 ].join("\n");
+// Paciente de la cita del botón: el vinculado al chat; si no hay, el que la IA leyó en el chat (pedido del usuario
+// 2026-10-09, caso Javier: paciente nuevo). Sin teléfono dictado, el del propio chat. Con expediente se usa ese
+// (como crear_cita); sin expediente queda provisional para que recepción complete el registro.
+async function chatPatient(conversationId, { nombre, telefono } = {}) {
+  const linked = reminderRepo.getPatientLink(conversationId);
+  if (linked?.patientId) return { patientId: linked.patientId, patientName: linked.patientName, phone: linked.phone, linked: true };
+  const conversation = reminderRepo.getConversation(conversationId);
+  const given = persistedPhone(telefono);
+  const phone = given.length >= 7 ? given : conversation?.phoneResolved ? persistedPhone(conversation.phone) : "";
+  const name = String(nombre || "").trim().slice(0, 120);
+  const existing = name ? await findExistingPatient({ name, phone }).catch(() => null) : null;
+  if (!existing?.id) return { patientId: null, patientName: name, phone, linked: false };
+  const expediente = persistedPhone(existing.expedientePhone);
+  return { patientId: existing.id, patientName: existing.name, phone: phone || expediente, linked: false, phoneChanged: Boolean(phone && expediente.length >= 7 && phone !== expediente) };
+}
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 function agendaService(servicio) {
@@ -328,13 +353,20 @@ function agendaService(servicio) {
     return { service: null, tipoAConfirmar: "" };
   });
 }
-async function verifyAgreedAppointment(conversationId) {
-  const linked = reminderRepo.getPatientLink(conversationId);
-  if (!linked?.patientId) return { estado: "paciente_no_identificado", motivo: "Primero identificá al paciente de este chat." };
+async function verifyAgreedAppointment(conversationId, { conIa = false } = {}) {
+  // Paciente identificado: primero la agenda, sin IA (pedido del usuario 2026-10-09, la IA tardaba 5-12 s). Si ya
+  // tiene citas se muestran al instante; la IA lee el chat solo si no hay ninguna o si recepción lo pide (un cambio
+  // de hora o una cita extra no se ven en la agenda: caso Keily, pidió pasar de 3:30 a 1:30).
+  const linked = conIa ? null : reminderRepo.getPatientLink(conversationId);
+  if (linked?.patientId) {
+    const found = await queryPatientAppointments({ patientId: linked.patientId, patientName: linked.patientName, phone: linked.phone, upcomingOnly: true });
+    const dia = (iso) => WEEKDAYS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
+    if (found.appointments?.length) return { estado: "tiene_citas", citas: found.appointments.map((a) => ({ dia: dia(a.date), fecha: a.date, hora12: to12h(a.time), servicio: a.treatment || "", estado: a.status })) };
+  }
   const who = (m) => (m.direction === "incoming" ? "Paciente" : m.author === "human" ? "Recepción" : m.author === "system" ? "Recordatorio automático" : "Asistente");
   const dialogue = reminderRepo.listMessages(conversationId, { limit: 60 })
     .filter((m) => !m.queued && !String(m.content || "").startsWith("Reacción:"))
-    .slice(-20).map((m) => `${who(m)}: ${String(m.content || "").trim()}`).join("\n");
+    .slice(-20).map((m) => dialogueLine(m, who)).join("\n");
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
   const weekday = (iso) => WEEKDAYS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
   const calendar = Array.from({ length: 21 }, (_, i) => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + i); const iso = d.toISOString().slice(0, 10); return `${weekday(iso)} ${iso}`; }).join(", ");
@@ -345,37 +377,45 @@ async function verifyAgreedAppointment(conversationId) {
   if (verdict?.acordada !== true || !date || !time) return { estado: "sin_acuerdo", motivo: verdict?.motivo || "No encontré una fecha y hora acordadas en el chat." };
   if (date < today) return { estado: "sin_acuerdo", motivo: `La fecha acordada (${weekday(date)} ${date}) ya pasó.` };
   const cita = { fecha: date, hora: time, dia: weekday(date), hora12: to12h(time), servicio: String(verdict.servicio || "").trim() };
-  const found = await queryPatientAppointments({ patientId: linked.patientId, patientName: linked.patientName, phone: linked.phone, upcomingOnly: true });
+  const patient = await chatPatient(conversationId, verdict);
+  const paciente = { nombre: patient.patientName || "", telefono: patient.phone || "", registrado: Boolean(patient.patientId), vinculado: patient.linked };
+  const found = await queryPatientAppointments({ patientId: patient.patientId, patientName: patient.patientName, phone: patient.phone, upcomingOnly: true });
   const appointments = found.appointments || [];
   const otrasCitas = appointments.filter((a) => !(a.date === date && a.time === time)).map((a) => ({ dia: weekday(a.date), fecha: a.date, hora12: to12h(a.time), servicio: a.treatment || "", estado: a.status }));
-  if (appointments.some((a) => a.date === date && a.time === time)) return { estado: "ya_agendada", cita, otrasCitas };
+  if (appointments.some((a) => a.date === date && a.time === time)) return { estado: "ya_agendada", cita, paciente, otrasCitas };
+  if (!patient.patientId && (!patient.patientName || patient.phone.length < 7)) {
+    return { estado: "faltan_datos", motivo: `Se acordó cita el ${cita.dia} ${date} a las ${cita.hora12}, pero no encontré en el chat el ${patient.patientName ? "teléfono" : "nombre completo"} del paciente. Identifíquelo o agéndela desde la Agenda.` };
+  }
   const { service, tipoAConfirmar } = await agendaService(cita.servicio);
   let cupoLibre = null;
   if (service) {
     try { const availability = await searchAvailability({ serviceId: service.serviceId, date }); cupoLibre = !availability.dayUnavailable && availability.slots.some((slot) => slot.time === time); } catch { /* sin dato: no se avisa */ }
   }
-  return { estado: "falta_agendar", cita, servicioAgenda: service?.serviceName || null, tipoAConfirmar, cupoLibre, otrasCitas };
+  return { estado: "falta_agendar", cita, paciente, servicioAgenda: service?.serviceName || null, tipoAConfirmar, cupoLibre, otrasCitas };
 }
 // "Crear cita" tras la verificación: lo decide recepción, así que no se exige cupo (como cuando agenda a mano;
 // la verificación ya le avisó si la agenda no lo muestra libre). La memoria del chat evita que la IA la vuelva a
 // crear si después se libera la conversación.
-async function createAgreedAppointment(conversationId, { fecha, hora, servicio } = {}) {
+async function createAgreedAppointment(conversationId, { fecha, hora, servicio, nombre, telefono } = {}) {
   const fail = (message) => Object.assign(new Error(message), { status: 400 });
-  const linked = reminderRepo.getPatientLink(conversationId);
-  if (!linked?.patientId) throw fail("Primero identificá al paciente de este chat.");
   if (!ISO_DATE.test(String(fecha || "")) || !HHMM.test(String(hora || ""))) throw fail("Fecha u hora no válidas.");
+  const patient = await chatPatient(conversationId, { nombre, telefono });
+  if (!patient.patientId && (!patient.patientName || patient.phone.length < 7)) throw fail("Faltan el nombre completo y el teléfono del paciente.");
   const { service, tipoAConfirmar } = await agendaService(servicio);
   if (!service) throw fail("No se pudo identificar el servicio. Agendala desde la Agenda.");
+  const base = tipoAConfirmar ? `${String(servicio).trim()} — tipo a confirmar: ${tipoAConfirmar}` : service.serviceName;
+  // Mismas marcas que crear_cita: provisional "— verificar", expediente con otro número "— teléfono nuevo".
+  const mark = !patient.patientId ? " — verificar" : patient.phoneChanged ? " — teléfono nuevo, confirmar en recepción" : "";
   const result = await appointmentActions.createAppointmentForAssistant({
-    patientId: linked.patientId,
-    patientName: linked.patientName,
+    patientId: patient.patientId,
+    patientName: patient.patientName,
     serviceId: service.serviceId,
     date: fecha,
     time: hora,
-    contact: linked.phone,
-    comment: (tipoAConfirmar ? `${String(servicio).trim()} — tipo a confirmar: ${tipoAConfirmar}` : service.serviceName).slice(0, 255),
+    contact: patient.phone,
+    comment: `${base}${mark}`.slice(0, 255),
     skipAvailability: true,
-    idempotencyKey: `manual-create-${conversationId}-${fecha}-${hora}-${service.serviceId}-${linked.patientId}`
+    idempotencyKey: `manual-create-${conversationId}-${fecha}-${hora}-${service.serviceId}-${patient.patientId || normalizeText(patient.patientName)}`
   });
   reminderRepo.setAssistantMemory(conversationId, { lastAppointment: { appointmentId: result.idAgendaAP, action: "creada por recepción", service: service.serviceName, date: fecha, time: to12h(hora) } });
   return { id_cita: result.idAgendaAP, duplicada: Boolean(result.duplicate) };
@@ -386,7 +426,7 @@ async function crearCita(args, ctx) {
     return { estado: "falta_confirmacion", mensaje: "Confirmá explícitamente servicio, fecha y hora con el paciente y volvé a llamar con confirmado=true." };
   }
   const date = toIsoDate(args?.fecha);
-  const time = toHhmm(args?.hora);
+  const time = toHhmm(args?.hora, date);
   if (!date || !time) return { estado: "datos_invalidos", mensaje: "Fecha u hora no válidas." };
   let resolved = await resolveService(args?.servicio || "");
   const agreed = args?.acordado_por_recepcion === true ? await receptionAgreed(ctx, { date, time, service: args?.servicio || "" }) : null;
@@ -496,7 +536,7 @@ async function reprogramarCita(args, ctx) {
   if (!linked?.patientId) return { estado: "paciente_no_identificado", mensaje: "Solo se pueden reprogramar citas de un paciente identificado por recepción." };
   if (args?.confirmado !== true) return { estado: "falta_confirmacion", mensaje: "Confirmá la nueva fecha y hora con el paciente y volvé a llamar con confirmado=true." };
   const newDate = toIsoDate(args?.nueva_fecha);
-  const newTime = toHhmm(args?.nueva_hora);
+  const newTime = toHhmm(args?.nueva_hora, newDate);
   if (!newDate || !newTime) return { estado: "datos_invalidos", mensaje: "Nueva fecha u hora no válidas." };
   try {
     const result = await rescheduleAppointment({ patientId: linked.patientId, appointmentId: Number(args?.id_cita), newDate, newTime });
