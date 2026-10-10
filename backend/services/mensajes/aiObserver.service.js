@@ -164,6 +164,17 @@ async function processBatch(batch) {
       console.log("[Mensajes][IA] Revisión humana por servicio restringido", { batchId: batch.id, conversationId: conversation.id, reason: restricted });
       return repo.updateResponseQueue(batch.id, { status: "cancelled", error: restricted });
     }
+    // finalizar_conversacion (contextos/20, «Conversación finalizada»): no se envía nada. La marca frena a la IA en este chat (ver
+    // assistantClosedUntil) y "Atendido" quita el ⏳ solo de lo ya cerrado: si el paciente escribe de nuevo, recepción lo ve.
+    // Si entró un mensaje mientras se decidía, el lote ya fue cancelado y no se cierra nada.
+    if (result.closed) {
+      const active = repo.getResponseQueueItem(batch.id);
+      if (!active || active.status !== "generating") return active;
+      repo.setAssistantMemory(conversation.id, { closed: { at: new Date().toISOString(), motivo: result.closed, messageId: Math.max(...batch.messageIds.map(Number)) } });
+      repo.markAttended(conversation.id);
+      console.log("[Mensajes][IA] Conversación finalizada sin responder", { batchId: batch.id, conversationId: conversation.id, motivo: result.closed, hasta: repo.assistantClosedUntil(conversation.id) });
+      return repo.updateResponseQueue(batch.id, { status: "cancelled", error: `Finalizada sin responder: ${result.closed}` });
+    }
     if (result.transfer && !answer) { markHumanReview(); return repo.updateResponseQueue(batch.id, { status: "cancelled", error: `Transferido a recepción: ${result.transfer}` }); }
     if (!answer) return repo.updateResponseQueue(batch.id, { status: "cancelled", error: "El asistente no produjo respuesta" });
 

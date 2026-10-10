@@ -28,8 +28,6 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `23_almacenamiento_nube.md`
 - `24_inventario.md`
 - `25_migracion_conexion_whatsapp.md`
-- `26_bug_bucle_salientes_duplicados.md`
-- `27_parche_whatsapp_web_js.md`
 
 ## Nota
 - `01_general.md` incluye un resumen fechado de cambios recientes para reubicarse rapido entre sesiones.
@@ -45,7 +43,5 @@ Este directorio resume el estado actual del proyecto por vista para continuar ca
 - `21_build_win_local.md` guia del instalador Windows local: pasos, validacion del paquete y los 3 errores conocidos (self-link `clinica` -> recursion de 7za, ABI de `better-sqlite3` vs Electron, `node_modules` del backend vacio en el paquete).
 - `23_almacenamiento_nube.md` documenta los modos local / respaldo / solo nube (Cloudflare R2) para fotos, firmas y sellos, reglas de costo y pendientes.
 - `24_inventario.md` documenta la vista Inventario: catalogo (Odontologia / Ortodoncia / Instrumentos) y pedidos borrador -> generado, sin stock ni precios.
-- `22_whatsapp_acoplamiento_libreria.md` evalua que tan atada esta la Vista Mensajes a `whatsapp-web.js` de cara a una eventual migracion a la API oficial de Meta u otra libreria; nota de evaluacion, no un plan aprobado.
+- `22_whatsapp_acoplamiento_libreria.md` evalua que tan atada esta la Vista Mensajes a `whatsapp-web.js` de cara a una eventual migracion a la API oficial de Meta u otra libreria; nota de evaluacion, no un plan aprobado. Incluye el parche local de `whatsapp-web.js` 1.34.7 (por que, que no tomar de upstream, como instalarlo) y la advertencia de no tener dos equipos conectados a la vez.
 - `25_migracion_conexion_whatsapp.md` complementa al 22 (2026-10-03): que se conserva al cambiar de conexion, la logica `@lid` que salio del conector, la recomendacion de mantener `waChatId` como `numero@c.us`, contrato que debe respetar un conector nuevo y lo no trivial de Meta (webhook publico, plantillas 24 h).
-- `26_bug_bucle_salientes_duplicados.md` bug PENDIENTE de reparar (2026-10-03, encontrado en WhatChat): el dedup de salientes por contenido descarta una respuesta de la IA igual a otra reciente y la IA contesta en bucle el mismo mensaje. Causa, arreglo exacto y cómo verificarlo.
-- `27_parche_whatsapp_web_js.md` parche local de `whatsapp-web.js` 1.34.7 con `patch-package` (2026-10-08): por que no se actualizo, que se tomo de upstream (`_serialized` -> `$1`) y pasos para aplicarlo en la laptop.

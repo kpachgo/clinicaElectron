@@ -91,10 +91,10 @@
         const content = document.querySelector(".content");
         content.innerHTML = `<section class="mensajes-view">
           <form id="mensajes-simulator" class="mensajes-simulator">
-            <div class="sim-group"><span class="sim-group-label">WhatsApp</span><span id="mensajes-whatsapp-status" class="mensajes-wa-state">Desconectado</span><button id="mensajes-whatsapp-start" type="button" class="sim-btn sim-btn-primary">Iniciar</button><button id="mensajes-whatsapp-stop" type="button" class="sim-btn" disabled>Cerrar</button><button id="mensajes-whatsapp-recover" type="button" class="sim-btn" disabled title="Trae los chats marcados como no leídos en WhatsApp sin cerrar la conexión">Traer no leídos</button><button id="mensajes-whatsapp-clear" type="button" class="sim-btn sim-btn-danger">Quitar sesión</button></div>
-            <div class="sim-group"><span class="sim-group-label">Simular</span><input id="mensajes-sim-phone" placeholder="Teléfono" inputmode="tel"><input id="mensajes-sim-text" placeholder="Mensaje del paciente"><button id="mensajes-sim-submit" type="button" class="sim-btn sim-btn-primary">Enviar</button></div>
-            <div class="sim-group" id="mensajes-actions-group"><span class="sim-group-label">Acciones</span><button id="mensajes-global-settings" type="button" class="sim-btn" title="Ajustes globales">⚙ Ajustes</button></div>
+            <div class="sim-group"><span class="sim-group-label">WhatsApp</span><span id="mensajes-whatsapp-status" class="mensajes-wa-state">Desconectado</span><button id="mensajes-whatsapp-start" type="button" class="sim-btn sim-btn-primary">Iniciar</button><button id="mensajes-whatsapp-recover" type="button" class="sim-btn" disabled title="Trae los chats marcados como no leídos en WhatsApp sin cerrar la conexión">Traer no leídos</button></div>
+            <div class="sim-group" hidden><span class="sim-group-label">Simular</span><input id="mensajes-sim-phone" placeholder="Teléfono" inputmode="tel"><input id="mensajes-sim-text" placeholder="Mensaje del paciente"><button id="mensajes-sim-submit" type="button" class="sim-btn sim-btn-primary">Enviar</button></div>
             <div class="sim-group" id="mensajes-ai-group"><span class="sim-group-label">IA</span></div>
+            <details class="mensajes-more sim-more"><summary class="sim-btn" title="Más acciones">⋯ Más</summary><div class="mensajes-more-menu" id="mensajes-actions-group"><button id="mensajes-global-settings" type="button" title="Ajustes globales">⚙ Ajustes</button><hr id="mensajes-actions-divider"><button id="mensajes-whatsapp-clear" type="button" class="is-danger">Quitar sesión</button></div></details>
           </form>
           <div class="mensajes-layout">
             <aside class="mensajes-conversations"><div class="mensajes-section-title"><span class="mensajes-section-heading">Conversaciones<button id="mensajes-toggle-tools" type="button" class="mensajes-icon-btn" title="Mostrar u ocultar herramientas" aria-label="Mostrar u ocultar herramientas"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="4" y1="21" y2="14"/><line x1="4" x2="4" y1="10" y2="3"/><line x1="12" x2="12" y1="21" y2="12"/><line x1="12" x2="12" y1="8" y2="3"/><line x1="20" x2="20" y1="21" y2="16"/><line x1="20" x2="20" y1="12" y2="3"/><line x1="1" x2="7" y1="14" y2="14"/><line x1="9" x2="15" y1="8" y2="8"/><line x1="17" x2="23" y1="16" y2="16"/></svg></button></span><button id="mensajes-refresh" class="ui-toolbar-btn">Actualizar</button></div><div class="mensajes-list-toolbar"><input id="mensajes-search" type="search" autocomplete="off" placeholder="Buscar por nombre o número"><div id="mensajes-filters" class="mensajes-filters"><button type="button" data-filter="all" class="is-active">Todas</button><button type="button" data-filter="review">⚠ Necesitan revisión<span class="chip-count"></span></button><button type="button" data-filter="awaiting" title="El último mensaje del paciente lleva 10 minutos o más sin respuesta (de la IA o de recepción)">⏳ Sin responder<span class="chip-count"></span></button><button type="button" data-filter="ai">🤖 IA</button><button type="button" data-filter="archived" title="Chats archivados en WhatsApp (se actualiza cuando escriben)">🗄 Archivados<span class="chip-count"></span></button></div></div><div id="mensajes-list" class="mensajes-list"></div></aside>
@@ -462,11 +462,11 @@ ${preview}
     }
     async function refreshGlobalAiStatus() { const group = document.getElementById("mensajes-ai-group") || document.getElementById("mensajes-simulator"); if (!group) return; let indicator = document.getElementById("mensajes-ai-global-status"); if (!indicator) { indicator = document.createElement("span"); indicator.id = "mensajes-ai-global-status"; indicator.className = "mensajes-ai-global-status"; group.insertBefore(indicator, document.getElementById("mensajes-pause-ai") || null); } const data = await api("/api/mensajes-view/automation-settings"); const active = Boolean(data.settings.enabled); indicator.textContent = active ? "IA activa" : "IA pausada"; indicator.classList.toggle("is-active", active); indicator.classList.toggle("is-paused", !active); const pause = document.getElementById("mensajes-pause-ai"); const toAi = document.getElementById("mensajes-global-ai"); if (pause) { pause.textContent = active ? "Pausar IA" : "Reanudar IA"; pause.dataset.aiAction = active ? "paused" : "resume"; pause.title = active ? "Apaga la IA y cancela lo que esté respondiendo" : "Vuelve a encender la IA; no responde lo viejo, solo los mensajes que lleguen"; pause.disabled = false; } if (toAi) toAi.textContent = "Pasar todo a IA"; }
     function formatWhatsappStatus(status) { const labels = { disconnected: "Desconectado", initializing: "Iniciando...", connecting: "Conectando...", qr: "QR en ventana de WhatsApp", authenticated: "Autenticado...", syncing: "Sincronizando...", connected: "Conectado", reconnecting: "Reconectando...", auth_failure: "Fallo de autenticación", error: "Error" }; return labels[status] || status || "Desconectado"; }
-    function paintWhatsappStatus(status) { const state = document.getElementById("mensajes-whatsapp-status"); const start = document.getElementById("mensajes-whatsapp-start"); const stop = document.getElementById("mensajes-whatsapp-stop"); if (!state) return; const statusName = status?.status || "disconnected"; state.textContent = formatWhatsappStatus(statusName) + (status?.error ? `: ${status.error}` : ""); state.dataset.status = statusName; state.className = `mensajes-wa-state is-${statusName}`; if (start) { start.textContent = ["initializing", "connecting", "authenticated", "syncing", "reconnecting"].includes(statusName) ? "Reintentando..." : "Iniciar / reintentar"; start.disabled = ["initializing", "connecting", "authenticated", "syncing"].includes(statusName); } if (stop) stop.disabled = ["disconnected", "error", "auth_failure"].includes(statusName); const recover = document.getElementById("mensajes-whatsapp-recover"); if (recover && !recover.dataset.busy) recover.disabled = statusName !== "connected"; }
+    function paintWhatsappStatus(status) { const state = document.getElementById("mensajes-whatsapp-status"); const start = document.getElementById("mensajes-whatsapp-start"); if (!state) return; const statusName = status?.status || "disconnected"; state.textContent = formatWhatsappStatus(statusName) + (status?.error ? `: ${status.error}` : ""); state.dataset.status = statusName; state.className = `mensajes-wa-state is-${statusName}`; if (start) { /* Un solo botón: la acción depende del estado (conectado = cerrar el navegador de WhatsApp). */ const busy = ["initializing", "connecting", "authenticated", "syncing"].includes(statusName); const connected = statusName === "connected"; start.dataset.waAction = connected ? "stop" : "start"; start.textContent = busy ? "Conectando..." : connected ? "⏻ Cerrar WhatsApp" : ["qr", "reconnecting"].includes(statusName) ? "Reintentar" : "Iniciar"; start.title = connected ? "Cierra el navegador de WhatsApp; la sesión se conserva (no pide QR al volver a iniciar)" : ""; start.classList.toggle("sim-btn-primary", !connected); start.disabled = busy; } const recover = document.getElementById("mensajes-whatsapp-recover"); if (recover && !recover.dataset.busy) recover.disabled = statusName !== "connected"; }
     async function refreshWhatsappStatus() { try { const data = await api("/api/mensajes-view/whatsapp/status"); paintWhatsappStatus(data.status); } catch (error) { paintWhatsappStatus({ status: "error", error: error.message }); } }
     async function startWhatsapp() { paintWhatsappStatus({ status: "initializing" }); try { const data = await api("/api/mensajes-view/whatsapp/start", { method: "POST" }); paintWhatsappStatus(data.status); } catch (error) { await refreshWhatsappStatus(); alert(error.message); } }
     async function recoverUnread(event) { const btn = event.currentTarget; btn.disabled = true; btn.dataset.busy = "1"; btn.textContent = "Trayendo..."; try { const data = await api("/api/mensajes-view/whatsapp/recover-unread", { method: "POST" }); if (!data.started) alert("Ya hay una recuperación en curso. Intente en unos segundos."); } catch (error) { alert(error.message); } finally { delete btn.dataset.busy; btn.textContent = "Traer no leídos"; await refreshWhatsappStatus(); } }
-    async function stopWhatsapp() { try { const data = await api("/api/mensajes-view/whatsapp/stop", { method: "POST" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
+    async function stopWhatsapp() { if (!await askConfirm("Se cerrará WhatsApp: no entrarán ni saldrán mensajes hasta volver a iniciarlo. La sesión se conserva. ¿Continuar?")) return; try { const data = await api("/api/mensajes-view/whatsapp/stop", { method: "POST" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
     async function clearWhatsappSession() { if (!await askConfirm("Se cerrará WhatsApp y se borrará la sesión guardada. El siguiente inicio pedirá un QR nuevo. ¿Continuar?")) return; try { const data = await api("/api/mensajes-view/whatsapp/session", { method: "DELETE" }); paintWhatsappStatus(data.status); } catch (error) { alert(error.message); } }
     async function setGlobalAiMode(mode) { await api("/api/mensajes-view/global-ai-mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode }) }); await refreshGlobalAiStatus(); await loadConversations(); if (selectedId) await loadConversation(selectedId); }
     async function restoreActiveReminder() { const active = await api("/api/mensajes-view/reminders-active"); if (!active.batch) return; const modal = document.getElementById("mensajes-reminder-modal"); if (!modal) return; modal.dataset.batchId = active.batch.id; modal.querySelector("#reminder-send").disabled = true; modal.querySelector("#reminder-cancel").disabled = false; pollReminder(); }
@@ -553,14 +553,17 @@ ${preview}
     // Botón de la cabecera del chat abierto. "Atendido" no es "Tomar": no cambia el
     // modo de atención, solo quita la etiqueta; si el paciente vuelve a escribir,
     // el chat vuelve a quedar sin responder y la IA (si está en modo IA) responde
-    // con el contexto completo, como siempre.
+    // con el contexto completo, como siempre. Excepción: en "Necesita revisión" pasa a
+    // Manual (ver markAttended en el backend).
     function paintAttendedButton() {
         const actions = document.querySelector("#mensajes-chat-head .mensajes-chat-actions");
         if (!actions) return;
         const conversation = allConversations.find((c) => c.id === selectedId);
         const wait = conversation ? awaitingMinutes(conversation, aiWorkingConvIds.has(conversation.id)) : null;
+        // En "Necesita revisión" va siempre: recepción puede haberlo resuelto sin escribir (ej. verificó la cita).
+        const review = conversation?.attentionMode === "review_required";
         let button = actions.querySelector("[data-mark-attended]");
-        if (wait === null) { button?.remove(); return; }
+        if (wait === null && !review) { button?.remove(); return; }
         if (!button) {
             button = document.createElement("button");
             button.type = "button";
@@ -575,7 +578,9 @@ ${preview}
             });
             actions.insertBefore(button, actions.firstChild);
         }
-        button.title = `Sin responder hace ${formatWait(wait)}. Quita la etiqueta sin responderle al paciente (por ejemplo, un "gracias 👍"). No cambia el modo: si vuelve a escribir, la etiqueta vuelve y la IA o recepción siguen como estaban.`;
+        button.title = review
+            ? `Ya lo revisaste: sale de "Necesita revisión" y pasa a Manual, como "Tomar". La IA no responde hasta que lo liberes.${wait === null ? "" : ` También quita "sin responder" (hace ${formatWait(wait)}).`}`
+            : `Sin responder hace ${formatWait(wait)}. Quita la etiqueta sin responderle al paciente (por ejemplo, un "gracias 👍"). No cambia el modo: si vuelve a escribir, la etiqueta vuelve y la IA o recepción siguen como estaban.`;
     }
     // Como WhatsApp con un contacto no guardado: sin paciente vinculado se muestra el número, no el nombre que la
     // persona puso en su WhatsApp ("." o emojis); así se relaciona y se busca igual que en el teléfono.
@@ -704,7 +709,8 @@ ${preview}
     async function loadConversation(id, options = {}) {
         const loadSeq = ++conversationLoadSeq;
         const markRead = options.markRead !== false;
-        if (selectedId !== id) lastChatSig = "";
+        const switched = selectedId !== id;
+        if (switched) lastChatSig = "";
         selectedId = id;
         try {
         const queueData = await api(`/api/mensajes-view/conversations/${id}/response-queue?limit=10`); const activeQueue = queueData.queue.find((item) => ["generating", "ready_to_send", "sending"].includes(item.status));
@@ -714,6 +720,7 @@ ${preview}
         // (evita re-parsear 100 burbujas, re-scroll y re-bind de listeners cada tick).
         const sig = JSON.stringify({
             p: data.conversation.phone, m: data.conversation.attentionMode, x: data.conversation.aiExcluded ? 1 : 0,
+            f: data.conversation.assistantClose ? [data.conversation.assistantClose.messageId, data.conversation.assistantClose.until] : null,
             link: data.patientLink ? [data.patientLink.patientId, data.patientLink.active] : null,
             q: activeQueue ? activeQueue.status : null,
             msgs: (data.messages || []).map((x) => [x.id, x.deliveryStatus, x.queued ? 1 : 0, x.error || 0])
@@ -733,20 +740,26 @@ ${preview}
         const headSub = data.conversation.attentionMode === "review_required" && data.conversation.humanReviewReason
             ? `${headState.icon} ${esc(data.conversation.humanReviewReason)}`
             : `${headState.icon ? headState.icon + " " : ""}${esc(headState.label)}`;
-        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span>${data.conversation.aiExcluded ? '<span class="chat-head-state is-excluded" title="La IA no responde a este chat. Quitalo de la lista en Ajustes, Control de telefonos, para reactivarla.">🚫 Excluido de la IA</span>' : ""}</div><div class="mensajes-chat-actions"><button data-action="verify-appointment" title="Revisa si la cita acordada en este chat ya está en la agenda">📅 Verificar cita</button><button data-action="take">Tomar</button><button data-action="release">Liberar</button><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="avatar" title="Traer ahora la foto de perfil de WhatsApp de este chat">📷 Foto</button><button data-action="delete" title="Borrar conversación">🗑</button></div>`;
+        const close = data.conversation.assistantClose;
+        const closedHead = close?.until ? `<span class="chat-head-state is-closed" title="La IA dio la conversación por terminada y no responde en este chat hasta esa hora. Liberar la reactiva.">✓ Finalizada · la IA no responde hasta las ${esc(new Date(close.until).toLocaleTimeString("es-SV", { hour: "numeric", minute: "2-digit", timeZone: "America/El_Salvador" }))}</span>` : "";
+        document.getElementById("mensajes-chat-head").innerHTML = `<div><strong>${esc(headName)}</strong><span class="chat-head-state ${headState.cls || ""}">${headSub}</span>${data.conversation.aiExcluded ? '<span class="chat-head-state is-excluded" title="La IA no responde a este chat. Quitalo de la lista en Ajustes, Control de telefonos, para reactivarla.">🚫 Excluido de la IA</span>' : ""}${closedHead}</div><div class="mensajes-chat-actions"><button data-action="verify-appointment" title="Revisa si la cita acordada en este chat ya está en la agenda">📅 Verificar cita</button>${data.conversation.attentionMode === "assistant" ? '<button data-action="take" title="Pasar a Manual: la IA deja de responder en este chat">✋ Tomar</button>' : '<button data-action="release" title="Devolver el chat a la IA">🤖 Liberar</button>'}<details class="mensajes-more"><summary title="Más acciones">⋯</summary><div class="mensajes-more-menu"><button data-action="ignore" title="Agregar este teléfono a la lista de ignorados">🚫 No responder</button><button data-action="avatar" title="Traer ahora la foto de perfil de WhatsApp de este chat">📷 Actualizar foto</button><hr><button data-action="delete" class="is-danger">🗑 Borrar conversación</button></div></details></div>`;
         const renderedMessages = data.messages.filter((m) => !isReaction(m));
         chatBody.innerHTML = renderedMessages.length ? renderedMessages.map((m) => { const state = m.queued ? (m.deliveryStatus === "failed" ? "Error de envío" : "En cola") : (m.deliveryStatus === "delivered" ? "Entregado" : m.deliveryStatus === "read" ? "Leído" : m.deliveryStatus === "sent" ? "Enviado" : "Recibido"); return `<div class="mensaje-bubble ${m.direction === "outgoing" ? "outgoing" : "incoming"} ${m.queued ? "is-queued" : ""} ${m.deliveryStatus === "failed" ? "is-failed" : ""}"><p>${esc(m.content)}</p><small>${esc(m.author)} · ${esc(formatDate(m.messageAt))} · ${state}${m.error ? ` · ${esc(m.error)}` : ""}</small>${m.deliveryStatus === "failed" ? `<button class="mensaje-retry" data-retry-id="${String(m.id).replace("queue-", "")}" type="button">Reintentar</button>` : ""}</div>`; }).join("") : `<div class="mensajes-empty">Sin mensajes.</div>`;
+        // Nota del cierre (finalizar_conversacion): fuera de las burbujas, así no entra en la selección de mensajes.
+        const closedIndex = close ? renderedMessages.findIndex((m) => Number(m.id) === Number(close.messageId)) : -1;
+        if (closedIndex >= 0) { const note = document.createElement("div"); note.className = "mensajes-closing-note"; note.textContent = `✓ Listo: ${close.motivo} · nota interna, no se envió al paciente`; chatBody.querySelectorAll(".mensaje-bubble")[closedIndex].after(note); }
         if (activeQueue) { const indicator = document.createElement("div"); indicator.className = "mensajes-ai-queue-status"; indicator.textContent = activeQueue.status === "sending" ? "Enviando respuesta…" : activeQueue.status === "ready_to_send" ? "Respuesta lista para enviar…" : "La IA está preparando una respuesta…"; document.getElementById("mensajes-chat-body").prepend(indicator); }
-        if (wasNearBottom) scrollChatToBottom("smooth");
+        if (switched) scrollChatToBottom("instant");
+        else if (wasNearBottom) scrollChatToBottom("smooth");
         const compose = document.getElementById("mensajes-compose");
         if (compose) { compose.hidden = false; compose.removeAttribute("hidden"); compose.style.display = "flex"; }
         const actions = document.querySelector(".mensajes-chat-actions");
         if (actions) {
             const deleteSelected = document.createElement("button");
             deleteSelected.type = "button";
-            deleteSelected.textContent = "🗑 Eliminar";
+            deleteSelected.textContent = "☑ Eliminar mensajes";
             deleteSelected.dataset.deleteSelected = "1";
-            actions.insertBefore(deleteSelected, actions.firstChild);
+            actions.querySelector(".mensajes-more-menu").prepend(deleteSelected);
         }
         paintAttendedButton();
         chatBody.querySelectorAll(".mensaje-bubble").forEach((bubble, index) => {
@@ -763,7 +776,7 @@ ${preview}
         document.querySelectorAll("[data-retry-id]").forEach((button) => button.addEventListener("click", () => retryMessage(button.dataset.retryId)));
         const deleteButton = document.querySelector("[data-delete-selected]");
         if (deleteButton) deleteButton.addEventListener("click", () => setMessageSelectionMode(true));
-        const refreshDeleteButton = () => { if (deleteButton) deleteButton.textContent = `${document.querySelectorAll("[data-message-select]:checked").length ? "🗑 Eliminar seleccionados" : "🗑 Eliminar"}`; };
+        const refreshDeleteButton = () => { if (deleteButton) deleteButton.textContent = `${document.querySelectorAll("[data-message-select]:checked").length ? "🗑 Eliminar seleccionados" : "☑ Eliminar mensajes"}`; };
         document.querySelectorAll("[data-message-select]").forEach((input) => input.addEventListener("change", refreshDeleteButton));
         refreshDeleteButton();
         if (wasSelectingMessages) setMessageSelectionMode(true);
@@ -821,7 +834,7 @@ ${preview}
         if (!enabled && confirmDelete) confirmDelete.remove();
         if (originalDelete) originalDelete.hidden = enabled;
         const deleteButton = actions.querySelector("[data-delete-selected]");
-        if (deleteButton) deleteButton.textContent = enabled ? "Eliminar seleccionados" : "🗑 Eliminar";
+        if (deleteButton) deleteButton.textContent = enabled ? "Eliminar seleccionados" : "☑ Eliminar mensajes";
     }
     function openMessageContextMenu(event, messageId) {
         event.preventDefault();
@@ -1500,8 +1513,7 @@ ${preview}
         simulator.addEventListener("submit", simulateIncoming);
         simulator.querySelector("#mensajes-sim-submit").addEventListener("click", simulateIncoming);
         simulator.querySelector("#mensajes-sim-text").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void simulateIncoming(event); } });
-        document.getElementById("mensajes-whatsapp-start").addEventListener("click", () => void startWhatsapp());
-        document.getElementById("mensajes-whatsapp-stop").addEventListener("click", () => void stopWhatsapp());
+        document.getElementById("mensajes-whatsapp-start").addEventListener("click", (event) => void (event.currentTarget.dataset.waAction === "stop" ? stopWhatsapp() : startWhatsapp()));
         document.getElementById("mensajes-whatsapp-recover").addEventListener("click", (event) => void recoverUnread(event));
         document.getElementById("mensajes-whatsapp-clear").addEventListener("click", () => void clearWhatsappSession());
         document.getElementById("mensajes-global-settings").addEventListener("click", async (event) => {
@@ -1529,10 +1541,14 @@ ${preview}
         });
         const actionsGroup = document.getElementById("mensajes-actions-group");
         const aiGroup = document.getElementById("mensajes-ai-group");
-        const addSimButton = (group, id, label, cls, handler) => { const button = document.createElement("button"); button.id = id; button.type = "button"; button.className = `sim-btn ${cls || ""}`.trim(); button.textContent = label; group.appendChild(button); button.addEventListener("click", handler); return button; };
-        addSimButton(actionsGroup, "mensajes-send-reminders", "🔔 Recordatorios", "", () => void openReminderModal());
-        addSimButton(actionsGroup, "mensajes-send-promos", "📣 Promociones", "", () => void openPromoModal().catch((error) => alert(error.message)));
-        addSimButton(actionsGroup, "mensajes-delete-all", "🗑 Borrar todo", "sim-btn-danger", deleteAllConversations);
+        const addSimButton = (group, id, label, cls, handler) => { const button = document.createElement("button"); button.id = id; button.type = "button"; if (cls) button.className = cls; button.textContent = label; group.appendChild(button); button.addEventListener("click", handler); return button; };
+        const actionsDivider = document.getElementById("mensajes-actions-divider");
+        actionsDivider.before(addSimButton(actionsGroup, "mensajes-send-reminders", "🔔 Recordatorios", "", () => void openReminderModal()));
+        actionsDivider.before(addSimButton(actionsGroup, "mensajes-send-promos", "📣 Promociones", "", () => void openPromoModal().catch((error) => alert(error.message))));
+        addSimButton(actionsGroup, "mensajes-delete-all", "🗑 Borrar todo", "is-danger", deleteAllConversations);
+        // Menús "⋯" (barra y cabecera del chat): se cierran al elegir una opción o al hacer clic afuera.
+        const closeMoreMenus = (event) => document.querySelectorAll("details.mensajes-more[open]").forEach((menu) => { if (!menu.contains(event.target) || event.target.closest(".mensajes-more-menu button")) menu.open = false; });
+        document.addEventListener("click", closeMoreMenus);
         addSimButton(aiGroup, "mensajes-pause-ai", "Pausar IA", "sim-btn-ai-pause", (event) => void setGlobalAiMode(event.currentTarget.dataset.aiAction || "paused"));
         addSimButton(aiGroup, "mensajes-global-ai", "Pasar todo a IA", "sim-btn-ai-resume", () => void setGlobalAiMode("assistant"));
          document.getElementById("mensajes-send-reminders").addEventListener("click", () => setTimeout(() => void restoreActiveReminder(), 200));
@@ -1542,7 +1558,7 @@ ${preview}
          const anyModalOpen = () => { const s = document.getElementById("mensajes-settings-modal"); const r = document.getElementById("mensajes-reminder-modal"); const p = document.getElementById("mensajes-promo-modal"); return Boolean((s && !s.hidden) || (r && !r.hidden) || (p && !p.hidden)); };
         chatPoll = setInterval(() => { if (deletingAll || pollBusy || anyModalOpen()) return; pollBusy = true; Promise.allSettled([loadConversations(), refreshConversationMeta(), refreshWhatsappStatus(), refreshGlobalAiStatus(), selectedId ? loadConversation(selectedId, { markRead: false, skipListRefresh: true }) : null]).finally(() => { pollBusy = false; }); }, 2000);
         void refreshWhatsappStatus();
-        cleanup = () => { if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } conversationLoadSeq++; ["mensajes-settings-modal", "mensajes-reminder-modal", "mensajes-promo-modal", "mensajes-busy-overlay"].forEach((id) => document.getElementById(id)?.remove()); selectedId = null; lastListSig = ""; lastChatSig = ""; pollBusy = false; deletingAll = false; allConversations = []; convListFilter = "all"; convSearchTerm = ""; patientNameByChat = new Map(); patientNamesFetchedAt = 0; aiWorkingConvIds = new Set(); cleanup = null; };
+        cleanup = () => { document.removeEventListener("click", closeMoreMenus); if (chatPoll) { clearInterval(chatPoll); chatPoll = null; } conversationLoadSeq++; ["mensajes-settings-modal", "mensajes-reminder-modal", "mensajes-promo-modal", "mensajes-busy-overlay"].forEach((id) => document.getElementById(id)?.remove()); selectedId = null; lastListSig = ""; lastChatSig = ""; pollBusy = false; deletingAll = false; allConversations = []; convListFilter = "all"; convSearchTerm = ""; patientNameByChat = new Map(); patientNamesFetchedAt = 0; aiWorkingConvIds = new Set(); cleanup = null; };
         window.__setViewCleanup(() => cleanup?.());
         window.__setViewLeaveGuard(() => !deletingAll);
     };

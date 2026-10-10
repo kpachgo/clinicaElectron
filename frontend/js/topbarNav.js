@@ -99,6 +99,17 @@
   const MIN_SCROLLER = 180; // listas mas pequeñas (dropdowns, chips) no mueven el topbar
   const SETTLE_MS = 320;    // durante la animacion el alto de .content cambia: se ignora ese scroll
 
+  // Botón de la derecha (pedido 2026-10-09: en Mensajes se hace mucho scroll y molestaba): automático (lo de abajo),
+  // fija visible o fija oculta. Oculta: el borde superior la muestra y se vuelve a ocultar al salir de ella.
+  const LOCK_KEY = "topbarMode";
+  const LOCK_MODES = {
+    auto: { next: "visible", title: "Barra: se oculta al bajar. Clic para dejarla siempre visible", svg: '<path d="M8 9l4-4 4 4M16 15l-4 4-4-4"/>' },
+    visible: { next: "hidden", title: "Barra: siempre visible. Clic para dejarla siempre oculta", svg: '<path d="M12 17v4M8 3h8l-1 6 3 4H6l3-4-1-6Z"/>' },
+    hidden: { next: "auto", title: "Barra: siempre oculta (aparece con el mouse arriba). Clic para que sea automática", svg: '<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 21 12a10.5 10.5 0 0 1-2.6 3.4M6.6 6.6A10.5 10.5 0 0 0 3 12a10 10 0 0 0 13.4 5.4"/>' }
+  };
+  let lockMode = "auto";
+  try { if (LOCK_MODES[localStorage.getItem(LOCK_KEY)]) lockMode = localStorage.getItem(LOCK_KEY); } catch {}
+
   function bindAutoHide(topbar, content) {
     let hidden = false;
     let lastTarget = null;
@@ -129,6 +140,7 @@
     };
 
     document.addEventListener("scroll", (e) => {
+      if (lockMode !== "auto") return;
       const el = scrollerOf(e.target);
       if (!el) return;
       const top = el.scrollTop;
@@ -159,24 +171,48 @@
     // no hay evento scroll, asi que sin esto el topbar se quedaba oculto (ej. vista Mensajes).
     let wheelUp = 0;
     document.addEventListener("wheel", (e) => {
-      if (!hidden || !content.contains(e.target)) { wheelUp = 0; return; }
+      if (lockMode !== "auto" || !hidden || !content.contains(e.target)) { wheelUp = 0; return; }
       if (e.deltaY >= 0) { wheelUp = 0; return; }
       wheelUp += e.deltaY;
       if (wheelUp <= -SHOW_AFTER) { wheelUp = 0; show(); }
     }, { capture: true, passive: true });
 
     // Mouse en el borde superior (escritorio): aparece sin tener que subir el scroll.
+    // Fijada oculta: se vuelve a ocultar recién cuando el mouse queda bastante abajo de la barra un rato
+    // (salir por el margen de la tarjeta o pasar rápido no la esconde).
+    let hideTimer = 0;
     document.addEventListener("mousemove", (e) => {
-      if (hidden && e.clientY <= 14) show();
+      if (hidden && e.clientY <= 24) show();
+      if (lockMode !== "hidden" || hidden) return;
+      const below = e.clientY > topbar.getBoundingClientRect().bottom + 40;
+      if (!below) { clearTimeout(hideTimer); hideTimer = 0; return; }
+      if (!hideTimer) hideTimer = setTimeout(() => { hideTimer = 0; if (lockMode === "hidden" && !bellOpen()) setHidden(true); }, 800);
     }, { passive: true });
 
     topbar.addEventListener("focusin", show);
 
-    // Cambio de vista: la nueva arranca con el topbar visible.
+    // Cambio de vista: la nueva arranca con el topbar visible (salvo fijado oculto).
     new MutationObserver(() => {
       lastTarget = null;
-      show();
+      if (lockMode !== "hidden") show();
     }).observe(content, { childList: true });
+
+    const lockBtn = document.getElementById("topbar-lock");
+    const paintLock = () => {
+      if (!lockBtn) return;
+      lockBtn.title = LOCK_MODES[lockMode].title;
+      lockBtn.dataset.mode = lockMode;
+      lockBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${LOCK_MODES[lockMode].svg}</svg>`;
+    };
+    lockBtn?.addEventListener("click", () => {
+      lockMode = LOCK_MODES[lockMode].next;
+      try { localStorage.setItem(LOCK_KEY, lockMode); } catch {}
+      paintLock();
+      // Al pasar a oculta no se esconde con el mouse encima: se oculta al salir de la barra.
+      if (lockMode !== "hidden") show();
+    });
+    paintLock();
+    if (lockMode === "hidden") setHidden(true);
 
     window.topbarAutoHide = { show, hide: () => setHidden(true), isHidden: () => hidden };
   }

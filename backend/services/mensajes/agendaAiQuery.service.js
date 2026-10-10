@@ -20,7 +20,9 @@ async function queryPatientAppointments({ patientId, patientName, phone, upcomin
   if (!hasId && !name && digits.length < 7) return { status: "not_enough_data", appointments: [] };
   const where = ["LOWER(TRIM(IFNULL(a.estadoAP, ''))) NOT IN ('cancelado', 'cancelada')"];
   const params = [];
-  if (upcomingOnly) where.push("(a.fechaAP > CURDATE() OR (a.fechaAP = CURDATE() AND LEFT(TRIM(IFNULL(a.horaAP, '')), 5) >= DATE_FORMAT(CURTIME(), '%H:%i')))");
+  // Todo el día de hoy, aunque la hora ya pasó: el paciente que avisa tarde que no llegó (caso Ashley 2026-10-09,
+  // cita 3:00 PM, escribió 3:14 PM) tiene que poder reprogramarla; sin esto la IA creaba otra y la de hoy quedaba.
+  if (upcomingOnly) where.push("a.fechaAP >= CURDATE()");
   where.push("a.fechaAP <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)");
   const fallback = [];
   if (name) { fallback.push("LOWER(TRIM(IFNULL(a.nombreAP, ''))) = LOWER(TRIM(?))"); params.push(name); }

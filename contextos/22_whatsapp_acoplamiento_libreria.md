@@ -43,3 +43,12 @@ Todo concentrado en `backend/services/mensajes/connectors/whatsappWebMessagingCo
 6. El resto de la vista (SQLite, agente IA, frontend de conversaciones) no debería necesitar cambios más allá de que `wa_chat_id` pase a ser simplemente el número — de hecho se simplifica.
 
 **Conclusión**: no es una reescritura de la vista Mensajes. Es un conector nuevo + una revisión de la política de recordatorios/plantillas + trámite de negocio con Meta. La arquitectura actual (interfaz + sobre normalizado) ya está pensada para esto.
+
+## Parche local de `whatsapp-web.js` 1.34.7 (2026-10-08; antes doc 27)
+
+- **Por qué**: en jul-2026 WhatsApp Web renombró `_serialized` → `$1` en los `MsgKey`. `1.34.7` (última en npm) no lo contempla; upstream lo arregló en GitHub (commit `58ddf15`) sin publicarlo. Sin el parche `getChatModel` revienta y fallan `message.getChat()`, `getChatById()` y `getChats()`.
+- **Qué hay**: `backend/patches/whatsapp-web.js+1.34.7.patch` (solo el bloque `lastReceivedKey` de `getChatModel` en `src/util/Injected/Utils.js` → `_serialized || $1`), `"postinstall": "patch-package"` en `backend/package.json` y la librería fijada exacta en `1.34.7`. En nuestro código, la recuperación usa `c.id._serialized || c.id.$1`.
+- **Qué NO se tomó de upstream**: la normalización de `Message.id._serialized` / `getMessageModel` — cambiaría el formato de `external_id` (hoy `getDirectExternalId` cae a `id.id`, el corto) y la recuperación re-importaría como nuevos los mensajes ya guardados (duplicados). Tampoco la reescritura de `inject()` ni el refactor de AuthStore (~800 líneas de arranque/sesión, riesgo de pedir QR).
+- **Instalar en otro equipo**: cerrar la app, `git pull`, `npm run install:backend`; al final debe decir `whatsapp-web.js@1.34.7 ✔`. El instalador ya trae `node_modules` parchado. La sesión de WhatsApp no se pierde.
+- **Quitar el parche** cuando upstream publique una versión > 1.34.7 con `58ddf15`: subir la versión, borrar el `.patch` y antes revisar si la versión nueva normaliza `Message.id._serialized` (rompería la compatibilidad con los `external_id` cortos ya guardados).
+- **Advertencia: no dos equipos conectados a la vez.** Nada impide que PC y laptop tengan WhatsApp conectado al mismo número; si lo están, **los dos corren el agente IA** (respuestas dobles al paciente) y cada uno guarda su copia en su SQLite. Usar uno a la vez (ver en doc 20 "Recordatorios con dos instalaciones").

@@ -21,7 +21,7 @@ const SALE_CANCEL_REPLY = "Listo, tu cita quedó cancelada. Si deseas reprograma
  *   signal?: AbortSignal,
  *   transport?: { requestTurn?: Function, runTool?: Function }
  * }} input
- * @returns {Promise<{ text: string, transfer: string|null, steps: number, trace: any[] }>}
+ * @returns {Promise<{ text: string, transfer: string|null, closed?: string, steps: number, trace: any[] }>}
  */
 function memoryUpdateFromTrace(trace) {
   for (let i = trace.length - 1; i >= 0; i -= 1) {
@@ -110,6 +110,7 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
 
   const trace = [];
   let transfer = null;
+  let closed = null;
   let claimCorrected = false;
 
   for (let step = 1; step <= MAX_STEPS; step += 1) {
@@ -124,7 +125,8 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
           claimCorrected = true;
           trace.push({ step, type: "guard", name: "afirmacion_sin_accion", text: replyText, reason: check.reason });
           console.warn("[Mensajes][IA] Respuesta afirmaba una cita sin registrarla; se pide corrección", { conversationId: conversation?.id, motivo: check.reason, text: replyText.slice(0, 160) });
-          messages = [...messages, { role: "assistant", content: turn.assistantEcho?.content || replyText }, unbackedClaimCorrection(strategy)];
+          // El mensaje completo: en modo de razonamiento DeepSeek exige recibir de vuelta reasoning_content (HTTP 400 sin él).
+          messages = [...messages, turn.assistantEcho || { role: "assistant", content: replyText }, unbackedClaimCorrection(strategy)];
           continue;
         }
         // Insistió (o no quedan pasos): no se envía la afirmación falsa.
@@ -156,11 +158,17 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
       if (call.name === "transferir_a_recepcion" && result?.estado === "transferido") {
         transfer = result.motivo || call.args?.motivo || "Solicitud del asistente";
       }
+      if (call.name === "finalizar_conversacion" && result?.estado === "finalizada") closed = result.motivo;
       results.push({ call, result });
     }
 
     if (transfer) {
       return { text: (turn.replyText || "").trim(), transfer, steps: step, trace, memoryUpdate: memoryUpdateFromTrace(trace) };
+    }
+    // Finalizada (contextos/20, «Conversación finalizada»): no se le envía nada; processBatch deja la marca y la nota para recepción. Si en este
+    // turno se tocó la agenda, el paciente tiene que enterarse: se ignora el cierre y el modelo responde.
+    if (closed && !hasBackedAction(trace, null)) {
+      return { text: "", transfer: null, closed, steps: step, trace, memoryUpdate: memoryUpdateFromTrace(trace) };
     }
 
     if (saleCancelled(trace)) {

@@ -82,7 +82,13 @@ async function callProvider({ cfg, payload, signal }) {
       body: JSON.stringify(payload),
       signal: signal || controller.signal
     });
-    const body = await response.json().catch(() => ({}));
+    // El corte por tiempo puede llegar mientras se lee el cuerpo (DeepSeek manda los encabezados enseguida y el cuerpo
+    // al terminar de pensar): no es una respuesta vacía. Tragarlo hacía que "Verificar cita" dijera "sin acuerdo" y que
+    // un turno quedara "sin respuesta" sin reintento (caso Hector 2026-10-09). Solo un cuerpo que no es JSON vale {}.
+    const body = await response.json().catch((error) => {
+      if ((signal || controller.signal).aborted) throw Object.assign(new Error("La IA tardó demasiado en responder. Intente de nuevo."), { code: "AI_TIMEOUT", cause: error });
+      return {};
+    });
     if (!response.ok) {
       const error = new Error(`Proveedor IA HTTP ${response.status}: ${body.error?.message || body.message || "respuesta no válida"}`);
       error.code = "AI_PROVIDER_HTTP_ERROR";

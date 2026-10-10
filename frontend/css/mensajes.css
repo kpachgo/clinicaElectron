@@ -4,6 +4,7 @@
 .mensajes-settings-overlay{position:fixed;inset:0;z-index:6000;display:grid;place-items:center;padding:18px;box-sizing:border-box;background:rgba(15,23,42,.55)}.mensajes-settings-overlay[hidden]{display:none}.mensajes-settings-panel{display:grid;grid-template-columns:220px minmax(420px,620px);width:min(860px,100%);height:min(760px,calc(100vh - 36px));min-height:0;overflow:hidden;border-radius:16px;background:var(--msg-surface,#fff);box-shadow:0 22px 60px rgba(15,23,42,.3)}.mensajes-settings-nav{padding:22px 14px;background:var(--msg-accent-softer,#eff6ff);border-right:1px solid var(--msg-border,#dbeafe)}.mensajes-settings-nav h2{margin:0 10px 20px;color:var(--msg-heading,#172554)}.mensajes-settings-nav button{display:block;width:100%;margin:4px 0;padding:10px;border:0;border-radius:8px;background:transparent;text-align:left;color:var(--msg-text-2,#334155);cursor:pointer}.mensajes-settings-nav button.is-active,.mensajes-settings-nav button:hover{background:var(--msg-accent-soft,#dbeafe);color:var(--msg-accent-strong,#1d4ed8);font-weight:700}.mensajes-settings-nav .settings-close{margin-top:28px;background:var(--msg-neutral-bg,#e2e8f0)}.mensajes-settings-content{min-width:0;overflow-y:auto;padding:28px}.mensajes-settings-content h3{margin:0 0 8px;font-size:22px}.mensajes-settings-content p{color:var(--msg-muted,#64748b);font-size:13px}.mensajes-settings-content label{display:flex;flex-direction:column;gap:5px;margin:14px 0;color:var(--msg-text-2,#334155);font-size:13px;font-weight:700}.mensajes-settings-content label:has(input[type=checkbox]){flex-direction:row;align-items:center;gap:7px}.mensajes-settings-content input,.mensajes-settings-content textarea,.mensajes-settings-content select{box-sizing:border-box;width:100%;padding:9px;border:1px solid var(--msg-border-strong,#cbd5e1);border-radius:7px;font:inherit;font-weight:400}.mensajes-settings-content label:has(input[type=checkbox]) input[type=checkbox]{width:auto;margin:0}.mensajes-settings-content button{border:0;border-radius:8px;background:var(--msg-accent,#2563eb);color:#fff;padding:10px 14px;font-weight:700;cursor:pointer}@media(max-width:700px){.mensajes-settings-panel{grid-template-columns:1fr;height:min(760px,calc(100vh - 24px));max-height:calc(100vh - 24px)}.mensajes-settings-nav{border-right:0;border-bottom:1px solid var(--msg-border,#dbeafe);padding:14px}.mensajes-settings-nav button{display:inline-block;width:auto}.mensajes-settings-nav .settings-close{margin-top:8px}}
 .mensajes-simulator{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-bottom:12px;padding:9px 12px;border:1px solid var(--msg-border,#dbe4ef);border-radius:12px;background:linear-gradient(180deg,var(--msg-surface,#fbfcff),var(--msg-surface-soft,#f3f6fb));box-shadow:0 1px 2px rgba(15,23,42,.04)}
 .sim-group{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding-right:12px;border-right:1px solid var(--msg-border,#e3e9f2)}
+.sim-group[hidden]{display:none}
 .sim-group:last-child{border-right:0;padding-right:0}
 .sim-group-label{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--msg-subtle,#9aa7b8)}
 .mensajes-simulator input{width:130px;min-width:0;border:1px solid var(--msg-border-strong,#cbd5e1);border-radius:8px;padding:6px 10px;font-size:12px;background:var(--msg-surface,#fff)}
@@ -152,6 +153,8 @@ label>.time12{margin-top:5px}
 .chat-head-state.is-review{color:var(--msg-warn-text,#92400e);font-weight:700}
 .chat-head-state.is-ai{color:var(--msg-info-text,#075985);font-weight:700}
 .chat-head-state.is-excluded{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--msg-danger-bg,#fee2e2);color:var(--msg-danger-text,#b91c1c);font-weight:700}
+.chat-head-state.is-closed{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:var(--msg-surface-soft,#f1f5f9);color:var(--msg-muted,#475569);font-weight:700}
+.mensajes-closing-note{margin:8px auto;padding:6px 14px;width:max-content;max-width:80%;border-radius:16px;background:var(--msg-surface-soft,#f1f5f9);color:var(--msg-muted,#64748b);font-size:12px;text-align:center}
 
 /* --- Temas: cada color de esta vista usa var(--msg-*, <color claro>).
    El tema claro usa los valores de respaldo; aqui se redefinen por tema. --- */
@@ -250,3 +253,20 @@ body:is([data-theme="dark"],[data-theme="vampire"]) .promo-card .promo-bubble{ba
 .promo-card .reminder-item{font-size:13px;padding:8px 10px}.promo-card .reminder-item strong{font-size:14px}
 .mensajes-reminder-card.promo-card.is-narrow{width:min(980px,calc(100% - 32px))}
 .mensajes-conversation .conv-pin{flex:0 0 auto;font-size:10px;line-height:1;opacity:.7}
+/* Menús "⋯" de la barra y de la cabecera del chat (details nativo) */
+.mensajes-more{position:relative}
+.mensajes-more.sim-more{margin-left:auto}
+.mensajes-more>summary{list-style:none;cursor:pointer;user-select:none}
+.mensajes-more>summary::-webkit-details-marker{display:none}
+.mensajes-chat-actions .mensajes-more>summary{border:1px solid var(--msg-border-strong,#cbd5e1);border-radius:7px;background:var(--msg-surface,#fff);color:var(--msg-text-2,#334155);padding:4px 10px;font-size:14px;font-weight:800;line-height:1.2}
+.mensajes-more[open]>summary{background:var(--msg-bg,#f1f5f9)}
+.mensajes-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:50;display:flex;flex-direction:column;gap:2px;min-width:200px;padding:6px;border:1px solid var(--msg-border,#dbe4ef);border-radius:10px;background:var(--msg-surface,#fff);box-shadow:0 12px 28px rgba(15,23,42,.16)}
+.mensajes-view .mensajes-more-menu button{display:block;width:100%;text-align:left;border:0;border-radius:7px;background:transparent;color:var(--msg-text-2,#334155);padding:8px 10px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer}
+.mensajes-view .mensajes-more-menu button:hover:not(:disabled){background:var(--msg-bg,#f1f5f9)}
+.mensajes-view .mensajes-more-menu button:disabled{opacity:.45;cursor:not-allowed}
+.mensajes-view .mensajes-more-menu button.is-danger{color:var(--msg-danger-text,#b91c1c)}
+.mensajes-view .mensajes-more-menu button.is-danger:hover{background:var(--msg-danger-bg,#fef2f2)}
+.mensajes-more-menu hr{width:100%;margin:4px 0;border:0;border-top:1px solid var(--msg-border,#e3e9f2)}
+.mensajes-more-menu [hidden]{display:none}
+.mensajes-chat-head{position:relative;z-index:5}
+

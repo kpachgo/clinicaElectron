@@ -369,10 +369,11 @@ class MensajesRepository {
   }
 
   // "Marcar como atendido": da por atendido el último mensaje del paciente sin
-  // responderlo. No toca el modo de atención (eso es "Tomar").
+  // responderlo. No toca el modo de atención (eso es "Tomar"), salvo "Necesita revisión":
+  // recepción ya lo revisó, pasa a Manual como cuando le contesta (ver saveMessage).
   markAttended(conversationId) {
     const last = this.db.prepare("SELECT MAX(id) AS id FROM messages WHERE conversation_id=? AND direction='incoming' AND author='patient' AND backfill=0").get(conversationId);
-    this.db.prepare("UPDATE conversations SET attended_message_id=? WHERE id=?").run(last?.id || null, conversationId);
+    this.db.prepare("UPDATE conversations SET attended_message_id=?, attention_mode=CASE WHEN attention_mode='review_required' THEN 'manual' ELSE attention_mode END WHERE id=?").run(last?.id || null, conversationId);
     return last?.id || null;
   }
 
@@ -423,6 +424,14 @@ class MensajesRepository {
       const result = insert.run(conversationId, externalId, direction, author, text.trim(), direction === "incoming" ? "received" : "sent", effectiveMessageAt, reactionTargetId || null, backfill ? 1 : 0);
       // Una reacción no mueve el chat ni cambia su hora (igual que WhatsApp): last_message_at queda en el último mensaje real.
       if (!backfill) update.run(direction, direction, rawType, effectiveMessageAt, effectiveMessageAt, rawType, source, direction, effectiveMessageAt, direction, effectiveMessageAt, conversationId);
+      // Recepción contestó (desde la app, otro teléfono o historial importado): lo anterior del paciente ya se leyó,
+      // como en WhatsApp. Sin esto el contador de no leídos solo bajaba al abrir el chat en esta vista.
+      // Un chat en "Necesita revisión" pasa a Manual, como con "Tomar": ya lo atiende recepción y la IA no se mete
+      // mientras contesta desde el teléfono. Vuelve a la IA con "Liberar".
+      if (!backfill && direction === "outgoing" && author === "human") {
+        this.db.prepare("UPDATE messages SET read_at=datetime('now') WHERE conversation_id=? AND author='patient' AND read_at IS NULL AND id < ?").run(conversationId, result.lastInsertRowid);
+        this.db.prepare("UPDATE conversations SET attention_mode='manual' WHERE id=? AND attention_mode='review_required'").run(conversationId);
+      }
       return this.db.prepare("SELECT * FROM messages WHERE id=?").get(result.lastInsertRowid);
     });
     return { message: toMessage(transaction()), duplicate: false };
@@ -555,6 +564,7 @@ class MensajesRepository {
     return settings.automationPhoneMode === "allow_only" ? included : !included;
   }
   shouldAllowAutomatedResponseForConversation(conversationId, fallbackPhone = "") {
+    if (conversationId && this.assistantClosedUntil(conversationId)) return false;
     const conversation = conversationId ? this.getConversation(conversationId) : null;
     const link = conversationId ? this.getPatientLink(conversationId) : null;
     return this.shouldAllowAutomatedResponseForIdentifiers([
@@ -597,6 +607,22 @@ class MensajesRepository {
     const state = this.getConversationState(conversationId);
     const collected = { ...(state.collected || {}), _assistant: { ...(state.collected?._assistant || {}), ...patch } };
     return this.updateConversationState(conversationId, { collected, missing: state.missing || [], offeredSlots: state.offeredSlots || [], pendingAction: state.pendingAction || null });
+  }
+
+  // finalizar_conversacion (contextos/20, «Conversación finalizada»): la IA no responde en este chat hasta la medianoche de El Salvador del día
+  // del cierre, como máximo 12 h, o hasta que recepción lo libere. Devuelve hasta cuándo (ISO) o null si no está vigente.
+  assistantClosedUntil(conversationId) {
+    const closed = this.getAssistantMemory(conversationId).closed;
+    const at = Date.parse(closed?.at || "");
+    if (!Number.isFinite(at) || closed.releasedAt) return null;
+    const DAY = 86400e3; const SV = 6 * 3600e3; // El Salvador: UTC-6 fijo, sin horario de verano
+    const until = Math.min(at + 12 * 3600e3, Math.floor((at - SV) / DAY) * DAY + DAY + SV);
+    return until > Date.now() ? new Date(until).toISOString() : null;
+  }
+  // "Liberar": la IA vuelve a responder aunque la marca no haya vencido. Se conserva el cierre para la nota de la vista.
+  releaseAssistantClose(conversationId) {
+    const closed = this.getAssistantMemory(conversationId).closed;
+    if (closed && !closed.releasedAt) this.setAssistantMemory(conversationId, { closed: { ...closed, releasedAt: new Date().toISOString() } });
   }
 
   getConversationState(conversationId) { const row = this.db.prepare("SELECT conversation_id AS conversationId, collected_json AS collected, missing_json AS missing, offered_slots_json AS offeredSlots, pending_action_json AS pendingAction, version, updated_at AS updatedAt FROM conversation_state WHERE conversation_id=?").get(conversationId); if (!row) return { conversationId, collected: {}, missing: [], offeredSlots: [], pendingAction: null, version: 1, updatedAt: null }; return { ...row, collected: JSON.parse(row.collected || "{}"), missing: JSON.parse(row.missing || "[]"), offeredSlots: JSON.parse(row.offeredSlots || "[]"), pendingAction: row.pendingAction ? JSON.parse(row.pendingAction) : null }; }

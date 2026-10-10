@@ -68,5 +68,103 @@ const { WhatsAppWebMessagingConnector } = require("../services/mensajes/connecto
   real.saveOutgoingMessage({ phone: "55556666", externalId: "z2", text: "de acuerdo, quedó agendada", author: "human", messageAt: new Date(Date.now() - 86400e3).toISOString(), source: "recovery" });
   assert.strictEqual(real.getLatestMessage(h.id).content, "Si esta bien me parece bien");
   assert.strictEqual(real.getConversation(h.id).lastMessageDirection, "incoming");
+
+  // 6. No leídos: recepción contesta desde otro teléfono → lo anterior del paciente queda leído; la IA y el historial viejo no.
+  const unread = (id) => real.listConversations({ limit: 200 }).find((c) => c.id === id).unreadCount;
+  const u = real.saveIncomingMessage({ phone: "55554444", externalId: "u1", text: "quiero cita", messageAt: new Date(Date.now() - 3000).toISOString(), rawType: "chat" }).conversation;
+  real.saveIncomingMessage({ phone: "55554444", externalId: "u2", text: "por la tarde", messageAt: new Date(Date.now() - 2000).toISOString(), rawType: "chat" });
+  real.saveOutgoingMessage({ phone: "55554444", externalId: "u3", text: "¿qué día le queda?", author: "ai", messageAt: new Date(Date.now() - 1000).toISOString() });
+  assert.strictEqual(unread(u.id), 2, "la respuesta de la IA no los marca leídos");
+  real.saveOutgoingMessage({ phone: "55554444", externalId: "u4", text: "Buenos días", author: "human", messageAt: new Date(Date.now() - 86400e3).toISOString(), source: "recovery" });
+  assert.strictEqual(unread(u.id), 2, "historial viejo importado no los marca leídos");
+  real.saveOutgoingMessage({ phone: "55554444", externalId: "u5", text: "para cuando?", author: "human", messageAt: new Date().toISOString() });
+  assert.strictEqual(unread(u.id), 0, "respuesta de recepción desde otro teléfono");
+  real.saveIncomingMessage({ phone: "55554444", externalId: "u6", text: "el lunes", messageAt: new Date().toISOString(), rawType: "chat" });
+  assert.strictEqual(unread(u.id), 1, "lo nuevo del paciente vuelve a contar");
+  // Recepción contesta un chat en "Necesita revisión" → Manual (como "Tomar"); la IA y los recordatorios no lo cambian.
+  real.updateConversation(u.id, { attentionMode: "review_required" });
+  real.saveOutgoingMessage({ phone: "55554444", externalId: "u7", text: "le confirmo en un momento", author: "ai", messageAt: new Date().toISOString() });
+  real.saveOutgoingMessage({ phone: "55554444", externalId: "u8", text: "Recordatorio de su cita", author: "system", messageAt: new Date().toISOString() });
+  assert.strictEqual(real.getConversation(u.id).attentionMode, "review_required");
+  real.saveOutgoingMessage({ phone: "55554444", externalId: "u9", text: "por la tarde tenemos espacio", author: "human", messageAt: new Date().toISOString() });
+  assert.strictEqual(real.getConversation(u.id).attentionMode, "manual", "recepción respondió: pasa a Manual");
+  // "✓ Atendido": en "Necesita revisión" pasa a Manual; en modo IA no toca el modo.
+  real.updateConversation(u.id, { attentionMode: "review_required" });
+  real.markAttended(u.id);
+  assert.strictEqual(real.getConversation(u.id).attentionMode, "manual", "Atendido en revisión: pasa a Manual");
+  real.updateConversation(u.id, { attentionMode: "assistant" });
+  real.markAttended(u.id);
+  assert.strictEqual(real.getConversation(u.id).attentionMode, "assistant", "Atendido en modo IA: no cambia el modo");
+
+  // 7. Conversación finalizada (contextos/20, «Conversación finalizada»): la IA calla hasta la medianoche de El Salvador (máx. 12 h) o hasta "Liberar".
+  const realNow = Date.now;
+  const fin = real.saveIncomingMessage({ phone: "55553333", externalId: "f1", text: "Ok", messageAt: new Date().toISOString(), rawType: "chat" }).conversation;
+  const closeAt = (at) => real.setAssistantMemory(fin.id, { closed: { at, motivo: "consultó su cita y se despidió", messageId: 1 } });
+  Date.now = () => Date.parse("2026-10-09T21:00:00Z"); // 3:00 PM en El Salvador
+  closeAt("2026-10-09T20:00:00Z"); // 2:00 PM → hasta la medianoche
+  assert.strictEqual(real.assistantClosedUntil(fin.id), "2026-10-10T06:00:00.000Z");
+  closeAt("2026-10-09T14:00:00Z"); // 8:00 AM → 12 h, hasta las 8:00 PM
+  assert.strictEqual(real.assistantClosedUntil(fin.id), "2026-10-10T02:00:00.000Z");
+  assert.strictEqual(real.shouldAllowAutomatedResponseForConversation(fin.id), false, "vigente: la IA no responde");
+  assert.strictEqual(real.enqueueUnansweredAssistantMessages(4, 5, fin.id).length, 0, "vigente: la cola no lo reencola");
+  Date.now = () => Date.parse("2026-10-10T02:00:01Z");
+  assert.strictEqual(real.assistantClosedUntil(fin.id), null, "vencida");
+  Date.now = () => Date.parse("2026-10-09T21:00:00Z");
+  real.releaseAssistantClose(fin.id);
+  assert.strictEqual(real.assistantClosedUntil(fin.id), null, "Liberar la quita aunque no haya vencido");
+  assert.strictEqual(real.getAssistantMemory(fin.id).closed.motivo, "consultó su cita y se despidió", "el cierre queda para la nota de la vista");
+  Date.now = realNow;
+  assert.strictEqual(real.enqueueUnansweredAssistantMessages(4, 5, fin.id).length, 1, "liberada: la IA vuelve a responder");
+
+  // 8. processBatch cuando la IA finaliza (runAssistant simulado, sin red): no envía nada, deja la marca, quita ⏳ y no hay bucle.
+  //    El lote vence en 60 s para que el tick propio de aiObserver no lo tome mientras tanto.
+  const agent = require("../services/mensajes/assistantAgent.service");
+  agent.runAssistant = async () => ({ text: "", transfer: null, closed: "consultó su cita y se despidió", steps: 1, trace: [], memoryUpdate: null });
+  const observer = require("../services/mensajes/aiObserver.service");
+  real.updateAutomationSettings({ ...real.getAutomationSettings(), enabled: true });
+  const g = real.saveIncomingMessage({ phone: "55552222", externalId: "g1", text: "Gracias", messageAt: new Date().toISOString(), rawType: "chat" });
+  const done = await observer.processBatch(real.enqueueResponseMessage(g.conversation.id, g.message.id, "Gracias", 60));
+  assert.strictEqual(done.status, "cancelled");
+  assert.match(done.error, /^Finalizada sin responder/);
+  assert.ok(real.assistantClosedUntil(g.conversation.id), "marca vigente");
+  assert.strictEqual(real.getConversation(g.conversation.id).attended_message_id, g.message.id, "Atendido: sin ⏳ para lo cerrado");
+  assert.strictEqual(real.enqueueUnansweredAssistantMessages(4, 5, g.conversation.id).length, 0, "la cola no lo reencola");
+  assert.strictEqual(real.listMessages(g.conversation.id).filter((m) => m.direction === "outgoing").length, 0, "no se envió nada");
+
+  // 9. Historial antes del primer mensaje en vivo del chat (caso Cristian, WhatsApp simulado): una sola carga para los dos
+  //    eventos del mismo mensaje, lo recuperado sale antes que el mensaje en vivo, el audio ya respondido viene marcado,
+  //    lo que llega tarde no se emite y lo recuperado no vuelve a pedir historial.
+  const hist = Object.create(WhatsAppWebMessagingConnector.prototype);
+  Object.assign(hist, { events: new (require("events").EventEmitter)(), historySync: new Map(), status: "connected", instanceId: "t" });
+  const histLid = "900000000000201@lid";
+  const model = (id, fromMe, body, t, extra = {}) => ({ id: { fromMe, remote: histLid, id, _serialized: `${fromMe}_${histLid}_${id}` }, body, type: "chat", t, from: fromMe ? "50379990000@c.us" : histLid, to: fromMe ? histLid : "50379990000@c.us", ...extra });
+  let loads = 0;
+  hist.client = { pupPage: { evaluate: async (_fn, args) => { loads += 1; assert.strictEqual(args.onlyId, histLid); assert.strictEqual(args.before, 300); return { models: [model("A1", false, "audio viejo", 100, { type: "ptt", __answered: true }), model("R1", true, "Le recordamos su cita de mañana", 200)], debug: [] }; } } };
+  hist.getIndividualMeta = async () => ({ phone: "55550201", waChatId: histLid, waContactNumber: "55550201" });
+  const emitted = [];
+  hist.events.on("incomingMessage", (m) => emitted.push(["in", m.text, m.source, m.answered]));
+  hist.events.on("outgoingMessage", (m) => emitted.push(["out", m.text, m.source]));
+  const liveMsg = { id: { fromMe: false, id: "L1", _serialized: `false_${histLid}_L1` }, fromMe: false, from: histLid, to: "50379990000@c.us", body: "Si si", type: "chat", timestamp: 300 };
+  await Promise.all([hist.handleIncoming(liveMsg, "message"), hist.handleIncoming(liveMsg, "message_create")]);
+  assert.strictEqual(loads, 1, "una sola carga por chat");
+  assert.deepStrictEqual(emitted.slice(0, 3), [["in", "audio viejo", "recovery", true], ["out", "Le recordamos su cita de mañana", "recovery"], ["in", "Si si", "live", false]], "historial antes del mensaje en vivo");
+  await hist.handleIncoming({ ...liveMsg, id: { ...liveMsg.id, id: "L2", _serialized: `false_${histLid}_L2` }, body: "ok", timestamp: 400 }, "message");
+  assert.strictEqual(loads, 1, "segundo mensaje del chat: no vuelve a cargar");
+  await hist.handleIncoming({ ...liveMsg, from: "900000000000202@lid", body: "hola" }, "recovery");
+  assert.strictEqual(loads, 1, "lo recuperado no pide historial");
+  const before = emitted.length;
+  await hist.emitRecoveredModels(hist.client, [model("X1", false, "tarde", 100), model("X2", true, "tarde", 101)], { deadline: Date.now() - 1 });
+  assert.strictEqual(emitted.length, before, "lo que llega tarde no se emite");
+
+  // 10. Corte por tiempo mientras llega el cuerpo (caso Hector): error claro, no una respuesta vacía; un cuerpo que no es JSON sigue valiendo {}.
+  const { requestJudgement } = require("../services/mensajes/assistantProvider.service");
+  const realFetch = global.fetch;
+  const cfgTest = { baseUrl: "http://ia.test", model: "m" };
+  global.fetch = async (_url, { signal }) => ({ ok: true, status: 200, json: () => new Promise((_, reject) => signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })))) });
+  const cut = new AbortController(); setTimeout(() => cut.abort(), 50); // AbortSignal.timeout no mantiene vivo el proceso
+  await assert.rejects(requestJudgement({ cfg: cfgTest, system: "s", user: "u", signal: cut.signal }), { code: "AI_TIMEOUT" });
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("no es JSON"); } });
+  assert.deepStrictEqual(await requestJudgement({ cfg: cfgTest, system: "s", user: "u", signal: AbortSignal.timeout(1000) }), {});
+  global.fetch = realFetch;
   console.log("mensajes-recordatorio-check OK");
 })().catch((error) => { console.error(error); process.exit(1); });

@@ -139,6 +139,16 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: { ids_cita: { type: "array", items: { type: "integer" }, description: "Solo si el recordatorio fue por varias citas (familiares con el mismo número): ids de las citas a las que se refiere el paciente." } } }
   },
   {
+    // contextos/20, «Conversación finalizada»: corta el ida y vuelta de despedidas. Probada con chats reales en scripts/mensajes-finalizar-check.js.
+    name: "finalizar_conversacion",
+    description: "Usala cuando el asunto del paciente ya quedó resuelto en esta conversación, ya le dimos la respuesta de cierre (vos o recepción), y lo nuevo del paciente no pide, no pregunta y no avisa nada: solo acusa recibo o agradece, con las palabras que sea. El cierre es un mensaje nuestro que despide o da por terminado el asunto sin dejarle nada abierto: si nuestro último mensaje le hizo una pregunta (aunque sea \"¿algo más?\"), lo del paciente es su respuesta y todavía no hubo cierre. No le envía nada al paciente. Después de usarla no vas a responder más en este chat hasta la medianoche: si el paciente escribe algo, lo atiende recepción. Por eso, si trae cualquier cosa nueva (una pregunta, un cambio, una queja, otro tema, otra persona) o tenés dudas, respondé normal.",
+    parameters: {
+      type: "object",
+      properties: { motivo: { type: "string", description: "Qué se habló y cómo quedó, en una frase, sin dar por hecho en la agenda nada que ninguna herramienta haya hecho (ej. \"preguntó por su cita del sábado 10, se le dieron los datos y se despidió\"). Recepción lo lee en el chat." } },
+      required: ["motivo"]
+    }
+  },
+  {
     name: "transferir_a_recepcion",
     description: "Deriva la conversación a una persona de recepción. Úsala cuando no puedas resolver la solicitud, cuando el paciente lo pida, o ante urgencias y quejas.",
     parameters: {
@@ -162,6 +172,7 @@ const SALE_TOOL_SPECS = [
       required: ["confirmado"]
     }
   },
+  TOOL_SPECS.find((spec) => spec.name === "finalizar_conversacion"),
   TOOL_SPECS.find((spec) => spec.name === "transferir_a_recepcion")
 ];
 
@@ -326,6 +337,7 @@ const AGREED_JUDGE_SYSTEM = [
   "Decidí si en la conversación quedó ACORDADA una cita nueva o un cambio de fecha: la clínica ofreció o confirmó una fecha y hora y el paciente la aceptó, o el paciente eligió una de las opciones que le dio la clínica y nadie la contradijo después. Si hubo varias propuestas, vale el último acuerdo.",
   "Es false si la última propuesta sigue sin respuesta, si la clínica y el paciente no coinciden en la hora, si solo se habló de horarios sin cerrar, o si el paciente solo confirmó asistencia a una cita que ya tenía.",
   "Cada mensaje trae entre corchetes cuándo se envió: \"hoy\", \"mañana\" o \"el jueves\" se cuentan desde la fecha de ESE mensaje, no desde hoy.",
+  "El servicio: si la cita acordada reemplaza o mueve una cita que el paciente ya tenía (por ejemplo la de un recordatorio de la clínica en el chat), es el servicio de esa cita aunque el paciente la nombre de otra forma (\"mi cita de ortodoncia\", \"la de los brackets\"); si es una cita nueva, el que se habló en el chat.",
   "Usá el calendario para convertir el día en fecha. Respondé solo JSON: {\"acordada\": true o false, \"fecha\": \"AAAA-MM-DD\", \"hora\": \"HH:MM\" en 24 h, \"servicio\": \"el servicio tal como se habló en el chat\", \"nombre\": \"nombre completo del paciente si lo escribió en el chat, si no null\", \"telefono\": \"número de contacto que dio el paciente en el chat, si no null\", \"motivo\": \"frase breve\"}"
 ].join("\n");
 // Paciente de la cita del botón: el vinculado al chat; si no hay, el que la IA leyó en el chat (pedido del usuario
@@ -366,7 +378,8 @@ async function verifyAgreedAppointment(conversationId, { conIa = false } = {}) {
   const who = (m) => (m.direction === "incoming" ? "Paciente" : m.author === "human" ? "Recepción" : m.author === "system" ? "Recordatorio automático" : "Asistente");
   const dialogue = reminderRepo.listMessages(conversationId, { limit: 60 })
     .filter((m) => !m.queued && !String(m.content || "").startsWith("Reacción:"))
-    .slice(-20).map((m) => dialogueLine(m, who)).join("\n");
+    // 40: con 20 se perdía el recordatorio que dice qué cita se movía (caso Hector 2026-10-09, 30 líneas en 5 días).
+    .slice(-40).map((m) => dialogueLine(m, who)).join("\n");
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
   const weekday = (iso) => WEEKDAYS[new Date(`${iso}T12:00:00Z`).getUTCDay()];
   const calendar = Array.from({ length: 21 }, (_, i) => { const d = new Date(`${today}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + i); const iso = d.toISOString().slice(0, 10); return `${weekday(iso)} ${iso}`; }).join(", ");
@@ -625,6 +638,24 @@ async function transferirARecepcion(args) {
   return { estado: "transferido", motivo: String(args?.motivo || "Solicitud del asistente") };
 }
 
+// Condición del sistema para finalizar (por estado, no por texto): ya le contestamos. Lo anterior a los mensajes
+// pendientes del paciente es nuestro, de la IA o de recepción; un recordatorio o una promoción (system) no cuentan.
+function answeredByUs(messages) {
+  const visible = messages.filter((m) => !m.queued && !m.backfill && !String(m.content || "").startsWith("Reacción:"));
+  let i = visible.length;
+  while (i > 0 && visible[i - 1].direction === "incoming") i -= 1;
+  return ["ai", "human"].includes(visible[i - 1]?.author);
+}
+
+// ctx.messages solo lo pasa la prueba (chat cortado en un mensaje). En vivo, por id: el reloj del teléfono del paciente
+// puede desordenar message_at (ver listUnansweredAssistantMessages).
+async function finalizarConversacion(args, ctx) {
+  const id = Number(ctx?.conversation?.id);
+  const messages = ctx?.messages || (id > 0 ? reminderRepo.listMessages(id, { limit: 60 }).filter((m) => !m.queued).sort((a, b) => a.id - b.id) : []);
+  if (!answeredByUs(messages)) return { estado: "no_aplica", mensaje: "Todavía no le respondiste: respondé normal." };
+  return { estado: "finalizada", motivo: String(args?.motivo || "").trim().slice(0, 300) || "Conversación resuelta" };
+}
+
 const HANDLERS = {
   consultar_servicios: consultarServicios,
   consultar_disponibilidad: consultarDisponibilidad,
@@ -634,6 +665,7 @@ const HANDLERS = {
   cancelar_cita: cancelarCita,
   confirmar_asistencia: confirmarAsistencia,
   cancelar_cita_recordatorio: cancelarCitaRecordatorio,
+  finalizar_conversacion: finalizarConversacion,
   transferir_a_recepcion: transferirARecepcion
 };
 

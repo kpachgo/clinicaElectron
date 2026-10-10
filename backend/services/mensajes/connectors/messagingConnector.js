@@ -56,7 +56,9 @@ function normalizeIncomingMessage(event) {
     messageAt: source.messageAt ? new Date(source.messageAt).toISOString() : new Date().toISOString(),
     rawType: source.rawType ? String(source.rawType) : "text",
     reactionTargetId: source.reactionTargetId ? String(source.reactionTargetId) : null,
-    source: source.source ? String(source.source) : "live"
+    source: source.source ? String(source.source) : "live",
+    // Recuperado de WhatsApp con una respuesta nuestra después: ya se atendió (un audio así no pide revisión).
+    answered: source.answered === true
   });
 }
 
