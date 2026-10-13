@@ -438,6 +438,66 @@ exports.listarMes = async (req, res) => {
   }
 };
 
+function toLocalIsoDate(value) {
+  if (!(value instanceof Date)) return String(value || "").slice(0, 10);
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, "0");
+  const d = String(value.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// Reporte de Agenda por rango: citas del rango (mismo SP que el mes, respeta protocolo)
+// + marca "registrado" con el mismo criterio del boton Crear (nombre exacto en paciente).
+exports.reporte = async (req, res) => {
+  try {
+    const desde = String(req.query?.desde || "").trim();
+    const hasta = String(req.query?.hasta || "").trim();
+    if (!isValidIsoDate(desde) || !isValidIsoDate(hasta) || desde > hasta) {
+      return badRequest(res, "Rango invalido, use desde/hasta YYYY-MM-DD");
+    }
+    if ((Date.parse(hasta) - Date.parse(desde)) / 86400000 > 366) {
+      return badRequest(res, "El rango maximo es de un ano");
+    }
+
+    const [rows] = await pool.query("CALL sp_agenda_buscar_mes(?, ?, ?)", [desde, hasta, ""]);
+    const [pacientes] = await pool.query(
+      "SELECT DISTINCT LOWER(TRIM(NombreP)) AS nombre FROM paciente WHERE NombreP IS NOT NULL"
+    );
+    // La columna es utf8mb4_0900_ai_ci: el "=" del boton Crear ignora acentos y mayusculas.
+    const claveNombre = (v) => normalizeText(v).normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const registrados = new Set(pacientes.map((p) => claveNombre(p.nombre)));
+
+    const data = firstResultSet(rows).map((r) => ({
+      fecha: toLocalIsoDate(r.fechaAP),
+      nombre: r.nombreAP || "",
+      contacto: r.contactoAP || "",
+      estado: String(r.estadoAP || "").trim() || "Pendiente",
+      presente: Number(r.presenteAP) === 1,
+      registrado: registrados.has(claveNombre(r.nombreAP))
+    }));
+
+    // Acciones de la IA desde Mensajes, por fecha en que las hizo (no la de la cita).
+    // ponytail: creadoEn esta en UTC; El Salvador es UTC-6 fijo (sin horario de verano).
+    let ia = [];
+    try {
+      const [iaRows] = await pool.query(
+        `SELECT DATE_FORMAT(creadoEn - INTERVAL 6 HOUR, '%Y-%m-%d') AS fecha, operacion
+         FROM mensajes_auditoria
+         WHERE solicitante = 'IA' AND resultado = 'success'
+           AND creadoEn - INTERVAL 6 HOUR >= ? AND creadoEn - INTERVAL 6 HOUR < ? + INTERVAL 1 DAY`,
+        [desde, hasta]
+      );
+      ia = iaRows;
+    } catch (err) {
+      if (err?.code !== "ER_NO_SUCH_TABLE") throw err;
+    }
+
+    return res.json({ ok: true, data, ia, desde, hasta });
+  } catch (error) {
+    return serverError(res, error, "Error al generar reporte de agenda");
+  }
+};
+
 exports.buscarPorMes = async (req, res) => {
   try {
     const { q, fecha } = req.query;

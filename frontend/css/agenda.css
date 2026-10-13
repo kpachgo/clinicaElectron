@@ -3824,3 +3824,374 @@ body[data-theme="princess"] .agenda-month-day.has-items {
   .agenda-control-row-primary > .agenda-control-metrics { order: 6; flex: 1 1 100%; }
   .agenda-control-row-filters > .agenda-search-field { flex: 1 1 100%; }
 }
+
+/* Reportes de agenda (reusa el modal de Resumen del dia) */
+.agenda-report-dialog {
+  width: min(1080px, calc(100vw - 32px));
+  --rep-surface: #f5f7fb;
+  --rep-card: #fff;
+  --rep-border: #e2e8f0;
+  --rep-text: #0f172a;
+  --rep-muted: #64748b;
+  --rep-faint: #cbd5e1;
+  --rep-head: #f8fafc;
+  --rep-total: #eef2f7;
+  --rep-confirmado: #16a34a;
+  --rep-pendiente: #e0a82e;
+  --rep-reprogramado: #8b5cf6;
+  --rep-cancelado: #dc2626;
+  --rep-no-contesta: #64748b;
+  --rep-igs: #ea580c;
+}
+
+.dark-mode .agenda-report-dialog {
+  --rep-surface: #0b1222;
+  --rep-card: #111a2e;
+  --rep-border: #26324a;
+  --rep-text: #e2e8f0;
+  --rep-muted: #94a3b8;
+  --rep-faint: #475569;
+  --rep-head: #16213a;
+  --rep-total: #1b2742;
+  --rep-cancelado: #ef4444;
+  --rep-igs: #f97316;
+}
+
+.agenda-report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rep-border);
+}
+
+.agenda-report-controls .agenda-day-summary-view-toggle {
+  margin: 0;
+}
+
+.agenda-report-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.agenda-report-nav {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rep-border);
+  border-radius: 8px;
+  background: var(--rep-card);
+  color: var(--rep-text);
+  cursor: pointer;
+}
+
+.agenda-report-nav:hover {
+  border-color: #93c5fd;
+}
+
+.agenda-report-nav .agenda-action-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.agenda-report-month {
+  height: 32px;
+  border: 1px solid var(--rep-border);
+  border-radius: 8px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--rep-card);
+  color: var(--rep-text);
+}
+
+.dark-mode .agenda-report-month {
+  color-scheme: dark;
+}
+
+.agenda-report-meta {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rep-muted);
+}
+
+.agenda-report-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 4px;
+  background: var(--rep-surface);
+}
+
+.agenda-report-section {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--rep-border);
+  border-radius: 12px;
+  background: var(--rep-card);
+}
+
+.agenda-report-section > header {
+  margin-bottom: 10px;
+}
+
+.agenda-report-section h4 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--rep-text);
+}
+
+.agenda-report-section > header p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--rep-muted);
+}
+
+.agenda-report-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--rep-total);
+  color: var(--rep-muted);
+  font-size: 12px;
+}
+
+.agenda-report-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.agenda-report-kpis.is-compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
+.agenda-report-kpi {
+  padding: 10px 12px;
+  border: 1px solid var(--rep-border);
+  border-radius: 10px;
+}
+
+.agenda-report-kpi.is-main {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.dark-mode .agenda-report-kpi.is-main {
+  border-color: #1e3a8a;
+  background: #13244a;
+}
+
+.agenda-report-kpi span {
+  display: block;
+  font-size: 12px;
+  color: var(--rep-muted);
+}
+
+.agenda-report-kpi strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+  line-height: 1.1;
+  color: var(--rep-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-report-kpis.is-compact .agenda-report-kpi strong {
+  font-size: 20px;
+}
+
+.agenda-report-kpi.is-zero strong {
+  color: var(--rep-faint);
+}
+
+.agenda-report-kpi small {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--rep-muted);
+}
+
+/* Distribucion por estado: barra apilada + leyenda con numeros (el color nunca va solo). */
+.agenda-report-bar {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  margin-top: 14px;
+}
+
+.agenda-report-bar span {
+  min-width: 4px;
+}
+
+.agenda-report-bar span:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.agenda-report-bar span:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.agenda-report-bar span:only-child {
+  border-radius: 4px;
+}
+
+.agenda-report-legend {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+}
+
+.agenda-report-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--rep-muted);
+}
+
+.agenda-report-legend strong {
+  color: var(--rep-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-report-legend small {
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-report-legend li.is-zero {
+  opacity: 0.55;
+}
+
+.agenda-report-legend i,
+.agenda-report-table th i,
+.agenda-report-estado i {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  display: inline-block;
+  border-radius: 3px;
+}
+
+.agenda-report-dialog .is-est-confirmado { background: var(--rep-confirmado); }
+.agenda-report-dialog .is-est-pendiente { background: var(--rep-pendiente); }
+.agenda-report-dialog .is-est-reprogramado { background: var(--rep-reprogramado); }
+.agenda-report-dialog .is-est-cancelado { background: var(--rep-cancelado); }
+.agenda-report-dialog .is-est-no-contesta { background: var(--rep-no-contesta); }
+.agenda-report-dialog .is-est-igs { background: var(--rep-igs); }
+
+/* Tablas */
+.agenda-report-table-wrap {
+  border: 1px solid var(--rep-border);
+  border-radius: 10px;
+  overflow: auto;
+}
+
+.agenda-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.agenda-report-table th {
+  padding: 9px 12px;
+  background: var(--rep-head);
+  border-bottom: 1px solid var(--rep-border);
+  color: var(--rep-muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.agenda-report-table th i {
+  margin-right: 5px;
+}
+
+.agenda-report-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--rep-border);
+  color: var(--rep-text);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.agenda-report-table th:first-child,
+.agenda-report-table td:first-child {
+  text-align: left;
+}
+
+.agenda-report-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.agenda-report-table tbody tr:hover td {
+  background: var(--rep-head);
+}
+
+.agenda-report-table td.is-strong {
+  font-weight: 700;
+}
+
+.agenda-report-table td.is-zero {
+  color: var(--rep-faint);
+}
+
+.agenda-report-table tr.is-empty td:first-child {
+  color: var(--rep-muted);
+}
+
+.agenda-report-table tbody tr.is-total td {
+  font-weight: 700;
+  background: var(--rep-total);
+}
+
+.agenda-report-table-list th,
+.agenda-report-table-list td {
+  text-align: left;
+}
+
+.agenda-report-table-list td:first-child {
+  white-space: normal;
+  font-weight: 600;
+}
+
+.agenda-report-estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agenda-report-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--rep-border);
+  border-radius: 10px;
+  background: var(--rep-card);
+  color: var(--rep-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agenda-report-empty.is-error {
+  color: #b91c1c;
+}
+
+@media (max-width: 760px) {
+  .agenda-control-row-primary > #agenda-report-open { order: 4; }
+  .agenda-report-kpis { grid-template-columns: 1fr; }
+  .agenda-report-kpis.is-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .agenda-report-meta { margin-left: 0; flex-basis: 100%; }
+}

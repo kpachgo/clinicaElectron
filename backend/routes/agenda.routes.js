@@ -22,6 +22,13 @@ router.get(
   agendaController.listarMes
 );
 
+router.get(
+  "/reporte",
+  authMiddleware,
+  roleMiddleware(ROLES_AGENDA),
+  agendaController.reporte
+);
+
 router.post(
   "/precheck-registro",
   authMiddleware,

@@ -77,7 +77,8 @@ const TOOL_SPECS = [
       properties: {
         servicio: { type: "string", description: "Nombre o alias del servicio tal como lo dijo el paciente." },
         fecha: { type: "string", description: "Fecha en formato YYYY-MM-DD, o expresiones como 'hoy', 'mañana', 'el lunes'." },
-        franja: { type: "string", enum: ["mañana", "tarde", "cualquiera"], description: "Preferencia de franja horaria si el paciente la indicó." }
+        franja: { type: "string", enum: ["mañana", "tarde", "cualquiera"], description: "Preferencia de franja horaria si el paciente la indicó." },
+        hora: { type: "string", description: "Hora concreta que pidió el paciente, por ejemplo '3:00 PM'. Pasala siempre que el paciente diga una hora, para verificarla." }
       },
       required: ["servicio", "fecha"]
     }
@@ -267,11 +268,50 @@ async function consultarDisponibilidad(args, ctx) {
     return { estado: "servicio_no_disponible_ese_dia", servicio: resolved.service.serviceName, fecha: date, horario_atencion: windowText, mensaje: `Ese servicio no se atiende ese día. Su horario de atención es: ${windowText}. Ofrecé una fecha dentro de ese horario.` };
   }
   const horarios = (result.slots || []).map((slot) => slot.time).filter((time) => inFranja(time, args?.franja));
-  const horariosMostrar = horarios.map(to12h);
   if (!horarios.length) {
     return { estado: "sin_cupos", servicio: resolved.service.serviceName, fecha: date, horario_atencion: windowText || null, mensaje: windowText ? `No hay horarios disponibles con esos criterios. El horario de atención de este servicio es: ${windowText}. Ofrecé otra fecha u hora dentro de ese horario.` : "No hay horarios disponibles con esos criterios. Ofrecé otra fecha." };
   }
-  return { estado: "ok", servicio: resolved.service.serviceName, fecha: date, horarios: horariosMostrar };
+  const base = { estado: "ok", servicio: resolved.service.serviceName, fecha: date };
+  // Cómo ofrecerlos lo decide cada clínica en Conocimiento IA → Citas (editable sin tocar código). Si no
+  // dice nada, el default es el de recepción: tramo corto primero ("de 1:00 a 4:15 PM") y horas exactas
+  // solo cuando la que pidió el paciente no está libre (pedido del usuario 2026-10-12).
+  const pedida = args?.hora ? toHhmm(args.hora, date) : null;
+  if (!pedida) {
+    return {
+      ...base,
+      tramos_disponibles: slotRanges(horarios, getClinicSchedule().slotIntervalMinutes),
+      horarios: horarios.map(to12h),
+      como_ofrecer: `${CLINIC_FIRST} Si no dice nada: ofrecé solo el tramo desde–hasta en una frase corta y preguntale a qué hora le queda mejor, sin enumerar horas sueltas. Cuando el paciente diga una hora, volvé a consultar pasando esa hora.`
+    };
+  }
+  if (horarios.includes(pedida)) {
+    return { ...base, hora_pedida: to12h(pedida), disponible: true, como_ofrecer: "Esa hora está libre: confirmala con el paciente." };
+  }
+  const mins = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const cercanas = [...horarios].sort((a, b) => Math.abs(mins(a) - mins(pedida)) - Math.abs(mins(b) - mins(pedida))).slice(0, 6).sort();
+  return {
+    ...base,
+    hora_pedida: to12h(pedida),
+    disponible: false,
+    horas_cercanas: cercanas.map(to12h),
+    horarios: horarios.map(to12h),
+    como_ofrecer: `Esa hora no está disponible: decíselo sin inventar el motivo. ${CLINIC_FIRST} Si no dice nada: ofrecele las horas_cercanas, exactas, para que elija.`
+  };
+}
+
+const CLINIC_FIRST = "Si la INFORMACIÓN DE LA CLÍNICA (sección Citas) indica cómo ofrecer los horarios, seguí eso.";
+
+// Cupos seguidos (separados por el intervalo de la agenda) agrupados en tramos "1:00 PM a 4:15 PM"
+// (caso María Fernanda, 2026-10-12: la IA le enumeró los 14 cupos de cada 15 min).
+function slotRanges(times, step) {
+  const mins = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const ranges = [];
+  for (const time of times) {
+    const last = ranges[ranges.length - 1];
+    if (last && mins(time) - mins(last.hasta) === step) last.hasta = time;
+    else ranges.push({ desde: time, hasta: time });
+  }
+  return ranges.map((r) => (r.desde === r.hasta ? to12h(r.desde) : `${to12h(r.desde)} a ${to12h(r.hasta)}`));
 }
 
 async function consultarCitasPaciente(args, ctx) {

@@ -383,6 +383,76 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   }
+  // Reporte de Agenda: modo "mes" agrupa por semana (lunes a domingo, recortada al mes);
+  // modo "anio" agrupa por mes. Filas de GET /api/agenda/reporte.
+  const REPORTE_MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  // iaRows: acciones de la IA desde Mensajes ({ fecha, operacion }), por fecha en que las hizo.
+  const REPORTE_IA_OPERACIONES = ["create_appointment", "reschedule_appointment", "cancel_appointment", "confirm_appointment"];
+  function computeAgendaReport(rows, desde, hasta, mode, iaRows = []) {
+    const estadoKeys = estados.map((e) => e.toLowerCase());
+    const nuevoPeriodo = (label) => ({
+      label,
+      total: 0,
+      presentes: 0,
+      sinRegistro: 0,
+      porEstado: Object.fromEntries(estadoKeys.map((k) => [k, 0])),
+      ia: Object.fromEntries(REPORTE_IA_OPERACIONES.map((k) => [k, 0]))
+    });
+    const pad = (n) => String(n).padStart(2, "0");
+    const [y, m] = desde.split("-").map(Number);
+    const periodos = new Map();
+    const semanaDeDia = [];
+    if (mode === "anio") {
+      REPORTE_MESES.forEach((label, i) => periodos.set(i + 1, nuevoPeriodo(label)));
+    } else {
+      const ultimo = Number(hasta.slice(8, 10));
+      for (let d = 1; d <= ultimo; d++) {
+        const lunes = d - ((new Date(y, m - 1, d).getDay() + 6) % 7);
+        const inicio = Math.max(1, lunes);
+        if (!periodos.has(inicio)) {
+          const fin = Math.min(ultimo, lunes + 6);
+          periodos.set(inicio, nuevoPeriodo(`Sem ${periodos.size + 1} · ${pad(inicio)}/${pad(m)} al ${pad(fin)}/${pad(m)}`));
+        }
+        semanaDeDia[d] = inicio;
+      }
+    }
+
+    const total = nuevoPeriodo("Total");
+    const periodoDe = (fecha) => periodos.get(mode === "anio" ? Number(fecha.slice(5, 7)) : semanaDeDia[Number(fecha.slice(8, 10))]);
+    (Array.isArray(iaRows) ? iaRows : []).forEach((accion) => {
+      [periodoDe(String(accion?.fecha || "")), total].forEach((p) => {
+        if (p && accion?.operacion in p.ia) p.ia[accion.operacion] += 1;
+      });
+    });
+    const sinRegistro = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const fecha = String(row?.fecha || "");
+      const periodo = periodoDe(fecha);
+      const estadoKey = normalizarTexto(row?.estado) || "pendiente";
+      [periodo, total].forEach((p) => {
+        if (!p) return;
+        p.total += 1;
+        if (estadoKey in p.porEstado) p.porEstado[estadoKey] += 1;
+        if (row?.presente) p.presentes += 1;
+        if (!row?.registrado) p.sinRegistro += 1;
+      });
+      const clave = normalizarTextoCruce(row?.nombre);
+      if (row?.registrado || !clave) return;
+      const item = sinRegistro.get(clave) || { nombre: row.nombre, contacto: "", citas: 0 };
+      item.citas += 1;
+      item.contacto = row.contacto || item.contacto;
+      item.ultimaFecha = fecha;
+      item.ultimoEstado = row.estado;
+      sinRegistro.set(clave, item);
+    });
+
+    return {
+      periodos: Array.from(periodos.values()),
+      total,
+      sinRegistro: Array.from(sinRegistro.values()).sort((a, b) =>
+        b.citas - a.citas || a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" }))
+    };
+  }
   function getAgendaHeroIcon(iconName) {
     const base = 'class="agenda-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true" focusable="false"';
     switch (iconName) {
@@ -390,6 +460,8 @@
         return `<svg ${base}><path d="M8.25 6.75h12M8.25 12h12m-12 5.25h12"></path><path d="M3.75 6.75h.008v.008H3.75V6.75Zm0 5.25h.008v.008H3.75V12Zm0 5.25h.008v.008H3.75v-.008Z"></path></svg>`;
       case "chart-bar":
         return `<svg ${base}><path d="M3.75 20.25h16.5"></path><path d="M7.5 18v-6.75m4.5 6.75V6.75m4.5 11.25v-4.5"></path></svg>`;
+      case "presentation-chart-line":
+        return `<svg ${base}><path d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605"></path></svg>`;
       case "calendar-days":
         return `<svg ${base}><path d="M6.75 3v2.25M17.25 3v2.25M3.75 8.25h16.5M5.25 5.25h13.5c.828 0 1.5.672 1.5 1.5v12A1.5 1.5 0 0 1 18.75 20.25H5.25a1.5 1.5 0 0 1-1.5-1.5v-12c0-.828.672-1.5 1.5-1.5Z"></path><path d="M8.25 12h.008v.008H8.25V12Zm3.75 0h.008v.008H12V12Zm3.75 0h.008v.008H15.75V12Zm-7.5 3.75h.008v.008H8.25v-.008Zm3.75 0h.008v.008H12v-.008Z"></path></svg>`;
       case "chevron-left":
@@ -917,6 +989,15 @@
               >
                 ${getAgendaHeroIcon("chart-bar")}
               </button>
+              <button
+                id="agenda-report-open"
+                class="agenda-soft-icon-btn"
+                type="button"
+                title="Reportes por semana y mes"
+                aria-label="Abrir reportes de agenda"
+              >
+                ${getAgendaHeroIcon("presentation-chart-line")}
+              </button>
 
               <div class="agenda-hero-metrics agenda-control-metrics" aria-live="polite">
                 <article class="agenda-metric-card is-total" data-agenda-metric="" role="button" tabindex="0" aria-pressed="false" title="Limpiar resaltado de estados">
@@ -1214,6 +1295,29 @@
                 <tbody id="agenda-day-summary-hours-body"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div id="agenda-report-modal" class="agenda-day-summary-modal" hidden>
+          <div class="agenda-day-summary-backdrop" data-report-close="1"></div>
+          <div class="agenda-day-summary-dialog agenda-report-dialog" role="dialog" aria-modal="true" aria-labelledby="agenda-report-title">
+            <div class="agenda-day-summary-header">
+              <h3 id="agenda-report-title">Reportes de agenda</h3>
+              <button id="agenda-report-close" class="btn-cobrar agenda-day-summary-close-btn" type="button">Cerrar</button>
+            </div>
+            <div class="agenda-report-controls">
+              <div class="agenda-day-summary-view-toggle" role="group" aria-label="Agrupar reporte">
+                <button type="button" class="agenda-day-summary-view-btn is-active" data-report-mode="mes" aria-pressed="true">Mes por semanas</button>
+                <button type="button" class="agenda-day-summary-view-btn" data-report-mode="anio" aria-pressed="false">Año por meses</button>
+              </div>
+              <div class="agenda-report-period">
+                <button type="button" class="agenda-report-nav" data-report-shift="-1" aria-label="Periodo anterior">${getAgendaHeroIcon("chevron-left")}</button>
+                <input type="month" id="agenda-report-month" class="agenda-report-month" aria-label="Mes del reporte">
+                <button type="button" class="agenda-report-nav" data-report-shift="1" aria-label="Periodo siguiente">${getAgendaHeroIcon("chevron-right")}</button>
+              </div>
+              <span id="agenda-report-meta" class="agenda-report-meta">-</span>
+            </div>
+            <div id="agenda-report-body" class="agenda-report-body"></div>
           </div>
         </div>
 
@@ -2259,6 +2363,183 @@
       refreshDaySummaryIfOpen(true);
     }
     window.__agendaCloseDaySummaryModal = closeDaySummaryModal;
+
+    const reportModal = container.querySelector("#agenda-report-modal");
+    const reportMonthInput = container.querySelector("#agenda-report-month");
+    const reportMetaEl = container.querySelector("#agenda-report-meta");
+    const reportBodyEl = container.querySelector("#agenda-report-body");
+    let reportMode = "mes";
+    let reportFetchSeq = 0;
+    function closeReportModal() {
+      if (!reportModal) return;
+      reportFetchSeq++;
+      reportModal.hidden = true;
+      document.body.classList.remove("agenda-day-summary-open");
+    }
+    window.__agendaCloseReportModal = closeReportModal;
+    function getReportRange() {
+      const valor = String(reportMonthInput?.value || "") || getLocalTodayISO().slice(0, 7);
+      const [y, m] = valor.split("-").map(Number);
+      if (reportMode === "anio") return { desde: `${y}-01-01`, hasta: `${y}-12-31`, titulo: `Año ${y}` };
+      const mm = String(m).padStart(2, "0");
+      return {
+        desde: `${y}-${mm}-01`,
+        hasta: `${y}-${mm}-${new Date(y, m, 0).getDate()}`,
+        titulo: new Date(y, m - 1, 1).toLocaleDateString("es", { month: "long", year: "numeric" })
+      };
+    }
+    // Orden fijo de estados en barra, leyenda y tabla: colores validados para que vecinos no se confundan.
+    const REPORTE_ORDEN_ESTADOS = ["confirmado", "pendiente", "reprogramado", "cancelado", "no contesta", "igs"];
+    function renderReporteAgenda(rep) {
+      const total = rep.total.total;
+      const pct = (n) => (total ? Math.round((n * 100) / total) : 0);
+      const labelEstado = (k) => estadoDisplayLabel(estados.find((e) => e.toLowerCase() === k) || k);
+      const claseEstado = (k) => `is-est-${k.replace(/\s+/g, "-")}`;
+      const num = (n) => `<td class="${n ? "" : "is-zero"}">${n}</td>`;
+      const periodoLabel = reportMode === "anio" ? "Mes" : "Semana";
+      const kpi = (label, valor, detalle, cls = "") => `
+        <div class="agenda-report-kpi ${cls}">
+          <span>${escapeHtml(label)}</span>
+          <strong>${valor}</strong>
+          ${detalle ? `<small>${escapeHtml(detalle)}</small>` : ""}
+        </div>`;
+
+      const distribucion = total
+        ? `
+          <div class="agenda-report-bar" role="img" aria-label="Distribución de citas por estado">
+            ${REPORTE_ORDEN_ESTADOS.filter((k) => rep.total.porEstado[k]).map((k) => `
+              <span class="${claseEstado(k)}" style="flex-grow:${rep.total.porEstado[k]}"
+                title="${escapeHtml(labelEstado(k))}: ${rep.total.porEstado[k]} (${pct(rep.total.porEstado[k])}%)"></span>`).join("")}
+          </div>
+          <ul class="agenda-report-legend">
+            ${REPORTE_ORDEN_ESTADOS.map((k) => `
+              <li class="${rep.total.porEstado[k] ? "" : "is-zero"}">
+                <i class="${claseEstado(k)}"></i>
+                <span>${escapeHtml(labelEstado(k))}</span>
+                <strong>${rep.total.porEstado[k]}</strong>
+                <small>${pct(rep.total.porEstado[k])}%</small>
+              </li>`).join("")}
+          </ul>`
+        : `<p class="agenda-report-empty">No hay citas en este periodo.</p>`;
+
+      const fila = (p, cls = "") => `
+        <tr class="${cls} ${p.total ? "" : "is-empty"}">
+          <td>${escapeHtml(p.label)}</td>
+          <td class="${p.total ? "is-strong" : "is-zero"}">${p.total}</td>
+          ${REPORTE_ORDEN_ESTADOS.map((k) => num(p.porEstado[k])).join("")}
+          ${num(p.presentes)}
+          ${num(p.sinRegistro)}
+        </tr>`;
+      const tablaPeriodos = `
+        <div class="agenda-report-table-wrap">
+          <table class="agenda-report-table">
+            <thead><tr>
+              <th>${periodoLabel}</th>
+              <th>Total</th>
+              ${REPORTE_ORDEN_ESTADOS.map((k) => `<th><i class="${claseEstado(k)}"></i>${escapeHtml(labelEstado(k))}</th>`).join("")}
+              <th>Presentes</th>
+              <th>Sin registrar</th>
+            </tr></thead>
+            <tbody>${rep.periodos.map((p) => fila(p)).join("")}${fila(rep.total, "is-total")}</tbody>
+          </table>
+        </div>`;
+
+      const iaColumnas = [
+        ["create_appointment", "Agendó"],
+        ["reschedule_appointment", "Reprogramó"],
+        ["cancel_appointment", "Canceló"],
+        ["confirm_appointment", "Confirmó"]
+      ];
+      const iaTotal = (p) => iaColumnas.reduce((s, [k]) => s + p.ia[k], 0);
+      const iaFila = (p, cls = "") => `
+        <tr class="${cls} ${iaTotal(p) ? "" : "is-empty"}">
+          <td>${escapeHtml(p.label)}</td>
+          ${iaColumnas.map(([k]) => num(p.ia[k])).join("")}
+        </tr>`;
+
+      const sinRegistro = rep.sinRegistro.length
+        ? `
+          <div class="agenda-report-table-wrap">
+            <table class="agenda-report-table agenda-report-table-list">
+              <thead><tr><th>Nombre</th><th>Contacto</th><th>Citas</th><th>Última cita</th><th>Estado</th></tr></thead>
+              <tbody>${rep.sinRegistro.map((p) => `
+                <tr>
+                  <td>${escapeHtml(p.nombre)}</td>
+                  <td>${escapeHtml(p.contacto || "-")}</td>
+                  <td>${p.citas}</td>
+                  <td>${escapeHtml(isoToDDMMYYYY(p.ultimaFecha))}</td>
+                  <td><span class="agenda-report-estado"><i class="${claseEstado(normalizarTexto(p.ultimoEstado) || "pendiente")}"></i>${escapeHtml(estadoDisplayLabel(p.ultimoEstado))}</span></td>
+                </tr>`).join("")}
+              </tbody>
+            </table>
+          </div>`
+        : `<p class="agenda-report-empty">Todos los pacientes agendados en este periodo están registrados.</p>`;
+
+      reportBodyEl.innerHTML = `
+        <section class="agenda-report-section">
+          <div class="agenda-report-kpis">
+            ${kpi("Total citas", total, `${rep.periodos.filter((p) => p.total).length} ${reportMode === "anio" ? "meses" : "semanas"} con citas`, "is-main")}
+            ${kpi("Presentes", rep.total.presentes, `${pct(rep.total.presentes)}% de las citas`)}
+            ${kpi("Pacientes sin registrar", rep.sinRegistro.length, `${rep.total.sinRegistro} citas`)}
+          </div>
+          ${distribucion}
+        </section>
+
+        <section class="agenda-report-section">
+          <header><h4>Por ${periodoLabel.toLowerCase()}</h4></header>
+          ${tablaPeriodos}
+        </section>
+
+        <section class="agenda-report-section">
+          <header>
+            <h4>Hecho por la IA desde Mensajes</h4>
+            <p>Cuenta el día en que la IA lo hizo; el resto lo hizo recepción. Agendar desde el 20/08/2026; reprogramar, cancelar y confirmar desde el 12/10/2026.</p>
+          </header>
+          <div class="agenda-report-kpis is-compact">
+            ${iaColumnas.map(([k, label]) => kpi(label, rep.total.ia[k], "", rep.total.ia[k] ? "" : "is-zero")).join("")}
+          </div>
+          <div class="agenda-report-table-wrap">
+            <table class="agenda-report-table">
+              <thead><tr><th>${periodoLabel}</th>${iaColumnas.map(([, label]) => `<th>${label}</th>`).join("")}</tr></thead>
+              <tbody>${rep.periodos.map((p) => iaFila(p)).join("")}${iaFila(rep.total, "is-total")}</tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="agenda-report-section">
+          <header>
+            <h4>Pacientes sin registrar <span class="agenda-report-count">${rep.sinRegistro.length}</span></h4>
+            <p>Agendados con un nombre que no existe en Pacientes.</p>
+          </header>
+          ${sinRegistro}
+        </section>`;
+    }
+    async function cargarReporteAgenda() {
+      if (!reportBodyEl) return;
+      const rango = getReportRange();
+      const seq = ++reportFetchSeq;
+      if (reportMetaEl) {
+        reportMetaEl.textContent = `${rango.titulo} · ${isoToDDMMYYYY(rango.desde)} al ${isoToDDMMYYYY(rango.hasta)}`;
+      }
+      reportBodyEl.innerHTML = `<p class="agenda-report-empty">Cargando reporte...</p>`;
+      try {
+        const res = await fetch(`/api/agenda/reporte?desde=${rango.desde}&hasta=${rango.hasta}`);
+        const json = await res.json();
+        if (seq !== reportFetchSeq) return;
+        if (!res.ok || !json?.ok) throw new Error(json?.message || "No se pudo cargar el reporte");
+        renderReporteAgenda(computeAgendaReport(json.data, rango.desde, rango.hasta, reportMode, json.ia));
+      } catch (err) {
+        if (seq !== reportFetchSeq) return;
+        reportBodyEl.innerHTML = `<p class="agenda-report-empty is-error">${escapeHtml(err?.message || "No se pudo cargar el reporte")}</p>`;
+      }
+    }
+    function openReportModal() {
+      if (!reportModal) return;
+      if (reportMonthInput) reportMonthInput.value = (String(dateInput?.value || "") || getLocalTodayISO()).slice(0, 7);
+      reportModal.hidden = false;
+      document.body.classList.add("agenda-day-summary-open");
+      cargarReporteAgenda();
+    }
     function setInasistenciaStatus(message, tone = "info") {
       if (!inasistenciaStatusEl) return;
       inasistenciaStatusEl.textContent = String(message || "").trim();
@@ -2562,6 +2843,34 @@
     daySummaryBtn?.addEventListener("click", () => {
       if (isAgendaCriticalSaveInProgress()) return;
       openDaySummaryModal();
+    });
+    container.querySelector("#agenda-report-open")?.addEventListener("click", () => {
+      if (isAgendaCriticalSaveInProgress()) return;
+      openReportModal();
+    });
+    container.querySelector("#agenda-report-close")?.addEventListener("click", closeReportModal);
+    reportMonthInput?.addEventListener("change", cargarReporteAgenda);
+    reportModal?.addEventListener("click", (e) => {
+      if (e.target?.closest?.("[data-report-close]")) {
+        closeReportModal();
+        return;
+      }
+      const shiftBtn = e.target?.closest?.("[data-report-shift]");
+      if (shiftBtn && reportMonthInput) {
+        const [y, m] = (reportMonthInput.value || getLocalTodayISO().slice(0, 7)).split("-").map(Number);
+        const d = new Date(y, m - 1 + Number(shiftBtn.dataset.reportShift) * (reportMode === "anio" ? 12 : 1), 1);
+        reportMonthInput.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        cargarReporteAgenda();
+        return;
+      }
+      const modeBtn = e.target?.closest?.("[data-report-mode]");
+      if (!modeBtn) return;
+      reportMode = modeBtn.dataset.reportMode === "anio" ? "anio" : "mes";
+      reportModal.querySelectorAll("[data-report-mode]").forEach((btn) => {
+        btn.classList.toggle("is-active", btn === modeBtn);
+        btn.setAttribute("aria-pressed", btn === modeBtn ? "true" : "false");
+      });
+      cargarReporteAgenda();
     });
     daySummaryViewTreatmentBtn?.addEventListener("click", () => {
       setDaySummaryActiveView("treatment");
@@ -3039,6 +3348,9 @@
       }
       if (typeof window.__agendaCloseDaySummaryModal === "function") {
         window.__agendaCloseDaySummaryModal();
+      }
+      if (typeof window.__agendaCloseReportModal === "function") {
+        window.__agendaCloseReportModal();
       }
       const modalAgenda = document.querySelector("#modal-agenda");
       if (modalAgenda?.classList.contains("show")) {
@@ -4690,6 +5002,8 @@
         window.__agendaCloseInasistenciaModal = null;
         closeDaySummaryModal();
         window.__agendaCloseDaySummaryModal = null;
+        closeReportModal();
+        window.__agendaCloseReportModal = null;
 
         limpiarBufferReprogramacion();
         resetAgendaModalState();

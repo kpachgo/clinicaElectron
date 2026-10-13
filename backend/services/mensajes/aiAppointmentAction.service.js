@@ -6,6 +6,17 @@ async function ensureAuditTable() {
   await pool.query(`CREATE TABLE IF NOT EXISTS mensajes_auditoria (idAuditoria BIGINT AUTO_INCREMENT PRIMARY KEY, operacion VARCHAR(80) NOT NULL, idempotencyKey VARCHAR(120) NULL, solicitante VARCHAR(40) NOT NULL, payload JSON NULL, resultado VARCHAR(30) NOT NULL, detalle VARCHAR(255) NULL, creadoEn DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE KEY uq_mensajes_auditoria_idempotencia (operacion, idempotencyKey))`);
 }
 
+// Bitácora de lo que la IA hizo sobre citas (alimenta el reporte de Agenda). La acción ya se aplicó:
+// si el registro falla solo se avisa en consola, no se revierte ni se le reporta error a la IA.
+async function logAiAppointmentAction(operacion, appointmentId, payload) {
+  try {
+    await ensureAuditTable();
+    await pool.query("INSERT INTO mensajes_auditoria (operacion,idempotencyKey,solicitante,payload,resultado,detalle) VALUES (?,NULL,'IA',?,'success',?)", [operacion, JSON.stringify(payload || {}), String(appointmentId)]);
+  } catch (error) {
+    console.warn("[Mensajes] No se pudo registrar la accion de la IA en la bitacora", { operacion, appointmentId, error: error?.message || String(error) });
+  }
+}
+
 async function findPatientByName(name) {
   const needle = normalizeText(name);
   if (!needle) return { status: "not_found", patients: [] };
@@ -52,8 +63,10 @@ async function createAppointmentForAssistantWithCapacity({ patientId, patientNam
     // llave pasaron el chequeo previo antes de que ninguna escribiera, aca se detecta.
     const [lockedExisting] = await connection.query("SELECT detalle FROM mensajes_auditoria WHERE operacion='create_appointment' AND idempotencyKey=? LIMIT 1", [idempotencyKey]);
     if (lockedExisting[0]?.detalle) return { ok: true, duplicate: true, idAgendaAP: Number(lockedExisting[0].detalle) };
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
+    // Cita para hoy: el paciente la acaba de acordar y no le llega recordatorio para confirmar.
+    const estado = String(date) === today ? "Confirmado" : "Pendiente";
     if (skipAvailability) {
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
       if (String(date) < today) { const error = new Error("No se puede agendar en una fecha pasada"); error.status = 400; throw error; }
     } else {
       const availability = await searchAvailability({ serviceId, date }, getDb(), connection);
@@ -72,8 +85,8 @@ async function createAppointmentForAssistantWithCapacity({ patientId, patientNam
     const agendaPhone = contact || (patientId ? patients[0].telefonoP : "") || "";
     if (!agendaName || !agendaPhone) { const error = new Error("Faltan nombre y telefono del paciente"); error.status = 400; throw error; }
     const [result] = patientId
-      ? await connection.query("CALL sp_agenda_create_with_identity(?,?,?,?,?,?,?,?,?,?,?)", [agendaName, Number(patientId), String(time).slice(0, 5), date, Number(serviceId), agendaPhone, "Pendiente", comment || services[0].nombreS, 0, 0, 0])
-      : await connection.query("CALL sp_agenda_create(?,?,?,?,?,?,?,?,?)", [agendaName, String(time).slice(0, 5), date, agendaPhone, "Pendiente", comment || services[0].nombreS, 0, 0, 0]);
+      ? await connection.query("CALL sp_agenda_create_with_identity(?,?,?,?,?,?,?,?,?,?,?)", [agendaName, Number(patientId), String(time).slice(0, 5), date, Number(serviceId), agendaPhone, estado, comment || services[0].nombreS, 0, 0, 0])
+      : await connection.query("CALL sp_agenda_create(?,?,?,?,?,?,?,?,?)", [agendaName, String(time).slice(0, 5), date, agendaPhone, estado, comment || services[0].nombreS, 0, 0, 0]);
     const idAgendaAP = result[0][0].idAgendaAP;
     if (!patientId) await connection.query("UPDATE agendapersona SET servicioIdAP=? WHERE idAgendaAP=? AND pacienteIdAP IS NULL", [Number(serviceId), Number(idAgendaAP)]);
     await connection.query("INSERT INTO mensajes_auditoria (operacion,idempotencyKey,solicitante,payload,resultado,detalle) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE resultado=VALUES(resultado), detalle=VALUES(detalle)", ["create_appointment", idempotencyKey, "IA", JSON.stringify({ patientId, serviceId, date, time, contact, comment }), "success", String(idAgendaAP)]);
@@ -105,6 +118,7 @@ async function cancelAppointment({ patientId, appointmentId }) {
     if (!appointment) { const error = new Error("La cita no pertenece al paciente o ya no está activa"); error.status = 409; throw error; }
     const [result] = await connection.query("UPDATE agendapersona SET estadoAP='Cancelado' WHERE idAgendaAP=? AND (pacienteIdAP=? OR pacienteIdAP IS NULL)", [Number(appointmentId), Number(patientId)]);
     if (!result.affectedRows) { const error = new Error("No se pudo cancelar la cita"); error.status = 409; throw error; }
+    await logAiAppointmentAction("cancel_appointment", appointmentId, { patientId, origen: "chat" });
     return { ok: true, appointmentId: Number(appointmentId), date: appointment.fechaAP, time: appointment.horaAP, treatment: appointment.comentarioAP || null };
   } finally { connection.release(); }
 }
@@ -124,6 +138,7 @@ async function rescheduleAppointment({ patientId, appointmentId, newDate, newTim
     if (!availability.slots.some((slot) => slot.time === String(newTime).slice(0, 5))) { const error = new Error("El nuevo horario no está disponible"); error.status = 409; throw error; }
     const [result] = await connection.query("UPDATE agendapersona SET fechaAP=?, horaAP=?, servicioIdAP=COALESCE(servicioIdAP,?) WHERE idAgendaAP=? AND (pacienteIdAP=? OR pacienteIdAP IS NULL)", [newDate, String(newTime).slice(0, 5), serviceId, Number(appointmentId), Number(patientId)]);
     if (!result.affectedRows) { const error = new Error("No se pudo reprogramar la cita"); error.status = 409; throw error; }
+    await logAiAppointmentAction("reschedule_appointment", appointmentId, { patientId, from: { date: appointment.fechaAP, time: appointment.horaAP }, date: newDate, time: String(newTime).slice(0, 5) });
     return { ok: true, appointmentId: Number(appointmentId), date: newDate, time: String(newTime).slice(0, 5), serviceId };
   } finally { connection.release(); }
 }
@@ -143,6 +158,7 @@ async function confirmAppointmentAttendance({ appointmentId }) {
   if (appt.fechaAP < today) return { ok: false, status: "not_confirmable" };
   const [result] = await pool.query("UPDATE agendapersona SET estadoAP='Confirmado' WHERE idAgendaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) IN ('','pendiente')", [id]);
   if (!result.affectedRows) return { ok: true, status: "already_confirmed", date: appt.fechaAP, time: appt.horaAP };
+  await logAiAppointmentAction("confirm_appointment", id, { origen: "recordatorio" });
   return { ok: true, status: "confirmed", date: appt.fechaAP, time: appt.horaAP };
 }
 
@@ -162,6 +178,7 @@ async function cancelAppointmentFromReminder({ appointmentId }) {
   if (appt.fechaAP < today) return { ok: false, status: "not_cancellable" };
   const [result] = await pool.query("UPDATE agendapersona SET estadoAP='Cancelado' WHERE idAgendaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) NOT IN ('cancelado','cancelada','reprogramado','reprogramada')", [id]);
   if (!result.affectedRows) return { ok: true, status: "already_cancelled", date: appt.fechaAP, time: appt.horaAP };
+  await logAiAppointmentAction("cancel_appointment", id, { origen: "recordatorio" });
   return { ok: true, status: "cancelled", date: appt.fechaAP, time: appt.horaAP };
 }
 

@@ -65,6 +65,15 @@
   - base de calculo: resultados del dia respetando filtros activos.
   - tabla por hora usa solo filas en estado `Confirmado`.
 
+- Reportes (`agenda-report-open`, visible en Dia y Mes):
+  - modal que reusa estilos de Resumen del dia; elige mes (`input type=month`, arranca en el mes del datepicker) y modo `Mes por semanas` / `Año por meses`.
+  - semanas lunes a domingo recortadas al mes (`Sem 1 · 01/10 al 04/10`).
+  - tarjetas: total, cada estado con %, presentes (`presenteAP`) y pacientes sin registrar (unicos + citas).
+  - tabla por periodo con fila Total y lista de pacientes sin registrar (nombre, contacto, citas, ultima cita, estado).
+  - backend `GET /api/agenda/reporte?desde&hasta` (max 1 año): usa `sp_agenda_buscar_mes` (respeta protocolo) y marca `registrado` con el mismo criterio del boton Crear (nombre exacto, sin acentos/mayusculas, contra `paciente`). Agregacion en frontend (`computeAgendaReport`).
+  - todo se cuenta por fecha de la cita: la tabla no guarda fecha de creacion ni usuario que agendo.
+  - seccion "Hecho por la IA desde Mensajes": Agendo/Reprogramo/Cancelo/Confirmo por periodo, contado por el dia en que la IA lo hizo. Sale de `mensajes_auditoria` (MySQL, `solicitante='IA'`, `creadoEn` en UTC -> se resta 6 h para El Salvador). Sobrevive a borrar conversaciones en Mensajes (esas viven en SQLite local). Agendar se registra desde 2026-08-20; reprogramar/cancelar/confirmar desde 2026-10-12 (`logAiAppointmentAction` en `aiAppointmentAction.service.js`). Ojo: la IA reprograma moviendo fecha/hora de la misma cita, no la marca `Reprogramado`, por eso no aparece en la columna de estado.
+
 ## Integraciones entre vistas
 - Agenda -> Cobro:
   - Boton `Cobrar` valida paciente por nombre (y desempata por telefono si hay duplicados).

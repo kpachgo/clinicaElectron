@@ -687,7 +687,9 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     }
     try {
       const meta = await this.getIndividualMeta(message, "outgoing");
-      if (!meta) return;
+      // Grupo, estado o chat sin teléfono: sin esto normalizeIncomingMessage lanzaba
+      // "phone debe contener al menos 7 digitos" y el conector quedaba en error.
+      if (!meta || meta.discarded) return;
       this.events.emit("outgoingMessage", normalizeIncomingMessage({
         externalId: externalId || `${this.instanceId}-out-${Date.now()}`,
         ...meta,
