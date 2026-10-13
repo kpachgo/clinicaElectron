@@ -13,7 +13,7 @@ const { WhatsAppWebMessagingConnector } = require("../services/mensajes/connecto
   // 1. El recordatorio sale la tarde anterior y el "sí" llega a la mañana siguiente (>18 h):
   //    sigue vigente mientras la cita sea de hoy en adelante.
   const db = new Database(":memory:");
-  db.exec("CREATE TABLE reminder_batch_items (id INTEGER PRIMARY KEY, batch_id INTEGER, appointment_id INTEGER, patient_name TEXT, appointment_date TEXT, appointment_time TEXT, treatment TEXT, phone TEXT, content TEXT, status TEXT, sent_at TEXT)");
+  db.exec("CREATE TABLE reminder_batch_items (id INTEGER PRIMARY KEY, batch_id INTEGER, appointment_id INTEGER, patient_name TEXT, appointment_date TEXT, appointment_time TEXT, treatment TEXT, phone TEXT, content TEXT, status TEXT, sent_at TEXT); CREATE TABLE reminder_batches (id INTEGER PRIMARY KEY, kind TEXT); INSERT INTO reminder_batches VALUES (1, 'reminder')");
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
   const add = db.prepare("INSERT INTO reminder_batch_items (batch_id, appointment_id, appointment_date, appointment_time, phone, content, status, sent_at) VALUES (1, ?, ?, '15:00', ?, ?, 'sent', datetime('now', ?))");
   add.run(1, today, "70970485", "Podra Asistir?", "-20 hours");
@@ -166,5 +166,81 @@ const { WhatsAppWebMessagingConnector } = require("../services/mensajes/connecto
   global.fetch = async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError("no es JSON"); } });
   assert.deepStrictEqual(await requestJudgement({ cfg: cfgTest, system: "s", user: "u", signal: AbortSignal.timeout(1000) }), {});
   global.fetch = realFetch;
+
+  // 11. Retrasos (no_show): no cuentan como recordatorio (la IA no debe confirmar ni cancelar esa cita), pero
+  //     la IA recibe el contexto por teléfono o por el texto del saliente (chat @lid sin teléfono).
+  const ns = real.createReminderBatch({ kind: "no_show", date: today, template: "t", minDelay: 1, maxDelay: 2, items: [{ appointmentId: 9001, patientName: "José Alberto", phone: "55553333", time: "09:00", treatment: "Limpieza", content: "Notamos que no pudo acompañarnos" }] });
+  real.updateReminderItem(ns.items[0].id, "sent");
+  assert.strictEqual(real.getRecentSentReminderForPhone("55553333"), null, "un retraso no es un recordatorio");
+  assert.strictEqual(real.getRecentSentNoShow({ phones: ["50355553333"] })?.patientName, "José Alberto", "retraso por teléfono");
+  assert.strictEqual(real.getRecentSentNoShow({ contents: ["Notamos que no pudo acompañarnos"] })?.appointmentDate, today, "retraso por texto");
+  assert.strictEqual(real.getRecentSentNoShow({ phones: ["55554444"] }), null, "otro número");
+
+  // 12. Lote de retrasos por rango: cada mensaje lleva la fecha (legible) de su cita; familiares con el mismo
+  //     número se agrupan solo si faltaron el mismo día; a quien ya se le envió no se le repite.
+  // Pacientes del Seguimiento simulados (sin MySQL): se reemplaza antes de cargar el controlador, que lo toma al cargarse.
+  let seguimiento = [];
+  require("../controllers/paciente.controller").listarPacientesSeguimiento = async () => seguimiento;
+  const ctrl = require("../controllers/mensajesView.controller");
+  const post = (body) => new Promise((resolve) => { const res = { code: 200, status(c) { this.code = c; return this; }, json(b) { resolve({ code: this.code, body: b }); } }; ctrl.createReminderBatch({ user: { rol: "Recepcion" }, body }, res); });
+  const nsItems = [
+    { appointmentId: 9101, patientName: "Ana Pérez", phone: "55556666", date: "2026-10-11", time: "09:00", treatment: "Limpieza" },
+    { appointmentId: 9102, patientName: "Luis Pérez", phone: "55556666", date: "2026-10-11", time: "09:00", treatment: "Limpieza" },
+    { appointmentId: 9103, patientName: "Rosa Pérez", phone: "55556666", date: "2026-10-05", time: "10:00", treatment: "Control" }
+  ];
+  const r1 = await post({ kind: "no_show", date: "2026-10-04", template: "Hola {{nombre}}, el día {{fecha}} no pudo venir", items: nsItems });
+  assert.strictEqual(r1.code, 201, r1.body.message);
+  const byId = Object.fromEntries(r1.body.batch.items.map((x) => [x.appointment_id, x]));
+  assert.strictEqual(byId[9101].content, "Hola Ana Pérez y Luis Pérez, el día domingo 11 de octubre no pudo venir", "familiares del mismo día: un mensaje");
+  assert.strictEqual(byId[9103].content, "Hola Rosa Pérez, el día lunes 5 de octubre no pudo venir", "otro día: su propio mensaje y su fecha");
+  assert.strictEqual(byId[9103].appointment_date, "2026-10-05", "se guarda la fecha de la cita, no la del rango");
+  real.cancelReminderBatch(r1.body.batch.id);
+  r1.body.batch.items.forEach((x) => real.updateReminderItem(x.id, "sent"));
+  assert.strictEqual((await post({ kind: "no_show", date: "2026-10-04", template: "t {{nombre}}", items: nsItems })).code, 409, "ya enviados");
+  // Número corregido en el expediente (caso Madeline 2026-10-12): el envío al número viejo no cuenta; solo ella sale de nuevo.
+  const fixed = await post({ kind: "no_show", date: "2026-10-04", template: "t {{nombre}}", items: [{ ...nsItems[2], phone: "55557777" }, ...nsItems.slice(0, 2)] });
+  assert.strictEqual(fixed.code, 201, fixed.body.message);
+  assert.deepStrictEqual(fixed.body.batch.items.map((x) => [x.appointment_id, x.phone]), [[9103, "55557777"]], "solo la del número nuevo");
+  assert.strictEqual(fixed.body.skippedSent, 2);
+  real.cancelReminderBatch(fixed.body.batch.id);
+  assert.strictEqual((await post({ kind: "reminder", date: "2026-10-11", template: "t {{nombre}}", items: nsItems.slice(0, 1) })).code, 201, "un retraso no bloquea un recordatorio");
+  real.cancelReminderBatch(real.getActiveReminderBatch().id);
+
+  // 13. Promociones: "ya la recibió" es por número. Con el número corregido en el expediente vuelve a quedar pendiente;
+  //     un hermano con el mismo número que ya la recibió no.
+  const promo = real.createPromoCampaign({ name: "check", template: "Hola {{nombre}}", source: "seguimiento" });
+  const pb = real.createPromoBatch({ campaignId: promo.id, template: "t", filters: {}, minDelay: 1, maxDelay: 2, items: [{ patientId: 501, patientName: "Ana", phone: "55551111", content: "Hola Ana" }] });
+  real.updatePromoItem(pb.items[0].id, "sent"); real.finishPromoBatch(pb.id);
+  const promoGet = () => new Promise((resolve) => ctrl.promoCandidates({ user: { rol: "Recepcion" }, params: { id: String(promo.id) }, query: {} }, { status() { return this; }, json: resolve }));
+  seguimiento = [{ idPaciente: 501, NombreP: "Ana", telefonoP: "5555 2222" }, { idPaciente: 502, NombreP: "Beto", telefonoP: "5555 1111" }];
+  const pr = await promoGet();
+  assert.deepStrictEqual(pr.pending.map((x) => [x.patientId, x.phone]), [[501, "55552222"]], "número nuevo: pendiente; hermano con el número que ya la recibió: no");
+  assert.strictEqual(pr.alreadySent, 1);
+
+  // 14. Paciente que cambió de número (caso Madeline 2026-10-12). Al vincularlo al chat del número nuevo:
+  //     el chat del número viejo deja de estar vinculado (antes seguía "identificado" por patient_id); el mismo
+  //     número partido en @c.us/@lid sigue vinculado; con "Sí, actualizar" el expediente y sus citas próximas
+  //     pasan al número del chat (MySQL simulado).
+  const viejo = real.saveIncomingMessage({ phone: "75558001", waChatId: "50375558001@c.us", waContactNumber: "75558001", externalId: "m1", text: "hola", messageAt: now(), rawType: "chat" }).conversation;
+  const nuevo = real.saveIncomingMessage({ phone: "75558002", waChatId: "50375558002@c.us", waContactNumber: "75558002", externalId: "m2", text: "hola", messageAt: now(), rawType: "chat" }).conversation;
+  real.setPatientLink(viejo.id, { id: 288, name: "Madeline", phone: "7555 8001" }, 1);
+  const partido = real.saveIncomingMessage({ phone: "75558002", waChatId: "900000000000301@lid", waContactNumber: "75558002", externalId: "m3", text: "hola", messageAt: now(), rawType: "chat" }).conversation;
+  if (partido.id !== nuevo.id) real.db.prepare("UPDATE conversations SET patient_id=288 WHERE id=?").run(partido.id);
+  const dbPool = require("../config/db"); const realQuery = dbPool.query; const writes = [];
+  dbPool.query = async (sql, params) => {
+    if (/^SELECT idPaciente/.test(sql)) return [[{ idPaciente: 288, NombreP: "Madeline", telefonoP: "2451-0000 / 7555-8001", estadoP: 1, tipoTratamientoP: null }]];
+    writes.push([sql.split(" ").slice(0, 2).join(" "), params]); return [{ affectedRows: 1 }];
+  };
+  const identify = (body) => new Promise((resolve) => ctrl.identifyPatient({ user: { rol: "Recepcion", idUsuario: 1 }, params: { id: String(nuevo.id) }, body }, { status(c) { this.code = c; return this; }, json(b) { resolve({ code: this.code || 200, ...b }); } }));
+  const linked = await identify({ patientId: 288, updatePhone: true });
+  dbPool.query = realQuery;
+  assert.strictEqual(linked.ok, true, linked.message);
+  assert.strictEqual(real.getPatientLink(viejo.id), null, "el chat del número viejo ya no está vinculado");
+  assert.strictEqual(real.getPatientLink(nuevo.id)?.patientId, 288);
+  if (partido.id !== nuevo.id) assert.strictEqual(real.getConversation(partido.id).patientId, 288, "mismo número partido: sigue vinculado");
+  assert.deepStrictEqual(writes[0], ["UPDATE paciente", ["2451-0000 / 7555 8002", 288]], "solo se cambia el celular viejo; el fijo queda");
+  assert.deepStrictEqual(writes[1][1], ["7555 8002", 288, "Madeline", "75558001", "50375558001"], "citas próximas con el número viejo");
+  assert.deepStrictEqual(linked.phoneUpdate, { from: "2451-0000 / 7555-8001", to: "2451-0000 / 7555 8002", appointments: 1 });
+  assert.strictEqual(linked.link.phone, "2451-0000 / 7555 8002", "la vinculación guarda el número nuevo");
   console.log("mensajes-recordatorio-check OK");
 })().catch((error) => { console.error(error); process.exit(1); });

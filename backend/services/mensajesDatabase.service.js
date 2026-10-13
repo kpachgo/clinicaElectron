@@ -365,6 +365,9 @@ const migrations = [
   // Archivado/fijado en WhatsApp, actualizado con cada mensaje entrante (solo visual: filtro "Archivados" y fijados arriba).
   ,`ALTER TABLE conversations ADD COLUMN wa_archived INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE conversations ADD COLUMN wa_pinned INTEGER NOT NULL DEFAULT 0;`
+  // Retrasos (Mensajes > Retrasos): mismo lote que los recordatorios, pero a citas a las que el paciente no
+  // se presentó. 'no_show' no cuenta como recordatorio (no confirma ni cancela citas).
+  ,`ALTER TABLE reminder_batches ADD COLUMN kind TEXT NOT NULL DEFAULT 'reminder';`
 ];
 
 function getDb() {

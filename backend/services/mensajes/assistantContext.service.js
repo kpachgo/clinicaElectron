@@ -192,6 +192,21 @@ function describeReminder(reminder) {
   ].filter(Boolean).join("\n");
 }
 
+// Retrasos: la clínica le escribió porque no se presentó a su cita y le ofreció reprogramar. Como las promociones,
+// es la intención de la clínica como contexto, no un guion: el paciente puede contestar con cualquier palabra.
+function describeNoShow(noShow) {
+  if (!noShow) return null;
+  const sent = formatGapDate(String(noShow.sentAt).replace(" ", "T") + "Z");
+  return [
+    `CITA A LA QUE EL PACIENTE NO SE PRESENTÓ: la clínica le escribió${sent ? ` el ${sent}` : ""} porque no llegó a su cita del ${noShow.appointmentDate} a las ${to12h(noShow.appointmentTime)}${noShow.treatment ? ` (${noShow.treatment})` : ""}, a nombre de ${noShow.patientName}, y le preguntó si quiere reprogramarla:`,
+    noShow.content ? `«${String(noShow.content).trim()}»` : null,
+    "Puede no aparecer en el historial del chat, pero el paciente sí lo recibió. Si lo que escribe es la respuesta a ese mensaje:",
+    `- Si quiere reprogramar, seguí el proceso normal para agendar una cita nueva: preguntale qué día le queda bien, consultá disponibilidad y agendá. El servicio es el de esa cita salvo que pida otro. Si el paciente no está identificado, para crear_cita usá el nombre «${noShow.patientName}» y el teléfono ${noShow.phone} de esa cita sin pedírselos, salvo que él diga que la cita nueva es para otra persona. No reprogrames ni canceles la cita a la que no vino: esa la maneja recepción.`,
+    "- Si no quiere o no puede por ahora, no insistas ni le preguntes el motivo: decile que quedamos a la orden para cuando guste y deseale un feliz día.",
+    "- Si escribe por otro motivo, atendé ese motivo con normalidad."
+  ].filter(Boolean).join("\n");
+}
+
 function describeAssistantMemory(memory) {
   const last = memory?.lastAppointment;
   if (!last || !last.appointmentId) return null;
@@ -240,10 +255,11 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
     [
       "RECORDÁ:",
       "- Nunca inventes precios, horarios, disponibilidad ni doctores; usá siempre las herramientas.",
-      "- Antes de crear, reprogramar o cancelar una cita, confirmá explícitamente con el paciente y recién entonces llamá la herramienta con confirmado=true.",
+      "- Antes de crear, reprogramar o cancelar una cita, confirmá explícitamente con el paciente y recién entonces llamá la herramienta con confirmado=true. La confirmación existe para no hacer algo que el paciente no pidió: si él mismo pidió ese cambio con fecha y hora concretas (\"pásemela para el lunes 19 a la misma hora\") y está disponible, su pedido ya es la confirmación; hacelo directo, sin volver a preguntar. Pero solo con lo que él dijo: si dio la fecha y no la hora (o al revés), no completes lo que falta suponiendo (ni siquiera \"la misma hora\"); preguntale. Y si ya le preguntaste si confirma y responde sin objetar ni cambiar nada (agradece, dice que sí, que está bien), eso es un sí.",
+      // ↑ Caso Esmeralda 2026-10-12: pidió "el lunes 19 a la misma hora", la IA preguntó "¿le confirmo?", ella dijo "Muchas gracias" y la IA volvió a preguntar.
       "- No afirmes que una cita quedó hecha, reprogramada o cancelada hasta que la herramienta devuelva estado \"ok\".",
       "- Si en el historial de esta conversación ya confirmaste o registraste una cita para un servicio/fecha/hora, NO vuelvas a llamar crear_cita para esa misma cita. Solo llamala de nuevo si el paciente pide explícitamente una cita adicional y distinta.",
-      "- Si el paciente dice que no necesita nada más, agradece o se despide y todavía no le dimos un cierre (por ejemplo, nuestro último mensaje le preguntó algo), respondé con cortesía en una frase, sin herramientas de agenda. Si ya le dimos el cierre (vos o recepción) y lo nuevo solo agradece o acusa recibo, no le escribas otra despedida: llamá finalizar_conversacion.",
+      "- Si el paciente dice que no necesita nada más, agradece o se despide y todavía no le dimos un cierre (por ejemplo, nuestro último mensaje le preguntó algo), respondé con cortesía en una frase, sin herramientas de agenda; salvo que esa pregunta fuera si confirma una cita o un cambio: ahí su agradecimiento es la aceptación y se ejecuta. Si ya le dimos el cierre (vos o recepción) y lo nuevo solo agradece o acusa recibo, no le escribas otra despedida: llamá finalizar_conversacion.",
       "- Si tu último mensaje fue un recordatorio de cita preguntando si podrá asistir, y el paciente responde con una afirmación corta cualquiera (sin importar la palabra exacta: puede ser \"si\", \"esta bien\", \"vale\", \"primero dios\", \"ahí estaré\", una expresión religiosa, un emoji de pulgar arriba, etc.), interpretala en ese contexto: una respuesta corta y afirmativa justo después de esa pregunta específica ya es la confirmación completa, aunque no repita la palabra \"asistir\" ni el detalle de la cita. No le preguntes de nuevo a qué se refiere ni le pidas que aclare: llamá confirmar_asistencia directamente. Reservá la pregunta de aclaración solo para cuando la respuesta sea realmente ambigua en ese contexto (por ejemplo si cambia de tema o pregunta algo distinto).",
       "- Para registrar a un paciente no identificado pedí el nombre completo y el teléfono JUNTOS, en una sola pregunta. No repitas la misma pregunta en turnos seguidos: si ya la hiciste y el paciente respondió otra cosa, seguí con lo que falta.",
       "- Expresá todas las horas al paciente en formato de 12 horas con AM/PM (por ejemplo 2:30 PM), nunca en formato de 24 horas.",
@@ -260,6 +276,10 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
       : null,
     describeRecentPromos(promos),
     describeReminder(conversation.id > 0 ? repo.getRecentSentReminderForPhone(conversation.waContactNumber || conversation.phone) : null),
+    describeNoShow(conversation.id > 0 ? repo.getRecentSentNoShow({
+      phones: [conversation.phone, conversation.waContactNumber].filter(Boolean),
+      contents: rawMessages.filter((m) => m.direction === "outgoing" && m.author === "system").map((m) => m.content)
+    }) : null),
     // --- Cambia en cada llamada: va al final para no cortar el prefijo cacheable de arriba ---
     `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}. Resolvé "hoy", "mañana", "el lunes" con base en esto.`
   ];

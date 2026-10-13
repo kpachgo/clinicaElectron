@@ -1,5 +1,5 @@
 const fs = require("fs");
-const { MensajesRepository } = require("../services/mensajes/mensajesRepository.service");
+const { MensajesRepository, persistedPhone } = require("../services/mensajes/mensajesRepository.service");
 const { normalizePhone } = require("../services/mensajes/connectors/messagingConnector");
 const { previewAutomation, templates } = require("../services/mensajes/automationPreview.service");
 const { enqueueIncomingResponse } = require("../services/mensajes/aiObserver.service");
@@ -9,6 +9,7 @@ const { getClinicSchedule, updateClinicSchedule, updateDailyCap, updateHourlyCap
 const { exportConfig, importConfig, resetConfig } = require("../services/mensajes/configTransfer.service");
 const { to12h } = require("../services/mensajes/timeFormat.service");
 const { verifyAgreedAppointment, createAgreedAppointment } = require("../services/mensajes/assistantTools.service");
+const { getMonitorCanceladosMatchSql } = require("./paciente.controller");
 const repo = new MensajesRepository();
 const ROLES = ["Administrador", "Recepcion"];
 const MODES = new Set(["manual", "assistant", "paused", "review_required"]);
@@ -22,7 +23,7 @@ const fillReminder = (template, values) => String(template).replace(/{{\s*([^}]+
 // lleva el primer nombre entre paréntesis. Cada cita conserva su fila y su estado; el runtime manda el mensaje
 // una sola vez por número (mismo teléfono y mismo texto dentro del lote).
 const joinList = (list) => (list.length > 1 ? `${list.slice(0, -1).join(", ")} y ${list[list.length - 1]}` : list[0] || "");
-const groupByPhone = (items) => { const groups = new Map(); for (const x of items) groups.set(x.phone, [...(groups.get(x.phone) || []), x]); return groups; };
+const groupByPhone = (items) => { const groups = new Map(); for (const x of items) { const key = `${x.phone}|${x.date || ""}`; groups.set(key, [...(groups.get(key) || []), x]); } return groups; };
 function reminderGroupValues(group) {
   const names = [...new Set(group.map((x) => String(x.patientName || "").trim()))];
   const perPerson = (pick) => {
@@ -50,6 +51,14 @@ exports.searchPatients = async (req, res) => {
 exports.listPatientIdentities = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, identities: repo.listPatientIdentities(req.query?.search || "") }); };
 exports.clearPatientIdentity = (req, res) => { if (!allowed(req, res)) return; const identityId = Number(req.params.id); if (!id(identityId)) return bad(res, "Vinculación inválida"); if (!repo.clearPatientIdentity(identityId)) return res.status(404).json({ ok: false, message: "Vinculación no encontrada" }); res.json({ ok: true, identities: repo.listPatientIdentities() }); };
 exports.clearAllPatientIdentities = (req, res) => { if (!allowed(req, res)) return; const cleared = repo.clearAllPatientIdentities(); res.json({ ok: true, cleared, identities: repo.listPatientIdentities() }); };
+// telefonoP es texto libre y a veces trae dos números ("2451-0000 / 6072-7786"): se reemplaza solo el celular viejo
+// (con o sin espacios/guiones) y se conserva lo demás; si no había celular, el nuevo va primero sin borrar el fijo.
+function replaceFilePhone(field, oldPhone, next) {
+  const text = String(field || "").trim();
+  if (!text) return next;
+  const old = /^[67]\d{7}$/.test(oldPhone) ? new RegExp(oldPhone.split("").join("[\\s.-]*")) : null;
+  return old && old.test(text) ? text.replace(old, next) : `${next} / ${text}`;
+}
 exports.identifyPatient = async (req, res) => {
   if (!allowed(req, res)) return;
   const conversationId = Number(req.params.id), patientId = Number(req.body?.patientId);
@@ -60,10 +69,28 @@ exports.identifyPatient = async (req, res) => {
     if (!rows[0]) return res.status(404).json({ ok: false, message: "Paciente no encontrado" });
     if (Number(rows[0].estadoP ?? 1) !== 1) return bad(res, "El paciente está inactivo");
     const conversation = repo.getConversation(conversationId);
+    // "Sí, actualizar" al vincular: el número del chat pasa al expediente y a sus citas próximas (Recordatorios y
+    // Retrasos lo toman de ahí). Solo un número real de WhatsApp, nunca uno escrito a mano.
+    let phoneUpdate = null;
+    if (req.body?.updatePhone === true) {
+      const chatPhone = conversation.phoneResolved ? persistedPhone(conversation.waContactNumber || conversation.phone) : "";
+      if (!chatPhone) return bad(res, "Este chat no tiene un número real de WhatsApp para copiar al expediente");
+      const oldPhone = promoPhone(rows[0].telefonoP);
+      if (oldPhone !== chatPhone) {
+        const formatted = `${chatPhone.slice(0, 4)} ${chatPhone.slice(4)}`;
+        const telefonoP = replaceFilePhone(rows[0].telefonoP, oldPhone, formatted);
+        await pool.query("UPDATE paciente SET telefonoP=? WHERE idPaciente=?", [telefonoP, patientId]);
+        // Citas de hoy en adelante de este paciente: las vinculadas por id, o las de su nombre con el número viejo (o sin número).
+        const [updated] = await pool.query("UPDATE agendapersona SET contactoAP=? WHERE fechaAP >= CURDATE() AND LOWER(TRIM(IFNULL(estadoAP,''))) NOT IN ('cancelado','cancelada') AND (pacienteIdAP=? OR (pacienteIdAP IS NULL AND LOWER(TRIM(nombreAP))=LOWER(TRIM(?)) AND REPLACE(REPLACE(REPLACE(REPLACE(IFNULL(contactoAP,''),' ',''),'-',''),'+',''),'.','') IN (?, ?)))", [formatted, patientId, rows[0].NombreP, oldPhone, oldPhone ? `503${oldPhone}` : ""]);
+        console.log("[Mensajes] Teléfono del expediente actualizado desde el chat", { patientId, conversationId, citas: updated.affectedRows, usuario: req.user?.idUsuario || null });
+        phoneUpdate = { from: rows[0].telefonoP || "", to: telefonoP, appointments: updated.affectedRows };
+        rows[0].telefonoP = telefonoP;
+      }
+    }
     const link = repo.setPatientLink(conversationId, { id: rows[0].idPaciente, name: rows[0].NombreP, phone: rows[0].telefonoP, treatment: rows[0].tipoTratamientoP, waChatId: conversation.waChatId }, req.user?.idUsuario || null);
     const state = repo.getConversationState(conversationId);
     repo.updateConversationState(conversationId, { collected: { ...(state.collected || {}), patient: { patientId: rows[0].idPaciente, name: rows[0].NombreP, phone: rows[0].telefonoP || "", treatmentType: rows[0].tipoTratamientoP || null, verified: true, verifiedAt: new Date().toISOString() }, patientIdentityVerified: true }, missing: state.missing, offeredSlots: state.offeredSlots, pendingAction: state.pendingAction });
-    res.json({ ok: true, link, conversation: repo.getConversation(conversationId) });
+    res.json({ ok: true, link, phoneUpdate, conversation: repo.getConversation(conversationId) });
   } catch (error) { console.error("identifyPatient", error); res.status(500).json({ ok: false, message: error?.message || "No se pudo identificar el paciente" }); }
 };
 exports.clearIdentifiedPatient = (req, res) => { if (!allowed(req, res)) return; const conversationId = Number(req.params.id); if (!id(conversationId)) return bad(res, "Conversación inválida"); if (!repo.getConversation(conversationId)) return res.status(404).json({ ok: false, message: "Conversación no encontrada" }); repo.clearPatientLink(conversationId); res.json({ ok: true, conversation: repo.getConversation(conversationId) }); };
@@ -110,8 +137,65 @@ exports.createAutomationJob = (req, res) => { if (!allowed(req, res)) return; co
 exports.listAutomationJobs = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, jobs: repo.listAutomationJobs({ status: req.query.status, limit: req.query.limit }) }); };
 exports.cancelAutomationJob = (req, res) => { if (!allowed(req, res)) return; if (!id(req.params.id)) return bad(res, "Trabajo invalido"); res.json({ ok: true, cancelled: repo.cancelAutomationJob(Number(req.params.id)) }); };
 exports.previewAutomationJob = (req, res) => { if (!allowed(req, res)) return; const jobId = Number(req.params.id); if (!id(jobId)) return bad(res, "Trabajo invalido"); const job = repo.db.prepare("SELECT * FROM automation_jobs WHERE id=? LIMIT 1").get(jobId); if (!job) return res.status(404).json({ ok: false, message: "Trabajo no encontrado" }); const phone = req.body?.phone || "72682797"; const result = previewAutomation({ jobId, jobType: job.job_type, phone, text: req.body?.text || templates[job.job_type] }); repo.completeAutomationJob(jobId); res.status(201).json({ ok: true, preview: true, sentToPatient: false, conversation: result.conversation, message: result.message }); };
-exports.reminderCandidates = async (req, res) => { if (!allowed(req, res)) return; const date = String(req.query.date || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return bad(res, "Fecha invalida"); try { const [rows] = await pool.query("SELECT idAgendaAP AS appointmentId, nombreAP AS patientName, contactoAP AS phone, horaAP AS time, comentarioAP AS treatment, estadoAP AS status FROM agendapersona WHERE fechaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) NOT IN ('cancelado','cancelada','reprogramado','reprogramada','confirmado','confirmada') ORDER BY horaAP", [date]); const history = repo.db.prepare("SELECT appointment_id AS appointmentId, status, error, sent_at AS sentAt, batch_id AS batchId FROM reminder_batch_items WHERE appointment_date=? ORDER BY id DESC").all(date); const latest = new Map(); history.forEach((item) => { if (!latest.has(Number(item.appointmentId))) latest.set(Number(item.appointmentId), item); }); const candidates = rows.map((x) => { const item = latest.get(Number(x.appointmentId)); return { ...x, treatment: cleanTreatment(x.treatment), phone: promoPhone(x.phone) || String(x.phone || '').replace(/\D/g, ''), reminderStatus: item?.status || 'pending', reminderError: item?.error || null, reminderSentAt: item?.sentAt || null, reminderBatchId: item?.batchId || null }; }).filter((x) => x.phone.length >= 7); for (const group of groupByPhone(candidates).values()) if (group.length > 1) { const groupValues = reminderGroupValues(group); for (const x of group) Object.assign(x, { groupSize: group.length, groupValues }); } const summary = candidates.reduce((acc, item) => { acc[item.reminderStatus] = (acc[item.reminderStatus] || 0) + 1; return acc; }, {}); res.json({ ok: true, date, candidates, summary }); } catch (error) { res.status(500).json({ ok: false, message: "No se pudieron consultar las citas" }); } };
-exports.createReminderBatch = async (req, res) => { if (!allowed(req, res)) return; const body = req.body || {}; if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) || !text(body.template) || !Array.isArray(body.items) || !body.items.length) return bad(res, "Datos del recordatorio incompletos"); const min = Number(body.minDelaySeconds ?? 30), max = Number(body.maxDelaySeconds ?? 90); if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max < min || max > 3600) return bad(res, "Rango de temporizador invalido"); const allowedVars = new Set(["nombre", "fecha", "hora", "tratamiento"]); if ([...String(body.template).matchAll(/{{\s*([^}]+)\s*}}/g)].some((m) => !allowedVars.has(m[1].trim()))) return bad(res, "La plantilla contiene una variable no permitida"); const items = body.items.map((x) => { const treatment = cleanTreatment(x.treatment); const values = { nombre: x.patientName, fecha: body.date, hora: to12h(x.time), tratamiento: treatment }; const content = fillReminder(body.template, values); return { appointmentId: Number(x.appointmentId), patientName: String(x.patientName || "").trim(), phone: String(x.phone || "").replace(/\D/g, ""), time: String(x.time || ""), treatment, status: String(x.status || ""), content }; }).filter((x) => id(x.appointmentId) && x.patientName && x.phone.length >= 7); const alreadySent = new Set(repo.db.prepare("SELECT appointment_id FROM reminder_batch_items WHERE appointment_date=? AND status='sent'").all(body.date).map((x) => Number(x.appointment_id))); const skippedSent = body.forceResend === true ? 0 : items.filter((x) => alreadySent.has(x.appointmentId)).length; const sendItems = body.forceResend === true ? items : items.filter((x) => !alreadySent.has(x.appointmentId)); for (const group of groupByPhone(sendItems).values()) if (group.length > 1) { const content = fillReminder(body.template, { ...reminderGroupValues(group), fecha: body.date }); for (const x of group) x.content = content; } if (!sendItems.length) return res.status(409).json({ ok: false, message: "Todos los recordatorios seleccionados ya fueron enviados", skippedSent }); const batch = repo.createReminderBatch({ date: body.date, template: String(body.template).trim(), minDelay: min, maxDelay: max, items: sendItems }); res.status(201).json({ ok: true, batch, skippedSent }); };
+// Retrasos (kind=no_show): citas de un rango de fechas a las que el paciente no llegó (sin "presente" en Agenda ni
+// paso por la cola) y que no volvió: ni otra cita posterior que no esté cancelada/reprogramada (futura o ya
+// pasada), ni atendido en la cola ese día o después, ni (si está registrado) una visita ese día o después. Mismo criterio que el
+// Seguimiento para "ya volvió". Misma persona en Agenda: mismo nombre completo (aunque cambie el teléfono), o mismo
+// teléfono y mismo primer nombre (así familiares que comparten número no se excluyen entre sí y un sin registrar que
+// reagendó con el nombre más completo sí). Un homónimo queda fuera de más: mejor no escribirle que escribirle de más.
+// Si faltó varias veces en el rango solo queda la última: la anterior tiene una cita posterior.
+const reminderKind = (value) => (value === "no_show" ? "no_show" : "reminder");
+const NO_SHOW_MAX_DAYS = 62;
+const agendaPhone = (alias) => "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(LOWER(TRIM(IFNULL(" + alias + ".contactoAP,''))),' ',''),'-',''),'(',''),')',''),'+','')";
+const agendaName = (alias) => "LOWER(TRIM(IFNULL(" + alias + ".nombreAP,'')))";
+const firstName = (alias) => "SUBSTRING_INDEX(" + agendaName(alias) + ",' ',1)";
+const NOT_CANCELLED = (alias) => "LOWER(TRIM(IFNULL(" + alias + ".estadoAP,''))) NOT IN ('cancelado','cancelada','reprogramado','reprogramada')";
+// Expediente de la cita: el vinculado (pacienteIdAP, casi nunca lleno), el del criterio del Seguimiento o, como hace la
+// Agenda al copiar un teléfono nuevo al expediente (syncPacienteTelefonoFromAgenda), el único paciente con ese nombre.
+const pacienteName = (alias) => `LOWER(TRIM(IFNULL(${alias}.NombreP,''))) COLLATE utf8mb4_unicode_ci`;
+const expedienteMatch = (a, p) => `(${p}.idPaciente = ${a}.pacienteIdAP OR ${getMonitorCanceladosMatchSql(a, p)} OR (${pacienteName(p)} = ${agendaName(a)} COLLATE utf8mb4_unicode_ci AND (SELECT COUNT(*) FROM paciente p3 WHERE ${pacienteName("p3")} = ${agendaName(a)} COLLATE utf8mb4_unicode_ci) = 1))`;
+// El teléfono del expediente manda sobre el de la cita: al editarlo en Agenda se copia al expediente, pero al
+// corregirlo en el expediente la cita se queda con el viejo (caso Madeline Campos 2026-10-12: el retraso salió al
+// número viejo y al reenviar seguía tomándolo).
+const expedientePhone = (a) => `(SELECT p.telefonoP FROM paciente p WHERE ${expedienteMatch(a, "p")} ORDER BY p.idPaciente = ${a}.pacienteIdAP DESC LIMIT 1) AS expedientePhone`;
+const CANDIDATES_SQL = {
+  reminder: `SELECT a.idAgendaAP AS appointmentId, a.nombreAP AS patientName, a.contactoAP AS phone, ${expedientePhone("a")}, a.horaAP AS time, a.comentarioAP AS treatment, a.estadoAP AS status FROM agendapersona a WHERE a.fechaAP BETWEEN ? AND ? AND LOWER(TRIM(IFNULL(a.estadoAP,''))) NOT IN ('cancelado','cancelada','reprogramado','reprogramada','confirmado','confirmada') ORDER BY a.horaAP`,
+  no_show: `SELECT a.idAgendaAP AS appointmentId, a.nombreAP AS patientName, a.contactoAP AS phone, ${expedientePhone("a")}, DATE_FORMAT(a.fechaAP, '%Y-%m-%d') AS date, a.horaAP AS time, a.comentarioAP AS treatment, a.estadoAP AS status,
+      EXISTS (SELECT 1 FROM paciente p WHERE ${expedienteMatch("a", "p")}) AS registered
+    FROM agendapersona a
+    WHERE a.fechaAP BETWEEN ? AND ? AND ${NOT_CANCELLED("a")} AND IFNULL(a.presenteAP,0)=0
+      AND NOT EXISTS (SELECT 1 FROM cola_paciente cp WHERE cp.agendaId=a.idAgendaAP)
+      AND NOT EXISTS (SELECT 1 FROM agendapersona a2 WHERE a2.fechaAP > a.fechaAP AND ${NOT_CANCELLED("a2")}
+        AND (${agendaName("a2")} = ${agendaName("a")}
+          OR (${agendaPhone("a")} <> '' AND ${agendaPhone("a2")} = ${agendaPhone("a")} AND ${firstName("a2")} = ${firstName("a")})))
+      AND NOT EXISTS (SELECT 1 FROM cola_paciente cp WHERE LOWER(TRIM(IFNULL(cp.nombrePaciente,''))) COLLATE utf8mb4_unicode_ci = ${agendaName("a")} COLLATE utf8mb4_unicode_ci AND BINARY cp.estado = BINARY 'Atendido' AND cp.fechaAgenda >= a.fechaAP)
+      AND NOT EXISTS (SELECT 1 FROM paciente p WHERE ${expedienteMatch("a", "p")} AND p.ultimaVisitaP >= a.fechaAP)
+    ORDER BY a.fechaAP, a.horaAP`
+};
+// "Ya enviado" es por cita Y número: si el número cambió, el mensaje anterior no le llegó y vuelve a quedar pendiente
+// sin tener que marcar "reenviar" (que le reenviaría a toda la lista).
+const sentKey = (appointmentId, phone) => `${Number(appointmentId)}|${String(phone || "")}`;
+// "domingo 11 de octubre": la fecha que lee el paciente en un mensaje de retraso.
+const fechaLarga = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long" }).replace(",", "");
+const isoDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+exports.reminderCandidates = async (req, res) => {
+  if (!allowed(req, res)) return;
+  const kind = reminderKind(req.query.kind);
+  const date = String(req.query.date || "");
+  const to = kind === "no_show" && req.query.to ? String(req.query.to) : date;
+  if (!isoDate(date) || !isoDate(to) || to < date) return bad(res, "Fecha invalida");
+  if ((Date.parse(to) - Date.parse(date)) / 864e5 > NO_SHOW_MAX_DAYS) return bad(res, `El rango no puede pasar de ${NO_SHOW_MAX_DAYS} días`);
+  try {
+    const [rows] = await pool.query(CANDIDATES_SQL[kind], [date, to]);
+    const history = repo.db.prepare("SELECT appointment_id AS appointmentId, phone, status, error, sent_at AS sentAt, batch_id AS batchId FROM reminder_batch_items WHERE appointment_date BETWEEN ? AND ? AND batch_id IN (SELECT id FROM reminder_batches WHERE kind=?) ORDER BY id DESC").all(date, to, kind);
+    const latest = new Map(); history.forEach((item) => { const key = sentKey(item.appointmentId, item.phone); if (!latest.has(key)) latest.set(key, item); });
+    const candidates = rows.map((x) => { const phone = promoPhone(x.expedientePhone) || promoPhone(x.phone) || String(x.phone || '').replace(/\D/g, ''); const item = latest.get(sentKey(x.appointmentId, phone)); return { ...x, date: x.date || date, registered: x.registered === undefined ? undefined : Boolean(Number(x.registered)), treatment: cleanTreatment(x.treatment), phone, reminderStatus: item?.status || 'pending', reminderError: item?.error || null, reminderSentAt: item?.sentAt || null, reminderBatchId: item?.batchId || null }; }).filter((x) => x.phone.length >= 7);
+    for (const group of groupByPhone(candidates).values()) if (group.length > 1) { const groupValues = reminderGroupValues(group); for (const x of group) Object.assign(x, { groupSize: group.length, groupValues }); }
+    const summary = candidates.reduce((acc, item) => { acc[item.reminderStatus] = (acc[item.reminderStatus] || 0) + 1; return acc; }, {});
+    res.json({ ok: true, date, to, candidates, summary });
+  } catch (error) { console.error("reminderCandidates", error); res.status(500).json({ ok: false, message: "No se pudieron consultar las citas" }); }
+};
+exports.createReminderBatch = async (req, res) => { if (!allowed(req, res)) return; const body = req.body || {}; const kind = reminderKind(body.kind); if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) || !text(body.template) || !Array.isArray(body.items) || !body.items.length) return bad(res, "Datos del recordatorio incompletos"); const min = Number(body.minDelaySeconds ?? 30), max = Number(body.maxDelaySeconds ?? 90); if (!Number.isFinite(min) || !Number.isFinite(max) || min < 1 || max < min || max > 3600) return bad(res, "Rango de temporizador invalido"); const allowedVars = new Set(["nombre", "fecha", "hora", "tratamiento"]); if ([...String(body.template).matchAll(/{{\s*([^}]+)\s*}}/g)].some((m) => !allowedVars.has(m[1].trim()))) return bad(res, "La plantilla contiene una variable no permitida"); const items = body.items.map((x) => { const treatment = cleanTreatment(x.treatment); const date = kind === "no_show" && isoDate(x.date) ? x.date : body.date; const fecha = kind === "no_show" ? fechaLarga(date) : date; const values = { nombre: x.patientName, fecha, hora: to12h(x.time), tratamiento: treatment }; const content = fillReminder(body.template, values); return { appointmentId: Number(x.appointmentId), patientName: String(x.patientName || "").trim(), phone: String(x.phone || "").replace(/\D/g, ""), date, fecha, time: String(x.time || ""), treatment, status: String(x.status || ""), content }; }).filter((x) => id(x.appointmentId) && x.patientName && x.phone.length >= 7); const alreadySent = new Set(items.length ? repo.db.prepare(`SELECT appointment_id, phone FROM reminder_batch_items WHERE status='sent' AND batch_id IN (SELECT id FROM reminder_batches WHERE kind=?) AND appointment_id IN (${items.map(() => "?").join(",")})`).all(kind, ...items.map((x) => x.appointmentId)).map((x) => sentKey(x.appointment_id, x.phone)) : []); const wasSent = (x) => alreadySent.has(sentKey(x.appointmentId, x.phone)); const skippedSent = body.forceResend === true ? 0 : items.filter(wasSent).length; const sendItems = body.forceResend === true ? items : items.filter((x) => !wasSent(x)); for (const group of groupByPhone(sendItems).values()) if (group.length > 1) { const content = fillReminder(body.template, { ...reminderGroupValues(group), fecha: group[0].fecha }); for (const x of group) x.content = content; } if (!sendItems.length) return res.status(409).json({ ok: false, message: "A todos los seleccionados ya se les envió", skippedSent }); const batch = repo.createReminderBatch({ date: body.date, template: String(body.template).trim(), minDelay: min, maxDelay: max, items: sendItems, kind }); res.status(201).json({ ok: true, batch, skippedSent }); };
 exports.getReminderBatch = (req, res) => { if (!allowed(req, res)) return; if (!id(req.params.id)) return bad(res, "Lote invalido"); const batch = repo.getReminderBatch(Number(req.params.id)); if (!batch) return res.status(404).json({ ok: false, message: "Lote no encontrado" }); res.json({ ok: true, batch }); };
 exports.getActiveReminderBatch = (req, res) => { if (!allowed(req, res)) return; res.json({ ok: true, batch: repo.getActiveReminderBatch() }); };
 exports.startReminderBatch = (req, res) => { if (!allowed(req, res)) return; if (!id(req.params.id)) return bad(res, "Lote invalido"); const batch = repo.getReminderBatch(Number(req.params.id)); if (!batch) return res.status(404).json({ ok: false, message: "Lote no encontrado" }); const runtime = getRuntime(); if (runtime.connector.getStatus().status !== "connected") { repo.db.prepare("UPDATE reminder_batch_items SET status='failed', error='WhatsApp no conectado', updated_at=datetime('now') WHERE batch_id=? AND status='pending'").run(batch.id); repo.db.prepare("UPDATE reminder_batches SET status='completed_with_errors', failed_count=total_count, last_error='WhatsApp no conectado', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=?").run(batch.id); return res.status(202).json({ ok: true, batch: repo.getReminderBatch(batch.id), connectionError: true }); } runtime.startReminderBatch?.(batch.id); res.status(202).json({ ok: true, batch: repo.getReminderBatch(batch.id) }); };
@@ -187,7 +271,9 @@ const promoFilters = (src = {}) => ({ segmento: String(src.segmento || "all"), e
 const promoSource = (value) => (value === "lista" ? "lista" : "seguimiento");
 // "Válida hasta" (YYYY-MM-DD) opcional; vacío = sin fecha. undefined = no viene en el body.
 const promoValidUntil = (value) => { const v = String(value ?? "").trim(); if (!v) return null; return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined; };
-// Destinatarios que todavía no tienen la campaña (ni por id ni por teléfono), sin teléfonos repetidos.
+// Destinatarios que todavía no tienen la campaña (por teléfono), sin teléfonos repetidos. Por teléfono y no por paciente:
+// si se corrigió el número en el expediente, el envío al viejo no le llegó y vuelve a quedar pendiente (caso Madeline
+// 2026-10-12 en Retrasos); hermanos con el número de la mamá siguen recibiendo uno solo.
 // Origen 'seguimiento': pacientes del sistema con los filtros; 'lista': contactos importados (Excel/CSV).
 async function promoPending(campaignId, filters, { retryFailed = false } = {}) {
   const campaign = repo.getPromoCampaign(campaignId);
@@ -200,7 +286,7 @@ async function promoPending(campaignId, filters, { retryFailed = false } = {}) {
     const phone = promoPhone(row.telefonoP);
     if (!phone) { noPhone++; continue; }
     if (!retryFailed && taken.failedPhones.has(phone)) { failedBefore++; continue; }
-    if (taken.patientIds.has(Number(row.idPaciente)) || taken.phones.has(phone)) { alreadySent++; continue; }
+    if (taken.phones.has(phone)) { alreadySent++; continue; }
     if (seen.has(phone)) continue;
     seen.add(phone);
     pending.push({ patientId: Number(row.idPaciente), patientName: String(row.NombreP || "").trim(), phone, treatment: row.tipoTratamientoP, segment: row.segmentoKey });
@@ -235,7 +321,7 @@ exports.sendPromoBlock = async (req, res) => {
     // dos envíos simultáneos (doble clic, otra computadora) no repitan pacientes ni creen dos bloques.
     if (repo.getActivePromoBatch()) return res.status(409).json({ ok: false, message: "Ya hay un bloque de promociones enviándose" });
     const fresh = repo.getPromoCampaignTaken(campaign.id, { retryFailed });
-    const chosen = pending.filter((x) => patientIds.has(x.patientId) && !fresh.patientIds.has(x.patientId) && !fresh.phones.has(x.phone));
+    const chosen = pending.filter((x) => patientIds.has(x.patientId) && !fresh.phones.has(x.phone));
     if (!chosen.length) return res.status(409).json({ ok: false, message: "Ninguno de los pacientes cargados sigue pendiente; vuelva a cargar la lista" });
     const settings = repo.getReminderSettings();
     // Sin nombre (lista importada) no queda "Hola ,": se quita {{nombre}} junto con el espacio de antes.

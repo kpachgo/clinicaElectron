@@ -2027,6 +2027,7 @@ const eliminarNotaProximaCita = async (req, res) => {
 
 module.exports = {
   listarPacientesSeguimiento,
+  getMonitorCanceladosMatchSql,
   listarNotasProximaCita,
   crearNotaProximaCita,
   actualizarNotaProximaCita,
