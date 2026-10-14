@@ -215,15 +215,18 @@ class MensajesRepository {
     return dropped.size;
   }
 
-  // Todos los teléfonos reales por los que se conoce a una
-  // conversación: su propio contacto y el de su identidad de paciente activa.
+  // Todos los teléfonos reales por los que se conoce a una conversación: su propio
+  // contacto, el número de su chat @c.us y el de su identidad de paciente activa.
+  // El del chat cubre un @c.us que quedó con los dígitos del LID como teléfono.
   conversationRealPhones(conv) {
     const out = new Set();
-    const add = (v) => { const p = persistedPhone(v); if (isRealPhone(p)) out.add(p); };
-    add(conv.wa_contact_number ?? conv.waContactNumber);
-    add(conv.phone);
-    if (conv.wa_chat_id ?? conv.waChatId) {
-      const idn = this.db.prepare("SELECT phone FROM patient_chat_identities WHERE wa_chat_id=? AND active=1 LIMIT 1").get(conv.wa_chat_id ?? conv.waChatId);
+    const chatId = conv.wa_chat_id ?? conv.waChatId ?? "";
+    const add = (v, ofChat = "") => { const p = persistedPhone(v); if (isRealPhone(p, ofChat)) out.add(p); };
+    add(conv.wa_contact_number ?? conv.waContactNumber, chatId);
+    add(conv.phone, chatId);
+    if (chatId.endsWith("@c.us")) add(chatId);
+    if (chatId) {
+      const idn = this.db.prepare("SELECT phone FROM patient_chat_identities WHERE wa_chat_id=? AND active=1 LIMIT 1").get(chatId);
       if (idn) add(idn.phone);
     }
     return out;

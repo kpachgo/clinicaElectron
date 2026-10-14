@@ -46,13 +46,18 @@ function persistedPhone(value) {
 // (10-15, E.164). Un @lid también mide 13-15 dígitos, así que se descarta por el
 // origen del dato y no por el largo: un valor "...@lid", o los dígitos del propio
 // @lid del chat (lo que trae contact.number en un @lid). Lo que llega de un id
-// @c.us (el chat o el que WhatsApp asocia al @lid) es real.
+// @c.us (el chat o el que WhatsApp asocia al @lid) es real. En un chat @c.us el
+// único teléfono real es el del propio chat: si el contacto migró a @lid,
+// contact.number trae el LID (caso Danieliza 2026-10-13: el chat viejo quedó con
+// los dígitos del LID como teléfono y nunca se fusionó con el @lid vinculado).
 function isRealPhone(value, waChatId = "") {
   if (String(value || "").includes("@lid")) return false;
   const digits = persistedPhone(value);
   if (digits.length !== 8 && (digits.length < 10 || digits.length > 15)) return false;
   const raw = String(waChatId || "");
-  return !raw.endsWith("@lid") || digits !== raw.slice(0, raw.indexOf("@"));
+  const chatDigits = raw.slice(0, raw.indexOf("@"));
+  if (raw.endsWith("@c.us")) return digits === persistedPhone(chatDigits);
+  return !raw.endsWith("@lid") || digits !== chatDigits;
 }
 
 function normalizeIncomingMessage(event) {

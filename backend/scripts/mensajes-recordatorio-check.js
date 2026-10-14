@@ -301,5 +301,25 @@ const { WhatsAppWebMessagingConnector } = require("../services/mensajes/connecto
   const merged = real.listConversations({ limit: 500 }).filter((c) => c.phone === "50578644538");
   assert.deepStrictEqual(merged.map((c) => [c.phoneResolved, real.listMessages(c.id, { limit: 10 }).map((m) => m.content)]), [[true, ["Le recordamos su cita", "Saludos"]]], "un solo chat, con el teléfono y el saliente");
   assert.ok([nicOut.id, nic.conversation.id].includes(merged[0].id));
+
+  // 17. Chat @c.us viejo de un contacto que WhatsApp migró a @lid (caso Danieliza, 2026-10-13): contact.number trae
+  //     los dígitos del LID y, desde que se aceptan números extranjeros (14 dígitos = largo válido), quedaban como
+  //     teléfono del chat → nunca se fusionaba con el @lid vinculado. En un @c.us solo vale el número del propio chat.
+  assert.deepStrictEqual([isRealPhone("95996897943678", "50370487168@c.us"), isRealPhone("70487168", "50370487168@c.us"), isRealPhone("50370487168", "50370487168@c.us")], [false, true, true]);
+  lidMeta.getChatContact = async () => ({ number: "95996897943678" });
+  assert.strictEqual((await lidMeta.getIndividualMeta({ from: "50370487168@c.us", getChat: async () => { throw new Error("r"); } })).phone, null, "@c.us: el LID del contacto no es su teléfono");
+  const dLid = real.saveIncomingMessage({ phone: "55554868", waChatId: "900000000000104@lid", waContactNumber: "55554868", externalId: "d1", text: "Siii", messageAt: now(), rawType: "chat" }).conversation;
+  real.setPatientLink(dLid.id, { id: 261, name: "Daniela", phone: "5555 4868" }, 1);
+  real.saveIncomingMessage({ phone: null, waChatId: "50355554868@c.us", waContactNumber: null, externalId: "d2", text: "Hasta el 19", messageAt: now(), rawType: "chat" });
+  const dOne = real.listConversations({ limit: 500 }).filter((c) => ["900000000000104@lid", "50355554868@c.us"].includes(c.waChatId));
+  assert.deepStrictEqual(dOne.map((c) => real.listMessages(c.id, { limit: 10 }).map((m) => m.content).sort()), [["Hasta el 19", "Siii"]], "historial @c.us llega al chat vinculado");
+  // Ya dañado (teléfono = dígitos del LID): el arranque lo junta con el @lid vinculado.
+  const eLid = real.saveIncomingMessage({ phone: "55554869", waChatId: "900000000000106@lid", waContactNumber: "55554869", externalId: "e1", text: "Podré asistir", messageAt: now(), rawType: "chat" }).conversation;
+  real.setPatientLink(eLid.id, { id: 262, name: "Elena", phone: "5555 4869" }, 1);
+  const eBad = real.db.prepare("INSERT INTO conversations (phone, wa_chat_id, wa_contact_number) VALUES ('900000000000106', '50355554869@c.us', '900000000000106')").run().lastInsertRowid;
+  real.saveMessage({ conversationId: eBad, externalId: "e2", direction: "incoming", author: "patient", text: "Vaya está bien", messageAt: now() });
+  real.reconcilePatientDuplicates();
+  const eOne = real.listConversations({ limit: 500 }).filter((c) => ["900000000000106@lid", "50355554869@c.us"].includes(c.waChatId));
+  assert.deepStrictEqual(eOne.map((c) => real.listMessages(c.id, { limit: 10 }).map((m) => m.content).sort()), [["Podré asistir", "Vaya está bien"]], "dañado: se fusiona al arrancar");
   console.log("mensajes-recordatorio-check OK");
 })().catch((error) => { console.error(error); process.exit(1); });
