@@ -182,4 +182,44 @@ async function cancelAppointmentFromReminder({ appointmentId }) {
   return { ok: true, status: "cancelled", date: appt.fechaAP, time: appt.horaAP };
 }
 
-module.exports = { findPatientByName, createAppointmentForAssistant: createAppointmentForAssistantWithCapacity, cancelAppointment, rescheduleAppointment, confirmAppointmentAttendance, cancelAppointmentFromReminder };
+// Mueve la cita de un aviso de Mover (Mensajes > Mover: la doctora no puede ese día) a la fecha y hora que aceptó
+// el paciente. Como cancelAppointmentFromReminder, la correlación teléfono -> cita ya la hizo el aviso: no exige
+// paciente vinculado. Mismo cupo que rescheduleAppointment, con el lock de crear: las respuestas a un mismo lote
+// llegan juntas y dos no deben tomar el último cupo. El estado "Confirmado" era de la fecha vieja: pasa a Pendiente
+// (le llegará el recordatorio de la nueva), o a Confirmado si la nueva es hoy, como una cita creada por la IA.
+// serviceHint: el servicio con el que la IA consultó la disponibilidad. Solo se usa si la cita no tiene uno propio
+// (~9 % de las citas, medido 2026-10-13: comentario libre o ambiguo como "Promo Rellenos y Limpieza") y no se guarda.
+async function moveAppointmentFromNotice({ appointmentId, newDate, newTime, serviceHint = null }) {
+  const id = Number(appointmentId);
+  if (!Number.isInteger(id) || id < 1) { const error = new Error("Cita invalida"); error.status = 400; throw error; }
+  const time = String(newTime).slice(0, 5);
+  const connection = await pool.getConnection();
+  let lockName = null;
+  try {
+    const [rows] = await connection.query("SELECT idAgendaAP, DATE_FORMAT(fechaAP,'%Y-%m-%d') AS fechaAP, LEFT(TRIM(IFNULL(horaAP,'')),5) AS horaAP, LOWER(TRIM(IFNULL(estadoAP,''))) AS estado, comentarioAP, servicioIdAP FROM agendapersona WHERE idAgendaAP=? LIMIT 1", [id]);
+    const appt = rows[0];
+    if (!appt || ["cancelado", "cancelada", "reprogramado", "reprogramada"].includes(appt.estado)) return { ok: false, status: "not_movable" };
+    if (appt.fechaAP === newDate && appt.horaAP === time) return { ok: true, status: "already_moved", date: newDate, time };
+    let serviceId = Number(appt.servicioIdAP) || null;
+    if (!serviceId && appt.comentarioAP) serviceId = (await resolveService(appt.comentarioAP)).service?.serviceId || null;
+    const ownServiceId = serviceId;
+    if (!serviceId && serviceHint) serviceId = (await resolveService(serviceHint)).service?.serviceId || null;
+    if (!serviceId) { const error = new Error("La cita no tiene un servicio identificable para validar disponibilidad"); error.status = 409; throw error; }
+    lockName = `agenda-ai-capacity:${serviceId}:${newDate}`;
+    const [lockRows] = await connection.query("SELECT GET_LOCK(?, 10) AS acquired", [lockName]);
+    if (Number(lockRows[0]?.acquired) !== 1) { lockName = null; const error = new Error("No se pudo validar el cupo del horario"); error.status = 409; throw error; }
+    const availability = await searchAvailability({ serviceId, date: newDate }, getDb(), connection);
+    if (availability.dayUnavailable) { const error = new Error("Ese día no está disponible para agendar"); error.status = 409; throw error; }
+    if (!availability.slots.some((slot) => slot.time === time)) { const error = new Error("El nuevo horario no está disponible"); error.status = 409; throw error; }
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
+    const [result] = await connection.query("UPDATE agendapersona SET fechaAP=?, horaAP=?, servicioIdAP=COALESCE(servicioIdAP,?), estadoAP=CASE WHEN LOWER(TRIM(IFNULL(estadoAP,''))) IN ('','pendiente','confirmado','confirmada') THEN ? ELSE estadoAP END WHERE idAgendaAP=? AND LOWER(TRIM(IFNULL(estadoAP,''))) NOT IN ('cancelado','cancelada','reprogramado','reprogramada')", [newDate, time, ownServiceId, newDate === today ? "Confirmado" : "Pendiente", id]);
+    if (!result.affectedRows) return { ok: false, status: "not_movable" };
+    await logAiAppointmentAction("reschedule_appointment", id, { origen: "mover", from: { date: appt.fechaAP, time: appt.horaAP }, date: newDate, time });
+    return { ok: true, status: "moved", date: newDate, time, from: { date: appt.fechaAP, time: appt.horaAP } };
+  } finally {
+    if (lockName) { try { await connection.query("SELECT RELEASE_LOCK(?)", [lockName]); } catch {} }
+    connection.release();
+  }
+}
+
+module.exports = { findPatientByName, createAppointmentForAssistant: createAppointmentForAssistantWithCapacity, cancelAppointment, rescheduleAppointment, confirmAppointmentAttendance, cancelAppointmentFromReminder, moveAppointmentFromNotice };

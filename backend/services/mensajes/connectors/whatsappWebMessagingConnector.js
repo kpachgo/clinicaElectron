@@ -8,7 +8,9 @@ const {
   assertConnectorStatus,
   normalizeIncomingMessage,
   normalizeMessageStatus,
-  normalizePhone
+  normalizePhone,
+  persistedPhone,
+  isRealPhone
 } = require("./messagingConnector");
 
 const USER_CHAT_SUFFIX = "@c.us";
@@ -50,11 +52,6 @@ function resolveBrowserExecutable() {
   return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || undefined;
 }
 
-function persistedPhone(phone) {
-  const digits = String(phone || "").replace(/\D/g, "");
-  return digits.startsWith("503") && digits.length === 11 ? digits.slice(3) : digits;
-}
-
 // whatsapp-web.js guarda cada versión de WhatsApp Web que carga en ./.wwebjs_cache
 // (relativo al cwd, igual que resuelve su LocalWebCache) y nunca borra las viejas.
 // Tras una conexión exitosa se conservan las WEB_CACHE_KEEP más recientes. Solo toca
@@ -80,15 +77,6 @@ async function pruneWebVersionCache() {
   } catch (error) {
     if (error?.code !== "ENOENT") console.warn("[Mensajes][WhatsApp] No se pudo depurar la caché de versiones", { error: error?.message || String(error) });
   }
-}
-
-// Un LID tiene 13-16 digitos y pasa cualquier chequeo generico de "esto parece un
-// telefono". La agenda y el expediente usan el numero local salvadoreno de 8
-// digitos (11 con el prefijo 503), asi que ese es el unico formato que aceptamos
-// como identidad de una conversacion. Todo lo demas queda sin resolver hasta que
-// WhatsApp devuelva el numero real.
-function isRealPhone(value) {
-  return persistedPhone(value).length === 8;
 }
 
 // WhatsApp multi-dispositivo agrega un sufijo ":<n>" al JID del remitente
@@ -525,10 +513,10 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     // guard por "vacío" el lookup local nunca corría y el mensaje entraba sin teléfono
     // (2026-10-07: 866 de 866 mensajes @lid con phone null), así la respuesta a un
     // recordatorio abría un chat nuevo hasta la reconciliación de 60 s.
-    if (!isRealPhone(contactNumber) && chatId.endsWith("@lid") && String(message?.__recoveryLidPhone || "").endsWith("@c.us")) {
+    if (!isRealPhone(contactNumber, chatId) && chatId.endsWith("@lid") && String(message?.__recoveryLidPhone || "").endsWith("@c.us")) {
       contactNumber = String(message.__recoveryLidPhone).replace(/\D/g, "");
     }
-    if (!isRealPhone(contactNumber) && chatId.endsWith("@lid")) {
+    if (!isRealPhone(contactNumber, chatId) && chatId.endsWith("@lid")) {
       // Primero el lookup local sincrónico (instantáneo si WhatsApp ya tiene el
       // mapeo); solo si falla, la consulta de red, que puede tardar minutos. La de
       // red sigue solo para el contacto sin número: con los dígitos del LID nunca
@@ -550,7 +538,7 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     const phone = contactNumber || (chatId.endsWith("@lid") ? "" : fallback);
     if (!phone && !chatId.endsWith("@lid")) return { discarded: "telefono_no_resoluble", chatId };
     // Solo un telefono real se propaga como identidad de la conversacion.
-    const identity = isRealPhone(phone) ? normalizePhone(persistedPhone(phone)) : null;
+    const identity = isRealPhone(phone, chatId) ? normalizePhone(persistedPhone(phone)) : null;
     return {
       // La Agenda y la lista de teléfonos usan el número local de 8 dígitos.
       // El @c.us/@lid completo se conserva aparte para el destino de WhatsApp.
@@ -821,9 +809,11 @@ class WhatsAppWebMessagingConnector extends MessagingConnector {
     const externalId = this.getDirectExternalId(message)
       || `${this.instanceId}-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     if (externalId) this.knownOutgoingIds.add(externalId);
-    // normalizedPhone puede ser el LID (cuando la conversacion todavia no tiene
-    // telefono) o el placeholder "0000000". Ninguno de los dos es una identidad.
-    const identity = isRealPhone(normalizedPhone) ? persistedPhone(normalizedPhone) : null;
+    // El teléfono recibido puede ser el LID (cuando la conversacion todavia no tiene
+    // telefono, "…@lid" o sus dígitos) o vacío (placeholder "0000000"). Ninguno es una
+    // identidad; se mira el valor crudo porque normalizedPhone ya perdió el "@lid".
+    const identitySource = sendChatId !== chatId ? sendChatId : phone;
+    const identity = isRealPhone(identitySource, chatId) ? persistedPhone(identitySource) : null;
     const normalized = normalizeIncomingMessage({
       externalId,
       phone: identity,

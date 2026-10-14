@@ -270,3 +270,5 @@ body:is([data-theme="dark"],[data-theme="vampire"]) .promo-card .promo-bubble{ba
 .mensajes-more-menu [hidden]{display:none}
 .mensajes-chat-head{position:relative;z-index:5}
 
+.promo-card .reminder-item{cursor:pointer}.promo-card .reminder-item input[data-pick]{width:auto;margin:0 4px 0 0;vertical-align:-2px;cursor:pointer}
+.promo-card #reminder-picked{text-align:right;font-size:13px;color:var(--msg-muted,#64748b)}

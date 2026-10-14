@@ -1,16 +1,6 @@
 const { getDb } = require("../../services/mensajesDatabase.service");
-const { normalizePhone } = require("./connectors/messagingConnector");
-
-// Mismo criterio que el conector: un LID (13-16 digitos) parece un telefono pero no
-// lo es. Solo el numero local salvadoreno de 8 digitos (11 con el 503) cuenta como
-// identidad de la conversacion; cualquier otra cosa se trata como "sin resolver".
-function persistedPhone(value) { const digits = String(value || "").replace(/\D/g, ""); return digits.startsWith("503") && digits.length === 11 ? digits.slice(3) : digits; }
-function isRealPhone(value, waChatId = "") {
-  const digits = persistedPhone(value);
-  if (digits.length !== 8) return false;
-  const raw = String(waChatId || "");
-  return !raw.endsWith("@lid") || digits !== raw.slice(0, raw.indexOf("@"));
-}
+// Mismo criterio que el conector (teléfono real vs dígitos de un @lid): ver isRealPhone.
+const { normalizePhone, persistedPhone, isRealPhone } = require("./connectors/messagingConnector");
 
 function toConversation(row) {
   return row ? { ...row, patientId: row.patient_id, attentionMode: row.attention_mode, humanOwnerId: row.human_owner_id, responseDelayMin: row.response_delay_min, responseDelayMax: row.response_delay_max, waChatId: row.wa_chat_id, waContactNumber: row.wa_contact_number, waDisplayName: row.wa_display_name, lifecycleState: row.lifecycle_state, lastMessageDirection: row.last_message_direction, lastMessageAt: row.last_message_at, lastMessageType: row.last_message_type, lastMessageSource: row.last_message_source, lastInboundAt: row.last_inbound_at, lastOutboundAt: row.last_outbound_at, followUpSent: Boolean(row.follow_up_sent), humanReviewReason: row.human_review_reason, waArchived: Boolean(row.wa_archived), waPinned: Boolean(row.wa_pinned), avatarTag: row.avatar_tag && row.avatar_tag !== "none" ? row.avatar_tag : null, phoneResolved: isRealPhone(row.wa_contact_number, row.wa_chat_id) || isRealPhone(row.phone, row.wa_chat_id), createdAt: row.created_at, updatedAt: row.updated_at } : null;
@@ -225,7 +215,7 @@ class MensajesRepository {
     return dropped.size;
   }
 
-  // Todos los teléfonos reales (8 dígitos) por los que se conoce a una
+  // Todos los teléfonos reales por los que se conoce a una
   // conversación: su propio contacto y el de su identidad de paciente activa.
   conversationRealPhones(conv) {
     const out = new Set();
@@ -478,7 +468,7 @@ class MensajesRepository {
   // el mensaje. No se reintenta automaticamente para evitar duplicados; el
   // usuario puede usar el boton Reintentar de forma explicita.
   markOutgoingFailed(id, error) { this.db.prepare("UPDATE outgoing_queue SET status='failed', attempts=attempts+1, last_error=?, updated_at=datetime('now') WHERE id=?").run(String(error || "Error de envio"), id); }
-  getReminderSettings() { const row = this.db.prepare("SELECT reminder_template AS template, reminder_min_delay_seconds AS minDelaySeconds, reminder_max_delay_seconds AS maxDelaySeconds FROM message_settings WHERE id=1").get(); const noShow = this.db.prepare("SELECT template FROM reminder_batches WHERE kind='no_show' ORDER BY id DESC LIMIT 1").get(); return { template: row?.template || "Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.", noShowTemplate: noShow?.template || null, minDelaySeconds: Number(row?.minDelaySeconds ?? 30), maxDelaySeconds: Number(row?.maxDelaySeconds ?? 90) }; }
+  getReminderSettings() { const row = this.db.prepare("SELECT reminder_template AS template, reminder_min_delay_seconds AS minDelaySeconds, reminder_max_delay_seconds AS maxDelaySeconds FROM message_settings WHERE id=1").get(); const lastTemplate = (kind) => this.db.prepare("SELECT template FROM reminder_batches WHERE kind=? ORDER BY id DESC LIMIT 1").get(kind)?.template || null; return { template: row?.template || "Hola {{nombre}}, le recordamos su cita del {{fecha}} a las {{hora}} por {{tratamiento}}.", noShowTemplate: lastTemplate("no_show"), moveTemplate: lastTemplate("move"), minDelaySeconds: Number(row?.minDelaySeconds ?? 30), maxDelaySeconds: Number(row?.maxDelaySeconds ?? 90) }; }
   updateReminderSettings(settings) { this.db.prepare("UPDATE message_settings SET reminder_template=?, reminder_min_delay_seconds=?, reminder_max_delay_seconds=?, updated_at=datetime('now') WHERE id=1").run(settings.template, settings.minDelaySeconds, settings.maxDelaySeconds); return this.getReminderSettings(); }
   createReminderBatch({ date, template, minDelay, maxDelay, items, kind = "reminder" }) { return this.db.transaction(() => { const b = this.db.prepare("INSERT INTO reminder_batches (appointment_date,template,min_delay_seconds,max_delay_seconds,total_count,status,kind) VALUES (?,?,?,?,?,'queued',?)").run(date, template, minDelay, maxDelay, items.length, kind); const insert = this.db.prepare("INSERT INTO reminder_batch_items (batch_id,appointment_id,patient_name,phone,appointment_date,appointment_time,treatment,appointment_status,content) VALUES (?,?,?,?,?,?,?,?,?)"); for (const x of items) insert.run(b.lastInsertRowid, x.appointmentId, x.patientName, x.phone, x.date || date, x.time, x.treatment || "", x.status || "", x.content); return this.getReminderBatch(b.lastInsertRowid); })(); }
   getReminderBatch(id) { const batch = this.db.prepare("SELECT * FROM reminder_batches WHERE id=?").get(id); if (!batch) return null; const items = this.db.prepare("SELECT * FROM reminder_batch_items WHERE batch_id=? ORDER BY id").all(id); return { ...batch, items, totalCount: batch.total_count, sentCount: batch.sent_count, failedCount: batch.failed_count, cancelledCount: batch.cancelled_count, minDelaySeconds: batch.min_delay_seconds, maxDelaySeconds: batch.max_delay_seconds }; }
@@ -521,8 +511,7 @@ class MensajesRepository {
   refreshPromoBatch(id) { this.db.prepare("UPDATE promo_batches SET sent_count=(SELECT COUNT(*) FROM promo_batch_items WHERE batch_id=? AND status='sent'), failed_count=(SELECT COUNT(*) FROM promo_batch_items WHERE batch_id=? AND status='failed'), cancelled_count=(SELECT COUNT(*) FROM promo_batch_items WHERE batch_id=? AND status='cancelled'), updated_at=datetime('now') WHERE id=?").run(id, id, id, id); return this.getPromoBatch(id); }
   finishPromoBatch(id) { this.db.prepare("UPDATE promo_batches SET status=CASE WHEN failed_count>0 THEN 'completed_with_errors' ELSE 'completed' END, finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); }
   // Al cancelar también se retira de la cola de salida lo que aún no salió, para que no se envíe sin registro.
-  cancelPromoBatch(id) { this.db.prepare("UPDATE outgoing_queue SET status='cancelled', last_error='Bloque cancelado', updated_at=datetime('now') WHERE idempotency_key LIKE ? AND status='pending'").run(`promo-${id}-%`); this.db.prepare("UPDATE promo_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending','queued') AND NOT EXISTS (SELECT 1 FROM outgoing_queue q WHERE q.idempotency_key='promo-' || promo_batch_items.batch_id || '-' || promo_batch_items.id AND q.status IN ('sent','sending'))").run(id); this.db.prepare("UPDATE promo_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.refreshPromoBatch(id); }
-  // Recordatorio 'sent' vigente para ese teléfono: su cita es de hoy en adelante (hora de
+  cancelPromoBatch(id) { this.db.prepare("UPDATE outgoing_queue SET status='cancelled', last_error='Bloque cancelado', updated_at=datetime('now') WHERE idempotency_key LIKE ? AND status='pending'").run(`promo-${id}-%`); this.db.prepare("UPDATE promo_batch_items SET status='cancelled', updated_at=datetime('now') WHERE batch_id=? AND status IN ('pending','sending','queued') AND NOT EXISTS (SELECT 1 FROM outgoing_queue q WHERE q.idempotency_key='promo-' || promo_batch_items.batch_id || '-' || promo_batch_items.id AND q.status IN ('sent','sending'))").run(id); this.db.prepare("UPDATE promo_batches SET status='cancelled', finished_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND status IN ('queued','processing')").run(id); return this.refreshPromoBatch(id); }  // Recordatorio 'sent' vigente para ese teléfono: su cita es de hoy en adelante (hora de
   // El Salvador). Sirve para correlacionar la respuesta del paciente ("sí, ahí estaré")
   // con la cita concreta sin que el recordatorio lleve el id en el texto. Antes era una
   // ventana fija de 18 h desde el envío, pero el recordatorio sale la tarde anterior y
@@ -536,21 +525,29 @@ class MensajesRepository {
     if (!variants.length) return null;
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/El_Salvador" }).format(new Date());
     const placeholders = variants.map(() => "?").join(",");
-    const latest = this.db.prepare(`SELECT batch_id AS batchId, appointment_id AS appointmentId, patient_name AS patientName, appointment_date AS appointmentDate, appointment_time AS appointmentTime, treatment, phone, content, sent_at AS sentAt FROM reminder_batch_items WHERE status='sent' AND appointment_date >= ? AND sent_at >= datetime('now', '-3 days') AND batch_id IN (SELECT id FROM reminder_batches WHERE kind='reminder') AND phone IN (${placeholders}) ORDER BY sent_at DESC, id DESC LIMIT 1`).get(today, ...variants);
+    // Un aviso de Mover enviado DESPUÉS del recordatorio de esa cita lo deja sin efecto (un "sí" ya no confirma la
+    // fecha vieja). Por orden y no por tiempo: se mueve la misma cita, así que el recordatorio de la fecha nueva
+    // (posterior al Mover) vuelve a valer.
+    const notMovedAfter = "NOT EXISTS (SELECT 1 FROM reminder_batch_items m JOIN reminder_batches mb ON mb.id=m.batch_id WHERE mb.kind='move' AND m.status='sent' AND m.appointment_id=r.appointment_id AND m.sent_at > r.sent_at)";
+    const latest = this.db.prepare(`SELECT batch_id AS batchId, appointment_id AS appointmentId, patient_name AS patientName, appointment_date AS appointmentDate, appointment_time AS appointmentTime, treatment, phone, content, sent_at AS sentAt FROM reminder_batch_items r WHERE status='sent' AND appointment_date >= ? AND sent_at >= datetime('now', '-3 days') AND batch_id IN (SELECT id FROM reminder_batches WHERE kind='reminder') AND phone IN (${placeholders}) AND ${notMovedAfter} ORDER BY sent_at DESC, id DESC LIMIT 1`).get(today, ...variants);
     if (!latest) return null;
     // Un recordatorio agrupado (familiares con el mismo número) cubre varias citas: mismo lote, teléfono y texto.
-    latest.appointments = this.db.prepare("SELECT appointment_id AS appointmentId, patient_name AS patientName, appointment_date AS appointmentDate, appointment_time AS appointmentTime, treatment FROM reminder_batch_items WHERE batch_id=? AND phone=? AND content=? AND status='sent' ORDER BY id").all(latest.batchId, latest.phone, latest.content);
+    latest.appointments = this.db.prepare(`SELECT appointment_id AS appointmentId, patient_name AS patientName, appointment_date AS appointmentDate, appointment_time AS appointmentTime, treatment FROM reminder_batch_items r WHERE batch_id=? AND phone=? AND content=? AND status='sent' AND ${notMovedAfter} ORDER BY id`).all(latest.batchId, latest.phone, latest.content);
     return latest;
   }
-  // Retrasos: mensaje de inasistencia enviado a este chat en los últimos `days` días (por teléfono o por el texto
-  // exacto de un saliente del chat, como las promociones: un @lid sin resolver no trae el teléfono).
-  getRecentSentNoShow({ phones = [], contents = [] } = {}, days = 7) {
+  // Retrasos ('no_show') y Mover ('move'): último mensaje de ese tipo enviado a este chat en los últimos `days` días
+  // (por teléfono o por el texto exacto de un saliente del chat, como las promociones: un @lid sin resolver no trae
+  // el teléfono). `appointments`: las citas que cubre si fue un solo mensaje para familiares.
+  getRecentSentNotice(kind, { phones = [], contents = [] } = {}, days = 7) {
     const base = [...new Set(phones.flatMap(phoneRuleVariants))];
     const variants = [...new Set(base.concat(base.filter((v) => v.length === 8).map((v) => "503" + v)))];
     const texts = [...new Set(contents.map((x) => String(x || "").trim()).filter(Boolean))];
     if (!variants.length && !texts.length) return null;
     const where = [variants.length ? `i.phone IN (${variants.map(() => "?").join(",")})` : null, texts.length ? `i.content IN (${texts.map(() => "?").join(",")})` : null].filter(Boolean).join(" OR ");
-    return this.db.prepare(`SELECT i.patient_name AS patientName, i.phone, i.appointment_date AS appointmentDate, i.appointment_time AS appointmentTime, i.treatment, i.content, i.sent_at AS sentAt FROM reminder_batch_items i JOIN reminder_batches b ON b.id=i.batch_id WHERE b.kind='no_show' AND i.status='sent' AND i.sent_at >= datetime('now', ?) AND (${where}) ORDER BY i.sent_at DESC, i.id DESC LIMIT 1`).get(`-${days} days`, ...variants, ...texts) || null;
+    const latest = this.db.prepare(`SELECT i.batch_id AS batchId, i.appointment_id AS appointmentId, i.patient_name AS patientName, i.phone, i.appointment_date AS appointmentDate, i.appointment_time AS appointmentTime, i.treatment, i.content, i.sent_at AS sentAt FROM reminder_batch_items i JOIN reminder_batches b ON b.id=i.batch_id WHERE b.kind=? AND i.status='sent' AND i.sent_at >= datetime('now', ?) AND (${where}) ORDER BY i.sent_at DESC, i.id DESC LIMIT 1`).get(kind, `-${days} days`, ...variants, ...texts);
+    if (!latest) return null;
+    latest.appointments = this.db.prepare("SELECT appointment_id AS appointmentId, patient_name AS patientName, appointment_date AS appointmentDate, appointment_time AS appointmentTime, treatment FROM reminder_batch_items WHERE batch_id=? AND phone=? AND content=? AND status='sent' ORDER BY id").all(latest.batchId, latest.phone, latest.content);
+    return latest;
   }
   retryOutgoing(id, phone) { return this.db.prepare("UPDATE outgoing_queue SET status='pending', attempts=0, last_error=NULL, updated_at=datetime('now') WHERE id=? AND phone=? AND status='failed'").run(id, phone).changes > 0; }
   getGlobalSettings() { const row = this.db.prepare("SELECT response_delay_min AS responseDelayMin, response_delay_max AS responseDelayMax, response_group_delay_seconds AS responseGroupDelaySeconds, automation_phone_mode AS automationPhoneMode, automation_phone_numbers AS automationPhoneNumbers, ignored_outgoing_texts_json AS ignoredOutgoingTexts, updated_at AS updatedAt FROM message_settings WHERE id=1").get(); return { ...row, automationPhoneNumbers: JSON.parse(row?.automationPhoneNumbers || "[]"), ignoredOutgoingTexts: JSON.parse(row?.ignoredOutgoingTexts || "[]") }; }

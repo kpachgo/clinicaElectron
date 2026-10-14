@@ -18,7 +18,7 @@ const repo = new MensajesRepository();
 const MISSED = { patientName: "José Alberto Martínez", phone: "70001234", appointmentDate: "2026-10-10", appointmentTime: "09:00", treatment: "Limpieza" };
 const NO_SHOW_TEXT = "¡Buenos días, *José Alberto Martínez*! 😊🦷\nEl día *sábado 10 de octubre* teníamos una cita programada y notamos que no pudo acompañarnos.\n¿Le gustaría que le ayudemos a reprogramar su cita para otro día que le quede conveniente? 📅✨\n¡Con mucho gusto le atendemos!";
 // El retraso "enviado" a este chat: lo que devolvería reminder_batch_items para un lote kind='no_show'.
-MensajesRepository.prototype.getRecentSentNoShow = () => ({ ...MISSED, content: NO_SHOW_TEXT, sentAt: new Date(Date.now() - 3600000).toISOString().replace("T", " ").slice(0, 19) });
+MensajesRepository.prototype.getRecentSentNotice = (kind) => kind !== "no_show" ? null : ({ ...MISSED, content: NO_SHOW_TEXT, sentAt: new Date(Date.now() - 3600000).toISOString().replace("T", " ").slice(0, 19) });
 
 const MUTATING = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia", "cancelar_cita_recordatorio"]);
 async function testRunTool(name, args, ctx) {

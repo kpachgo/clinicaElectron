@@ -9,6 +9,7 @@ const { getPolicy } = require("./assistantPolicy.service");
 const { listAiServices, getClinicSchedule } = require("./aiAvailability.service");
 const { to12h } = require("./timeFormat.service");
 const { isModoVentaEnabled } = require("../appMode.service");
+const { recentMoveNotice } = require("./assistantTools.service");
 
 const TIMEZONE = "America/El_Salvador";
 const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -207,6 +208,31 @@ function describeNoShow(noShow) {
   ].filter(Boolean).join("\n");
 }
 
+// Mover: la clínica le avisó que su cita no se puede atender ese día (la doctora no puede) y le propuso otro. El
+// aviso vale 48 h (MOVE_NOTICE_DAYS); después, lo que escriba es otra conversación. El día propuesto va en el texto
+// del mensaje: la IA lo lee de ahí. La misma cita se mueve con mover_cita_aviso, que rechaza el día del aviso.
+const diaLargo = (iso) => new Intl.DateTimeFormat("es-SV", { timeZone: TIMEZONE, weekday: "long", day: "numeric", month: "long" }).format(new Date(`${iso}T12:00:00Z`)).replace(",", "");
+function describeMove(move) {
+  if (!move?.appointmentId) return null;
+  const sent = formatGapDate(String(move.sentAt).replace(" ", "T") + "Z");
+  const dia = diaLargo(move.appointmentDate);
+  const citas = move.appointments || [];
+  const family = citas.length > 1;
+  return [
+    family
+      ? `CITAS QUE HAY QUE MOVER: la clínica le escribió${sent ? ` el ${sent}` : ""} a este número para avisarle que estas citas del ${dia} no se podrán atender ese día y hay que pasarlas a otro día (un solo mensaje para familiares que comparten el número):`
+      : `CITA QUE HAY QUE MOVER: la clínica le escribió${sent ? ` el ${sent}` : ""} para avisarle que su cita del ${dia} a las ${to12h(move.appointmentTime)}${move.treatment ? ` (${move.treatment})` : ""}, a nombre de ${move.patientName}, no se podrá atender ese día y hay que pasarla a otro día.`,
+    ...(family ? citas.map((c) => `- id_cita ${c.appointmentId}: ${c.patientName}, ${to12h(c.appointmentTime)}${c.treatment ? `, ${c.treatment}` : ""}`) : []),
+    move.content ? `Este fue el mensaje (ahí está el día que le propusimos): «${String(move.content).trim()}»` : null,
+    "Puede no aparecer en el historial del chat, pero el paciente sí lo recibió. Si lo que escribe es la respuesta a ese mensaje:",
+    `- Si acepta el día que le propusimos o propone otro, consultá disponibilidad de ese día para el servicio de la cita, pasando como hora la de la cita original: si esa misma hora está libre, ofrecésela; si no, las más cercanas. Cuando acepte día y hora, llamá mover_cita_aviso con confirmado=true${family ? " (con ids_cita según por quiénes responde)" : ""}. Se mueve esa misma cita: no uses crear_cita ni reprogramar_cita y no le pidas nombre ni teléfono. El paciente no está eligiendo un servicio: es su misma cita. Si consultar_disponibilidad dice que el servicio es ambiguo, elegí vos el que corresponde a la cita sin preguntarle, pasalo también en mover_cita_aviso (servicio), y al hablarle nombrala como la tenía${family ? "" : ` (su cita de «${move.treatment || "siempre"}»)`}, no con el nombre del catálogo.`,
+    `- El ${dia} no se puede, aunque insista o aunque la agenda muestre cupo: explicale con amabilidad que ese día no va a ser posible, pedile disculpas (son cosas que pasan) y ofrecele con todo gusto moverla a otro día.`,
+    "- Insistir no es estar molesto. Pero si se molesta, se queja o reclama por el cambio, vale lo de CUÁNDO PASAR A RECEPCIÓN: transferí.",
+    "- Si no quiere moverla o pide cancelarla, no la canceles vos: transferí a recepción.",
+    "- Si escribe por otro motivo, atendé ese motivo con normalidad."
+  ].filter(Boolean).join("\n");
+}
+
 function describeAssistantMemory(memory) {
   const last = memory?.lastAppointment;
   if (!last || !last.appointmentId) return null;
@@ -271,15 +297,16 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
     linkedPatient?.patientId
       ? `Este paciente YA está identificado (${linkedPatient.patientName}): nunca le pidas nombre ni teléfono, ni para "confirmar". Después de encontrar disponibilidad, pedile solo que confirme fecha y hora.`
       : null,
-    !linkedPatient?.patientId && conversation.phoneResolved && /^\d{8}$/.test(String(conversation.phone || ""))
+    !linkedPatient?.patientId && conversation.phoneResolved && /^\d{8,15}$/.test(String(conversation.phone || ""))
       ? `El paciente escribe desde el número ${conversation.phone}. Pedile el teléfono de forma normal (junto con el nombre). NO le preguntes si es el mismo número del chat. Solo si el paciente dice por su cuenta que su teléfono es el mismo del chat, llamá crear_cita con usar_telefono_del_chat=true en vez de telefono.`
       : null,
     describeRecentPromos(promos),
     describeReminder(conversation.id > 0 ? repo.getRecentSentReminderForPhone(conversation.waContactNumber || conversation.phone) : null),
-    describeNoShow(conversation.id > 0 ? repo.getRecentSentNoShow({
+    describeNoShow(conversation.id > 0 ? repo.getRecentSentNotice("no_show", {
       phones: [conversation.phone, conversation.waContactNumber].filter(Boolean),
       contents: rawMessages.filter((m) => m.direction === "outgoing" && m.author === "system").map((m) => m.content)
     }) : null),
+    describeMove(conversation.id > 0 ? recentMoveNotice(conversation) : null),
     // --- Cambia en cada llamada: va al final para no cortar el prefijo cacheable de arriba ---
     `Fecha y hora actual: ${fecha}, ${hora} (${TIMEZONE}). Hoy es ${iso}. Resolvé "hoy", "mañana", "el lunes" con base en esto.`
   ];
@@ -294,4 +321,4 @@ async function buildAssistantContext({ conversation, linkedPatient = null, histo
   return { systemBlocks: systemBlocks.filter(Boolean), history: resolvedHistory };
 }
 
-module.exports = { buildAssistantContext, describeSchedule, describeCatalog, mapHistory };
+module.exports = { buildAssistantContext, describeSchedule, describeCatalog, mapHistory, describeMove };

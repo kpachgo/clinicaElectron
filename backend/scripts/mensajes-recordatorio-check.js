@@ -172,9 +172,9 @@ const { WhatsAppWebMessagingConnector } = require("../services/mensajes/connecto
   const ns = real.createReminderBatch({ kind: "no_show", date: today, template: "t", minDelay: 1, maxDelay: 2, items: [{ appointmentId: 9001, patientName: "José Alberto", phone: "55553333", time: "09:00", treatment: "Limpieza", content: "Notamos que no pudo acompañarnos" }] });
   real.updateReminderItem(ns.items[0].id, "sent");
   assert.strictEqual(real.getRecentSentReminderForPhone("55553333"), null, "un retraso no es un recordatorio");
-  assert.strictEqual(real.getRecentSentNoShow({ phones: ["50355553333"] })?.patientName, "José Alberto", "retraso por teléfono");
-  assert.strictEqual(real.getRecentSentNoShow({ contents: ["Notamos que no pudo acompañarnos"] })?.appointmentDate, today, "retraso por texto");
-  assert.strictEqual(real.getRecentSentNoShow({ phones: ["55554444"] }), null, "otro número");
+  assert.strictEqual(real.getRecentSentNotice("no_show", { phones: ["50355553333"] })?.patientName, "José Alberto", "retraso por teléfono");
+  assert.strictEqual(real.getRecentSentNotice("no_show", { contents: ["Notamos que no pudo acompañarnos"] })?.appointmentDate, today, "retraso por texto");
+  assert.strictEqual(real.getRecentSentNotice("no_show", { phones: ["55554444"] }), null, "otro número");
 
   // 12. Lote de retrasos por rango: cada mensaje lleva la fecha (legible) de su cita; familiares con el mismo
   //     número se agrupan solo si faltaron el mismo día; a quien ya se le envió no se le repite.
@@ -242,5 +242,64 @@ const { WhatsAppWebMessagingConnector } = require("../services/mensajes/connecto
   assert.deepStrictEqual(writes[1][1], ["7555 8002", 288, "Madeline", "75558001", "50375558001"], "citas próximas con el número viejo");
   assert.deepStrictEqual(linked.phoneUpdate, { from: "2451-0000 / 7555-8001", to: "2451-0000 / 7555 8002", appointments: 1 });
   assert.strictEqual(linked.link.phone, "2451-0000 / 7555 8002", "la vinculación guarda el número nuevo");
+
+  // 15. Mover (kind=move, 2026-10-13): fecha legible; un Mover posterior anula el recordatorio de esa cita (un "sí"
+  //     no confirma la fecha vieja) y el recordatorio de la fecha nueva vuelve a valer; el aviso vale 48 h; la
+  //     herramienta rechaza el día del aviso; "ya enviado" es por fecha (la misma cita movida recibe su recordatorio).
+  const mv = await post({ kind: "move", date: "2026-10-15", template: "Hola {{nombre}}, su cita del {{fecha}}", items: [{ appointmentId: 9201, patientName: "Carla Ruiz", phone: "55559201", date: "2026-10-15", time: "09:00", treatment: "Limpieza" }] });
+  assert.strictEqual(mv.code, 201, mv.body.message);
+  assert.strictEqual(mv.body.batch.items[0].content, "Hola Carla Ruiz, su cita del jueves 15 de octubre");
+  real.cancelReminderBatch(mv.body.batch.id);
+  const sendAt = (kind, appointmentId, date, ago) => { const b = real.createReminderBatch({ kind, date, template: "t", minDelay: 1, maxDelay: 2, items: [{ appointmentId, patientName: "Carla Ruiz", phone: "55559202", time: "09:00", treatment: "Limpieza", content: `${kind} ${date} ${ago}` }] }); real.updateReminderItem(b.items[0].id, "sent"); real.db.prepare("UPDATE reminder_batch_items SET sent_at=datetime('now', ?) WHERE id=?").run(ago, b.items[0].id); real.db.prepare("UPDATE reminder_batches SET status='completed' WHERE id=?").run(b.id); };
+  sendAt("reminder", 9202, today, "-3 hours");
+  assert.strictEqual(real.getRecentSentReminderForPhone("55559202")?.appointmentId, 9202, "recordatorio vigente");
+  sendAt("move", 9202, today, "-1 hours");
+  assert.strictEqual(real.getRecentSentReminderForPhone("55559202"), null, "el Mover posterior anula el recordatorio");
+  assert.strictEqual(real.getRecentSentNotice("move", { phones: ["55559202"] }, 2)?.appointmentId, 9202);
+  sendAt("reminder", 9202, today, "-10 minutes");
+  assert.strictEqual(real.getRecentSentReminderForPhone("55559202")?.content, `reminder ${today} -10 minutes`, "el recordatorio de la fecha nueva vuelve a valer");
+  sendAt("move", 9203, today, "-3 days");
+  assert.strictEqual(real.getRecentSentNotice("move", { phones: ["55559202"] }, 2)?.appointmentId, 9202, "un Mover de hace 3 días ya no vale");
+  const tools = require("../services/mensajes/assistantTools.service");
+  const actions = require("../services/mensajes/aiAppointmentAction.service");
+  const moved = []; actions.moveAppointmentFromNotice = async (x) => { moved.push(x); return { ok: true, status: "moved", date: x.newDate, time: x.newTime }; };
+  const mover = (args) => tools.runTool("mover_cita_aviso", args, { conversation: { id: 0, phone: "55559202" } });
+  assert.strictEqual((await mover({ nueva_fecha: today, nueva_hora: "10:00", confirmado: true })).estado, "dia_no_disponible", "el día del aviso no se puede");
+  assert.strictEqual((await mover({ nueva_fecha: "2026-10-20", nueva_hora: "9:00 AM", confirmado: false })).estado, "falta_confirmacion");
+  const ok = await mover({ nueva_fecha: "2026-10-20", nueva_hora: "9:00 AM", confirmado: true });
+  assert.deepStrictEqual([ok.estado, ok.id_cita, moved.length, moved[0]?.newTime], ["ok", 9202, 1, "09:00"], JSON.stringify(ok));
+  assert.strictEqual((await tools.runTool("mover_cita_aviso", { nueva_fecha: "2026-10-20", nueva_hora: "09:00", confirmado: true }, { conversation: { id: 0, phone: "55550000" } })).estado, "sin_aviso_reciente");
+  // Recordatorio de la fecha vieja enviado a la cita 9101: la misma cita movida al 20 sí recibe el suyo.
+  const oldDate = await post({ kind: "reminder", date: "2026-10-11", template: "t {{nombre}}", items: nsItems.slice(0, 1) });
+  real.cancelReminderBatch(oldDate.body.batch.id); real.updateReminderItem(oldDate.body.batch.items[0].id, "sent");
+  assert.strictEqual((await post({ kind: "reminder", date: "2026-10-11", template: "t {{nombre}}", items: nsItems.slice(0, 1) })).code, 409, "misma fecha: ya enviado");
+  const newDate = await post({ kind: "reminder", date: "2026-10-20", template: "t {{nombre}}", items: nsItems.slice(0, 1) });
+  assert.strictEqual(newDate.code, 201, "cita movida: el recordatorio de la fecha nueva no cuenta como ya enviado");
+  real.cancelReminderBatch(newDate.body.batch.id);
+
+  // 16. Números de cualquier país (caso +505 "Saludos", 2026-10-13: el @lid resolvía a 50578644538@c.us pero solo se
+  //     aceptaba el salvadoreño → nunca "resuelto" → recepción). Teléfono real por origen; los dígitos de un @lid nunca.
+  const { isRealPhone } = require("../services/mensajes/connectors/messagingConnector");
+  assert.deepStrictEqual(["78644538", "50378644538", "50578644538", "12025550123", "5215512345678"].map((p) => isRealPhone(p)), [true, true, true, true, true], "8 dígitos o completo con código");
+  assert.deepStrictEqual([isRealPhone("89451384586393@lid"), isRealPhone("89451384586393", "89451384586393@lid"), isRealPhone("123456789"), isRealPhone("6979292775197761")], [false, false, false, false], "LID, 9 dígitos, dos números pegados");
+  const lidMeta = Object.create(WhatsAppWebMessagingConnector.prototype);
+  lidMeta.client = { info: { wid: { user: "50379990000" } } };
+  lidMeta.getChatContact = async () => ({ number: "89451384586393" });
+  lidMeta.resolveLidPhoneLocal = async () => null;
+  assert.strictEqual((await lidMeta.getIndividualMeta({ from: "89451384586393@lid", getChat: async () => { throw new Error("r"); } })).phone, null, "sin resolver: los dígitos del LID no son teléfono");
+  lidMeta.resolveLidPhoneLocal = async () => "50578644538";
+  assert.strictEqual((await lidMeta.getIndividualMeta({ from: "89451384586393@lid", getChat: async () => { throw new Error("r"); } })).phone, "50578644538", "@lid resuelto a un número extranjero");
+  lidMeta.getChatContact = async () => ({ number: "50578644538" });
+  assert.strictEqual((await lidMeta.getIndividualMeta({ from: "50578644538@c.us", getChat: async () => { throw new Error("r"); } })).phone, "50578644538", "chat @c.us extranjero");
+  // processBatch: el resolver previo a responder lo resuelve, se fusiona con el chat @c.us de ese número (si existe) y la IA responde.
+  const nicOut = real.saveOutgoingMessage({ phone: "50578644538", waChatId: "50578644538@c.us", waContactNumber: "50578644538", externalId: "nic0", text: "Le recordamos su cita", author: "system", messageAt: new Date(Date.now() - 60000).toISOString() }).conversation;
+  observer.setLidResolver(async () => "50578644538");
+  const nic = real.saveIncomingMessage({ phone: null, waChatId: "89451384586394@lid", waContactNumber: null, externalId: "nic1", text: "Saludos", messageAt: new Date().toISOString(), rawType: "chat" });
+  assert.strictEqual(real.getConversation(nic.conversation.id).phoneResolved, false);
+  const nicBatch = await observer.processBatch(real.enqueueResponseMessage(nic.conversation.id, nic.message.id, "Saludos", 60));
+  assert.match(nicBatch.error, /^Finalizada sin responder/, "extranjero: llega al agente sin esperar");
+  const merged = real.listConversations({ limit: 500 }).filter((c) => c.phone === "50578644538");
+  assert.deepStrictEqual(merged.map((c) => [c.phoneResolved, real.listMessages(c.id, { limit: 10 }).map((m) => m.content)]), [[true, ["Le recordamos su cita", "Saludos"]]], "un solo chat, con el teléfono y el saliente");
+  assert.ok([nicOut.id, nic.conversation.id].includes(merged[0].id));
   console.log("mensajes-recordatorio-check OK");
 })().catch((error) => { console.error(error); process.exit(1); });

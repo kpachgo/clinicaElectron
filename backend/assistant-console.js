@@ -32,7 +32,7 @@ let linkedPatient = null;
 let history = [];
 let assistantMemory = {};
 
-const MUTATING = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia", "cancelar_cita_recordatorio"]);
+const MUTATING = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia", "cancelar_cita_recordatorio", "mover_cita_aviso"]);
 
 async function consoleRunTool(name, args, ctx) {
   if (!LIVE && MUTATING.has(name)) {
@@ -50,8 +50,8 @@ async function consoleRunTool(name, args, ctx) {
       simulado: true,
       id_cita: 999900 + Math.floor(Math.random() * 99),
       servicio: args?.servicio,
-      fecha: name === "reprogramar_cita" ? args?.nueva_fecha : args?.fecha,
-      hora: name === "reprogramar_cita" ? args?.nueva_hora : args?.hora,
+      fecha: args?.nueva_fecha || args?.fecha,
+      hora: args?.nueva_hora || args?.hora,
       mensaje: `(simulado) ${name} habría ejecutado`
     };
   }

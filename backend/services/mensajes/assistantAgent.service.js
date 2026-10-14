@@ -30,8 +30,8 @@ function memoryUpdateFromTrace(trace) {
     if (entry.name === "crear_cita") {
       return { lastAppointment: { appointmentId: entry.result.id_cita, action: "creada", service: entry.result.servicio, date: entry.result.fecha, time: entry.result.hora } };
     }
-    if (entry.name === "reprogramar_cita") {
-      return { lastAppointment: { appointmentId: entry.result.id_cita, action: "reprogramada", service: entry.args?.servicio || null, date: entry.result.fecha, time: entry.result.hora } };
+    if (entry.name === "reprogramar_cita" || (entry.name === "mover_cita_aviso" && entry.result.id_cita)) {
+      return { lastAppointment: { appointmentId: entry.result.id_cita, action: "reprogramada", service: entry.args?.servicio || entry.result.servicio || null, date: entry.result.fecha, time: entry.result.hora } };
     }
     if (entry.name === "cancelar_cita" || entry.name === "cancelar_cita_recordatorio") {
       return { lastAppointment: null };
@@ -48,7 +48,7 @@ function memoryUpdateFromTrace(trace) {
 //   2. Contexto: en ese caso un juicio corto del modelo decide si la respuesta, en
 //      el contexto de la charla, le da a entender al paciente que la cita ya está
 //      hecha, la diga como la diga ("¡Listo! A la orden, lo esperamos el lunes").
-const MUTATING_TOOLS = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia", "cancelar_cita_recordatorio"]);
+const MUTATING_TOOLS = new Set(["crear_cita", "reprogramar_cita", "cancelar_cita", "confirmar_asistencia", "cancelar_cita_recordatorio", "mover_cita_aviso"]);
 const ACTION_DONE_STATES = new Set(["ok", "ya_registrada"]);
 const CLAIM_JUDGE_SYSTEM = [
   "Revisás un mensaje que el asistente de WhatsApp de una clínica dental está por enviarle a un paciente.",
@@ -181,9 +181,9 @@ async function runAssistant({ conversation, linkedPatient = null, cfg, signal, t
   trace.push({ step: MAX_STEPS, type: "exhausted" });
   // Si a pesar de agotar los pasos una acción de agenda se completó, no transferimos:
   // la cita/cambio quedó hecho, solo faltó que el modelo redactara el cierre.
-  const doneAction = trace.slice().reverse().find((t) => t.type === "tool" && t.result?.estado === "ok" && ["crear_cita", "reprogramar_cita", "cancelar_cita"].includes(t.name));
+  const doneAction = trace.slice().reverse().find((t) => t.type === "tool" && t.result?.estado === "ok" && ["crear_cita", "reprogramar_cita", "cancelar_cita", "mover_cita_aviso"].includes(t.name));
   if (doneAction) {
-    const label = doneAction.name === "crear_cita" ? "registrada" : doneAction.name === "reprogramar_cita" ? "reprogramada" : "cancelada";
+    const label = doneAction.name === "crear_cita" ? "registrada" : doneAction.name === "cancelar_cita" ? "cancelada" : "reprogramada";
     return {
       text: `Tu cita quedó ${label}. Si necesitás algo más, con gusto te ayudo.`,
       transfer: null,

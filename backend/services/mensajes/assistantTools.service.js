@@ -140,6 +140,21 @@ const TOOL_SPECS = [
     parameters: { type: "object", properties: { ids_cita: { type: "array", items: { type: "integer" }, description: "Solo si el recordatorio fue por varias citas (familiares con el mismo número): ids de las citas a las que se refiere el paciente." } } }
   },
   {
+    name: "mover_cita_aviso",
+    description: "Mueve a otra fecha y hora la cita que la clínica le pidió al paciente mover (bloque CITA QUE HAY QUE MOVER). Úsala solo con ese aviso, cuando el paciente aceptó un día y una hora que consultar_disponibilidad mostró libres. Mueve esa misma cita: no uses crear_cita ni reprogramar_cita para esto. No necesita que el paciente esté identificado. confirmado=true solo tras la aceptación del paciente.",
+    parameters: {
+      type: "object",
+      properties: {
+        nueva_fecha: { type: "string" },
+        nueva_hora: { type: "string", description: "Hora en formato de 12 horas con AM/PM, por ejemplo '2:30 PM'. También se acepta 24 horas." },
+        servicio: { type: "string", description: "El servicio con el que consultaste la disponibilidad." },
+        confirmado: { type: "boolean" },
+        ids_cita: { type: "array", items: { type: "integer" }, description: "Solo si el aviso fue por varias citas (familiares con el mismo número): ids de las citas que el paciente quiere mover a esa fecha y hora." }
+      },
+      required: ["nueva_fecha", "nueva_hora", "confirmado"]
+    }
+  },
+  {
     // contextos/20, «Conversación finalizada»: corta el ida y vuelta de despedidas. Probada con chats reales en scripts/mensajes-finalizar-check.js.
     name: "finalizar_conversacion",
     description: "Usala cuando el asunto del paciente ya quedó resuelto en esta conversación, ya le dimos la respuesta de cierre (vos o recepción), y lo nuevo del paciente no pide, no pregunta y no avisa nada: solo acusa recibo o agradece, con las palabras que sea. El cierre es un mensaje nuestro que despide o da por terminado el asunto sin dejarle nada abierto: si nuestro último mensaje le hizo una pregunta (aunque sea \"¿algo más?\"), lo del paciente es su respuesta y todavía no hubo cierre. No le envía nada al paciente. Después de usarla no vas a responder más en este chat hasta la medianoche: si el paciente escribe algo, lo atiende recepción. Por eso, si trae cualquier cosa nueva (una pregunta, un cambio, una queja, otro tema, otra persona) o tenés dudas, respondé normal.",
@@ -620,7 +635,7 @@ function reminderCitas(reminder, args) {
   const ids = Array.isArray(args?.ids_cita) ? args.ids_cita.map(Number) : [];
   const elegidas = citas.filter((c) => ids.includes(Number(c.appointmentId)));
   if (elegidas.length) return { citas: elegidas };
-  return { pendiente: { estado: "varias_citas", citas: citas.map((c) => ({ id_cita: c.appointmentId, paciente: c.patientName, hora: to12h(c.appointmentTime) })), mensaje: "El recordatorio fue un solo mensaje por varias citas de este número (familiares). Volvé a llamar con ids_cita: todas si el paciente respondió por todos en general, solo las de las personas que nombró si distinguió. Si no queda claro, preguntale." } };
+  return { pendiente: { estado: "varias_citas", citas: citas.map((c) => ({ id_cita: c.appointmentId, paciente: c.patientName, hora: to12h(c.appointmentTime) })), mensaje: "Fue un solo mensaje por varias citas de este número (familiares). Volvé a llamar con ids_cita: todas si el paciente respondió por todos en general, solo las de las personas que nombró si distinguió. Si no queda claro, preguntale." } };
 }
 
 async function confirmarAsistencia(args, ctx) {
@@ -674,6 +689,40 @@ async function cancelarCitaRecordatorio(args, ctx) {
   return { estado: "ok", citas: resultados.map((r) => ({ id_cita: r.c.appointmentId, paciente: r.c.patientName, hora: to12h(r.c.appointmentTime), resultado: r.error ? "error" : cancelada(r) ? "cancelada" : "no_cancelable" })), mensaje: "Si alguna no quedó cancelada, no la des por cancelada y transferí a recepción." };
 }
 
+// Aviso de Mover vigente: 48 h desde el envío. Después, lo que escriba el paciente es otra conversación.
+const MOVE_NOTICE_DAYS = 2;
+function recentMoveNotice(conv) {
+  const id = Number(conv?.id);
+  const contents = id > 0 ? reminderRepo.listMessages(id, { limit: 60 }).filter((m) => m.direction === "outgoing" && m.author === "system").map((m) => m.content) : [];
+  return reminderRepo.getRecentSentNotice("move", { phones: [conv?.phone, conv?.waContactNumber].filter(Boolean), contents }, MOVE_NOTICE_DAYS);
+}
+
+async function moverCitaAviso(args, ctx) {
+  const notice = recentMoveNotice(ctx?.conversation);
+  if (!notice?.appointmentId) return { estado: "sin_aviso_reciente", mensaje: "No hay un aviso reciente de mover cita para este chat. No muevas nada con esta herramienta; si quiere cambiar una cita, seguí el proceso normal." };
+  const { citas, pendiente } = reminderCitas(notice, args);
+  if (pendiente) return pendiente;
+  if (args?.confirmado !== true) return { estado: "falta_confirmacion", mensaje: "Confirmá la nueva fecha y hora con el paciente y volvé a llamar con confirmado=true." };
+  const newDate = toIsoDate(args?.nueva_fecha);
+  const newTime = toHhmm(args?.nueva_hora, newDate);
+  if (!newDate || !newTime) return { estado: "datos_invalidos", mensaje: "Nueva fecha u hora no válidas." };
+  // El día del aviso es justo el que no se puede atender, aunque la agenda muestre cupo (no se bloquea a propósito).
+  if (newDate === notice.appointmentDate) return { estado: "dia_no_disponible", mensaje: "Ese es justamente el día que hay que mover: no se puede, aunque haya cupo o el paciente insista. Disculpate con amabilidad y ofrecele otro día." };
+  const resultados = [];
+  for (const c of citas) {
+    try { resultados.push({ c, result: await appointmentActions.moveAppointmentFromNotice({ appointmentId: c.appointmentId, newDate, newTime, serviceHint: args?.servicio || null }) }); }
+    catch (error) { resultados.push({ c, error }); }
+  }
+  const movida = (r) => r.result?.ok === true;
+  if (resultados.length === 1) {
+    const r = resultados[0];
+    if (r.error) return { estado: "rechazada", mensaje: r.error.message || "No se pudo mover la cita." };
+    if (movida(r)) return { estado: "ok", id_cita: r.c.appointmentId, servicio: r.c.treatment || null, fecha: r.result.date, hora: to12h(r.result.time), mensaje: "Cita movida." };
+    return { estado: "cita_no_movible", mensaje: "Esa cita ya no se puede mover desde aquí (fue cancelada o reprogramada por recepción). Transferí a recepción." };
+  }
+  return { estado: "ok", citas: resultados.map((r) => ({ id_cita: r.c.appointmentId, paciente: r.c.patientName, resultado: r.error ? `rechazada: ${r.error.message}` : movida(r) ? "movida" : "no_movible" })), fecha: newDate, hora: to12h(newTime), mensaje: "Si alguna no quedó movida, no la des por movida: ofrecé otra hora para esa o transferí a recepción." };
+}
+
 async function transferirARecepcion(args) {
   return { estado: "transferido", motivo: String(args?.motivo || "Solicitud del asistente") };
 }
@@ -705,6 +754,7 @@ const HANDLERS = {
   cancelar_cita: cancelarCita,
   confirmar_asistencia: confirmarAsistencia,
   cancelar_cita_recordatorio: cancelarCitaRecordatorio,
+  mover_cita_aviso: moverCitaAviso,
   finalizar_conversacion: finalizarConversacion,
   transferir_a_recepcion: transferirARecepcion
 };
@@ -719,4 +769,4 @@ async function runTool(name, args, ctx = {}) {
   }
 }
 
-module.exports = { TOOL_SPECS, SALE_TOOL_SPECS, runTool, findExistingPatient, verifyAgreedAppointment, createAgreedAppointment };
+module.exports = { TOOL_SPECS, SALE_TOOL_SPECS, recentMoveNotice, runTool, findExistingPatient, verifyAgreedAppointment, createAgreedAppointment };
